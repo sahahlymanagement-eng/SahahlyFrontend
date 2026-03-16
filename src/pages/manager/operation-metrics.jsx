@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
-import "./Operation-metrics.css";
+import "./operation-metrics.css";
 
 export default function OperationMetrics(){
 
