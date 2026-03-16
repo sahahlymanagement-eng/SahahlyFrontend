@@ -54,7 +54,9 @@ function App() {
         />
       <Routes>
         
-        <Route path="/" element={<GoogleConnectTest />} />
+        <Route path="/" element={<Login />} />
+        <Route path="/googleConnectTest" element={<GoogleConnectTest />} />
+
         <Route path="/assignment-test" element={<AssignmentFetchTest />} />
 
         {/* The general page where we ingest assignments for any classroom of any google account */}
