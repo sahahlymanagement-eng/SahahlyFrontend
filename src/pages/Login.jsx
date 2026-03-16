@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
 import "./Login.css";
-import logo from "../assets/images/logo.png";
+import logo from "../assets/images/Logo.png";
 import { toast } from "react-toastify";
 
 // Icons (Lucide-react style or simple SVGs)
