@@ -1,0 +1,110 @@
+.directorLayout{
+  display:flex;
+  min-height:100vh;
+  background:#000828;
+  color:white;
+  font-family:Inter;
+}
+
+.directorSidebar{
+  width:240px;
+  background:#081c44;
+  padding:20px;
+  transition:0.3s;
+}
+
+.directorSidebar.collapsed{
+  width:80px;
+}
+
+.sidebarHeader{
+  display:flex;
+  align-items:center;
+  margin-bottom:30px;
+}
+
+.sidebarToggle{
+  background:none;
+  border:none;
+  color:white;
+  font-size:20px;
+  cursor:pointer;
+}
+
+.sidebarTitle{
+  margin-left:10px;
+  font-size:18px;
+}
+
+.sidebarMenu{
+  display:flex;
+  flex-direction:column;
+  gap:15px;
+}
+
+.sidebarItem{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  cursor:pointer;
+  padding:10px;
+  border-radius:8px;
+}
+
+.sidebarItem:hover{
+  background:#0a2a66;
+}
+
+.sidebarItem.active{
+  background:#0a2a66;
+}
+
+.directorMain{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+.directorTopbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:15px 25px;
+  background:#081c44;
+}
+
+.logoutBtn{
+  background:#ef4444;
+  border:none;
+  padding:6px 12px;
+  border-radius:6px;
+  color:white;
+  cursor:pointer;
+}
+
+.dashboardContent{
+  padding:30px;
+}
+
+.dashboardTitle{
+  font-size:26px;
+  margin-bottom:25px;
+}
+
+.statsGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:20px;
+}
+
+.statCard{
+  background:#081c44;
+  padding:25px;
+  border-radius:12px;
+  text-align:center;
+}
+
+.statCard h3{
+  font-size:30px;
+  margin-bottom:5px;
+}

@@ -1,0 +1,178 @@
+.assistantDashPage{
+padding:30px;
+color:white;
+font-family:'Inter',sans-serif;
+background:#000828;
+min-height:100vh;
+}
+
+
+/* HEADER */
+
+.assistantDashHeader{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:25px;
+}
+
+.assistantDashHeaderLeft{
+display:flex;
+align-items:center;
+gap:12px;
+}
+
+.assistantDashIcon{
+width:46px;
+height:46px;
+background:#081c44;
+display:flex;
+align-items:center;
+justify-content:center;
+border-radius:10px;
+font-size:22px;
+}
+
+.assistantDashHeader h2{
+margin:0;
+font-size:24px;
+}
+
+.assistantDashHeader p{
+margin:3px 0 0;
+font-size:13px;
+color:#9ca3af;
+}
+
+.assistantDashHeaderActions{
+display:flex;
+gap:10px;
+}
+
+
+/* BUTTONS */
+
+.assistantDashBtnGhost{
+background:#081c44;
+border:1px solid rgba(255,255,255,0.1);
+color:white;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+display:flex;
+align-items:center;
+gap:6px;
+}
+
+.assistantDashBtnLogout{
+background:#ef4444;
+border:none;
+color:white;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+display:flex;
+align-items:center;
+gap:6px;
+}
+
+
+/* GRID */
+
+.assistantDashGrid{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+gap:16px;
+margin-bottom:30px;
+}
+
+
+/* STAT CARD */
+
+.assistantDashCard{
+background:#081c44;
+border-radius:12px;
+padding:18px;
+display:flex;
+flex-direction:column;
+gap:10px;
+border:1px solid rgba(255,255,255,0.06);
+}
+
+.assistantDashCardTop{
+display:flex;
+align-items:center;
+gap:8px;
+font-size:13px;
+color:#cbd5e1;
+}
+
+.assistantDashCardIcon{
+font-size:18px;
+color:#60a5fa;
+}
+
+.assistantDashCardValue{
+font-size:30px;
+font-weight:700;
+}
+
+
+/* ACTIONS */
+
+.assistantDashSectionHeader{
+margin-bottom:10px;
+}
+
+.assistantDashSectionHeader h3{
+margin:0;
+font-size:18px;
+}
+
+.assistantDashActions{
+display:flex;
+gap:16px;
+flex-wrap:wrap;
+}
+
+.assistantDashActionCard{
+background:#081c44;
+border:1px solid rgba(255,255,255,0.06);
+padding:18px;
+border-radius:12px;
+cursor:pointer;
+color:white;
+display:flex;
+justify-content:space-between;
+align-items:center;
+width:320px;
+text-align:left;
+}
+
+.assistantDashActionCard:hover{
+background:#0a2a66;
+}
+
+.assistantDashActionCard h4{
+margin:0;
+font-size:15px;
+}
+
+.assistantDashActionCard p{
+margin:4px 0 0;
+font-size:12px;
+color:#9ca3af;
+}
+
+.assistantDashArrow{
+font-size:20px;
+color:#60a5fa;
+}
+
+
+/* LOADING */
+
+.assistantDashLoading{
+margin-top:20px;
+color:#9ca3af;
+}

@@ -1,0 +1,173 @@
+.directorPeoplePage{
+padding:30px;
+color:white;
+font-family:'Inter',sans-serif;
+}
+
+.pageHeader{
+display:flex;
+align-items:center;
+gap:10px;
+margin-bottom:20px;
+}
+
+.pageHeader h2{
+font-size:26px;
+font-weight:600;
+}
+
+/* ADD PERSON */
+
+.addPersonCard{
+display:flex;
+gap:10px;
+margin-bottom:30px;
+background:#081c44;
+padding:15px;
+border-radius:10px;
+}
+
+.addPersonCard input{
+padding:10px;
+border-radius:6px;
+border:1px solid rgba(255,255,255,0.15);
+background:#000828;
+color:white;
+flex:1;
+}
+
+.addPersonCard button{
+background:#2563eb;
+border:none;
+padding:10px 16px;
+border-radius:6px;
+color:white;
+cursor:pointer;
+display:flex;
+align-items:center;
+gap:6px;
+}
+
+
+/* PEOPLE GRID */
+
+.peopleGrid{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
+gap:20px;
+}
+
+/* PERSON CARD */
+
+.personCard{
+background:#081c44;
+border-radius:10px;
+padding:18px;
+display:flex;
+flex-direction:column;
+gap:12px;
+}
+
+.personHeader{
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+}
+
+.personHeader h3{
+margin:0;
+font-size:16px;
+}
+
+.personMeta{
+margin-top:4px;
+display:flex;
+flex-direction:column;
+gap:4px;
+font-size:13px;
+opacity:0.85;
+}
+
+.personMeta span{
+display:flex;
+align-items:center;
+gap:6px;
+}
+
+/* ROLE */
+
+.roleBox{
+display:flex;
+flex-direction:column;
+gap:4px;
+}
+
+.roleBox select{
+background:#000828;
+border:1px solid rgba(255,255,255,0.2);
+padding:6px;
+border-radius:6px;
+color:white;
+}
+
+/* SUBJECTS */
+
+.subjectsPanel{
+display:flex;
+flex-direction:column;
+gap:10px;
+}
+
+.assignedSubjects{
+display:flex;
+flex-wrap:wrap;
+gap:6px;
+}
+
+.subjectTag{
+background:#2563eb;
+padding:4px 8px;
+border-radius:6px;
+font-size:12px;
+}
+
+.subjectsSelector{
+display:flex;
+flex-wrap:wrap;
+gap:6px;
+}
+
+.subjectItem{
+background:#000828;
+border:1px solid rgba(255,255,255,0.15);
+padding:6px 10px;
+border-radius:6px;
+cursor:pointer;
+font-size:13px;
+}
+
+.subjectItem input{
+margin-right:6px;
+}
+
+.subjectItem.active{
+background:#2563eb;
+}
+
+.saveSubjectsBtn{
+background:#22c55e;
+border:none;
+padding:8px;
+border-radius:6px;
+color:white;
+cursor:pointer;
+display:flex;
+align-items:center;
+justify-content:center;
+gap:6px;
+}
+
+.loading{
+margin-top:20px;
+color:#9ca3af;
+}

@@ -1,0 +1,184 @@
+.qualityLayout{
+  min-height:100vh;
+  background:#000828;
+  color:white;
+  padding:40px;
+  font-family:Inter, sans-serif;
+}
+
+.qualityContainer{
+  max-width:1200px;
+  margin:auto;
+}
+
+.pageTitle{
+  font-size:28px;
+  margin-bottom:25px;
+}
+
+/* TABLE */
+
+.assignmentTableWrapper{
+  background:#06173c;
+  padding:20px;
+  border-radius:12px;
+}
+
+.assignmentTable{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.assignmentTable th{
+  background:#0a2a66;
+  padding:14px;
+  text-align:left;
+  font-weight:600;
+}
+
+.assignmentTable td{
+  padding:14px;
+  border-top:1px solid rgba(255,255,255,0.1);
+}
+
+.openBtn{
+  background:#2563eb;
+  border:none;
+  padding:8px 14px;
+  border-radius:8px;
+  color:white;
+  cursor:pointer;
+}
+
+.openBtn:hover{
+  background:#1d4ed8;
+}
+
+/* STATUS */
+
+.status{
+  padding:4px 10px;
+  border-radius:6px;
+  font-size:13px;
+}
+
+.status.IN_REVIEW{
+  background:#2563eb;
+}
+
+.status.IN_REVIEW_AFTER_RECHECK{
+  background:#f59e0b;
+}
+
+.status.EMERGENCY{
+  background:#ef4444;
+}
+
+/* REVIEW PANEL */
+
+.reviewPanel{
+  margin-top:30px;
+  background:#06173c;
+  padding:25px;
+  border-radius:12px;
+}
+
+.reviewTitle{
+  font-size:20px;
+  margin-bottom:10px;
+}
+
+.reviewStatus{
+  opacity:0.8;
+}
+
+/* CHECKLIST */
+
+.checklistTable{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:20px;
+}
+
+.checklistTable th{
+  background:#0a2a66;
+  padding:10px;
+}
+
+.checklistTable td{
+  padding:10px;
+  border-top:1px solid rgba(255,255,255,0.1);
+}
+
+/* SCORE */
+
+.scoreBox{
+  margin-top:15px;
+  font-size:18px;
+}
+
+/* COMMENT */
+
+.commentBox{
+  width:100%;
+  margin-top:15px;
+  padding:12px;
+  border-radius:8px;
+  border:none;
+  background:#081c44;
+  color:white;
+  height:90px;
+}
+
+/* BUTTONS */
+
+.actionButtons{
+  margin-top:20px;
+  display:flex;
+  gap:10px;
+}
+
+.successBtn{
+  background:#22c55e;
+  border:none;
+  padding:10px 16px;
+  border-radius:8px;
+  color:white;
+  cursor:pointer;
+}
+
+.warningBtn{
+  background:#f59e0b;
+  border:none;
+  padding:10px 16px;
+  border-radius:8px;
+  color:white;
+  cursor:pointer;
+}
+
+.dangerBtn{
+  background:#ef4444;
+  border:none;
+  padding:10px 16px;
+  border-radius:8px;
+  color:white;
+  cursor:pointer;
+}
+
+.sendBackBtn{
+  background:#6366f1;
+  border:none;
+  padding:10px 16px;
+  border-radius:8px;
+  color:white;
+  cursor:pointer;
+}
+
+/* MESSAGE */
+
+.messageBox{
+  margin-top:20px;
+  padding:12px;
+  background:#0a2a66;
+  border-radius:8px;
+}

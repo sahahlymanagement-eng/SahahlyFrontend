@@ -1,0 +1,279 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import api from "../../api/api";
+import "./ManagerDelegations.css";
+
+export default function ManagerDelegations() {
+  const navigate = useNavigate();
+
+  const [user, setUser] = useState(null);
+  const [classrooms, setClassrooms] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [delegations, setDelegations] = useState([]);
+  const [assistants, setAssistants] = useState([]);
+
+  const [selectedClassroom, setSelectedClassroom] = useState(null);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [assistantDeadlines, setAssistantDeadlines] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  /* ================= AUTH ================= */
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("token");
+
+    if (!storedUser || !token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    const parsed = JSON.parse(storedUser);
+    if (parsed?.roleId?.name?.toLowerCase() !== "manager") {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    setUser(parsed);
+  }, [navigate]);
+
+  /* ================= LOAD CLASSROOMS ================= */
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const loadClassrooms = async () => {
+      const res = await api.get(
+        `/classroom-managers?personId=${user.id}`
+      );
+
+      const list = Array.isArray(res.data)
+        ? res.data.map((m) => m.classroomId)
+        : [];
+
+      setClassrooms(list);
+    };
+
+    loadClassrooms();
+  }, [user?.id]);
+
+  const selectClassroom = async (classroom) => {
+    setSelectedClassroom(classroom);
+    setSelectedAssignment(null);
+    setAssignments([]);
+    setDelegations([]);
+
+    const res = await api.get(
+      `/assignments?classroomId=${classroom._id}`
+    );
+
+    setAssignments(res.data || []);
+  };
+
+  const selectAssignment = async (assignment) => {
+    setSelectedAssignment(assignment);
+
+    const res = await api.get(
+      `/assignment-delegations?assignmentId=${assignment._id}`
+    );
+
+    setDelegations(res.data || []);
+
+    const classroomRes = await api.get(
+      `/classrooms/${selectedClassroom._id}`
+    );
+
+    const subjectId =
+      typeof classroomRes.data.subjectId === "string"
+        ? classroomRes.data.subjectId
+        : classroomRes.data.subjectId?._id;
+
+    const assistRes = await api.get(
+      `/role-subject-assignments?subjectId=${subjectId}&role=assistant`
+    );
+
+    setAssistants(assistRes.data || []);
+  };
+
+  const assignAssistant = async (personId) => {
+    try {
+      const selectedDeadline = assistantDeadlines[personId];
+      if (
+        selectedDeadline &&
+        new Date(selectedDeadline) <= new Date(selectedAssignment.dueDate)
+      ) {
+        toast.error(
+          "Assistant deadline must be after assignment due date"
+        );
+        return;
+      }
+      setLoading(true);
+
+      await api.post("/assignment-delegations", {
+        assignmentId: selectedAssignment._id,
+        personId,
+        role: "assistant",
+        assignedBy: user.id,
+        assistantDeadline: assistantDeadlines[personId],
+      });
+
+      toast.success("Assistant assigned successfully");
+      selectAssignment(selectedAssignment);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Assignment failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="managerDel-page">
+      <div className="managerDel-shell">
+
+        <header className="managerDel-header">
+          <h2>Assignment Delegations</h2>
+          <button
+            className="managerDel-back"
+            onClick={() => navigate("/manager/dashboard")}
+          >
+            ← Back
+          </button>
+        </header>
+
+        {/* CLASSROOM GRID */}
+        <section>
+          <h3>Select Classroom</h3>
+          <div className="managerDel-grid">
+            {classrooms.map((c) => (
+              <div
+                key={c._id}
+                className={`managerDel-selectCard ${
+                  selectedClassroom?._id === c._id ? "active" : ""
+                }`}
+                onClick={() => selectClassroom(c)}
+              >
+                <h4>{c.name}</h4>
+                <span>{c.section}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ASSIGNMENT GRID */}
+        {assignments.length > 0 && (
+          <section>
+            <h3>Select Assignment</h3>
+            <div className="managerDel-grid">
+              {assignments.map((a) => (
+                <div
+                  key={a._id}
+                  className={`managerDel-selectCard ${
+                    selectedAssignment?._id === a._id ? "active" : ""
+                  }`}
+                  onClick={() => selectAssignment(a)}
+                >
+                  <h4>{a.title}</h4>
+                  <span>
+                    Due:{" "}
+                    {a.dueDate
+                      ? new Date(a.dueDate).toLocaleDateString()
+                      : "-"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* MAIN PANEL */}
+        {selectedAssignment && (
+          <section className="managerDel-mainPanel">
+
+            <h3>Assign Assistant</h3>
+
+            {assistants.map((a) => (
+              <div key={a.personId._id} className="managerDel-assistantCard">
+
+                <div className="managerDel-assistantInfo">
+                  {a.personId.name}
+                </div>
+
+                <input
+                  type="datetime-local"
+                  className="managerDel-dateInput"
+                  value={assistantDeadlines[a.personId._id] || ""}
+                  min={
+                    selectedAssignment?.dueDate
+                      ? new Date(selectedAssignment.dueDate)
+                          .toISOString()
+                          .slice(0, 16)
+                      : undefined
+                  }
+                  onChange={(e) =>
+                    setAssistantDeadlines((prev) => ({
+                      ...prev,
+                      [a.personId._id]: e.target.value,
+                    }))
+                  }
+                />
+
+                <button
+                  className="managerDel-assignBtn"
+                  disabled={loading}
+                  onClick={() =>
+                    assignAssistant(a.personId._id)
+                  }
+                >
+                  Assign
+                </button>
+              </div>
+            ))}
+
+            <hr />
+
+            <h3>Delegation History</h3>
+
+            <div className="managerDel-history">
+              {delegations.map((d) => {
+                const isAssistant = d.role === "assistant";
+                const deadline = isAssistant ? d.assistantDeadline : d.qualityDeadline;
+
+                const isOverdue =
+                  deadline && new Date(deadline) < new Date();
+
+                return (
+                  <div key={d._id} className="managerDel-historyItem">
+
+                    <div className="managerDel-historyLeft">
+                      <strong>{d.personId?.name}</strong> ({d.role})
+
+                      {deadline && (
+                        <div
+                          className={`managerDel-deadline ${
+                            isOverdue ? "overdue" : ""
+                          }`}
+                        >
+                          Deadline: {new Date(deadline).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`status-badge status-${d.status}`}>
+                      {d.status}
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+
+          </section>
+        )}
+
+      </div>
+    </div>
+  );
+}

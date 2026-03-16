@@ -1,0 +1,88 @@
+.directorQualityPage{
+padding:30px;
+color:white;
+}
+
+.pageTitle{
+font-size:26px;
+margin-bottom:20px;
+}
+
+.qualityTable{
+width:100%;
+border-collapse:collapse;
+background:#081c44;
+border-radius:10px;
+overflow:hidden;
+}
+
+.qualityTable th{
+background:#0a2a66;
+padding:14px;
+text-align:left;
+}
+
+.qualityTable td{
+padding:14px;
+border-top:1px solid rgba(255,255,255,0.1);
+vertical-align:top;
+}
+
+.qualityTable tr:hover{
+background:#0b2f72;
+}
+
+.classroomTags{
+display:flex;
+flex-wrap:wrap;
+gap:6px;
+}
+
+.classroomTag{
+background:#2563eb;
+padding:4px 8px;
+border-radius:6px;
+display:flex;
+align-items:center;
+gap:6px;
+font-size:13px;
+}
+
+.classroomTag button{
+background:none;
+border:none;
+color:white;
+cursor:pointer;
+font-size:12px;
+}
+
+.noClassroom{
+color:#9ca3af;
+}
+
+.assignBox{
+display:flex;
+gap:8px;
+}
+
+.assignBox select{
+background:#000828;
+border:1px solid rgba(255,255,255,0.15);
+color:white;
+padding:6px;
+border-radius:6px;
+}
+
+.assignBox button{
+background:#22c55e;
+border:none;
+padding:6px 12px;
+border-radius:6px;
+color:white;
+cursor:pointer;
+}
+
+.loading{
+margin-top:20px;
+color:#9ca3af;
+}

@@ -1,0 +1,115 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.classroomTeacherPage {
+  min-height: 100vh;
+  background: #000828;
+  color: white;
+  padding: 40px;
+  font-family: "Inter", sans-serif;
+}
+
+.classroomTeacherContent {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.pageTitle {
+  font-size: 28px;
+  margin-bottom: 24px;
+}
+
+.loadingText {
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.classroomTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.classroomTable thead {
+  background: rgba(57, 156, 242, 0.12);
+}
+
+.classroomTable th,
+.classroomTable td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: middle;
+}
+
+.classroomTable th {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.classroomTable td {
+  font-size: 14px;
+}
+
+.classroomTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.teacherSelect {
+  width: 100%;
+  min-width: 220px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  color: white;
+  outline: none;
+}
+
+.teacherSelect option {
+  color: black;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assignBtn,
+.removeBtn {
+  border: none;
+  padding: 9px 14px;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.assignBtn {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+}
+
+.removeBtn {
+  background: linear-gradient(135deg, #b91c1c, #ef4444);
+}
+
+.assignBtn:hover,
+.removeBtn:hover {
+  opacity: 0.92;
+}
+
+.emptyRow {
+  text-align: center;
+  padding: 20px;
+  opacity: 0.7;
+}

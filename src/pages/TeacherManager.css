@@ -1,0 +1,109 @@
+.teacherPage{
+    padding:40px;
+    color:white;
+}
+
+/* ===== FORM ===== */
+
+.teacherForm{
+    display:flex;
+    gap:10px;
+    margin-bottom:30px;
+    flex-wrap:wrap;
+}
+
+.teacherForm input{
+
+    padding:10px 12px;
+    border-radius:6px;
+    border:none;
+    background:#06173c;
+    color:white;
+    min-width:180px;
+}
+
+.teacherForm input::placeholder{
+    color:#aaa;
+}
+
+/* ===== BUTTONS ===== */
+
+.saveBtn{
+    background:#2563eb;
+    border:none;
+    padding:10px 16px;
+    border-radius:6px;
+    color:white;
+    cursor:pointer;
+}
+
+.cancelBtn{
+    background:#555;
+    border:none;
+    padding:10px 16px;
+    border-radius:6px;
+    color:white;
+    cursor:pointer;
+}
+
+/* ===== TABLE ===== */
+
+.teacherTable{
+    width:100%;
+    border-collapse:collapse;
+    background:#06173c;
+    border-radius:10px;
+    overflow:hidden;
+}
+
+.teacherTable thead{
+    background:#0a2a66;
+}
+
+.teacherTable th{
+    text-align:left;
+    padding:14px;
+    font-size:14px;
+}
+
+.teacherTable td{
+    padding:14px;
+    border-top:1px solid rgba(255,255,255,0.05);
+}
+
+.teacherTable tr:hover{
+    background:rgba(255,255,255,0.04);
+}
+
+/* ===== ACTIONS ===== */
+
+.actions{
+    display:flex;
+    gap:8px;
+}
+
+.editBtn{
+    background:#22c55e;
+    border:none;
+    padding:6px 10px;
+    border-radius:6px;
+    color:white;
+    cursor:pointer;
+}
+
+.deleteBtn{
+    background:#ef4444;
+    border:none;
+    padding:6px 10px;
+    border-radius:6px;
+    color:white;
+    cursor:pointer;
+}
+
+.editBtn:hover{
+    opacity:0.9;
+}
+
+.deleteBtn:hover{
+    opacity:0.9;
+}

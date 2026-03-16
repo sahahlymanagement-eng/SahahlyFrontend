@@ -1,0 +1,148 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.login-container {
+  position: fixed;
+  inset: 0;               /* top:0 right:0 bottom:0 left:0 */
+  width: 100%;
+  height: 100vh;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #000828;    /* exact dark blue */
+  font-family: 'Inter', sans-serif;
+}
+
+.login-content {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(-70px); /* move UP */
+
+}
+
+.login-logo-section {
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.login-logo {
+  max-width: 280px;
+  height: auto;
+}
+
+.login-box {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03); /* Semi-transparent dark card */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 36px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  transform: translateY(-70px); /* move UP */
+
+}
+
+.login-header {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.input-icon {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+}
+
+.input-wrapper input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+
+  padding: 14px 14px 14px 45px;
+
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+
+  color: #ffffff;
+  font-size: 15px;
+
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.input-wrapper input:focus {
+  border-color: #2563eb;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.input-wrapper input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.forgot-password-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -10px;
+}
+
+.forgot-link {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+.login-submit-btn {
+  width: 100%;
+  padding: 14px;
+  background-color: #1d4ed8; /* Dark blue button */
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  margin-top: 10px;
+}
+
+.login-submit-btn:hover {
+  background-color: #2563eb;
+}
+
+.login-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
