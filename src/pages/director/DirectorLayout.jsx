@@ -57,10 +57,10 @@ export default function DirectorLayout() {
     {
       name: "Create Teachers",
       icon: <FiBarChart2 />,
-      path: "/manager-teachers"
+      path: "/manage-teachers"
     },
     {
-      name: "Assign Teachers to classrooms",
+      name: "Assign Classroom Teacher",
       icon: <FiBarChart2 />,
       path: "/manage-classroom-teachers"
     }
