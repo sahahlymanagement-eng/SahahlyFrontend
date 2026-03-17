@@ -53,6 +53,16 @@ export default function DirectorLayout() {
       name: "Manager Workload",
       icon: <FiBarChart2 />,
       path: "/director/manager-workload"
+    },
+    {
+      name: "Create Teachers",
+      icon: <FiBarChart2 />,
+      path: "/manager-teachers"
+    },
+    {
+      name: "Assign Teachers to classrooms",
+      icon: <FiBarChart2 />,
+      path: "/manage-classroom-teachers"
     }
   ];
 
