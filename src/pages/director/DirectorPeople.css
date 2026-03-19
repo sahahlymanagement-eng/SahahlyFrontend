@@ -1,121 +1,171 @@
+/* =====================================================
+   DIRECTOR PEOPLE PAGE — CLEAN PROFESSIONAL THEME
+===================================================== */
+
 .directorPeoplePage{
 padding:30px;
 color:white;
 font-family:'Inter',sans-serif;
+display:flex;
+justify-content:center;
+overflow:visible;
 }
 
-.pageHeader{
+.peopleContainer{
+width:100%;
+max-width:1500px;
+}
+
+/* ================= TOP BAR ================= */
+
+.peopleTopBar{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:28px;
+}
+
+.peopleTitleBox{
 display:flex;
 align-items:center;
-gap:10px;
-margin-bottom:20px;
-}
-
-.pageHeader h2{
-font-size:26px;
+gap:12px;
+font-size:22px;
 font-weight:600;
 }
 
-/* ADD PERSON */
+/* ================= ADD PERSON PANEL ================= */
 
-.addPersonCard{
-display:flex;
-gap:10px;
-margin-bottom:30px;
+.addPersonPanel{
 background:#081c44;
-padding:15px;
-border-radius:10px;
+padding:24px;
+border-radius:14px;
+display:flex;
+align-items:flex-end;
+justify-content:space-between;
+gap:20px;
+margin-bottom:36px;
+flex-wrap:wrap;
+overflow:visible;
 }
 
-.addPersonCard input{
-padding:10px;
-border-radius:6px;
-border:1px solid rgba(255,255,255,0.15);
-background:#000828;
-color:white;
+.addPersonInputs{
+display:flex;
+gap:18px;
+flex-wrap:wrap;
 flex:1;
 }
 
-.addPersonCard button{
+.inputField{
+display:flex;
+flex-direction:column;
+gap:6px;
+min-width:240px;
+flex:1;
+}
+
+.inputField label{
+font-size:13px;
+opacity:.7;
+}
+
+.inputField input{
+padding:12px;
+border-radius:8px;
+border:1px solid rgba(255,255,255,.15);
+background:#000828;
+color:white;
+outline:none;
+}
+
+.addPersonBtn{
 background:#2563eb;
 border:none;
-padding:10px 16px;
-border-radius:6px;
+padding:12px 24px;
+border-radius:8px;
 color:white;
 cursor:pointer;
 display:flex;
 align-items:center;
-gap:6px;
+gap:8px;
+height:48px;
+font-weight:500;
+transition:.2s;
 }
 
+.addPersonBtn:hover{
+background:#1d4ed8;
+}
 
-/* PEOPLE GRID */
+/* ================= GRID ================= */
 
 .peopleGrid{
 display:grid;
 grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
-gap:20px;
+gap:22px;
 }
 
-/* PERSON CARD */
+/* ================= PERSON CARD ================= */
 
 .personCard{
 background:#081c44;
-border-radius:10px;
-padding:18px;
+border-radius:14px;
+padding:20px;
 display:flex;
 flex-direction:column;
-gap:12px;
+gap:16px;
+transition:.2s;
 }
 
-.personHeader{
+.personCard:hover{
+transform:translateY(-4px);
+}
+
+/* ================= TOP ================= */
+
+.personTop{
 display:flex;
 justify-content:space-between;
-align-items:flex-start;
+gap:16px;
 }
 
-.personHeader h3{
+.personIdentity h3{
 margin:0;
-font-size:16px;
+font-size:17px;
 }
 
 .personMeta{
-margin-top:4px;
+margin-top:6px;
 display:flex;
 flex-direction:column;
-gap:4px;
+gap:5px;
 font-size:13px;
-opacity:0.85;
+opacity:.85;
 }
 
-.personMeta span{
-display:flex;
-align-items:center;
-gap:6px;
-}
-
-/* ROLE */
+/* ================= ROLE ================= */
 
 .roleBox{
 display:flex;
 flex-direction:column;
-gap:4px;
+gap:5px;
+min-width:150px;
 }
 
 .roleBox select{
 background:#000828;
-border:1px solid rgba(255,255,255,0.2);
-padding:6px;
-border-radius:6px;
+border:1px solid rgba(255,255,255,.2);
+padding:8px;
+border-radius:7px;
 color:white;
+outline:none;
 }
 
-/* SUBJECTS */
+/* ================= SUBJECT PANEL ================= */
 
 .subjectsPanel{
 display:flex;
 flex-direction:column;
-gap:10px;
+gap:12px;
 }
 
 .assignedSubjects{
@@ -126,28 +176,29 @@ gap:6px;
 
 .subjectTag{
 background:#2563eb;
-padding:4px 8px;
-border-radius:6px;
+padding:5px 11px;
+border-radius:7px;
 font-size:12px;
 }
 
 .subjectsSelector{
 display:flex;
 flex-wrap:wrap;
-gap:6px;
+gap:7px;
 }
 
 .subjectItem{
 background:#000828;
-border:1px solid rgba(255,255,255,0.15);
-padding:6px 10px;
-border-radius:6px;
+border:1px solid rgba(255,255,255,.15);
+padding:6px 12px;
+border-radius:7px;
 cursor:pointer;
 font-size:13px;
+transition:.15s;
 }
 
-.subjectItem input{
-margin-right:6px;
+.subjectItem:hover{
+border-color:#2563eb;
 }
 
 .subjectItem.active{
@@ -157,17 +208,105 @@ background:#2563eb;
 .saveSubjectsBtn{
 background:#22c55e;
 border:none;
-padding:8px;
-border-radius:6px;
+padding:10px;
+border-radius:8px;
 color:white;
 cursor:pointer;
 display:flex;
 align-items:center;
 justify-content:center;
-gap:6px;
+gap:7px;
+font-weight:500;
+transition:.2s;
 }
 
+.saveSubjectsBtn:hover{
+background:#16a34a;
+}
+
+/* ================= PHONE INPUT ================= */
+
+.systemPhoneInput{
+width:100%;
+}
+
+.systemPhoneInput .react-international-phone-input-container{
+background:#000828 !important;
+border:1px solid rgba(255,255,255,.15) !important;
+border-radius:8px !important;
+overflow:hidden;
+}
+
+.systemPhoneInput .react-international-phone-country-selector-button{
+background:#000828 !important;
+border:none !important;
+color:white !important;
+padding:0 12px !important;
+}
+
+.systemPhoneInput .react-international-phone-input{
+background:#000828 !important;
+color:white !important;
+border:none !important;
+padding:12px !important;
+}
+
+/* ================= COUNTRY DROPDOWN ================= */
+
+.react-international-phone-country-selector-dropdown{
+background:#081c44 !important;
+border:1px solid rgba(255,255,255,.15) !important;
+color:white !important;
+z-index:9999 !important;
+width:320px !important;
+}
+
+.react-international-phone-country-selector-dropdown__search-input{
+background:#000828 !important;
+border:1px solid rgba(255,255,255,.15) !important;
+color:white !important;
+padding:8px !important;
+}
+
+/* ⭐ THIS IS THE REAL SCROLL CONTAINER */
+
+.react-international-phone-country-selector-dropdown__list{
+max-height:420px !important;
+overflow-y:auto !important;
+overflow-x:hidden !important;
+}
+
+/* items */
+
+.react-international-phone-country-selector-dropdown__list-item{
+background:#081c44 !important;
+color:white !important;
+padding:10px 14px !important;
+}
+
+.react-international-phone-country-selector-dropdown__list-item:hover{
+background:#0d2b63 !important;
+}
+
+.react-international-phone-country-selector-dropdown__list-item--selected{
+background:#2563eb !important;
+}
+
+/* scrollbar */
+
+.react-international-phone-country-selector-dropdown__list::-webkit-scrollbar{
+width:6px;
+}
+
+.react-international-phone-country-selector-dropdown__list::-webkit-scrollbar-thumb{
+background:#2563eb;
+border-radius:6px;
+}
+
+/* ================= LOADING ================= */
+
 .loading{
-margin-top:20px;
+margin-top:26px;
 color:#9ca3af;
+text-align:center;
 }
