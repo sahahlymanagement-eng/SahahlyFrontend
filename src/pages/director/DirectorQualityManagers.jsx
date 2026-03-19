@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../../api/api";
-import "./DirectorClassroomManagers.css";
+import "./DirectorQualityManagers.css";
 
 export default function DirectorQualityManagers() {
 
@@ -48,11 +48,9 @@ p => p.roleId?.name?.trim().toLowerCase() === "quality manager"
 const assignManager = async (classroomId) => {
 
 const personId = selectedManagers[classroomId];
-
 if(!personId) return;
 
 try{
-
 setLoading(true);
 
 await api.post("/classroom-quality-managers",{
@@ -60,7 +58,7 @@ personId,
 classroomId
 });
 
-loadData();
+await loadData();
 
 }catch{
 alert("Assignment failed");
@@ -74,14 +72,13 @@ setLoading(false);
 const removeManager = async (classroomId) => {
 
 try{
-
 setLoading(true);
 
 await api.delete("/classroom-quality-managers",{
 data:{ classroomId }
 });
 
-loadData();
+await loadData();
 
 }catch{
 alert("Remove failed");
@@ -104,22 +101,24 @@ return assignment?.personId?.name || "None";
 
 return(
 
-<div className="directorManagersPage">
+<div className="director-quality-page">
 
-<h2 className="pageTitle">
+<h2 className="dq-title">
 Assign Quality Managers to Classrooms
 </h2>
 
-<table className="managersTable">
+<div className="dq-table-wrapper">
+
+<table className="dq-table">
 
 <thead>
 
 <tr>
 <th>Classroom</th>
 <th>Teacher</th>
-<th>Current Quality Manager</th>
-<th>Assign Quality Manager</th>
-<th>Action</th>
+<th>Current Manager</th>
+<th>Assign Manager</th>
+<th>Actions</th>
 </tr>
 
 </thead>
@@ -139,13 +138,14 @@ Assign Quality Managers to Classrooms
 {room.teacherName || room.teacherId?.name || "-"}
 </td>
 
-<td className="currentManager">
+<td className="dq-current">
 {managerName(room._id)}
 </td>
 
 <td>
 
 <select
+className="dq-select"
 value={selectedManagers[room._id] || ""}
 onChange={(e)=>setSelectedManagers(prev=>({
 ...prev,
@@ -153,9 +153,7 @@ onChange={(e)=>setSelectedManagers(prev=>({
 }))}
 >
 
-<option value="">
-Select Quality Manager
-</option>
+<option value="">Select Manager</option>
 
 {qualityManagers.map(m=>(
 <option key={m._id} value={m._id}>
@@ -167,17 +165,17 @@ Select Quality Manager
 
 </td>
 
-<td>
+<td className="dq-actions">
 
 <button
-className="assignBtn"
+className="dq-assign-btn"
 onClick={()=>assignManager(room._id)}
 >
 Assign
 </button>
 
 <button
-className="removeBtn"
+className="dq-remove-btn"
 onClick={()=>removeManager(room._id)}
 >
 Remove
@@ -193,7 +191,9 @@ Remove
 
 </table>
 
-{loading && <p className="loading">Processing...</p>}
+</div>
+
+{loading && <div className="dq-loading">Processing...</div>}
 
 </div>
 

@@ -1,88 +1,104 @@
-.directorManagersPage{
+.dm-page{
 padding:30px;
+background:#020617;
+min-height:100vh;
+color:white;
+font-family:Arial, Helvetica, sans-serif;
+}
+
+.dm-title{
+font-size:26px;
+margin-bottom:25px;
+font-weight:600;
+}
+
+.dm-table-box{
+background:#081c44;
+border-radius:12px;
+overflow:hidden;
+box-shadow:0 0 20px rgba(0,0,0,0.45);
+}
+
+.dm-table{
+width:100%;
+border-collapse:collapse;
 color:white;
 }
 
-.pageTitle{
-font-size:26px;
-margin-bottom:20px;
-}
-
-.managersTable{
-width:100%;
-border-collapse:collapse;
-background:#081c44;
-border-radius:10px;
-overflow:hidden;
-}
-
-.managersTable th{
+.dm-table th{
 background:#0a2a66;
-padding:14px;
+padding:16px;
 text-align:left;
+font-size:15px;
+color:white;
 }
 
-.managersTable td{
-padding:14px;
-border-top:1px solid rgba(255,255,255,0.1);
-vertical-align:top;
+.dm-table td{
+padding:16px;
+border-top:1px solid rgba(255,255,255,0.08);
+font-size:14px;
+color:white;
 }
 
-.managersTable tr:hover{
+.dm-table tr:hover{
 background:#0b2f72;
 }
 
-.classroomTags{
-display:flex;
-flex-wrap:wrap;
-gap:6px;
+.dm-current{
+color:#22c55e;
+font-weight:600;
 }
 
-.classroomTag{
-background:#2563eb;
-padding:4px 8px;
-border-radius:6px;
-display:flex;
-align-items:center;
-gap:6px;
-font-size:13px;
-}
-
-.classroomTag button{
-background:none;
-border:none;
-color:white;
-cursor:pointer;
-font-size:12px;
-}
-
-.noClassroom{
-color:#9ca3af;
-}
-
-.assignBox{
-display:flex;
-gap:8px;
-}
-
-select{
+.dm-select{
 background:#000828;
 border:1px solid rgba(255,255,255,0.15);
 color:white;
-padding:6px;
-border-radius:6px;
+padding:8px 12px;
+border-radius:8px;
+min-width:170px;
+outline:none;
 }
 
-.assignBox button{
+.dm-select option{
+color:black;
+}
+
+.dm-actions{
+display:flex;
+gap:10px;
+}
+
+.dm-assign{
 background:#22c55e;
 border:none;
-padding:6px 12px;
-border-radius:6px;
+padding:8px 14px;
+border-radius:8px;
 color:white;
 cursor:pointer;
+font-weight:600;
+transition:.2s;
 }
 
-.loading{
+.dm-assign:hover{
+background:#16a34a;
+}
+
+.dm-remove{
+background:#ef4444;
+border:none;
+padding:8px 14px;
+border-radius:8px;
+color:white;
+cursor:pointer;
+font-weight:600;
+transition:.2s;
+}
+
+.dm-remove:hover{
+background:#dc2626;
+}
+
+.dm-loading{
 margin-top:20px;
 color:#9ca3af;
 }

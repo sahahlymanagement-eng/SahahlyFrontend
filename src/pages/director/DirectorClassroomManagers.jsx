@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorClassroomManagers.css";
 
-export default function DirectorClassroomManagers() {
+export default function DirectorManagers() {
 
 const [classrooms,setClassrooms] = useState([]);
 const [people,setPeople] = useState([]);
 const [assignments,setAssignments] = useState([]);
 
 const [selectedManagers,setSelectedManagers] = useState({});
-
 const [loading,setLoading] = useState(false);
 
 useEffect(()=>{
@@ -49,11 +48,9 @@ p => p.roleId?.name?.trim().toLowerCase() === "manager"
 const assignManager = async (classroomId) => {
 
 const personId = selectedManagers[classroomId];
-
 if(!personId) return;
 
 try{
-
 setLoading(true);
 
 await api.post("/classroom-managers",{
@@ -61,7 +58,7 @@ personId,
 classroomId
 });
 
-loadData();
+await loadData();
 
 }catch{
 alert("Assignment failed");
@@ -75,14 +72,13 @@ setLoading(false);
 const removeManager = async (classroomId) => {
 
 try{
-
 setLoading(true);
 
 await api.delete("/classroom-managers",{
 data:{ classroomId }
 });
 
-loadData();
+await loadData();
 
 }catch{
 alert("Remove failed");
@@ -105,24 +101,24 @@ return assignment?.personId?.name || "None";
 
 return(
 
-<div className="directorManagersPage">
+<div className="dm-page">
 
-<h2 className="pageTitle">
+<h2 className="dm-title">
 Assign Managers to Classrooms
 </h2>
 
-<table className="managersTable">
+<div className="dm-table-box">
+
+<table className="dm-table">
 
 <thead>
-
 <tr>
 <th>Classroom</th>
 <th>Teacher</th>
 <th>Current Manager</th>
 <th>Assign Manager</th>
-<th>Action</th>
+<th>Actions</th>
 </tr>
-
 </thead>
 
 <tbody>
@@ -140,13 +136,14 @@ Assign Managers to Classrooms
 {room.teacherName || room.teacherId?.name || "-"}
 </td>
 
-<td className="currentManager">
+<td className="dm-current">
 {managerName(room._id)}
 </td>
 
 <td>
 
 <select
+className="dm-select"
 value={selectedManagers[room._id] || ""}
 onChange={(e)=>setSelectedManagers(prev=>({
 ...prev,
@@ -154,9 +151,7 @@ onChange={(e)=>setSelectedManagers(prev=>({
 }))}
 >
 
-<option value="">
-Select Manager
-</option>
+<option value="">Select Manager</option>
 
 {managers.map(m=>(
 <option key={m._id} value={m._id}>
@@ -168,17 +163,17 @@ Select Manager
 
 </td>
 
-<td>
+<td className="dm-actions">
 
 <button
-className="assignBtn"
+className="dm-assign"
 onClick={()=>assignManager(room._id)}
 >
 Assign
 </button>
 
 <button
-className="removeBtn"
+className="dm-remove"
 onClick={()=>removeManager(room._id)}
 >
 Remove
@@ -194,7 +189,9 @@ Remove
 
 </table>
 
-{loading && <p className="loading">Processing...</p>}
+</div>
+
+{loading && <div className="dm-loading">Processing...</div>}
 
 </div>
 
