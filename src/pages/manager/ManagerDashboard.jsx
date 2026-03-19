@@ -39,6 +39,11 @@ export default function ManagerDashboard() {
   const [selectedAssistants, setSelectedAssistants] = useState({});
   const [deadlines, setDeadlines] = useState({});
   const [filterDate, setFilterDate] = useState(null);
+  const [filterClassroom, setFilterClassroom] = useState("");
+  const [filterTeacher, setFilterTeacher] = useState("");
+  const [filterAssignment, setFilterAssignment] = useState("");
+  const [filterAssistant, setFilterAssistant] = useState("");
+  const [filterQuality, setFilterQuality] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -333,15 +338,51 @@ export default function ManagerDashboard() {
               <div className="managerDash-section">
                 <h3>{formatStatus(selectedStatus)}</h3>
 
-                <div className="filterBar">
+                <div className="filterBar managerFilterGrid">
+                  <input
+                    className="managerFilterInput"
+                    placeholder="Search Classroom"
+                    value={filterClassroom}
+                    onChange={(e) => setFilterClassroom(e.target.value)}
+                  />
+
+                  <input
+                    className="managerFilterInput"
+                    placeholder="Search Teacher"
+                    value={filterTeacher}
+                    onChange={(e) => setFilterTeacher(e.target.value)}
+                  />
+
+                  <input
+                    className="managerFilterInput"
+                    placeholder="Search Assignment"
+                    value={filterAssignment}
+                    onChange={(e) => setFilterAssignment(e.target.value)}
+                  />
+
+                  <input
+                    className="managerFilterInput"
+                    placeholder="Search Assistant"
+                    value={filterAssistant}
+                    onChange={(e) => setFilterAssistant(e.target.value)}
+                  />
+
+                  <input
+                    className="managerFilterInput"
+                    placeholder="Search Quality"
+                    value={filterQuality}
+                    onChange={(e) => setFilterQuality(e.target.value)}
+                  />
+
                   <DatePicker
                     selected={filterDate}
                     onChange={(date) => setFilterDate(date)}
                     dateFormat="yyyy-MM-dd"
                     className="customDatePicker"
-                    placeholderText="Filter by due date"
+                    placeholderText="Filter Deadline"
                     isClearable
                   />
+
                 </div>
 
                 <div className="assignmentTableWrapper">
@@ -361,17 +402,66 @@ export default function ManagerDashboard() {
                     <tbody>
                       {assignments
                         .filter((a) => {
-                          if (a.dashboardStatus !== selectedStatus) return false;
-                          if (!filterDate) return true;
+                        if (a.dashboardStatus !== selectedStatus) return false;
 
+                        const related = delegations.filter(
+                          (d) =>
+                            d.assignmentId === a._id ||
+                            d.assignmentId?._id === a._id
+                        );
+
+                        const assistants = related
+                          .filter((d) => d.role === "assistant")
+                          .map((d) => d.personId?.name?.toLowerCase() || "");
+
+                        const qualityTeam = related
+                          .filter((d) => d.role === "quality team")
+                          .map((d) => d.personId?.name?.toLowerCase() || "");
+
+                        if (
+                          filterClassroom &&
+                          !a.classroomName.toLowerCase().includes(filterClassroom.toLowerCase())
+                        )
+                          return false;
+
+                        if (
+                          filterTeacher &&
+                          !a.teacherName.toLowerCase().includes(filterTeacher.toLowerCase())
+                        )
+                          return false;
+
+                        if (
+                          filterAssignment &&
+                          !a.title.toLowerCase().includes(filterAssignment.toLowerCase())
+                        )
+                          return false;
+
+                        if (
+                          filterAssistant &&
+                          !assistants.some((name) =>
+                            name.includes(filterAssistant.toLowerCase())
+                          )
+                        )
+                          return false;
+
+                        if (
+                          filterQuality &&
+                          !qualityTeam.some((name) =>
+                            name.includes(filterQuality.toLowerCase())
+                          )
+                        )
+                          return false;
+
+                        if (filterDate) {
                           const assignmentDate = new Date(a.dueDate);
                           const filter = new Date(filterDate);
 
-                          return (
-                            assignmentDate.toDateString() ===
-                            filter.toDateString()
-                          );
-                        })
+                          if (assignmentDate.toDateString() !== filter.toDateString())
+                            return false;
+                        }
+
+                        return true;
+                      })
                         .map((a) => {
                           const related = delegations.filter(
                             (d) =>
