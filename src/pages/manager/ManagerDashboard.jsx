@@ -39,7 +39,7 @@ export default function ManagerDashboard() {
   const [selectedAssistants, setSelectedAssistants] = useState({});
   const [deadlines, setDeadlines] = useState({});
   const [filterDate, setFilterDate] = useState(null);
-  const [classroomTeacherMap, setClassroomTeacherMap] = useState({});
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -74,39 +74,60 @@ export default function ManagerDashboard() {
 
   const loadDashboard = async () => {
     try {
+      setLoading(true);
 
-      // 1️⃣ Load all classrooms with teacher info
+      // 1) Load all classrooms once
       const classroomsRes = await api.get("/classrooms");
 
       const teacherMap = {};
+      const classroomSubjectMap = {};
 
       classroomsRes.data.forEach((c) => {
         teacherMap[c._id] = c.teacherId?.name || "Not Assigned";
+        classroomSubjectMap[c._id] =
+          typeof c.subjectId === "string"
+            ? c.subjectId
+            : c.subjectId?._id || null;
       });
 
-      // 2️⃣ Get classrooms managed by manager
-      const classroomRes = await api.get(
+      // 2) Get manager classrooms
+      const classroomManagersRes = await api.get(
         `/classroom-managers?personId=${user.id}`
       );
 
       const classroomMap = {};
-
-      classroomRes.data.forEach((m) => {
-        classroomMap[m.classroomId._id] = m.classroomId.name;
+      classroomManagersRes.data.forEach((m) => {
+        if (m.classroomId?._id) {
+          classroomMap[m.classroomId._id] = m.classroomId.name;
+        }
       });
 
-      const classroomIds = classroomRes.data.map((m) => m.classroomId._id);
+      const classroomIds = classroomManagersRes.data
+        .map((m) => m.classroomId?._id)
+        .filter(Boolean);
 
-      // 3️⃣ Load assignments
-      const assignmentRequests = classroomIds.map((id) =>
-        api.get(`/assignments?classroomId=${id}`)
+      // Nothing assigned to this manager
+      if (!classroomIds.length) {
+        setAssignments([]);
+        setDelegations([]);
+        setAssistantsMap({});
+
+        const emptyCounts = {};
+        ALL_STATUSES.forEach((s) => {
+          emptyCounts[s] = 0;
+        });
+        setStatusCounts(emptyCounts);
+        return;
+      }
+
+      // 3) Batch load assignments
+      const assignmentsRes = await api.get(
+        `/assignments/by-classrooms?classroomIds=${classroomIds.join(",")}`
       );
 
-      const assignmentResults = await Promise.all(assignmentRequests);
+      let allAssignments = assignmentsRes.data || [];
 
-      let allAssignments = assignmentResults.flatMap((res) => res.data);
-
-      // 4️⃣ Attach classroom + teacher info
+      // 4) Attach extra fields
       allAssignments = allAssignments.map((a) => ({
         ...a,
         classroomName: classroomMap[a.classroomId] || "Unknown",
@@ -116,67 +137,102 @@ export default function ManagerDashboard() {
 
       setAssignments(allAssignments);
 
-      // 5️⃣ Load delegations
-      const delegationRequests = allAssignments.map((a) =>
-        api.get(`/assignment-delegations?assignmentId=${a._id}`)
-      );
+      // 5) Batch load delegations
+      const assignmentIds = allAssignments.map((a) => a._id).filter(Boolean);
 
-      const delegationResults = await Promise.all(delegationRequests);
-
-      const allDelegations = delegationResults.flatMap((res) => res.data);
+      let allDelegations = [];
+      if (assignmentIds.length) {
+        const delegationsRes = await api.get(
+          `/assignment-delegations/by-assignments?assignmentIds=${assignmentIds.join(",")}`
+        );
+        allDelegations = delegationsRes.data || [];
+      }
 
       setDelegations(allDelegations);
 
-      // 6️⃣ Status counts
+      // 6) Status counts
       const counts = {};
-      ALL_STATUSES.forEach((s) => (counts[s] = 0));
+      ALL_STATUSES.forEach((s) => {
+        counts[s] = 0;
+      });
 
       allAssignments.forEach((a) => {
-        counts[a.dashboardStatus]++;
+        counts[a.dashboardStatus] = (counts[a.dashboardStatus] || 0) + 1;
       });
 
       setStatusCounts(counts);
 
-      // 7️⃣ Load assistants
+      // 7) Load assistants once per unique subject
       const assistantsTemp = {};
 
-      for (let a of allAssignments) {
+      const uniqueSubjectIds = [
+        ...new Set(
+          allAssignments
+            .map((a) => classroomSubjectMap[a.classroomId])
+            .filter(Boolean)
+        ),
+      ];
 
-        const classroomRes = await api.get(`/classrooms/${a.classroomId}`);
+      const subjectAssistantsMap = {};
 
-        const subjectId =
-          typeof classroomRes.data.subjectId === "string"
-            ? classroomRes.data.subjectId
-            : classroomRes.data.subjectId?._id;
+      await Promise.all(
+        uniqueSubjectIds.map(async (subjectId) => {
+          const res = await api.get(
+            `/role-subject-assignments?subjectId=${subjectId}&role=assistant`
+          );
+          subjectAssistantsMap[subjectId] = res.data || [];
+        })
+      );
 
-        const assistRes = await api.get(
-          `/role-subject-assignments?subjectId=${subjectId}&role=assistant`
-        );
+      // 8) Map subject assistants to each assignment
+      allAssignments.forEach((a) => {
+        const subjectId = classroomSubjectMap[a.classroomId];
 
-        assistantsTemp[a._id] = assistRes.data || [];
-      }
+        if (!subjectId) {
+          assistantsTemp[a._id] = [];
+          return;
+        }
+
+        assistantsTemp[a._id] = subjectAssistantsMap[subjectId] || [];
+      });
 
       setAssistantsMap(assistantsTemp);
-
     } catch (err) {
       console.error(err);
-      toast.error("Failed to load dashboard");
+      toast.error(err.response?.data?.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
     }
   };
+
   const assignAssistant = async (assignmentId) => {
     try {
+      const selectedAssistant = selectedAssistants[assignmentId];
+      const deadline = deadlines[assignmentId];
+
+      if (!selectedAssistant?.value) {
+        toast.error("Please select an assistant");
+        return;
+      }
+
+      if (!deadline) {
+        toast.error("Please select a deadline");
+        return;
+      }
+
       await api.post("/assignment-delegations", {
         assignmentId,
-        personId: selectedAssistants[assignmentId]?.value,
+        personId: selectedAssistant.value,
         role: "assistant",
         assignedBy: user.id,
-        assistantDeadline: deadlines[assignmentId],
+        assistantDeadline: deadline,
       });
 
       toast.success("Assistant assigned");
       loadDashboard();
     } catch (err) {
-      toast.error(err.response?.data?.message);
+      console.error(err);
+      toast.error(err.response?.data?.message || "Failed to assign assistant");
     }
   };
 
@@ -187,9 +243,31 @@ export default function ManagerDashboard() {
       borderColor: "rgba(255,255,255,0.2)",
       color: "white",
       minWidth: "200px",
+      boxShadow: "none",
     }),
-    singleValue: (base) => ({ ...base, color: "white" }),
-    menu: (base) => ({ ...base, backgroundColor: "#081c44" }),
+    singleValue: (base) => ({
+      ...base,
+      color: "white",
+    }),
+    input: (base) => ({
+      ...base,
+      color: "white",
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: "rgba(255,255,255,0.7)",
+    }),
+    menu: (base) => ({
+      ...base,
+      backgroundColor: "#081c44",
+      zIndex: 30,
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: state.isFocused ? "#0d2b63" : "#081c44",
+      color: "white",
+      cursor: "pointer",
+    }),
   };
 
   if (!user) return null;
@@ -228,7 +306,6 @@ export default function ManagerDashboard() {
       <div className="managerMain">
         <div className="managerDash-container">
           <div className="managerDash-content">
-
             <h2 className="managerDash-title">
               Manager Dashboard
               <br />
@@ -243,9 +320,7 @@ export default function ManagerDashboard() {
                     selectedStatus === status ? "active" : ""
                   }`}
                   onClick={() =>
-                    setSelectedStatus(
-                      selectedStatus === status ? null : status
-                    )
+                    setSelectedStatus(selectedStatus === status ? null : status)
                   }
                 >
                   <h3>{statusCounts[status] || 0}</h3>
@@ -256,7 +331,6 @@ export default function ManagerDashboard() {
 
             {selectedStatus && (
               <div className="managerDash-section">
-
                 <h3>{formatStatus(selectedStatus)}</h3>
 
                 <div className="filterBar">
@@ -271,9 +345,7 @@ export default function ManagerDashboard() {
                 </div>
 
                 <div className="assignmentTableWrapper">
-
                   <table className="assignmentTable">
-
                     <thead>
                       <tr>
                         <th>Classroom</th>
@@ -287,7 +359,6 @@ export default function ManagerDashboard() {
                     </thead>
 
                     <tbody>
-
                       {assignments
                         .filter((a) => {
                           if (a.dashboardStatus !== selectedStatus) return false;
@@ -302,7 +373,6 @@ export default function ManagerDashboard() {
                           );
                         })
                         .map((a) => {
-
                           const related = delegations.filter(
                             (d) =>
                               d.assignmentId === a._id ||
@@ -319,17 +389,16 @@ export default function ManagerDashboard() {
 
                           const assistantOptions =
                             assistantsMap[a._id]?.map((as) => ({
-                              value: as.personId._id,
-                              label: as.personId.name,
+                              value: as.personId?._id,
+                              label: as.personId?.name,
                             })) || [];
+
+                          const hasSubjectAssistants = assistantOptions.length > 0;
 
                           return (
                             <tr key={a._id}>
-
                               <td>{a.classroomName}</td>
-
                               <td>{a.teacherName}</td>
-
                               <td>{a.title}</td>
 
                               <td>
@@ -357,67 +426,67 @@ export default function ManagerDashboard() {
                               </td>
 
                               <td>
-
                                 {!assistants.length &&
                                   selectedStatus === "UNASSIGNED" && (
                                     <div className="assignControls">
+                                      {hasSubjectAssistants ? (
+                                        <>
+                                          <Select
+                                            styles={customSelectStyles}
+                                            options={assistantOptions}
+                                            value={selectedAssistants[a._id] || null}
+                                            onChange={(selected) =>
+                                              setSelectedAssistants((prev) => ({
+                                                ...prev,
+                                                [a._id]: selected,
+                                              }))
+                                            }
+                                            placeholder="Assistant"
+                                          />
 
-                                      <Select
-                                        styles={customSelectStyles}
-                                        options={assistantOptions}
-                                        value={
-                                          selectedAssistants[a._id] || null
-                                        }
-                                        onChange={(selected) =>
-                                          setSelectedAssistants({
-                                            ...selectedAssistants,
-                                            [a._id]: selected,
-                                          })
-                                        }
-                                        placeholder="Assistant"
-                                      />
+                                          <DatePicker
+                                            selected={deadlines[a._id] || null}
+                                            onChange={(date) =>
+                                              setDeadlines((prev) => ({
+                                                ...prev,
+                                                [a._id]: date,
+                                              }))
+                                            }
+                                            showTimeSelect
+                                            dateFormat="Pp"
+                                            className="customDatePicker"
+                                            placeholderText="Deadline"
+                                          />
 
-                                      <DatePicker
-                                        selected={deadlines[a._id] || null}
-                                        onChange={(date) =>
-                                          setDeadlines({
-                                            ...deadlines,
-                                            [a._id]: date,
-                                          })
-                                        }
-                                        showTimeSelect
-                                        dateFormat="Pp"
-                                        className="customDatePicker"
-                                        placeholderText="Deadline"
-                                      />
-
-                                      <button
-                                        className="assignBtn"
-                                        onClick={() =>
-                                          assignAssistant(a._id)
-                                        }
-                                      >
-                                        Assign
-                                      </button>
-
+                                          <button
+                                            className="assignBtn"
+                                            onClick={() => assignAssistant(a._id)}
+                                          >
+                                            Assign
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <span style={{ color: "#ffd27a" }}>
+                                          No subject assistants available
+                                        </span>
+                                      )}
                                     </div>
                                   )}
-
                               </td>
-
                             </tr>
                           );
                         })}
-
                     </tbody>
-
                   </table>
 
+                  {loading && (
+                    <div style={{ marginTop: "12px", color: "#fff" }}>
+                      Loading...
+                    </div>
+                  )}
                 </div>
-
               </div>
             )}
-
           </div>
         </div>
       </div>
