@@ -4,186 +4,166 @@ import "./TeacherManager.css";
 
 export default function TeacherManager(){
 
-    const [teachers,setTeachers] = useState([]);
-    const [editingId,setEditingId] = useState(null);
+const [teachers,setTeachers] = useState([]);
+const [editingId,setEditingId] = useState(null);
 
-    const [form,setForm] = useState({
-        name:"",
-        phone:"",
-        email:""
-    });
+const [form,setForm] = useState({
+name:"",
+phone:"",
+email:""
+});
 
-    const loadTeachers = async () => {
+useEffect(()=>{
+loadTeachers();
+},[]);
 
-        const res = await api.get("/teachers");
-        setTeachers(res.data);
-    };
+const loadTeachers = async ()=>{
+const res = await api.get("/teachers");
+setTeachers(res.data || []);
+};
 
-    useEffect(()=>{
-        loadTeachers();
-    },[]);
+const handleChange = (e)=>{
+setForm({
+...form,
+[e.target.name]:e.target.value
+});
+};
 
-    const handleChange = (e)=>{
-        setForm({
-            ...form,
-            [e.target.name]:e.target.value
-        });
-    };
+const createTeacher = async ()=>{
+if(!form.name || !form.phone) return;
 
-    const createTeacher = async () => {
+await api.post("/teachers",form);
 
-        if(!form.name || !form.phone) return;
+setForm({ name:"", phone:"", email:"" });
+loadTeachers();
+};
 
-        await api.post("/teachers",form);
+const deleteTeacher = async (id)=>{
+if(!window.confirm("Delete this teacher?")) return;
 
-        setForm({
-            name:"",
-            phone:"",
-            email:""
-        });
+await api.delete(`/teachers/${id}`);
+loadTeachers();
+};
 
-        loadTeachers();
-    };
+const startEdit = (teacher)=>{
+setEditingId(teacher._id);
 
-    const deleteTeacher = async (id) => {
+setForm({
+name:teacher.name,
+phone:teacher.phone,
+email:teacher.email || ""
+});
+};
 
-        if(!window.confirm("Delete this teacher?")) return;
+const updateTeacher = async ()=>{
+await api.put(`/teachers/${editingId}`,form);
 
-        await api.delete(`/teachers/${id}`);
+setEditingId(null);
+setForm({ name:"", phone:"", email:"" });
 
-        loadTeachers();
-    };
+loadTeachers();
+};
 
-    const startEdit = (teacher) => {
+const cancelEdit = ()=>{
+setEditingId(null);
+setForm({ name:"", phone:"", email:"" });
+};
 
-        setEditingId(teacher._id);
+return(
 
-        setForm({
-            name:teacher.name,
-            phone:teacher.phone,
-            email:teacher.email || ""
-        });
-    };
+<div className="teacherPage">
 
-    const updateTeacher = async () => {
+<h2>Create Teacher</h2>
 
-        await api.put(`/teachers/${editingId}`,form);
+<div className="teacherForm">
 
-        setEditingId(null);
+<input
+name="name"
+placeholder="Teacher Name"
+value={form.name}
+onChange={handleChange}
+/>
 
-        setForm({
-            name:"",
-            phone:"",
-            email:""
-        });
+<input
+name="phone"
+placeholder="Phone Number"
+value={form.phone}
+onChange={handleChange}
+/>
 
-        loadTeachers();
-    };
+<input
+name="email"
+placeholder="Email (optional)"
+value={form.email}
+onChange={handleChange}
+/>
 
-    const cancelEdit = () =>{
-        setEditingId(null);
-        setForm({
-            name:"",
-            phone:"",
-            email:""
-        });
-    };
+{editingId ? (
+<>
+<button className="saveBtn" onClick={updateTeacher}>
+Update
+</button>
 
-    return(
+<button className="cancelBtn" onClick={cancelEdit}>
+Cancel
+</button>
+</>
+) : (
+<button className="saveBtn" onClick={createTeacher}>
+Save Teacher
+</button>
+)}
 
-        <div className="teacherPage">
+</div>
 
-            <h2>Create Teacher</h2>
+<h2>Teachers List</h2>
 
-            <div className="teacherForm">
+<table className="teacherTable">
 
-                <input
-                name="name"
-                placeholder="Teacher Name"
-                value={form.name}
-                onChange={handleChange}
-                />
+<thead>
+<tr>
+<th>Name</th>
+<th>Phone</th>
+<th>Email</th>
+<th>Actions</th>
+</tr>
+</thead>
 
-                <input
-                name="phone"
-                placeholder="Phone Number"
-                value={form.phone}
-                onChange={handleChange}
-                />
+<tbody>
 
-                <input
-                name="email"
-                placeholder="Email (optional)"
-                value={form.email}
-                onChange={handleChange}
-                />
+{teachers.map(t=>(
+<tr key={t._id}>
 
-                {editingId ? (
-                    <>
-                    <button className="saveBtn" onClick={updateTeacher}>
-                        Update
-                    </button>
+<td>{t.name}</td>
+<td>{t.phone}</td>
+<td>{t.email || "-"}</td>
 
-                    <button className="cancelBtn" onClick={cancelEdit}>
-                        Cancel
-                    </button>
-                    </>
-                ) : (
-                    <button className="saveBtn" onClick={createTeacher}>
-                        Save Teacher
-                    </button>
-                )}
+<td className="actions">
 
-            </div>
+<button
+className="editBtn"
+onClick={()=>startEdit(t)}
+>
+Edit
+</button>
 
+<button
+className="deleteBtn"
+onClick={()=>deleteTeacher(t._id)}
+>
+Delete
+</button>
 
-            <h2>Teachers List</h2>
+</td>
 
-            <table className="teacherTable">
+</tr>
+))}
 
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Phone</th>
-                        <th>Email</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
+</tbody>
 
-                <tbody>
+</table>
 
-                {teachers.map(t=>(
-                    <tr key={t._id}>
+</div>
 
-                        <td>{t.name}</td>
-                        <td>{t.phone}</td>
-                        <td>{t.email || "-"}</td>
-
-                        <td className="actions">
-
-                            <button
-                            className="editBtn"
-                            onClick={()=>startEdit(t)}
-                            >
-                                Edit
-                            </button>
-
-                            <button
-                            className="deleteBtn"
-                            onClick={()=>deleteTeacher(t._id)}
-                            >
-                                Delete
-                            </button>
-
-                        </td>
-
-                    </tr>
-                ))}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    );
+);
 }

@@ -4,10 +4,15 @@
   box-sizing: border-box;
 }
 
+/* ⭐⭐⭐ CRITICAL FIX */
+.classroomTeacherPage,
+.classroomTeacherPage * {
+  color: white;
+}
+
 .classroomTeacherPage {
   min-height: 100vh;
   background: #000828;
-  color: white;
   padding: 40px;
   font-family: "Inter", sans-serif;
 }
@@ -49,15 +54,6 @@
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   vertical-align: middle;
-}
-
-.classroomTable th {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.classroomTable td {
-  font-size: 14px;
 }
 
 .classroomTable tbody tr:hover {
