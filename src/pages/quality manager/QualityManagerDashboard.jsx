@@ -45,83 +45,37 @@ export default function QualityManagerDashboard() {
   }, [user?.id]);
 
   const loadDashboard = async () => {
-    try {
-      setLoading(true);
+  try {
 
-      /* 1️⃣ Load classrooms */
-      const classroomsRes = await api.get("/classrooms");
+    setLoading(true);
 
-      const teacherMap = {};
-      const nameMap = {};
+    const res = await api.get(
+      `/quality-manager/dashboard?managerId=${user.id}`
+    );
 
-      classroomsRes.data.forEach((c) => {
-        teacherMap[c._id] = c.teacherName || c.teacherId?.name || "Not Assigned";
-        nameMap[c._id] = c.name;
-      });
+    const { assignments, delegations, classrooms } = res.data;
 
-      setClassroomTeacherMap(teacherMap);
-      setClassroomNameMap(nameMap);
+    setAssignments(assignments);
+    setDelegations(delegations);
 
-      /* 2️⃣ Load classrooms managed by quality manager */
-      const qmRes = await api.get(`/classroom-quality-managers?personId=${user.id}`);
-      const classroomIds = qmRes.data.map((c) => c.classroomId._id);
+    const teacherMap = {};
+    const nameMap = {};
 
-      /* 3️⃣ Load assignments */
-      const assignmentRequests = classroomIds.map((id) =>
-        api.get(`/assignments?classroomId=${id}`)
-      );
+    classrooms.forEach(c => {
+      teacherMap[c._id] = c.teacherId?.name || "Not Assigned";
+      nameMap[c._id] = c.name;
+    });
 
-      const assignmentResults = await Promise.all(assignmentRequests);
-      const allAssignments = assignmentResults.flatMap((r) => r.data || []);
+    setClassroomTeacherMap(teacherMap);
+    setClassroomNameMap(nameMap);
 
-      /* 4️⃣ Load delegations */
-      const delegationReq = allAssignments.map((a) =>
-        api.get(`/assignment-delegations?assignmentId=${a._id}`)
-      );
-
-      const delegationRes = await Promise.all(delegationReq);
-      const allDelegations = delegationRes.flatMap((r) => r.data || []);
-
-      setDelegations(allDelegations);
-
-      /* 5️⃣ Keep all assignments for analytics + table */
-      setAssignments(allAssignments);
-
-      /* 6️⃣ Load available quality team members ONLY for assignments that still need quality assignment */
-      const filteredAssignments = allAssignments.filter((a) => {
-        const related = allDelegations.filter(
-          (d) => d.assignmentId === a._id || d.assignmentId?._id === a._id
-        );
-
-        const quality = related.filter((d) => d.role === "quality team");
-        return quality.length === 0;
-      });
-
-      const qualityMap = {};
-
-      for (const a of filteredAssignments) {
-        const classroomRes = await api.get(`/classrooms/${a.classroomId}`);
-
-        const subjectId =
-          typeof classroomRes.data.subjectId === "string"
-            ? classroomRes.data.subjectId
-            : classroomRes.data.subjectId?._id;
-
-        const res = await api.get(
-          `/role-subject-assignments?subjectId=${subjectId}&role=quality team`
-        );
-
-        qualityMap[a._id] = res.data || [];
-      }
-
-      setQualityMembersMap(qualityMap);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to load quality manager dashboard");
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (err) {
+    console.error(err);
+    alert("Failed to load dashboard");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const assignQuality = async (assignmentId) => {
     try {
