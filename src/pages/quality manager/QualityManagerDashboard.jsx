@@ -53,10 +53,15 @@ export default function QualityManagerDashboard() {
       `/quality-manager/dashboard?managerId=${user.id}`
     );
 
-    const { assignments, delegations, classrooms } = res.data;
-
+    const {
+      assignments,
+      delegations,
+      classrooms,
+      qualityMembersMap
+    } = res.data;
     setAssignments(assignments);
     setDelegations(delegations);
+    setQualityMembersMap(qualityMembersMap || {});
 
     const teacherMap = {};
     const nameMap = {};
