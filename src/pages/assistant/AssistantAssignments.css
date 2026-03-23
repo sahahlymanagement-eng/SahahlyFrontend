@@ -1,9 +1,13 @@
 .assistantAssignPage{
 padding:30px;
 background:#000828;
-color:white;
+color:#ffffff;
 font-family:'Inter',sans-serif;
 min-height:100vh;
+}
+
+.assistantAssignPage *{
+color:inherit;
 }
 
 
@@ -21,7 +25,7 @@ background:#081c44;
 border:1px solid rgba(255,255,255,0.1);
 padding:8px 14px;
 border-radius:8px;
-color:white;
+color:#ffffff;
 cursor:pointer;
 display:flex;
 align-items:center;
@@ -33,9 +37,9 @@ gap:6px;
 
 .assistantAssignFilters{
 display:flex;
-gap:14px;
-align-items:center;
-margin-bottom:18px;
+gap:18px;
+align-items:flex-end;
+margin-bottom:20px;
 flex-wrap:wrap;
 }
 
@@ -51,9 +55,17 @@ border-radius:8px;
 .filterItem select{
 background:none;
 border:none;
-color:white;
+color:#ffffff;
 outline:none;
 }
+
+.filterItem select option{
+background:#081c44;
+color:#ffffff;
+}
+
+
+/* SEARCH */
 
 .searchBox{
 display:flex;
@@ -67,8 +79,12 @@ border-radius:8px;
 .searchBox input{
 background:none;
 border:none;
-color:white;
+color:#ffffff;
 outline:none;
+}
+
+.searchBox input::placeholder{
+color:#cbd5e1;
 }
 
 
@@ -84,6 +100,7 @@ border:1px solid rgba(255,255,255,0.05);
 .assistantAssignTable{
 width:100%;
 border-collapse:collapse;
+color:#ffffff;
 }
 
 .assistantAssignTable thead{
@@ -95,12 +112,14 @@ text-align:left;
 padding:12px;
 font-size:13px;
 font-weight:600;
+color:#ffffff;
 }
 
 .assistantAssignTable td{
 padding:12px;
 border-top:1px solid rgba(255,255,255,0.05);
 font-size:13px;
+color:#ffffff;
 }
 
 .assistantAssignTable tr:hover{
@@ -116,11 +135,12 @@ border-radius:999px;
 font-size:11px;
 font-weight:700;
 text-transform:uppercase;
+color:#ffffff;
 }
 
 .status-ASSIGNED{background:#399cf2;}
-.status-IN_REVIEW{background:#f6c343;color:black;}
-.status-IN_REVIEW_AFTER_RECHECK{background:#f6c343;color:black;}
+.status-IN_REVIEW{background:#f6c343;color:#ffffff;}
+.status-IN_REVIEW_AFTER_RECHECK{background:#f6c343;color:#ffffff;}
 .status-RECHECK_BY_ASSISTANT{background:#ff9800;}
 .status-DONE{background:#22c55e;}
 .status-DONE_BY_QUALITY{background:#16a34a;}
@@ -134,7 +154,7 @@ background:#2563eb;
 border:none;
 padding:6px 10px;
 border-radius:6px;
-color:white;
+color:#ffffff;
 cursor:pointer;
 display:flex;
 align-items:center;
@@ -152,18 +172,7 @@ background:#1d4ed8;
 .loadingRow{
 text-align:center;
 padding:20px;
-color:#9ca3af;
-}
-
-
-/* FILTER AREA */
-
-.assistantAssignFilters{
-display:flex;
-gap:18px;
-align-items:flex-end;
-margin-bottom:20px;
-flex-wrap:wrap;
+color:#cbd5e1;
 }
 
 
@@ -177,7 +186,7 @@ font-size:13px;
 }
 
 .filterBlock label{
-color:#9ca3af;
+color:#ffffff;
 font-size:12px;
 }
 
@@ -189,48 +198,34 @@ position:relative;
 }
 
 .customSelect select{
-
 appearance:none;
 -webkit-appearance:none;
-
 background:#081c44;
 border:1px solid rgba(255,255,255,0.1);
-
-color:white;
-
+color:#ffffff;
 padding:8px 32px 8px 12px;
-
 border-radius:8px;
-
 font-size:13px;
-
 cursor:pointer;
-
 min-width:170px;
-
 transition:all 0.2s ease;
-
 }
 
-
-/* hover */
+.customSelect select option{
+background:#081c44;
+color:#ffffff;
+}
 
 .customSelect select:hover{
 border-color:#2563eb;
 background:#0a2a66;
 }
 
-
-/* focus */
-
 .customSelect select:focus{
 outline:none;
 border-color:#399cf2;
 box-shadow:0 0 0 2px rgba(57,156,242,0.2);
 }
-
-
-/* dropdown arrow */
 
 .customSelect::after{
 content:"▼";
@@ -244,27 +239,41 @@ pointer-events:none;
 }
 
 
-/* SEARCH */
+/* SEARCH ADVANCED */
 
 .searchBox input{
-
 background:#081c44;
-
 border:1px solid rgba(255,255,255,0.1);
-
 border-radius:8px;
-
 padding:8px 12px;
-
-color:white;
-
+color:#ffffff;
 min-width:220px;
-
 font-size:13px;
-
 }
 
 .searchBox input:focus{
 outline:none;
 border-color:#399cf2;
+}
+
+
+/* GLOBAL SAFE OVERRIDE */
+
+button,
+select,
+input,
+textarea,
+label,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+td,
+th,
+div{
+color:inherit;
 }

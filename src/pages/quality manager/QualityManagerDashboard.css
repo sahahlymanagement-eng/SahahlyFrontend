@@ -1,9 +1,14 @@
 .qmPage {
   min-height: 100vh;
   background: #000828;
-  color: white;
+  color: #ffffff;
   font-family: "Inter", sans-serif;
   padding: 30px;
+}
+
+.qmPage * {
+  color: inherit;
+  box-sizing: border-box;
 }
 
 .qmHeader {
@@ -28,12 +33,14 @@
   align-items: center;
   justify-content: center;
   font-size: 22px;
+  color: #ffffff;
 }
 
 .qmTitle {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
+  color: #ffffff;
 }
 
 .qmSubtitle {
@@ -57,6 +64,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  color: #ffffff;
 }
 
 .qmStatTop {
@@ -69,11 +77,13 @@
 
 .qmStatIcon {
   font-size: 18px;
+  color: #ffffff;
 }
 
 .qmStatValue {
   font-size: 30px;
   font-weight: 700;
+  color: #ffffff;
 }
 
 .qmStatCard.done {
@@ -109,6 +119,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   padding: 10px 12px;
+  color: #ffffff;
 }
 
 .qmFilterBox svg,
@@ -122,8 +133,12 @@
   background: transparent;
   border: none;
   outline: none;
-  color: white;
+  color: #ffffff;
   font-size: 13px;
+}
+
+.qmSearchBox input::placeholder {
+  color: #cbd5e1;
 }
 
 .qmFilterBox select {
@@ -147,6 +162,7 @@
 .qmTable {
   width: 100%;
   border-collapse: collapse;
+  color: #ffffff;
 }
 
 .qmTable thead {
@@ -159,6 +175,7 @@
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  color: #ffffff;
 }
 
 .qmTable td {
@@ -166,6 +183,7 @@
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   vertical-align: top;
   font-size: 13px;
+  color: #ffffff;
 }
 
 .qmTable tr:hover td {
@@ -205,7 +223,7 @@
 }
 
 .qmMuted {
-  color: #9ca3af;
+  color: #cbd5e1;
 }
 
 .qmStatusBadge {
@@ -266,12 +284,17 @@
   appearance: none;
   -webkit-appearance: none;
   background: #000828;
-  color: white;
+  color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 8px 34px 8px 10px;
   outline: none;
   font-size: 13px;
+}
+
+.qmCustomSelect select option {
+  background: #081c44;
+  color: #ffffff;
 }
 
 .qmCustomSelect::after {
@@ -288,7 +311,7 @@
 .qmAssignBtn {
   background: #22c55e;
   border: none;
-  color: white;
+  color: #ffffff;
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
@@ -302,90 +325,88 @@
 
 .qmEmptyRow {
   text-align: center;
-  color: #9ca3af;
+  color: #cbd5e1;
   padding: 24px !important;
 }
 
-
 /* FILTER BLOCK */
 
-.qmFilterBlock{
-display:flex;
-flex-direction:column;
-gap:6px;
-font-size:12px;
-color:#9ca3af;
+.qmFilterBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #cbd5e1;
 }
 
+.qmFilterBlock label {
+  color: #ffffff;
+}
 
 /* SYSTEM SELECT */
 
-.qmSelect{
-position:relative;
+.qmSelect {
+  position: relative;
 }
 
-.qmSelect select{
-
-appearance:none;
--webkit-appearance:none;
-
-background:#081c44;
-color:white;
-
-border:1px solid rgba(255,255,255,0.15);
-
-padding:9px 34px 9px 12px;
-
-border-radius:10px;
-
-font-size:13px;
-
-cursor:pointer;
-
-min-width:180px;
-
-transition:all 0.2s ease;
-
+.qmSelect select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #081c44;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 9px 34px 9px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 180px;
+  transition: all 0.2s ease;
 }
 
-
-/* Hover */
-
-.qmSelect select:hover{
-background:#0a2a66;
-border-color:#2563eb;
+.qmSelect select option {
+  background: #081c44;
+  color: #ffffff;
 }
 
-
-/* Focus */
-
-.qmSelect select:focus{
-outline:none;
-border-color:#399cf2;
-box-shadow:0 0 0 2px rgba(57,156,242,0.25);
+.qmSelect select:hover {
+  background: #0a2a66;
+  border-color: #2563eb;
 }
 
+.qmSelect select:focus {
+  outline: none;
+  border-color: #399cf2;
+  box-shadow: 0 0 0 2px rgba(57, 156, 242, 0.25);
+}
 
-/* Arrow */
+.qmSelect::after {
+  content: "▼";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: #9ca3af;
+  pointer-events: none;
+}
 
-.qmSelect::after{
-
-content:"▼";
-
-position:absolute;
-
-right:10px;
-
-top:50%;
-
-transform:translateY(-50%);
-
-font-size:10px;
-
-color:#9ca3af;
-
-pointer-events:none;
-
+button,
+select,
+input,
+textarea,
+label,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+td,
+th,
+div {
+  color: inherit;
 }
 
 @media (max-width: 1200px) {
