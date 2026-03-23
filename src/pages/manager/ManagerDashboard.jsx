@@ -147,8 +147,9 @@ export default function ManagerDashboard() {
 
       let allDelegations = [];
       if (assignmentIds.length) {
-        const delegationsRes = await api.get(
-          `/assignment-delegations/by-assignments?assignmentIds=${assignmentIds.join(",")}`
+        const delegationsRes = await api.post(
+          "/assignment-delegations/by-assignments",
+          { assignmentIds }
         );
         allDelegations = delegationsRes.data || [];
       }
