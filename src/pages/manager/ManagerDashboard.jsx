@@ -15,7 +15,7 @@ import {
 
 const ALL_STATUSES = [
   "UNASSIGNED","ASSIGNED","IN_REVIEW","RECHECK_BY_ASSISTANT",
-  "IN_REVIEW_AFTER_RECHECK","EMERGENCY","DONE","DONE_BY_QUALITY","DONE_BY_QUALITY_LATE",
+  "IN_REVIEW_AFTER_RECHECK","EMERGENCY","DONE","DONE_BY_QUALITY","DONE_BY_QUALITY_LATE","FAILED_DEADLINE"
 ];
 
 const STATUS_META = {
@@ -28,6 +28,7 @@ const STATUS_META = {
   DONE:                     { icon: <FiCheckCircle />,   accent: "#22c55e" },
   DONE_BY_QUALITY:          { icon: <FiCheckCircle />,   accent: "#10b981" },
   DONE_BY_QUALITY_LATE:     { icon: <FiAlertTriangle />, accent: "#f97316" },
+   FAILED_DEADLINE:         { icon: <FiAlertTriangle />, accent: "#dc2626" },
 };
 
 const formatStatus = (s) =>
@@ -172,6 +173,36 @@ export default function ManagerDashboard() {
   if (!user) return null;
 
   const totalAssignments = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+
+  const changeAssistant = async (assignmentId) => {
+  try {
+    const sel = selectedAssistants[assignmentId];
+    if (!sel?.value) { toast.error("Please select a new assistant"); return; }
+    await api.put("/assignment-delegations/change-assistant", {
+      assignmentId,
+      newPersonId: sel.value,
+      assignedBy: user.id,
+      assistantDeadline: deadlines[assignmentId] || undefined,
+    });
+    toast.success("Assistant changed successfully");
+    loadDashboard();
+  } catch (err) {
+    toast.error(err.response?.data?.message || "Failed to change assistant");
+  }
+};
+
+const removeAssistant = async (assignmentId) => {
+  if (!window.confirm("Remove assistant (and quality team if assigned)? Task will become UNASSIGNED.")) return;
+  try {
+    await api.delete("/assignment-delegations/remove-assistant", {
+      data: { assignmentId, assignedBy: user.id },
+    });
+    toast.success("Assistant removed. Task is now UNASSIGNED.");
+    loadDashboard();
+  } catch (err) {
+    toast.error(err.response?.data?.message || "Failed to remove assistant");
+  }
+};
 
   return (
     <div className="md-root">
@@ -386,37 +417,32 @@ export default function ManagerDashboard() {
                               </td>
 
                               <td>
-                                {!assistants.length && selectedStatus === "UNASSIGNED" && (
-                                  <div className="md-assign-cell">
-                                    {hasSubjectAssistants ? (
-                                      <>
+                                {(() => {
+                                  const isInitialAssign =
+                                    selectedStatus === "UNASSIGNED" && !assistants.length;
+
+                                  const canManage = [
+                                    "ASSIGNED", "FAILED_DEADLINE", "IN_REVIEW", "RECHECK_BY_ASSISTANT"
+                                  ].includes(selectedStatus);
+
+                                  /* ── INITIAL ASSIGN (no assistant yet) ── */
+                                  if (isInitialAssign) {
+                                    if (!hasSubjectAssistants) {
+                                      return <span className="md-no-assistants">No assistants available</span>;
+                                    }
+                                    return (
+                                      <div className="md-assign-cell">
                                         <Select
-                                          styles={{
-                                            ...customSelectStyles,
-                                            menuPortal: (base) => ({
-                                              ...base,
-                                              zIndex: 9999,
-                                            }),
-                                          }}
+                                          styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
                                           menuPortalTarget={document.body}
                                           options={assistantOptions}
                                           value={selectedAssistants[a._id] || null}
-                                          onChange={(sel) =>
-                                            setSelectedAssistants((prev) => ({
-                                              ...prev,
-                                              [a._id]: sel,
-                                            }))
-                                          }
+                                          onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
                                           placeholder="Select assistant"
                                         />
                                         <DatePicker
                                           selected={deadlines[a._id] || null}
-                                          onChange={(date) =>
-                                            setDeadlines((prev) => ({
-                                              ...prev,
-                                              [a._id]: date,
-                                            }))
-                                          }
+                                          onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
                                           showTimeSelect
                                           dateFormat="Pp"
                                           className="md-datepicker-input"
@@ -426,12 +452,50 @@ export default function ManagerDashboard() {
                                         <button className="md-assign-btn" onClick={() => assignAssistant(a._id)}>
                                           Assign
                                         </button>
-                                      </>
-                                    ) : (
-                                      <span className="md-no-assistants">No assistants available</span>
-                                    )}
-                                  </div>
-                                )}
+                                      </div>
+                                    );
+                                  }
+
+                                  /* ── CHANGE / REMOVE (active assistant exists) ── */
+                                  if (canManage) {
+                                    if (!hasSubjectAssistants) {
+                                      return (
+                                        <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>
+                                          Remove
+                                        </button>
+                                      );
+                                    }
+                                    return (
+                                      <div className="md-assign-cell">
+                                        <Select
+                                          styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                                          menuPortalTarget={document.body}
+                                          options={assistantOptions}
+                                          value={selectedAssistants[a._id] || null}
+                                          onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
+                                          placeholder="Change assistant"
+                                        />
+                                        <DatePicker
+                                          selected={deadlines[a._id] || null}
+                                          onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
+                                          showTimeSelect
+                                          dateFormat="Pp"
+                                          className="md-datepicker-input"
+                                          placeholderText="New deadline (optional)"
+                                          portalId="root"
+                                        />
+                                        <button className="md-assign-btn" onClick={() => changeAssistant(a._id)}>
+                                          Change
+                                        </button>
+                                        <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>
+                                          Remove
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  return null;
+                                })()}
                               </td>
                             </tr>
                           );
