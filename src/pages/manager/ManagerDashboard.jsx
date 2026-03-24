@@ -391,19 +391,37 @@ export default function ManagerDashboard() {
                                     {hasSubjectAssistants ? (
                                       <>
                                         <Select
-                                          styles={customSelectStyles}
+                                          styles={{
+                                            ...customSelectStyles,
+                                            menuPortal: (base) => ({
+                                              ...base,
+                                              zIndex: 9999,
+                                            }),
+                                          }}
+                                          menuPortalTarget={document.body}
                                           options={assistantOptions}
                                           value={selectedAssistants[a._id] || null}
-                                          onChange={(sel) => setSelectedAssistants((prev) => ({ ...prev, [a._id]: sel }))}
+                                          onChange={(sel) =>
+                                            setSelectedAssistants((prev) => ({
+                                              ...prev,
+                                              [a._id]: sel,
+                                            }))
+                                          }
                                           placeholder="Select assistant"
                                         />
                                         <DatePicker
                                           selected={deadlines[a._id] || null}
-                                          onChange={(date) => setDeadlines((prev) => ({ ...prev, [a._id]: date }))}
+                                          onChange={(date) =>
+                                            setDeadlines((prev) => ({
+                                              ...prev,
+                                              [a._id]: date,
+                                            }))
+                                          }
                                           showTimeSelect
                                           dateFormat="Pp"
                                           className="md-datepicker-input"
                                           placeholderText="Set deadline"
+                                          portalId="root"
                                         />
                                         <button className="md-assign-btn" onClick={() => assignAssistant(a._id)}>
                                           Assign

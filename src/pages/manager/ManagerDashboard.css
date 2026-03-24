@@ -650,6 +650,10 @@
   animation: md-spin 0.7s linear infinite;
 }
 
+.react-datepicker-popper {
+  z-index: 9999 !important;
+}
+
 /* ─── EMPTY STATE ───────────────────────────────────────── */
 
 .md-empty-state {
