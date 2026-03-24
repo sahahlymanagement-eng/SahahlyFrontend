@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorPeople.css";
+import { toast } from "react-toastify";
 
 import {
   FiUsers,
   FiUserPlus,
   FiMail,
   FiPhone,
-  FiSave
+  FiSave,
+  FiEdit2,
+  FiTrash2,
+  FiToggleLeft,
+  FiToggleRight,
+  FiX
 } from "react-icons/fi";
 
 import { PhoneInput } from "react-international-phone";
@@ -26,6 +32,12 @@ export default function DirectorPeople() {
   const [selectedSubjects, setSelectedSubjects] = useState({});
 
   const [loading, setLoading] = useState(false);
+
+  // Edit modal state
+  const [editPerson, setEditPerson] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
 
   useEffect(() => {
     loadInitialData();
@@ -48,17 +60,10 @@ export default function DirectorPeople() {
   };
 
   const loadRoleSubjects = async (personId) => {
-    const res = await api.get(
-      `/role-subject-assignments?personId=${personId}`
-    );
-
+    const res = await api.get(`/role-subject-assignments?personId=${personId}`);
     const assignments = res.data || [];
 
-    setRoleSubjectMap((prev) => ({
-      ...prev,
-      [personId]: assignments
-    }));
-
+    setRoleSubjectMap((prev) => ({ ...prev, [personId]: assignments }));
     setSelectedSubjects((prev) => ({
       ...prev,
       [personId]: assignments.map((a) => a.subjectId?._id)
@@ -77,73 +82,169 @@ export default function DirectorPeople() {
     return roleNameById(roleId).toLowerCase();
   };
 
+  const isAdmin = (roleId) => roleNameLower(roleId) === "admin";
+
   const supportsSubjects = (roleId) =>
     ["assistant", "quality team"].includes(roleNameLower(roleId));
 
+  // ── CREATE ──────────────────────────────────────────────────────────────────
+
   const createPerson = async () => {
     if (!name || !email || !phoneValue) {
-      alert("All fields required");
+      toast.error("All fields are required");
       return;
     }
 
     try {
       setLoading(true);
 
-      // library gives international number with "+"
-      // database should store it WITHOUT "+"
       const finalPhone = phoneValue.replace(/\D/g, "");
-
       if (!finalPhone) {
-        alert("Please enter a valid phone number");
+        toast.error("Please enter a valid phone number");
         return;
       }
 
-      await api.post("/people", {
-        name,
-        email,
-        phone: finalPhone
-      });
+      await api.post("/people", { name, email, phone: finalPhone });
 
       setName("");
       setEmail("");
       setPhoneValue("");
 
+      toast.success("Person created successfully");
       await loadInitialData();
     } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || "Failed to create person");
+      toast.error(err.response?.data?.message || "Failed to create person");
     } finally {
       setLoading(false);
     }
   };
+
+  // ── EDIT ─────────────────────────────────────────────────────────────────────
+
+  const openEdit = (person) => {
+    setEditPerson(person);
+    setEditName(person.name || "");
+    setEditEmail(person.email || "");
+    setEditPhone("+" + person.phone || "");
+  };
+
+  const closeEdit = () => {
+    setEditPerson(null);
+    setEditName("");
+    setEditEmail("");
+    setEditPhone("");
+  };
+
+  const saveEdit = async () => {
+    if (!editName || !editEmail || !editPhone) {
+      toast.error("All fields are required");
+      return;
+    }
+
+    const finalPhone = editPhone.replace(/\D/g, "");
+    if (!finalPhone) {
+      toast.error("Please enter a valid phone number");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api.patch(`/people/${editPerson._id}`, {
+        name: editName,
+        email: editEmail,
+        phone: finalPhone
+      });
+
+      toast.success("Person updated successfully");
+      closeEdit();
+      await loadInitialData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update person");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── DELETE ────────────────────────────────────────────────────────────────────
+
+  const deletePerson = (person) => {
+    toast(
+      ({ closeToast }) => (
+        <div>
+          <p style={{ margin: "0 0 10px" }}>
+            Delete <strong>{person.name}</strong>? This cannot be undone.
+          </p>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={async () => {
+                closeToast();
+                try {
+                  setLoading(true);
+                  await api.delete(`/people/${person._id}`);
+                  toast.success("Person deleted successfully");
+                  await loadInitialData();
+                } catch (err) {
+                  toast.error(err.response?.data?.message || "Failed to delete person");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              style={{ background: "#e53e3e", color: "#fff", border: "none", borderRadius: "6px", padding: "6px 14px", cursor: "pointer" }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={closeToast}
+              style={{ background: "#eee", color: "#333", border: "none", borderRadius: "6px", padding: "6px 14px", cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      { autoClose: false, closeOnClick: false, closeButton: false }
+    );
+  };
+
+  // ── DISABLE / ENABLE ──────────────────────────────────────────────────────────
+
+  const toggleStatus = async (person) => {
+    const isDisabled = person.status === "disabled";
+    const action = isDisabled ? "enable" : "disable";
+
+    try {
+      setLoading(true);
+      await api.patch(`/people/${person._id}/${action}`);
+      toast.success(`Person ${isDisabled ? "enabled" : "disabled"} successfully`);
+      await loadInitialData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || `Failed to ${action} person`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── ROLE ──────────────────────────────────────────────────────────────────────
 
   const assignRole = async (personId, roleId) => {
     try {
       setLoading(true);
-
       await api.patch(`/people/${personId}/assign-role`, { roleId });
-
       await loadInitialData();
     } finally {
       setLoading(false);
     }
   };
 
+  // ── SUBJECTS ──────────────────────────────────────────────────────────────────
+
   const toggleSubject = (personId, subjectId) => {
     setSelectedSubjects((prev) => {
       const current = prev[personId] || [];
-
       if (current.includes(subjectId)) {
-        return {
-          ...prev,
-          [personId]: current.filter((id) => id !== subjectId)
-        };
+        return { ...prev, [personId]: current.filter((id) => id !== subjectId) };
       }
-
-      return {
-        ...prev,
-        [personId]: [...current, subjectId]
-      };
+      return { ...prev, [personId]: [...current, subjectId] };
     });
   };
 
@@ -151,209 +252,255 @@ export default function DirectorPeople() {
     try {
       setLoading(true);
 
-      const existing =
-        roleSubjectMap[personId]?.map((a) => a.subjectId._id) || [];
-
+      const existing = roleSubjectMap[personId]?.map((a) => a.subjectId._id) || [];
       const selected = selectedSubjects[personId] || [];
-
       const toAdd = selected.filter((id) => !existing.includes(id));
       const toRemove = existing.filter((id) => !selected.includes(id));
 
       for (const subjectId of toAdd) {
         await api.post("/role-subject-assignments", { personId, subjectId });
       }
-
       for (const subjectId of toRemove) {
-        await api.delete("/role-subject-assignments", {
-          data: { personId, subjectId }
-        });
+        await api.delete("/role-subject-assignments", { data: { personId, subjectId } });
       }
 
+      toast.success("Subjects saved");
       await loadRoleSubjects(personId);
+    } catch (err) {
+      toast.error("Failed to save subjects");
     } finally {
       setLoading(false);
     }
   };
 
+  // ── RENDER ────────────────────────────────────────────────────────────────────
+
   return (
-  <div className="directorPeoplePage">
+    <div className="directorPeoplePage">
+      <div className="peopleContainer">
 
-    <div className="peopleContainer">
-
-      {/* HEADER */}
-
-      <div className="peopleTopBar">
-        <div className="peopleTitleBox">
-          <FiUsers />
-          <h2>People Management</h2>
+        {/* HEADER */}
+        <div className="peopleTopBar">
+          <div className="peopleTitleBox">
+            <FiUsers />
+            <h2>People Management</h2>
+          </div>
         </div>
-      </div>
 
-      {/* ADD PERSON */}
+        {/* ADD PERSON */}
+        <div className="addPersonPanel">
+          <div className="addPersonInputs">
 
-      <div className="addPersonPanel">
+            <div className="inputField">
+              <label>Name</label>
+              <input
+                placeholder="Enter full name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
 
-        <div className="addPersonInputs">
+            <div className="inputField">
+              <label>Email</label>
+              <input
+                placeholder="Enter email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
 
-          <div className="inputField">
-            <label>Name</label>
-            <input
-              placeholder="Enter full name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-
-          <div className="inputField">
-            <label>Email</label>
-            <input
-              placeholder="Enter email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-
-          <div className="inputField">
-            <label>Phone</label>
-
-            <PhoneInput
-              defaultCountry="eg"
-              value={phoneValue}
-              onChange={(value) => setPhoneValue(value)}
-              className="systemPhoneInput"
-              countrySelectorStyleProps={{
-                dropdownStyleProps: {
-                  style: {
-                    maxHeight: "500px",
-                    height: "500px",
-                    zIndex: 9999
+            <div className="inputField">
+              <label>Phone</label>
+              <PhoneInput
+                defaultCountry="eg"
+                value={phoneValue}
+                onChange={(value) => setPhoneValue(value)}
+                className="systemPhoneInput"
+                countrySelectorStyleProps={{
+                  dropdownStyleProps: {
+                    style: { maxHeight: "500px", height: "500px", zIndex: 9999 }
                   }
-                }
-              }}
-            />
+                }}
+              />
+            </div>
 
           </div>
 
+          <button className="addPersonBtn" onClick={createPerson} disabled={loading}>
+            <FiUserPlus />
+            Add Person
+          </button>
         </div>
 
-        <button
-          className="addPersonBtn"
-          onClick={createPerson}
-          disabled={loading}
-        >
-          <FiUserPlus />
-          Add Person
-        </button>
+        {/* GRID */}
+        <div className="peopleGrid">
+          {people.map((p) => {
+            const supports = supportsSubjects(p.roleId);
+            const assignments = roleSubjectMap[p._id] || [];
+            const selected = selectedSubjects[p._id] || [];
+            const admin = isAdmin(p.roleId);
+            const disabled = p.status === "disabled";
 
-      </div>
+            return (
+              <div className={`personCard ${disabled ? "personDisabled" : ""}`} key={p._id}>
 
-      {/* GRID */}
+                <div className="personTop">
+                  <div className="personIdentity">
+                    <h3>{p.name}</h3>
+                    <div className="personMeta">
+                      <span><FiMail /> {p.email}</span>
+                      <span><FiPhone /> +{p.phone}</span>
+                    </div>
+                  </div>
 
-      <div className="peopleGrid">
-
-        {people.map((p) => {
-
-          const supports = supportsSubjects(p.roleId);
-          const assignments = roleSubjectMap[p._id] || [];
-          const selected = selectedSubjects[p._id] || [];
-
-          return (
-
-            <div className="personCard" key={p._id}>
-
-              <div className="personTop">
-
-                <div className="personIdentity">
-                  <h3>{p.name}</h3>
-
-                  <div className="personMeta">
-                    <span><FiMail /> {p.email}</span>
-                    <span><FiPhone /> +{p.phone}</span>
+                  <div className="roleBox">
+                    <label>Role</label>
+                    <select
+                      value={p.roleId?._id || ""}
+                      onChange={(e) => assignRole(p._id, e.target.value)}
+                    >
+                      <option value="">Select role</option>
+                      {roles.map((r) => (
+                        <option key={r._id} value={r._id}>{r.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                <div className="roleBox">
-                  <label>Role</label>
+                {/* ACTION BUTTONS — hidden for admin */}
+                {!admin && (
+                  <div className="personActions">
 
-                  <select
-                    value={p.roleId?._id || ""}
-                    onChange={(e) => assignRole(p._id, e.target.value)}
-                  >
-                    <option value="">Select role</option>
+                    <button
+                      className="actionBtn editBtn"
+                      onClick={() => openEdit(p)}
+                      title="Edit"
+                    >
+                      <FiEdit2 size={14} /> Edit
+                    </button>
 
-                    {roles.map((r) => (
-                      <option key={r._id} value={r._id}>
-                        {r.name}
-                      </option>
-                    ))}
+                    <button
+                      className={`actionBtn toggleBtn ${disabled ? "enableBtn" : "disableBtn"}`}
+                      onClick={() => toggleStatus(p)}
+                      title={disabled ? "Enable" : "Disable"}
+                    >
+                      {disabled
+                        ? <><FiToggleRight size={14} /> Enable</>
+                        : <><FiToggleLeft size={14} /> Disable</>
+                      }
+                    </button>
 
-                  </select>
-                </div>
+                    <button
+                      className="actionBtn deleteBtn"
+                      onClick={() => deletePerson(p)}
+                      title="Delete"
+                    >
+                      <FiTrash2 size={14} /> Delete
+                    </button>
+
+                  </div>
+                )}
+
+                {supports && (
+                  <div className="subjectsPanel">
+
+                    <div className="assignedSubjects">
+                      {assignments.map((a) => (
+                        <span className="subjectTag" key={a._id}>
+                          {a.subjectId?.name}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="subjectsSelector">
+                      {subjects.map((s) => {
+                        const checked = selected.includes(s._id);
+                        return (
+                          <label key={s._id} className={`subjectItem ${checked ? "active" : ""}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleSubject(p._id, s._id)}
+                            />
+                            {s.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <button className="saveSubjectsBtn" onClick={() => saveSubjects(p._id)}>
+                      <FiSave /> Save Subjects
+                    </button>
+
+                  </div>
+                )}
 
               </div>
+            );
+          })}
+        </div>
 
-              {supports && (
+        {loading && <p className="loading">Processing...</p>}
+      </div>
 
-                <div className="subjectsPanel">
+      {/* EDIT MODAL */}
+      {editPerson && (
+        <div className="modalOverlay" onClick={closeEdit}>
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
 
-                  <div className="assignedSubjects">
-                    {assignments.map((a) => (
-                      <span className="subjectTag" key={a._id}>
-                        {a.subjectId?.name}
-                      </span>
-                    ))}
-                  </div>
+            <div className="modalHeader">
+              <h3>Edit Person</h3>
+              <button className="modalClose" onClick={closeEdit}><FiX /></button>
+            </div>
 
-                  <div className="subjectsSelector">
+            <div className="modalBody">
 
-                    {subjects.map((s) => {
+              <div className="inputField">
+                <label>Name</label>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Full name"
+                />
+              </div>
 
-                      const checked = selected.includes(s._id);
+              <div className="inputField">
+                <label>Email</label>
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="Email"
+                />
+              </div>
 
-                      return (
-
-                        <label
-                          key={s._id}
-                          className={`subjectItem ${checked ? "active" : ""}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleSubject(p._id, s._id)}
-                          />
-                          {s.name}
-                        </label>
-
-                      );
-
-                    })}
-
-                  </div>
-
-                  <button
-                    className="saveSubjectsBtn"
-                    onClick={() => saveSubjects(p._id)}
-                  >
-                    <FiSave />
-                    Save Subjects
-                  </button>
-
-                </div>
-
-              )}
+              <div className="inputField">
+                <label>Phone</label>
+                <PhoneInput
+                  defaultCountry="eg"
+                  value={editPhone}
+                  onChange={(value) => setEditPhone(value)}
+                  className="systemPhoneInput"
+                  countrySelectorStyleProps={{
+                    dropdownStyleProps: {
+                      style: { maxHeight: "300px", height: "300px", zIndex: 9999 }
+                    }
+                  }}
+                />
+              </div>
 
             </div>
 
-          );
+            <div className="modalFooter">
+              <button className="cancelModalBtn" onClick={closeEdit}>Cancel</button>
+              <button className="saveModalBtn" onClick={saveEdit} disabled={loading}>
+                <FiSave /> Save Changes
+              </button>
+            </div>
 
-        })}
-
-      </div>
-
-      {loading && <p className="loading">Processing...</p>}
+          </div>
+        </div>
+      )}
 
     </div>
-
-  </div>
-);
+  );
 }

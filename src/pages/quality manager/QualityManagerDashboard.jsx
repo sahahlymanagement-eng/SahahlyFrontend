@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import "./QualityManagerDashboard.css";
 
@@ -7,27 +8,22 @@ import {
   FiCheckCircle,
   FiClock,
   FiAlertTriangle,
-  FiSearch,
   FiUserCheck,
-  FiUsers,
-  FiBookOpen,
-  FiFilter,
+  FiLogOut,
+  FiChevronDown,
+  FiSearch,
 } from "react-icons/fi";
 
 export default function QualityManagerDashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
-
   const [assignments, setAssignments] = useState([]);
   const [delegations, setDelegations] = useState([]);
   const [qualityMembersMap, setQualityMembersMap] = useState({});
-
   const [classroomTeacherMap, setClassroomTeacherMap] = useState({});
   const [classroomNameMap, setClassroomNameMap] = useState({});
-
   const [selectedQuality, setSelectedQuality] = useState({});
-
   const [loading, setLoading] = useState(true);
-
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [classroomFilter, setClassroomFilter] = useState("ALL");
   const [teacherFilter, setTeacherFilter] = useState("ALL");
@@ -41,94 +37,71 @@ export default function QualityManagerDashboard() {
   useEffect(() => {
     if (!user?.id) return;
     loadDashboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const loadDashboard = async () => {
-  try {
-
-    setLoading(true);
-
-    const res = await api.get(
-      `/quality-manager/dashboard?managerId=${user.id}`
-    );
-
-    const {
-      assignments,
-      delegations,
-      classrooms,
-      qualityMembersMap
-    } = res.data;
-    setAssignments(assignments);
-    setDelegations(delegations);
-    setQualityMembersMap(qualityMembersMap || {});
-
-    const teacherMap = {};
-    const nameMap = {};
-
-    classrooms.forEach(c => {
-      teacherMap[c._id] = c.teacherId?.name || "Not Assigned";
-      nameMap[c._id] = c.name;
-    });
-
-    setClassroomTeacherMap(teacherMap);
-    setClassroomNameMap(nameMap);
-
-  } catch (err) {
-    console.error(err);
-    alert("Failed to load dashboard");
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      setLoading(true);
+      const res = await api.get(`/quality-manager/dashboard?managerId=${user.id}`);
+      const { assignments, delegations, classrooms, qualityMembersMap } = res.data;
+      setAssignments(assignments);
+      setDelegations(delegations);
+      setQualityMembersMap(qualityMembersMap || {});
+      const teacherMap = {};
+      const nameMap = {};
+      classrooms.forEach((c) => {
+        teacherMap[c._id] = c.teacherId?.name || "Not Assigned";
+        nameMap[c._id] = c.name;
+      });
+      setClassroomTeacherMap(teacherMap);
+      setClassroomNameMap(nameMap);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const assignQuality = async (assignmentId) => {
     try {
       const personId = selectedQuality[assignmentId];
-
-      if (!personId) {
-        alert("Select quality member");
-        return;
-      }
-
-      await api.post("/assignment-delegations", {
+      if (!personId) return;
+      setLoading(true);
+      await api.post("/quality-manager/assign-quality", {
         assignmentId,
-        personId,
-        role: "quality team",
-        assignedBy: user.id,
+        qualityPersonId: personId,
+        qualityManagerId: user.id,
       });
-
+      setSelectedQuality((prev) => ({ ...prev, [assignmentId]: "" }));
       await loadDashboard();
     } catch (err) {
       console.error(err);
-      alert("Failed to assign quality member");
+      setLoading(false);
     }
   };
 
-  const getRelatedDelegations = (assignmentId) => {
-    return delegations.filter(
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    navigate("/login", { replace: true });
+  };
+
+  const getRelatedDelegations = (assignmentId) =>
+    delegations.filter(
       (d) => d.assignmentId === assignmentId || d.assignmentId?._id === assignmentId
     );
-  };
 
   const tableRows = useMemo(() => {
     return assignments.map((a) => {
       const related = getRelatedDelegations(a._id);
-
       const assistants = related.filter((d) => d.role === "assistant");
       const qualityTeam = related.filter((d) => d.role === "quality team");
-
-      const classroomId =
-        typeof a.classroomId === "object" ? a.classroomId?._id : a.classroomId;
-
-      const classroomName = classroomNameMap[classroomId] || "Unknown";
-      const teacherName = classroomTeacherMap[classroomId] || "Not Assigned";
-
+      const classroomId = typeof a.classroomId === "object" ? a.classroomId?._id : a.classroomId;
       return {
         ...a,
         classroomKey: classroomId,
-        classroomName,
-        teacherName,
+        classroomName: classroomNameMap[classroomId] || "Unknown",
+        teacherName: classroomTeacherMap[classroomId] || "Not Assigned",
         assistants,
         qualityTeam,
       };
@@ -137,303 +110,271 @@ export default function QualityManagerDashboard() {
 
   const filteredRows = useMemo(() => {
     return tableRows.filter((row) => {
-      const statusOk = statusFilter === "ALL" ? true : row.status === statusFilter;
-      const classroomOk =
-        classroomFilter === "ALL" ? true : row.classroomName === classroomFilter;
-      const teacherOk =
-        teacherFilter === "ALL" ? true : row.teacherName === teacherFilter;
-
-      const assistantsText = row.assistants.map((a) => a.personId?.name).join(" ");
-      const qualityText = row.qualityTeam.map((q) => q.personId?.name).join(" ");
-
-      const searchText = [
-        row.title,
-        row.classroomName,
-        row.teacherName,
-        assistantsText,
-        qualityText,
-        row.status,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const searchOk = search.trim()
-        ? searchText.includes(search.trim().toLowerCase())
-        : true;
-
-      return statusOk && classroomOk && teacherOk && searchOk;
+      if (statusFilter !== "ALL" && row.status !== statusFilter) return false;
+      if (classroomFilter !== "ALL" && row.classroomName !== classroomFilter) return false;
+      if (teacherFilter !== "ALL" && row.teacherName !== teacherFilter) return false;
+      if (search.trim()) {
+        const text = [
+          row.title, row.classroomName, row.teacherName, row.status,
+          ...row.assistants.map((a) => a.personId?.name),
+          ...row.qualityTeam.map((q) => q.personId?.name),
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!text.includes(search.trim().toLowerCase())) return false;
+      }
+      return true;
     });
   }, [tableRows, statusFilter, classroomFilter, teacherFilter, search]);
 
-  const stats = useMemo(() => {
-    return {
-      done: tableRows.filter((a) => a.status === "DONE").length,
-      doneByQuality: tableRows.filter((a) => a.status === "DONE_BY_QUALITY").length,
-      doneByQualityLate: tableRows.filter((a) => a.status === "DONE_BY_QUALITY_LATE").length,
-      pendingQuality: tableRows.filter((a) => a.qualityTeam.length === 0).length,
-    };
-  }, [tableRows]);
+  const stats = useMemo(() => ({
+    done: tableRows.filter((a) => a.status === "DONE").length,
+    doneByQuality: tableRows.filter((a) => a.status === "DONE_BY_QUALITY").length,
+    doneByQualityLate: tableRows.filter((a) => a.status === "DONE_BY_QUALITY_LATE").length,
+    pendingQuality: tableRows.filter((a) => a.qualityTeam.length === 0).length,
+  }), [tableRows]);
 
-  const classrooms = useMemo(() => {
-    return [...new Set(tableRows.map((r) => r.classroomName).filter(Boolean))].sort();
-  }, [tableRows]);
+  const classrooms = useMemo(() =>
+    [...new Set(tableRows.map((r) => r.classroomName).filter(Boolean))].sort(),
+    [tableRows]
+  );
 
-  const teachers = useMemo(() => {
-    return [...new Set(tableRows.map((r) => r.teacherName).filter(Boolean))].sort();
-  }, [tableRows]);
+  const teachers = useMemo(() =>
+    [...new Set(tableRows.map((r) => r.teacherName).filter(Boolean))].sort(),
+    [tableRows]
+  );
+
+  const statusOptions = [
+    "UNASSIGNED","ASSIGNED","IN_REVIEW","RECHECK_BY_ASSISTANT",
+    "IN_REVIEW_AFTER_RECHECK","EMERGENCY","DONE","DONE_BY_QUALITY","DONE_BY_QUALITY_LATE"
+  ];
 
   if (!user) return null;
 
   return (
-    <div className="qmPage">
-      <div className="qmHeader">
-        <div className="qmHeaderLeft">
-          <div className="qmHeaderIcon">
-            <FiShield />
+    <div className="qm2-root">
+
+      {/* TOP NAV */}
+      <header className="qm2-nav">
+        <div className="qm2-nav-brand">
+          <div className="qm2-nav-icon"><FiShield size={18} /></div>
+          <span className="qm2-nav-title">Quality Control</span>
+        </div>
+
+        <div className="qm2-nav-right">
+          <div className="qm2-user-pill">
+            <div className="qm2-user-avatar">
+              {user.name?.charAt(0).toUpperCase()}
+            </div>
+            <span>{user.name}</span>
           </div>
 
+          <button className="qm2-logout-btn" onClick={handleLogout}>
+            <FiLogOut size={15} />
+            <span>Logout</span>
+          </button>
+        </div>
+      </header>
+
+      <main className="qm2-main">
+
+        {/* PAGE TITLE */}
+        <div className="qm2-page-head">
           <div>
-            <h2 className="qmTitle">Quality Manager Dashboard</h2>
-            <p className="qmSubtitle">
-              Monitor assignment outcomes, trace assistants and quality members, and assign quality reviewers
-            </p>
+            <h1 className="qm2-page-title">Quality Manager Dashboard</h1>
+            <p className="qm2-page-sub">Monitor assignments, trace assistants, and assign quality reviewers</p>
           </div>
         </div>
-      </div>
 
-      <div className="qmStatsGrid">
-        <StatCard icon={<FiCheckCircle />} title="Done" value={stats.done} tone="done" />
-        <StatCard
-          icon={<FiUserCheck />}
-          title="Done by Quality"
-          value={stats.doneByQuality}
-          tone="quality"
-        />
-        <StatCard
-          icon={<FiAlertTriangle />}
-          title="Done by Quality Late"
-          value={stats.doneByQualityLate}
-          tone="late"
-        />
-        <StatCard
-          icon={<FiClock />}
-          title="Pending Quality Assignment"
-          value={stats.pendingQuality}
-          tone="pending"
-        />
-      </div>
+        {/* STATS */}
+        <div className="qm2-stats">
+          <StatCard2 icon={<FiCheckCircle />} label="Done" value={stats.done} accent="#22c55e" />
+          <StatCard2 icon={<FiUserCheck />} label="Done by Quality" value={stats.doneByQuality} accent="#2563eb" />
+          <StatCard2 icon={<FiAlertTriangle />} label="Done by Quality Late" value={stats.doneByQualityLate} accent="#f59e0b" />
+          <StatCard2 icon={<FiClock />} label="Pending Quality" value={stats.pendingQuality} accent="#ef4444" />
+        </div>
 
-      <div className="qmFilters">
+        {/* FILTERS */}
+        <div className="qm2-filters-row">
+          <div className="qm2-search-wrap">
+            <FiSearch size={14} className="qm2-search-icon" />
+            <input
+              className="qm2-search"
+              placeholder="Search assignments, teachers, assistants…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
 
-        <div className="qmFilterBlock">
-          <label>Status</label>
-
-          <div className="qmSelect">
-            <select
+          <div className="qm2-selects">
+            <FilterSelect
+              label="Status"
               value={statusFilter}
-              onChange={(e)=>setStatusFilter(e.target.value)}
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="UNASSIGNED">UNASSIGNED</option>
-              <option value="IN_REVIEW">IN_REVIEW</option>
-              <option value="RECHECK_BY_ASSISTANT">RECHECK_BY_ASSISTANT</option>
-              <option value="IN_REVIEW_AFTER_RECHECK">IN_REVIEW_AFTER_RECHECK</option>
-              <option value="DONE">DONE</option>
-              <option value="DONE_BY_QUALITY">DONE_BY_QUALITY</option>
-              <option value="DONE_BY_QUALITY_LATE">DONE_BY_QUALITY_LATE</option>
-            </select>
-          </div>
-        </div>
-
-
-        <div className="qmFilterBlock">
-          <label>Classroom</label>
-
-          <div className="qmSelect">
-            <select
+              onChange={setStatusFilter}
+              options={[{ value: "ALL", label: "All Statuses" }, ...statusOptions.map(s => ({ value: s, label: formatStatus(s) }))]}
+            />
+            <FilterSelect
+              label="Classroom"
               value={classroomFilter}
-              onChange={(e)=>setClassroomFilter(e.target.value)}
-            >
-              <option value="ALL">All Classrooms</option>
-
-              {classrooms.map(c=>(
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-
-        <div className="qmFilterBlock">
-          <label>Teacher</label>
-
-          <div className="qmSelect">
-            <select
+              onChange={setClassroomFilter}
+              options={[{ value: "ALL", label: "All Classrooms" }, ...classrooms.map(c => ({ value: c, label: c }))]}
+            />
+            <FilterSelect
+              label="Teacher"
               value={teacherFilter}
-              onChange={(e)=>setTeacherFilter(e.target.value)}
-            >
-              <option value="ALL">All Teachers</option>
-
-              {teachers.map(t=>(
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              onChange={setTeacherFilter}
+              options={[{ value: "ALL", label: "All Teachers" }, ...teachers.map(t => ({ value: t, label: t }))]}
+            />
           </div>
         </div>
 
-      </div>
-      <div className="qmTableWrapper">
-        <table className="qmTable">
-          <thead>
-            <tr>
-              <th>Classroom</th>
-              <th>Teacher</th>
-              <th>Assignment</th>
-              <th>Due Date</th>
-              <th>Assistant(s)</th>
-              <th>Assistant Deadline</th>
-              <th>Quality Team</th>
-              <th>Status</th>
-              <th>Assign Quality</th>
-            </tr>
-          </thead>
+        {/* TABLE */}
+        <div className="qm2-table-wrap">
+          {loading ? (
+            <div className="qm2-loading">
+              <div className="qm2-spinner" />
+              <span>Loading dashboard…</span>
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div className="qm2-empty">No assignments match your filters.</div>
+          ) : (
+            <table className="qm2-table">
+              <thead>
+                <tr>
+                  <th>Classroom</th>
+                  <th>Teacher</th>
+                  <th>Assignment</th>
+                  <th>Due Date</th>
+                  <th>Assistant(s)</th>
+                  <th>Asst. Deadline</th>
+                  <th>Quality Team</th>
+                  <th>Status</th>
+                  <th>Assign Quality</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((a) => {
+                  const firstDeadline = a.assistants[0]?.assistantDeadline;
+                  return (
+                    <tr key={a._id} className="qm2-row">
+                      <td><span className="qm2-bold">{a.classroomName}</span></td>
+                      <td>{a.teacherName}</td>
+                      <td><span className="qm2-assignment-title">{a.title}</span></td>
+                      <td className="qm2-muted">
+                        {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"}
+                      </td>
 
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan="9" className="qmEmptyRow">
-                  Loading dashboard...
-                </td>
-              </tr>
-            )}
-
-            {!loading && filteredRows.length === 0 && (
-              <tr>
-                <td colSpan="9" className="qmEmptyRow">
-                  No assignments found.
-                </td>
-              </tr>
-            )}
-
-            {!loading &&
-              filteredRows.map((a) => {
-                const firstAssistantDeadline = a.assistants[0]?.assistantDeadline;
-
-                return (
-                  <tr key={a._id}>
-                    <td>
-                      <div className="qmPrimaryCell">{a.classroomName}</div>
-                    </td>
-
-                    <td>{a.teacherName}</td>
-
-                    <td>
-                      <div className="qmAssignmentTitle">{a.title}</div>
-                    </td>
-
-                    <td>
-                      {a.dueDate
-                        ? new Date(a.dueDate).toLocaleDateString()
-                        : "Not Set"}
-                    </td>
-
-                    <td>
-                      {a.assistants.length ? (
-                        <div className="qmPeopleList">
-                          {a.assistants.map((d) => (
-                            <span className="qmPersonTag assistantTag" key={d._id}>
-                              {d.personId?.name || "Unknown"}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="qmMuted">Not Assigned</span>
-                      )}
-                    </td>
-
-                    <td>
-                      {firstAssistantDeadline
-                        ? new Date(firstAssistantDeadline).toLocaleString()
-                        : "Not Set"}
-                    </td>
-
-                    <td>
-                      {a.qualityTeam.length ? (
-                        <div className="qmPeopleList">
-                          {a.qualityTeam.map((d) => (
-                            <span className="qmPersonTag qualityTag" key={d._id}>
-                              {d.personId?.name || "Unknown"}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="qmMuted">Not Assigned</span>
-                      )}
-                    </td>
-
-                    <td>
-                      <span className={`qmStatusBadge qmStatus-${a.status}`}>
-                        {a.status}
-                      </span>
-                    </td>
-
-                    <td>
-                      {a.qualityTeam.length === 0 ? (
-                        <div className="qmAssignBox">
-                          <div className="qmCustomSelect">
-                            <select
-                              value={selectedQuality[a._id] || ""}
-                              onChange={(e) =>
-                                setSelectedQuality({
-                                  ...selectedQuality,
-                                  [a._id]: e.target.value,
-                                })
-                              }
-                            >
-                              <option value="">Select member</option>
-
-                              {(qualityMembersMap[a._id] || []).map((q) => (
-                                <option key={q.personId._id} value={q.personId._id}>
-                                  {q.personId.name}
-                                </option>
-                              ))}
-                            </select>
+                      <td>
+                        {a.assistants.length ? (
+                          <div className="qm2-tags">
+                            {a.assistants.map((d) => (
+                              <span key={d._id} className="qm2-tag qm2-tag--assistant">
+                                {d.personId?.name || "Unknown"}
+                              </span>
+                            ))}
                           </div>
+                        ) : <span className="qm2-muted">Not Assigned</span>}
+                      </td>
 
-                          <button
-                            className="qmAssignBtn"
-                            onClick={() => assignQuality(a._id)}
-                          >
-                            Assign
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="qmMuted">Already Assigned</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                      <td className="qm2-muted">
+                        {firstDeadline ? new Date(firstDeadline).toLocaleString() : "—"}
+                      </td>
+
+                      <td>
+                        {a.qualityTeam.length ? (
+                          <div className="qm2-tags">
+                            {a.qualityTeam.map((d) => (
+                              <span key={d._id} className="qm2-tag qm2-tag--quality">
+                                {d.personId?.name || "Unknown"}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <span className="qm2-muted">Not Assigned</span>}
+                      </td>
+
+                      <td>
+                        <span className={`qm2-badge qm2-badge--${a.status}`}>
+                          {formatStatus(a.status)}
+                        </span>
+                      </td>
+
+                      <td>
+                        {a.qualityTeam.length === 0 ? (
+                          <div className="qm2-assign-cell">
+                            <div className="qm2-select-wrap">
+                              <select
+                                className="qm2-select"
+                                value={selectedQuality[a._id] || ""}
+                                onChange={(e) =>
+                                  setSelectedQuality({ ...selectedQuality, [a._id]: e.target.value })
+                                }
+                              >
+                                <option value="">Select member</option>
+                                {(qualityMembersMap[a._id] || []).map((q) => (
+                                  <option key={q.personId._id} value={q.personId._id}>
+                                    {q.personId.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <FiChevronDown className="qm2-select-arrow" size={12} />
+                            </div>
+                            <button className="qm2-assign-btn" onClick={() => assignQuality(a._id)}>
+                              Assign
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="qm2-assigned-check">✓ Assigned</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="qm2-footer-count">
+          Showing <strong>{filteredRows.length}</strong> of <strong>{tableRows.length}</strong> assignments
+        </div>
+
+      </main>
+    </div>
+  );
+}
+
+function StatCard2({ icon, label, value, accent }) {
+  return (
+    <div className="qm2-stat" style={{ "--accent": accent }}>
+      <div className="qm2-stat-top">
+        <div className="qm2-stat-icon" style={{ color: accent, background: `${accent}18` }}>
+          {icon}
+        </div>
+        <span className="qm2-stat-label">{label}</span>
+      </div>
+      <div className="qm2-stat-value">{value}</div>
+    </div>
+  );
+}
+
+function FilterSelect({ label, value, onChange, options }) {
+  return (
+    <div className="qm2-filter-group">
+      <label className="qm2-filter-label">{label}</label>
+      <div className="qm2-select-wrap">
+        <select
+          className="qm2-select"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <FiChevronDown className="qm2-select-arrow" size={12} />
       </div>
     </div>
   );
 }
 
-function StatCard({ icon, title, value, tone }) {
-  return (
-    <div className={`qmStatCard ${tone}`}>
-      <div className="qmStatTop">
-        <div className="qmStatIcon">{icon}</div>
-        <span>{title}</span>
-      </div>
-      <div className="qmStatValue">{value}</div>
-    </div>
-  );
+function formatStatus(s) {
+  return s.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }

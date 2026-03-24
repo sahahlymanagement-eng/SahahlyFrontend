@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorSubjects.css";
+import { toast } from "react-toastify";
 
 import {
   FiBookOpen,
   FiSearch,
   FiPlus,
   FiSave,
-  FiX
+  FiX,
+  FiTrash2
 } from "react-icons/fi";
 
 export default function DirectorSubjects() {
@@ -45,7 +47,8 @@ export default function DirectorSubjects() {
       api.get("/classrooms")
     ]);
 
-    const subs = subjectsRes.data || [];
+    // Filter out soft-deleted (inactive) subjects
+    const subs = (subjectsRes.data || []).filter(s => s.isActive !== false);
     const rooms = classroomsRes.data || [];
 
     setSubjects(subs);
@@ -86,6 +89,45 @@ export default function DirectorSubjects() {
     finally{
       setLoading(false);
     }
+
+  };
+
+  const deleteSubject = (subjectId, subjectName)=>{
+
+    toast(
+      ({ closeToast }) => (
+        <div>
+          <p style={{ margin: "0 0 10px" }}>Deactivate <strong>{subjectName}</strong>?</p>
+          <div style={{ display:"flex", gap:"8px" }}>
+            <button
+              onClick={async () => {
+                closeToast();
+                try {
+                  setLoading(true);
+                  await api.delete(`/subjects/${subjectId}`);
+                  toast.success("Subject deactivated successfully");
+                  loadData();
+                } catch (err) {
+                  toast.error(err?.response?.data?.message || "Failed to deactivate subject");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              style={{ background:"#e53e3e", color:"#fff", border:"none", borderRadius:"6px", padding:"6px 14px", cursor:"pointer" }}
+            >
+              Confirm
+            </button>
+            <button
+              onClick={closeToast}
+              style={{ background:"#eee", color:"#333", border:"none", borderRadius:"6px", padding:"6px 14px", cursor:"pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      { autoClose: false, closeOnClick: false, closeButton: false }
+    );
 
   };
 
@@ -201,6 +243,13 @@ export default function DirectorSubjects() {
             <div className="subjectHeader">
               <FiBookOpen/>
               <span>{subject.name}</span>
+              <button
+                className="deleteBtn"
+                onClick={()=>deleteSubject(subject._id, subject.name)}
+                title="Deactivate subject"
+              >
+                <FiTrash2 size={15}/>
+              </button>
             </div>
 
             <div className="assignedTags">
@@ -294,5 +343,4 @@ export default function DirectorSubjects() {
     </div>
 
   );
-
 }

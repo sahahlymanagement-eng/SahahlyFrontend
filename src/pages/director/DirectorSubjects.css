@@ -146,6 +146,18 @@ justify-content:center;
 gap:6px;
 }
 
+.deleteBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  padding: 4px;
+}
+.deleteBtn:hover {
+  color: #e53e3e;
+}
+
 .loading{
 margin-top:20px;
 color:#9ca3af;

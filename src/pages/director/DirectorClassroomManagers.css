@@ -60,7 +60,9 @@ outline:none;
 }
 
 .dm-select option{
-color:black;
+color:white;
+background: #000828;
+
 }
 
 .dm-actions{
