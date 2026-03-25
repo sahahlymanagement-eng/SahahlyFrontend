@@ -28,6 +28,9 @@ export default function QualityManagerDashboard() {
   const [classroomFilter, setClassroomFilter] = useState("ALL");
   const [teacherFilter, setTeacherFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [submissionCounts, setSubmissionCounts] = useState({});
+  const [expandedRows, setExpandedRows] = useState({});
+
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
@@ -147,6 +150,51 @@ export default function QualityManagerDashboard() {
     "IN_REVIEW_AFTER_RECHECK","EMERGENCY","DONE","DONE_BY_QUALITY","DONE_BY_QUALITY_LATE"
   ];
 
+  const loadCountsForAssignment = async (assignmentId) => {
+    if (submissionCounts[assignmentId] !== undefined) return;
+
+    try {
+
+      setSubmissionCounts(prev => ({
+        ...prev,
+        [assignmentId]: "loading"
+      }));
+
+      const res = await api.post(
+        "/assignment-submissions/batch-counts",
+        { assignmentIds: [assignmentId] }
+      );
+
+      setSubmissionCounts(prev => ({
+        ...prev,
+        [assignmentId]: res.data?.[assignmentId] || null
+      }));
+
+    } catch (err) {
+
+      setSubmissionCounts(prev => ({
+        ...prev,
+        [assignmentId]: null
+      }));
+
+    }
+
+  };
+  
+
+  const toggleRow = (id) => {
+    const opening = !expandedRows[id];
+
+    setExpandedRows(prev => ({
+      ...prev,
+      [id]: opening
+    }));
+
+    if (opening) {
+      loadCountsForAssignment(id);
+    }
+
+  };
   if (!user) return null;
 
   return (
@@ -239,95 +287,182 @@ export default function QualityManagerDashboard() {
             <table className="qm2-table">
               <thead>
                 <tr>
+                  <th style={{ width:40 }}></th>
                   <th>Classroom</th>
                   <th>Teacher</th>
                   <th>Assignment</th>
-                  <th>Due Date</th>
                   <th>Assistant(s)</th>
                   <th>Asst. Deadline</th>
                   <th>Quality Team</th>
                   <th>Status</th>
                   <th>Assign Quality</th>
                 </tr>
-              </thead>
+                </thead>
               <tbody>
                 {filteredRows.map((a) => {
+
+                  const isExpanded = !!expandedRows[a._id];
+                  const counts = submissionCounts[a._id];
+                  const spinning = counts === "loading" || counts === undefined;
+
                   const firstDeadline = a.assistants[0]?.assistantDeadline;
+
                   return (
-                    <tr key={a._id} className="qm2-row">
-                      <td><span className="qm2-bold">{a.classroomName}</span></td>
-                      <td>{a.teacherName}</td>
-                      <td><span className="qm2-assignment-title">{a.title}</span></td>
-                      <td className="qm2-muted">
-                        {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"}
-                      </td>
+                    <>
+                      {/* MAIN ROW */}
+                      <tr key={a._id} className="qm2-row">
 
-                      <td>
-                        {a.assistants.length ? (
-                          <div className="qm2-tags">
-                            {a.assistants.map((d) => (
-                              <span key={d._id} className="qm2-tag qm2-tag--assistant">
-                                {d.personId?.name || "Unknown"}
-                              </span>
-                            ))}
-                          </div>
-                        ) : <span className="qm2-muted">Not Assigned</span>}
-                      </td>
+                        <td>
+                          <button
+                            className={`qm2-expand-btn ${isExpanded ? "qm2-expand-btn--open" : ""}`}
+                            onClick={() => toggleRow(a._id)}
+                          >
+                            <FiChevronDown size={14}/>
+                          </button>
+                        </td>
 
-                      <td className="qm2-muted">
-                        {firstDeadline ? new Date(firstDeadline).toLocaleString() : "—"}
-                      </td>
+                        <td><span className="qm2-bold">{a.classroomName}</span></td>
 
-                      <td>
-                        {a.qualityTeam.length ? (
-                          <div className="qm2-tags">
-                            {a.qualityTeam.map((d) => (
-                              <span key={d._id} className="qm2-tag qm2-tag--quality">
-                                {d.personId?.name || "Unknown"}
-                              </span>
-                            ))}
-                          </div>
-                        ) : <span className="qm2-muted">Not Assigned</span>}
-                      </td>
+                        <td>{a.teacherName}</td>
 
-                      <td>
-                        <span className={`qm2-badge qm2-badge--${a.status}`}>
-                          {formatStatus(a.status)}
-                        </span>
-                      </td>
+                        <td><span className="qm2-assignment-title">{a.title}</span></td>
 
-                      <td>
-                        {a.qualityTeam.length === 0 ? (
-                          <div className="qm2-assign-cell">
-                            <div className="qm2-select-wrap">
-                              <select
-                                className="qm2-select"
-                                value={selectedQuality[a._id] || ""}
-                                onChange={(e) =>
-                                  setSelectedQuality({ ...selectedQuality, [a._id]: e.target.value })
-                                }
-                              >
-                                <option value="">Select member</option>
-                                {(qualityMembersMap[a._id] || []).map((q) => (
-                                  <option key={q.personId._id} value={q.personId._id}>
-                                    {q.personId.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <FiChevronDown className="qm2-select-arrow" size={12} />
+                        <td>
+                          {a.assistants.length ? (
+                            <div className="qm2-tags">
+                              {a.assistants.map((d) => (
+                                <span key={d._id} className="qm2-tag qm2-tag--assistant">
+                                  {d.personId?.name}
+                                </span>
+                              ))}
                             </div>
-                            <button className="qm2-assign-btn" onClick={() => assignQuality(a._id)}>
-                              Assign
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="qm2-assigned-check">✓ Assigned</span>
-                        )}
-                      </td>
-                    </tr>
+                          ) : <span className="qm2-muted">Not Assigned</span>}
+                        </td>
+
+                        <td className="qm2-muted">
+                          {firstDeadline ? new Date(firstDeadline).toLocaleString() : "—"}
+                        </td>
+
+                        <td>
+                          {a.qualityTeam.length ? (
+                            <div className="qm2-tags">
+                              {a.qualityTeam.map((d) => (
+                                <span key={d._id} className="qm2-tag qm2-tag--quality">
+                                  {d.personId?.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : <span className="qm2-muted">Not Assigned</span>}
+                        </td>
+
+                        <td>
+                          <span className={`qm2-badge qm2-badge--${a.status}`}>
+                            {formatStatus(a.status)}
+                          </span>
+                        </td>
+
+                        <td>
+                          {a.qualityTeam.length === 0 ? (
+                            <div className="qm2-assign-cell">
+                              <div className="qm2-select-wrap">
+                                <select
+                                  className="qm2-select"
+                                  value={selectedQuality[a._id] || ""}
+                                  onChange={(e) =>
+                                    setSelectedQuality({ ...selectedQuality, [a._id]: e.target.value })
+                                  }
+                                >
+                                  <option value="">Select member</option>
+                                  {(qualityMembersMap[a._id] || []).map((q) => (
+                                    <option key={q.personId._id} value={q.personId._id}>
+                                      {q.personId.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <FiChevronDown className="qm2-select-arrow" size={12}/>
+                              </div>
+
+                              <button
+                                className="qm2-assign-btn"
+                                onClick={() => assignQuality(a._id)}
+                              >
+                                Assign
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="qm2-assigned-check">✓ Assigned</span>
+                          )}
+                        </td>
+
+                      </tr>
+
+                      {/* EXPANDED PANEL */}
+                      {isExpanded && (
+                        <tr className="qm2-detail-row">
+                          <td colSpan={9}>
+                            <div className="qm2-detail-panel">
+
+                              {spinning ? (
+                                <div className="qm2-detail-grid">
+                                  {["Submissions","Missing","On Time","Late","Returned"].map((l)=>(
+                                    <div className="qm2-detail-item" key={l}>
+                                      <span className="qm2-detail-label">{l}</span>
+                                      <span className="qm2-counts-spinner"/>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : counts === null ? (
+                                <div className="qm2-muted">Failed to load submissions</div>
+                              ) : (
+                                <div className="qm2-detail-grid">
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Submissions</span>
+                                    <span className="qm2-count-pill qm2-count-pill--blue">
+                                      {counts.submitted}
+                                    </span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Not Turned In</span>
+                                    <span className="qm2-count-pill qm2-count-pill--red">
+                                      {counts.notTurnedIn}
+                                    </span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">On Time</span>
+                                    <span className="qm2-count-pill qm2-count-pill--green">
+                                      {counts.onTime}
+                                    </span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Late</span>
+                                    <span className="qm2-count-pill qm2-count-pill--orange">
+                                      {counts.late}
+                                    </span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Returned</span>
+                                    <span className="qm2-count-pill qm2-count-pill--purple">
+                                      {counts.returned}
+                                    </span>
+                                  </div>
+
+                                </div>
+                              )}
+
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+
+                    </>
                   );
                 })}
-              </tbody>
+                </tbody>
             </table>
           )}
         </div>

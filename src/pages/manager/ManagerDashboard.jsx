@@ -53,6 +53,10 @@ export default function ManagerDashboard() {
   const [filterAssistant, setFilterAssistant] = useState("");
   const [filterQuality, setFilterQuality] = useState("");
   const [loading, setLoading] = useState(false);
+  const [submissionCounts, setSubmissionCounts] = useState({});
+  const [countsLoading, setCountsLoading] = useState(false);
+  const [expandedRows, setExpandedRows] = useState({});
+
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -93,7 +97,7 @@ export default function ManagerDashboard() {
       }
 
       const assignmentsRes = await api.get(`/assignments/by-classrooms?classroomIds=${classroomIds.join(",")}`);
-      let allAssignments = (assignmentsRes.data || []).map((a) => ({
+      const allAssignments = (assignmentsRes.data || []).map((a) => ({
         ...a,
         classroomName: classroomMap[a.classroomId] || "Unknown",
         teacherName: teacherMap[a.classroomId] || "Not Assigned",
@@ -102,6 +106,9 @@ export default function ManagerDashboard() {
       setAssignments(allAssignments);
 
       const assignmentIds = allAssignments.map((a) => a._id).filter(Boolean);
+
+      // ✅ Now assignmentIds exists — fire in parallel, no await
+
       let allDelegations = [];
       if (assignmentIds.length) {
         const delRes = await api.post("/assignment-delegations/by-assignments", { assignmentIds });
@@ -203,6 +210,64 @@ const removeAssistant = async (assignmentId) => {
     toast.error(err.response?.data?.message || "Failed to remove assistant");
   }
 };
+
+const loadSubmissionCounts = async (assignmentIds) => {
+  if (!assignmentIds.length) return;
+  try {
+    setCountsLoading(true);
+    const res = await api.post("/assignment-submissions/batch-counts", { assignmentIds });
+    setSubmissionCounts(res.data || {});
+  } catch (err) {
+    console.error("Failed to load submission counts", err);
+  } finally {
+    setCountsLoading(false);
+  }
+};
+
+const loadCountsForAssignment = async (assignmentId) => {
+
+  if (submissionCounts[assignmentId] !== undefined) return;
+
+  try {
+    setSubmissionCounts(prev => ({
+      ...prev,
+      [assignmentId]: "loading"
+    }));
+
+    const res = await api.post(
+      "/assignment-submissions/batch-counts",
+      { assignmentIds: [assignmentId] }
+    );
+
+    setSubmissionCounts(prev => ({
+      ...prev,
+      [assignmentId]: res.data?.[assignmentId] || null
+    }));
+
+  } catch (err) {
+    console.error("Counts failed", err);
+
+    setSubmissionCounts(prev => ({
+      ...prev,
+      [assignmentId]: null
+    }));
+  }
+};
+
+const toggleRow = (id) => {
+
+  const opening = !expandedRows[id];
+
+  setExpandedRows(prev => ({
+    ...prev,
+    [id]: opening
+  }));
+
+  if (opening) {
+    loadCountsForAssignment(id);
+  }
+};
+
 
   return (
     <div className="md-root">
@@ -349,6 +414,7 @@ const removeAssistant = async (assignmentId) => {
                   <table className="md-table">
                     <thead>
                       <tr>
+                        <th style={{ width: 40 }} />
                         <th>Classroom</th>
                         <th>Teacher</th>
                         <th>Assignment</th>
@@ -381,127 +447,178 @@ const removeAssistant = async (assignmentId) => {
                           const qualityTeam = related.filter((d) => d.role === "quality team");
                           const assistantOptions = assistantsMap[a._id]?.map((as) => ({ value: as.personId?._id, label: as.personId?.name })) || [];
                           const hasSubjectAssistants = assistantOptions.length > 0;
-
+                          const isExpanded = !!expandedRows[a._id];
+                          const counts = submissionCounts[a._id];
+                          const countsSpinning = counts === "loading" || counts === undefined;
                           return (
-                            <tr key={a._id} className="md-row">
-                              <td><span className="md-cell-primary">{a.classroomName}</span></td>
-                              <td><span className="md-cell-muted">{a.teacherName}</span></td>
-                              <td><span className="md-cell-title">{a.title}</span></td>
+                            <>
+                              <tr key={a._id} className="md-row">
+                                {/* Expand toggle */}
+                                <td>
+                                  <button
+                                    className={`md-expand-btn ${isExpanded ? "md-expand-btn--open" : ""}`}
+                                    onClick={() => toggleRow(a._id)}
+                                    aria-label="Toggle details"
+                                  >
+                                    <FiChevronRight size={14} />
+                                  </button>
+                                </td>
 
-                              <td>
-                                {assistants.length ? (
-                                  <div className="md-tags">
-                                    {assistants.map((d) => (
-                                      <span key={d._id} className="md-tag md-tag--assistant">{d.personId?.name}</span>
-                                    ))}
-                                  </div>
-                                ) : <span className="md-cell-empty">Not Assigned</span>}
-                              </td>
+                                <td><span className="md-cell-primary">{a.classroomName}</span></td>
+                                <td><span className="md-cell-muted">{a.teacherName}</span></td>
+                                <td><span className="md-cell-title">{a.title}</span></td>
 
-                              <td>
-                                <span className="md-cell-muted">
-                                  {assistants[0]?.assistantDeadline
-                                    ? new Date(assistants[0].assistantDeadline).toLocaleString()
-                                    : "—"}
-                                </span>
-                              </td>
+                                <td>
+                                  {assistants.length ? (
+                                    <div className="md-tags">
+                                      {assistants.map((d) => (
+                                        <span key={d._id} className="md-tag md-tag--assistant">{d.personId?.name}</span>
+                                      ))}
+                                    </div>
+                                  ) : <span className="md-cell-empty">Not Assigned</span>}
+                                </td>
 
-                              <td>
-                                {qualityTeam.length ? (
-                                  <div className="md-tags">
-                                    {qualityTeam.map((d) => (
-                                      <span key={d._id} className="md-tag md-tag--quality">{d.personId?.name}</span>
-                                    ))}
-                                  </div>
-                                ) : <span className="md-cell-empty">Not Assigned</span>}
-                              </td>
+                                <td>
+                                  <span className="md-cell-muted">
+                                    {assistants[0]?.assistantDeadline
+                                      ? new Date(assistants[0].assistantDeadline).toLocaleString()
+                                      : "—"}
+                                  </span>
+                                </td>
 
-                              <td>
-                                {(() => {
-                                  const isInitialAssign =
-                                    selectedStatus === "UNASSIGNED" && !assistants.length;
+                                <td>
+                                  {qualityTeam.length ? (
+                                    <div className="md-tags">
+                                      {qualityTeam.map((d) => (
+                                        <span key={d._id} className="md-tag md-tag--quality">{d.personId?.name}</span>
+                                      ))}
+                                    </div>
+                                  ) : <span className="md-cell-empty">Not Assigned</span>}
+                                </td>
 
-                                  const canManage = [
-                                    "ASSIGNED", "FAILED_DEADLINE", "IN_REVIEW", "RECHECK_BY_ASSISTANT"
-                                  ].includes(selectedStatus);
+                                <td>
+                                  {(() => {
+                                    const isInitialAssign = selectedStatus === "UNASSIGNED" && !assistants.length;
+                                    const canManage = ["ASSIGNED","FAILED_DEADLINE","IN_REVIEW","RECHECK_BY_ASSISTANT"].includes(selectedStatus);
 
-                                  /* ── INITIAL ASSIGN (no assistant yet) ── */
-                                  if (isInitialAssign) {
-                                    if (!hasSubjectAssistants) {
-                                      return <span className="md-no-assistants">No assistants available</span>;
-                                    }
-                                    return (
-                                      <div className="md-assign-cell">
-                                        <Select
-                                          styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
-                                          menuPortalTarget={document.body}
-                                          options={assistantOptions}
-                                          value={selectedAssistants[a._id] || null}
-                                          onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
-                                          placeholder="Select assistant"
-                                        />
-                                        <DatePicker
-                                          selected={deadlines[a._id] || null}
-                                          onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
-                                          showTimeSelect
-                                          dateFormat="Pp"
-                                          className="md-datepicker-input"
-                                          placeholderText="Set deadline"
-                                          portalId="root"
-                                        />
-                                        <button className="md-assign-btn" onClick={() => assignAssistant(a._id)}>
-                                          Assign
-                                        </button>
-                                      </div>
-                                    );
-                                  }
-
-                                  /* ── CHANGE / REMOVE (active assistant exists) ── */
-                                  if (canManage) {
-                                    if (!hasSubjectAssistants) {
+                                    if (isInitialAssign) {
+                                      if (!hasSubjectAssistants) return <span className="md-no-assistants">No assistants available</span>;
                                       return (
-                                        <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>
-                                          Remove
-                                        </button>
+                                        <div className="md-assign-cell">
+                                          <Select
+                                            styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                                            menuPortalTarget={document.body}
+                                            options={assistantOptions}
+                                            value={selectedAssistants[a._id] || null}
+                                            onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
+                                            placeholder="Select assistant"
+                                          />
+                                          <DatePicker
+                                            selected={deadlines[a._id] || null}
+                                            onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
+                                            showTimeSelect dateFormat="Pp"
+                                            className="md-datepicker-input"
+                                            placeholderText="Set deadline"
+                                            portalId="root"
+                                          />
+                                          <button className="md-assign-btn" onClick={() => assignAssistant(a._id)}>Assign</button>
+                                        </div>
                                       );
                                     }
-                                    return (
-                                      <div className="md-assign-cell">
-                                        <Select
-                                          styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
-                                          menuPortalTarget={document.body}
-                                          options={assistantOptions}
-                                          value={selectedAssistants[a._id] || null}
-                                          onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
-                                          placeholder="Change assistant"
-                                        />
-                                        <DatePicker
-                                          selected={deadlines[a._id] || null}
-                                          onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
-                                          showTimeSelect
-                                          dateFormat="Pp"
-                                          className="md-datepicker-input"
-                                          placeholderText="New deadline (optional)"
-                                          portalId="root"
-                                        />
-                                        <button className="md-assign-btn" onClick={() => changeAssistant(a._id)}>
-                                          Change
-                                        </button>
-                                        <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>
-                                          Remove
-                                        </button>
-                                      </div>
-                                    );
-                                  }
 
-                                  return null;
-                                })()}
-                              </td>
-                            </tr>
+                                    if (canManage) {
+                                      if (!hasSubjectAssistants) {
+                                        return <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>;
+                                      }
+                                      return (
+                                        <div className="md-assign-cell">
+                                          <Select
+                                            styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                                            menuPortalTarget={document.body}
+                                            options={assistantOptions}
+                                            value={selectedAssistants[a._id] || null}
+                                            onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
+                                            placeholder="Change assistant"
+                                          />
+                                          <DatePicker
+                                            selected={deadlines[a._id] || null}
+                                            onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
+                                            showTimeSelect dateFormat="Pp"
+                                            className="md-datepicker-input"
+                                            placeholderText="New deadline (optional)"
+                                            portalId="root"
+                                          />
+                                          <button className="md-assign-btn" onClick={() => changeAssistant(a._id)}>Change</button>
+                                          <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>
+                                        </div>
+                                      );
+                                    }
+
+                                    return null;
+                                  })()}
+                                </td>
+                              </tr>
+
+                              {/* ── EXPANDED DETAIL PANEL ── */}
+                              {isExpanded && (
+                                <tr key={`${a._id}-detail`} className="md-detail-row">
+                                  <td colSpan={8} className="md-detail-cell">
+                                    <div className="md-detail-panel">
+                                      <div className="md-detail-grid">
+
+                                        <div className="md-detail-item">
+                                          <span className="md-detail-label">Due Date</span>
+                                          <span className="md-detail-value">
+                                            {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"}
+                                          </span>
+                                        </div>
+
+                                        {countsSpinning ? (
+                                          ["Submissions","Not Turned In","On Time","Late"].map((label) => (
+                                            <div className="md-detail-item" key={label}>
+                                              <span className="md-detail-label">{label}</span>
+                                              <span className="md-counts-spinner" />
+                                            </div>
+                                          ))
+                                        ) : counts === null ? (
+                                          ["Submissions","Not Turned In","On Time","Late"].map((label) => (
+                                            <div className="md-detail-item" key={label}>
+                                              <span className="md-detail-label">{label}</span>
+                                              <span className="md-no-assistants">Error</span>                                            </div>
+                                          ))
+                                        ) : (
+                                          <>
+                                            <div className="md-detail-item">
+                                              <span className="md-detail-label">Submissions</span>
+                                              <span className="md-count-pill md-count-pill--blue">
+                                                {counts.submitted}
+                                              </span>                                            
+                                            </div>
+                                            <div className="md-detail-item">
+                                              <span className="md-detail-label">Not Turned In</span>
+                                              <span className="md-count-pill md-count-pill--red">{counts.notTurnedIn}</span>
+                                            </div>
+                                            <div className="md-detail-item">
+                                              <span className="md-detail-label">On Time</span>
+                                              <span className="md-count-pill md-count-pill--green">{counts.onTime}</span>
+                                            </div>
+                                            <div className="md-detail-item">
+                                              <span className="md-detail-label">Late</span>
+                                              <span className="md-count-pill md-count-pill--orange">{counts.late}</span>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
                           );
                         })}
                     </tbody>
                   </table>
+
                 )}
               </div>
             </div>

@@ -474,6 +474,56 @@
   transition: background 0.15s ease;
 }
 
+.qm2-expand-btn{
+background:rgba(255,255,255,.05);
+border:1px solid rgba(255,255,255,.1);
+width:26px;
+height:26px;
+border-radius:6px;
+cursor:pointer;
+display:flex;
+align-items:center;
+justify-content:center;
+color:#94a3b8;
+transition:.2s;
+}
+
+.qm2-expand-btn--open{
+transform:rotate(180deg);
+}
+
+.qm2-detail-row td{
+background:#020818;
+padding:0;
+}
+
+.qm2-detail-panel{
+padding:18px 24px 18px 52px;
+border-left:3px solid rgba(37,99,235,.35);
+animation:qm2-fade-up .25s ease;
+}
+
+.qm2-detail-grid{
+display:flex;
+gap:24px;
+flex-wrap:wrap;
+}
+
+.qm2-detail-item{
+display:flex;
+flex-direction:column;
+gap:6px;
+min-width:110px;
+}
+
+.qm2-detail-label{
+font-size:10px;
+letter-spacing:.08em;
+text-transform:uppercase;
+color:#334155;
+font-weight:700;
+}
+
 .qm2-row {
   animation: qm2-row-in 0.35s ease both;
 }
