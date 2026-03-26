@@ -1,111 +1,252 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
-/* ⭐⭐⭐ CRITICAL FIX */
-.classroomTeacherPage,
-.classroomTeacherPage * {
-  color: white;
-}
-
-.classroomTeacherPage {
-  min-height: 100vh;
+.ctmPage {
+  padding: 28px 36px 48px;
+  min-height: 100%;
   background: #000828;
-  padding: 40px;
-  font-family: "Inter", sans-serif;
+  color: #e2e8f0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
-.classroomTeacherContent {
-  max-width: 1400px;
-  margin: 0 auto;
+.ctmHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
 }
 
-.pageTitle {
-  font-size: 28px;
-  margin-bottom: 24px;
+.ctmHeaderLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.loadingText {
-  font-size: 16px;
-  opacity: 0.8;
+.ctmTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.tableWrapper {
-  overflow-x: auto;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.ctmSectionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+.ctmTitle {
+  font-family: 'Outfit', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.ctmSubtitle {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+}
+
+.ctmHeaderStats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ctmPill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.ctmLoadingCard {
+  background: #04091f;
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 16px;
+  padding: 32px 24px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 }
 
-.classroomTable {
+.ctmLoadingText {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.ctmTableWrap {
+  background: #04091f;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  overflow-x: auto;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+
+.ctmTable {
   width: 100%;
+  min-width: 1200px;
   border-collapse: collapse;
 }
 
-.classroomTable thead {
-  background: rgba(57, 156, 242, 0.12);
+.ctmTable thead {
+  background: #060f2e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.classroomTable th,
-.classroomTable td {
-  padding: 14px 16px;
+.ctmTable th {
+  padding: 13px 16px;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.ctmTable td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   vertical-align: middle;
+  font-size: 13px;
 }
 
-.classroomTable tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+.ctmRow:hover td {
+  background: rgba(37, 99, 235, 0.04);
 }
 
-.teacherSelect {
+.ctmCellPrimary {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.ctmCellMuted {
+  color: #cbd5e1;
+  font-size: 12.5px;
+}
+
+.ctmInlineCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ctmInlineIcon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.ctmTeacherSelect {
   width: 100%;
   min-width: 220px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #060f2e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  color: white;
+  padding: 11px 12px;
+  color: #e2e8f0;
+  font-size: 13px;
   outline: none;
+  font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
-.teacherSelect option {
-  color: black;
+.ctmTeacherSelect:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-.actionButtons {
+.ctmTeacherSelect option {
+  background: #ffffff;
+  color: #111827;
+}
+
+.ctmActionButtons {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.assignBtn,
-.removeBtn {
-  border: none;
-  padding: 9px 14px;
-  border-radius: 10px;
-  color: white;
+.ctmAssignBtn,
+.ctmRemoveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
-  font-size: 13px;
+  white-space: nowrap;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.2s ease;
 }
 
-.assignBtn {
-  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+.ctmAssignBtn {
+  background: rgba(37, 99, 235, 0.14);
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  color: #93c5fd;
 }
 
-.removeBtn {
-  background: linear-gradient(135deg, #b91c1c, #ef4444);
+.ctmAssignBtn:hover {
+  background: rgba(37, 99, 235, 0.22);
 }
 
-.assignBtn:hover,
-.removeBtn:hover {
-  opacity: 0.92;
+.ctmRemoveBtn {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
 }
 
-.emptyRow {
+.ctmRemoveBtn:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+}
+
+.ctmEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 60px 20px;
+  color: #334155;
   text-align: center;
-  padding: 20px;
-  opacity: 0.7;
+}
+
+.ctmEmptyState p {
+  font-size: 14px;
+  color: #475569;
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .ctmPage {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ctmTable {
+    min-width: 1000px;
+  }
+
+  .ctmTitle {
+    font-size: 19px;
+  }
 }

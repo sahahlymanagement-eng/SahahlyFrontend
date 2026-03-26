@@ -68,11 +68,8 @@ function App() {
         <Route path="/test-people" element={<PeopleManagementTest />} />
         
         
-        {/* The page for managing teachers (creating, listing) */}
-        <Route path="/manage-teachers" element={<TeacherManager />} />
+        
 
-        {/* The page for assigning teachers to classrooms */}
-        <Route path="/manage-classroom-teachers" element={<ClassroomTeacherManager />} />
 
         {/* Assigning Managers to Classrooms */}
         <Route path="/test-manager-classrooms" element={<ManagerClassroomTest />} />
@@ -172,6 +169,8 @@ function App() {
           <Route path="quality-managers" element={<DirectorQualityManagers/>}/> 
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
+          <Route path="manage-teachers" element={<TeacherManager />} />
+          <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
 
 
         </Route>
