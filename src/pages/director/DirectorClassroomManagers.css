@@ -96,8 +96,24 @@ font-weight:600;
 transition:.2s;
 }
 
+
 .dm-remove:hover{
 background:#dc2626;
+}
+
+.dm-change {
+  background: #3b82f6;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  transition: .2s;
+}
+
+.dm-change:hover {
+  background: #2563eb;
 }
 
 .dm-loading{

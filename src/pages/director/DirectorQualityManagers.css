@@ -97,6 +97,21 @@ transition:.2s;
 background:#dc2626;
 }
 
+.dq-change-btn {
+  background: #3b82f6;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: white;
+  font-weight: 600;
+  transition: .2s;
+}
+
+.dq-change-btn:hover {
+  background: #2563eb;
+}
+
 .dq-loading{
 margin-top:20px;
 color:#9ca3af;

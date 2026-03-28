@@ -3,200 +3,161 @@ import api from "../../api/api";
 import "./DirectorQualityManagers.css";
 
 export default function DirectorQualityManagers() {
+  const [classrooms, setClassrooms] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [selectedManagers, setSelectedManagers] = useState({});
+  const [loading, setLoading] = useState(false);
 
-const [classrooms,setClassrooms] = useState([]);
-const [people,setPeople] = useState([]);
-const [assignments,setAssignments] = useState([]);
+  useEffect(() => { loadData(); }, []);
 
-const [selectedManagers,setSelectedManagers] = useState({});
-const [loading,setLoading] = useState(false);
+  const loadData = async () => {
+    const [classroomsRes, peopleRes, assignmentsRes] = await Promise.all([
+      api.get("/classrooms"),
+      api.get("/people"),
+      api.get("/classroom-quality-managers"),
+    ]);
 
-useEffect(()=>{
-loadData();
-},[]);
+    const rooms = classroomsRes.data || [];
+    const persons = peopleRes.data || [];
+    const assigns = assignmentsRes.data || [];
 
-const loadData = async () => {
+    setClassrooms(rooms);
+    setPeople(persons);
+    setAssignments(assigns);
 
-const [classroomsRes,peopleRes,assignmentsRes] = await Promise.all([
-api.get("/classrooms"),
-api.get("/people"),
-api.get("/classroom-quality-managers")
-]);
+    const map = {};
+    assigns.forEach((a) => { map[a.classroomId?._id] = a.personId?._id; });
+    setSelectedManagers(map);
+  };
 
-const rooms = classroomsRes.data || [];
-const persons = peopleRes.data || [];
-const assigns = assignmentsRes.data || [];
+  const qualityManagers = people.filter(
+    (p) => p.roleId?.name?.trim().toLowerCase() === "quality manager"
+  );
 
-setClassrooms(rooms);
-setPeople(persons);
-setAssignments(assigns);
+  const hasManager = (classroomId) =>
+    assignments.some((a) => a.classroomId?._id === classroomId);
 
-const map = {};
+  const assignManager = async (classroomId) => {
+    const personId = selectedManagers[classroomId];
+    if (!personId) return;
+    try {
+      setLoading(true);
+      await api.post("/classroom-quality-managers", { personId, classroomId });
+      await loadData();
+    } catch {
+      alert("Assignment failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-assigns.forEach(a=>{
-map[a.classroomId?._id] = a.personId?._id;
-});
+  const changeManager = async (classroomId) => {
+    const personId = selectedManagers[classroomId];
+    if (!personId) return;
+    try {
+      setLoading(true);
+      await api.put("/classroom-quality-managers", { personId, classroomId });
+      await loadData();
+    } catch {
+      alert("Change failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-setSelectedManagers(map);
+  const removeManager = async (classroomId) => {
+    try {
+      setLoading(true);
+      await api.delete("/classroom-quality-managers", { data: { classroomId } });
+      await loadData();
+    } catch {
+      alert("Remove failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-};
+  const managerName = (classroomId) => {
+    const assignment = assignments.find((a) => a.classroomId?._id === classroomId);
+    return assignment?.personId?.name || "None";
+  };
 
-const qualityManagers = people.filter(
-p => p.roleId?.name?.trim().toLowerCase() === "quality manager"
-);
+  return (
+    <div className="director-quality-page">
+      <h2 className="dq-title">Assign Quality Managers to Classrooms</h2>
 
-const assignManager = async (classroomId) => {
+      <div className="dq-table-wrapper">
+        <table className="dq-table">
+          <thead>
+            <tr>
+              <th>Classroom</th>
+              <th>Teacher</th>
+              <th>Current Manager</th>
+              <th>Select Manager</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {classrooms.map((room) => {
+              const alreadyAssigned = hasManager(room._id);
+              return (
+                <tr key={room._id}>
+                  <td>{room.name}{room.section && ` (${room.section})`}</td>
+                  <td>{room.teacherName || room.teacherId?.name || "-"}</td>
+                  <td className="dq-current">{managerName(room._id)}</td>
 
-const personId = selectedManagers[classroomId];
-if(!personId) return;
+                  <td>
+                    <select
+                      className="dq-select"
+                      value={selectedManagers[room._id] || ""}
+                      onChange={(e) =>
+                        setSelectedManagers((prev) => ({
+                          ...prev,
+                          [room._id]: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select Manager</option>
+                      {qualityManagers.map((m) => (
+                        <option key={m._id} value={m._id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </td>
 
-try{
-setLoading(true);
+                  <td className="dq-actions">
+                    {!alreadyAssigned ? (
+                      <button
+                        className="dq-assign-btn"
+                        onClick={() => assignManager(room._id)}
+                      >
+                        Assign
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="dq-change-btn"
+                          onClick={() => changeManager(room._id)}
+                        >
+                          Change
+                        </button>
+                        <button
+                          className="dq-remove-btn"
+                          onClick={() => removeManager(room._id)}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
-await api.post("/classroom-quality-managers",{
-personId,
-classroomId
-});
-
-await loadData();
-
-}catch{
-alert("Assignment failed");
-}
-finally{
-setLoading(false);
-}
-
-};
-
-const removeManager = async (classroomId) => {
-
-try{
-setLoading(true);
-
-await api.delete("/classroom-quality-managers",{
-data:{ classroomId }
-});
-
-await loadData();
-
-}catch{
-alert("Remove failed");
-}
-finally{
-setLoading(false);
-}
-
-};
-
-const managerName = (classroomId)=>{
-
-const assignment = assignments.find(
-a => a.classroomId?._id === classroomId
-);
-
-return assignment?.personId?.name || "None";
-
-};
-
-return(
-
-<div className="director-quality-page">
-
-<h2 className="dq-title">
-Assign Quality Managers to Classrooms
-</h2>
-
-<div className="dq-table-wrapper">
-
-<table className="dq-table">
-
-<thead>
-
-<tr>
-<th>Classroom</th>
-<th>Teacher</th>
-<th>Current Manager</th>
-<th>Assign Manager</th>
-<th>Actions</th>
-</tr>
-
-</thead>
-
-<tbody>
-
-{classrooms.map(room=>(
-
-<tr key={room._id}>
-
-<td>
-{room.name}
-{room.section && ` (${room.section})`}
-</td>
-
-<td>
-{room.teacherName || room.teacherId?.name || "-"}
-</td>
-
-<td className="dq-current">
-{managerName(room._id)}
-</td>
-
-<td>
-
-<select
-className="dq-select"
-value={selectedManagers[room._id] || ""}
-onChange={(e)=>setSelectedManagers(prev=>({
-...prev,
-[room._id]:e.target.value
-}))}
->
-
-<option value="">Select Manager</option>
-
-{qualityManagers.map(m=>(
-<option key={m._id} value={m._id}>
-{m.name}
-</option>
-))}
-
-</select>
-
-</td>
-
-<td className="dq-actions">
-
-<button
-className="dq-assign-btn"
-onClick={()=>assignManager(room._id)}
->
-Assign
-</button>
-
-<button
-className="dq-remove-btn"
-onClick={()=>removeManager(room._id)}
->
-Remove
-</button>
-
-</td>
-
-</tr>
-
-))}
-
-</tbody>
-
-</table>
-
-</div>
-
-{loading && <div className="dq-loading">Processing...</div>}
-
-</div>
-
-);
-
+      {loading && <div className="dq-loading">Processing...</div>}
+    </div>
+  );
 }
