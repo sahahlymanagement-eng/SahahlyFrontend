@@ -565,6 +565,57 @@ font-weight:700;
   font-size: 12px;
 }
 
+
+/* ─── MANAGE CELL (change + remove) ─────────────────────── */
+
+.qm2-manage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qm2-change-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qm2-deadline-input {
+  background: #04091f;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 6px 8px;
+  outline: none;
+  font-family: inherit;
+}
+
+.qm2-deadline-input:focus {
+  border-color: #2563eb;
+}
+
+.qm2-remove-btn {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #fca5a5;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.qm2-remove-btn:hover {
+  background: rgba(239,68,68,0.22);
+  border-color: rgba(239,68,68,0.5);
+  color: #fecaca;
+}
+
 /* ─── TAGS ──────────────────────────────────────────────── */
 
 .qm2-tags {
@@ -595,6 +646,8 @@ font-weight:700;
   color: #86efac;
   border: 1px solid rgba(34,197,94,0.26);
 }
+
+
 
 /* ─── STATUS BADGES ─────────────────────────────────────── */
 
@@ -708,6 +761,64 @@ font-weight:700;
 }
 
 /* ─── RESPONSIVE ────────────────────────────────────────── */
+
+/* ─── DETAIL SECTIONS (inside expanded panel) ───────────── */
+
+.qm2-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.qm2-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.qm2-detail-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #1e3a5f;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding-bottom: 6px;
+}
+
+.qm2-detail-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #cbd5e1;
+}
+
+/* ─── COUNT PILLS ───────────────────────────────────────── */
+
+.qm2-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qm2-count-pill--blue   { background: rgba(37,99,235,0.14);  color: #93c5fd; border: 1px solid rgba(37,99,235,0.28); }
+.qm2-count-pill--red    { background: rgba(239,68,68,0.12);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.28); }
+.qm2-count-pill--green  { background: rgba(34,197,94,0.12);  color: #86efac; border: 1px solid rgba(34,197,94,0.26); }
+.qm2-count-pill--orange { background: rgba(249,115,22,0.12); color: #fdba74; border: 1px solid rgba(249,115,22,0.26); }
+.qm2-count-pill--purple { background: rgba(139,92,246,0.12); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.26); }
+
+.qm2-counts-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.08);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: qm2-spin 0.7s linear infinite;
+}
 
 @media (max-width: 1200px) {
   .qm2-stats { grid-template-columns: repeat(2, 1fr); }

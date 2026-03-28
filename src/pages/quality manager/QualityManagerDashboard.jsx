@@ -23,14 +23,16 @@ export default function QualityManagerDashboard() {
   const [classroomTeacherMap, setClassroomTeacherMap] = useState({});
   const [classroomNameMap, setClassroomNameMap] = useState({});
   const [selectedQuality, setSelectedQuality] = useState({});
+  const [changeQualitySelected, setChangeQualitySelected] = useState({});
+  const [changeQualityDeadline, setChangeQualityDeadline] = useState({});
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState({});
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [classroomFilter, setClassroomFilter] = useState("ALL");
   const [teacherFilter, setTeacherFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const [submissionCounts, setSubmissionCounts] = useState({});
   const [expandedRows, setExpandedRows] = useState({});
-
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
@@ -69,7 +71,7 @@ export default function QualityManagerDashboard() {
     try {
       const personId = selectedQuality[assignmentId];
       if (!personId) return;
-      setLoading(true);
+      setActionLoading((p) => ({ ...p, [assignmentId]: true }));
       await api.post("/quality-manager/assign-quality", {
         assignmentId,
         qualityPersonId: personId,
@@ -79,7 +81,44 @@ export default function QualityManagerDashboard() {
       await loadDashboard();
     } catch (err) {
       console.error(err);
-      setLoading(false);
+    } finally {
+      setActionLoading((p) => ({ ...p, [assignmentId]: false }));
+    }
+  };
+
+  const changeQuality = async (assignmentId) => {
+    try {
+      const personId = changeQualitySelected[assignmentId];
+      if (!personId) return;
+      setActionLoading((p) => ({ ...p, [assignmentId]: true }));
+      await api.put("/quality-manager/change-quality", {
+        assignmentId,
+        qualityPersonId: personId,
+        qualityManagerId: user.id,
+        qualityDeadline: changeQualityDeadline[assignmentId] || undefined,
+      });
+      setChangeQualitySelected((p) => ({ ...p, [assignmentId]: "" }));
+      setChangeQualityDeadline((p) => ({ ...p, [assignmentId]: "" }));
+      await loadDashboard();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading((p) => ({ ...p, [assignmentId]: false }));
+    }
+  };
+
+  const removeQuality = async (assignmentId) => {
+    if (!window.confirm("Remove quality team member from this assignment?")) return;
+    try {
+      setActionLoading((p) => ({ ...p, [assignmentId]: true }));
+      await api.delete("/quality-manager/remove-quality", {
+        data: { assignmentId, qualityManagerId: user.id },
+      });
+      await loadDashboard();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading((p) => ({ ...p, [assignmentId]: false }));
     }
   };
 
@@ -146,55 +185,32 @@ export default function QualityManagerDashboard() {
   );
 
   const statusOptions = [
-    "UNASSIGNED","ASSIGNED","IN_REVIEW","RECHECK_BY_ASSISTANT",
-    "IN_REVIEW_AFTER_RECHECK","EMERGENCY","DONE","DONE_BY_QUALITY","DONE_BY_QUALITY_LATE"
+    "UNASSIGNED", "ASSIGNED", "IN_REVIEW", "RECHECK_BY_ASSISTANT",
+    "IN_REVIEW_AFTER_RECHECK", "EMERGENCY", "DONE", "DONE_BY_QUALITY", "DONE_BY_QUALITY_LATE",
   ];
 
   const loadCountsForAssignment = async (assignmentId) => {
     if (submissionCounts[assignmentId] !== undefined) return;
-
     try {
-
-      setSubmissionCounts(prev => ({
+      setSubmissionCounts((prev) => ({ ...prev, [assignmentId]: "loading" }));
+      const res = await api.post("/assignment-submissions/batch-counts", {
+        assignmentIds: [assignmentId],
+      });
+      setSubmissionCounts((prev) => ({
         ...prev,
-        [assignmentId]: "loading"
+        [assignmentId]: res.data?.[assignmentId] || null,
       }));
-
-      const res = await api.post(
-        "/assignment-submissions/batch-counts",
-        { assignmentIds: [assignmentId] }
-      );
-
-      setSubmissionCounts(prev => ({
-        ...prev,
-        [assignmentId]: res.data?.[assignmentId] || null
-      }));
-
-    } catch (err) {
-
-      setSubmissionCounts(prev => ({
-        ...prev,
-        [assignmentId]: null
-      }));
-
+    } catch {
+      setSubmissionCounts((prev) => ({ ...prev, [assignmentId]: null }));
     }
-
   };
-  
 
   const toggleRow = (id) => {
     const opening = !expandedRows[id];
-
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: opening
-    }));
-
-    if (opening) {
-      loadCountsForAssignment(id);
-    }
-
+    setExpandedRows((prev) => ({ ...prev, [id]: opening }));
+    if (opening) loadCountsForAssignment(id);
   };
+
   if (!user) return null;
 
   return (
@@ -206,15 +222,11 @@ export default function QualityManagerDashboard() {
           <div className="qm2-nav-icon"><FiShield size={18} /></div>
           <span className="qm2-nav-title">Quality Control</span>
         </div>
-
         <div className="qm2-nav-right">
           <div className="qm2-user-pill">
-            <div className="qm2-user-avatar">
-              {user.name?.charAt(0).toUpperCase()}
-            </div>
+            <div className="qm2-user-avatar">{user.name?.charAt(0).toUpperCase()}</div>
             <span>{user.name}</span>
           </div>
-
           <button className="qm2-logout-btn" onClick={handleLogout}>
             <FiLogOut size={15} />
             <span>Logout</span>
@@ -224,7 +236,6 @@ export default function QualityManagerDashboard() {
 
       <main className="qm2-main">
 
-        {/* PAGE TITLE */}
         <div className="qm2-page-head">
           <div>
             <h1 className="qm2-page-title">Quality Manager Dashboard</h1>
@@ -251,25 +262,24 @@ export default function QualityManagerDashboard() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-
           <div className="qm2-selects">
             <FilterSelect
               label="Status"
               value={statusFilter}
               onChange={setStatusFilter}
-              options={[{ value: "ALL", label: "All Statuses" }, ...statusOptions.map(s => ({ value: s, label: formatStatus(s) }))]}
+              options={[{ value: "ALL", label: "All Statuses" }, ...statusOptions.map((s) => ({ value: s, label: formatStatus(s) }))]}
             />
             <FilterSelect
               label="Classroom"
               value={classroomFilter}
               onChange={setClassroomFilter}
-              options={[{ value: "ALL", label: "All Classrooms" }, ...classrooms.map(c => ({ value: c, label: c }))]}
+              options={[{ value: "ALL", label: "All Classrooms" }, ...classrooms.map((c) => ({ value: c, label: c }))]}
             />
             <FilterSelect
               label="Teacher"
               value={teacherFilter}
               onChange={setTeacherFilter}
-              options={[{ value: "ALL", label: "All Teachers" }, ...teachers.map(t => ({ value: t, label: t }))]}
+              options={[{ value: "ALL", label: "All Teachers" }, ...teachers.map((t) => ({ value: t, label: t }))]}
             />
           </div>
         </div>
@@ -287,43 +297,47 @@ export default function QualityManagerDashboard() {
             <table className="qm2-table">
               <thead>
                 <tr>
-                  <th style={{ width:40 }}></th>
+                  <th style={{ width: 40 }} />
                   <th>Classroom</th>
-                  <th>Teacher</th>
                   <th>Assignment</th>
                   <th>Assistant(s)</th>
-                  <th>Asst. Deadline</th>
                   <th>Quality Team</th>
                   <th>Status</th>
-                  <th>Assign Quality</th>
+                  <th>Quality Action</th>
                 </tr>
-                </thead>
+              </thead>
               <tbody>
                 {filteredRows.map((a) => {
-
                   const isExpanded = !!expandedRows[a._id];
                   const counts = submissionCounts[a._id];
                   const spinning = counts === "loading" || counts === undefined;
+                  const isActioning = !!actionLoading[a._id];
 
-                  const firstDeadline = a.assistants[0]?.assistantDeadline;
+                  const firstAssistant = a.assistants[0];
+                  const firstQuality = a.qualityTeam[0];
+                  const assistantDeadline = firstAssistant?.assistantDeadline;
+                  const qualityDeadline = firstQuality?.qualityDeadline;
+
+                  const members = qualityMembersMap[a._id] || [];
+                  const hasQualityMembers = members.length > 0;
+                  const hasQualityAssigned = a.qualityTeam.length > 0;
 
                   return (
                     <>
-                      {/* MAIN ROW */}
+                      {/* ── MAIN ROW ── */}
                       <tr key={a._id} className="qm2-row">
 
                         <td>
                           <button
                             className={`qm2-expand-btn ${isExpanded ? "qm2-expand-btn--open" : ""}`}
                             onClick={() => toggleRow(a._id)}
+                            title="Show details"
                           >
-                            <FiChevronDown size={14}/>
+                            <FiChevronDown size={14} />
                           </button>
                         </td>
 
                         <td><span className="qm2-bold">{a.classroomName}</span></td>
-
-                        <td>{a.teacherName}</td>
 
                         <td><span className="qm2-assignment-title">{a.title}</span></td>
 
@@ -337,10 +351,6 @@ export default function QualityManagerDashboard() {
                               ))}
                             </div>
                           ) : <span className="qm2-muted">Not Assigned</span>}
-                        </td>
-
-                        <td className="qm2-muted">
-                          {firstDeadline ? new Date(firstDeadline).toLocaleString() : "—"}
                         </td>
 
                         <td>
@@ -362,107 +372,171 @@ export default function QualityManagerDashboard() {
                         </td>
 
                         <td>
-                          {a.qualityTeam.length === 0 ? (
+                          {isActioning ? (
+                            <span className="qm2-muted">Saving…</span>
+                          ) : !hasQualityAssigned ? (
                             <div className="qm2-assign-cell">
-                              <div className="qm2-select-wrap">
-                                <select
-                                  className="qm2-select"
-                                  value={selectedQuality[a._id] || ""}
-                                  onChange={(e) =>
-                                    setSelectedQuality({ ...selectedQuality, [a._id]: e.target.value })
-                                  }
-                                >
-                                  <option value="">Select member</option>
-                                  {(qualityMembersMap[a._id] || []).map((q) => (
-                                    <option key={q.personId._id} value={q.personId._id}>
-                                      {q.personId.name}
-                                    </option>
-                                  ))}
-                                </select>
-                                <FiChevronDown className="qm2-select-arrow" size={12}/>
-                              </div>
-
-                              <button
-                                className="qm2-assign-btn"
-                                onClick={() => assignQuality(a._id)}
-                              >
-                                Assign
-                              </button>
+                              {hasQualityMembers ? (
+                                <>
+                                  <div className="qm2-select-wrap">
+                                    <select
+                                      className="qm2-select"
+                                      value={selectedQuality[a._id] || ""}
+                                      onChange={(e) =>
+                                        setSelectedQuality((prev) => ({ ...prev, [a._id]: e.target.value }))
+                                      }
+                                    >
+                                      <option value="">Select member</option>
+                                      {members.map((q) => (
+                                        <option key={q.personId._id} value={q.personId._id}>
+                                          {q.personId.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <FiChevronDown className="qm2-select-arrow" size={12} />
+                                  </div>
+                                  <button className="qm2-assign-btn" onClick={() => assignQuality(a._id)}>
+                                    Assign
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="qm2-muted">No members available</span>
+                              )}
                             </div>
                           ) : (
-                            <span className="qm2-assigned-check">✓ Assigned</span>
+                            <div className="qm2-manage-cell">
+                              {hasQualityMembers && (
+                                <div className="qm2-change-row">
+                                  <div className="qm2-select-wrap">
+                                    <select
+                                      className="qm2-select"
+                                      value={changeQualitySelected[a._id] || ""}
+                                      onChange={(e) =>
+                                        setChangeQualitySelected((prev) => ({ ...prev, [a._id]: e.target.value }))
+                                      }
+                                    >
+                                      <option value="">Change member</option>
+                                      {members.map((q) => (
+                                        <option key={q.personId._id} value={q.personId._id}>
+                                          {q.personId.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <FiChevronDown className="qm2-select-arrow" size={12} />
+                                  </div>
+                                  <input
+                                    type="datetime-local"
+                                    className="qm2-deadline-input"
+                                    value={changeQualityDeadline[a._id] || ""}
+                                    onChange={(e) =>
+                                      setChangeQualityDeadline((prev) => ({ ...prev, [a._id]: e.target.value }))
+                                    }
+                                  />
+                                  <button className="qm2-assign-btn" onClick={() => changeQuality(a._id)}>
+                                    Change
+                                  </button>
+                                </div>
+                              )}
+                              <button className="qm2-remove-btn" onClick={() => removeQuality(a._id)}>
+                                Remove
+                              </button>
+                            </div>
                           )}
                         </td>
 
                       </tr>
 
-                      {/* EXPANDED PANEL */}
+                      {/* ── EXPANDED PANEL ── */}
                       {isExpanded && (
-                        <tr className="qm2-detail-row">
-                          <td colSpan={9}>
+                        <tr key={`${a._id}-detail`} className="qm2-detail-row">
+                          <td colSpan={7}>
                             <div className="qm2-detail-panel">
 
-                              {spinning ? (
+                              {/* Details section */}
+                              <div className="qm2-detail-section">
+                                <span className="qm2-detail-section-label">Details</span>
                                 <div className="qm2-detail-grid">
-                                  {["Submissions","Missing","On Time","Late","Returned"].map((l)=>(
-                                    <div className="qm2-detail-item" key={l}>
-                                      <span className="qm2-detail-label">{l}</span>
-                                      <span className="qm2-counts-spinner"/>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Teacher</span>
+                                    <span className="qm2-detail-value">{a.teacherName}</span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Due Date</span>
+                                    <span className="qm2-detail-value">
+                                      {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"}
+                                    </span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Asst. Deadline</span>
+                                    <span className="qm2-detail-value">
+                                      {assistantDeadline ? new Date(assistantDeadline).toLocaleString() : "—"}
+                                    </span>
+                                  </div>
+
+                                  <div className="qm2-detail-item">
+                                    <span className="qm2-detail-label">Quality Deadline</span>
+                                    <span className="qm2-detail-value">
+                                      {qualityDeadline ? new Date(qualityDeadline).toLocaleString() : "—"}
+                                    </span>
+                                  </div>
+
+                                </div>
+                              </div>
+
+                              {/* Submissions section */}
+                              <div className="qm2-detail-section">
+                                <span className="qm2-detail-section-label">Submissions</span>
+                                <div className="qm2-detail-grid">
+                                  {spinning ? (
+                                    ["Submitted", "Not Turned In", "On Time", "Late", "Returned"].map((l) => (
+                                      <div className="qm2-detail-item" key={l}>
+                                        <span className="qm2-detail-label">{l}</span>
+                                        <span className="qm2-counts-spinner" />
+                                      </div>
+                                    ))
+                                  ) : counts === null ? (
+                                    <div className="qm2-detail-item">
+                                      <span className="qm2-detail-label">Error</span>
+                                      <span className="qm2-muted">Failed to load</span>
                                     </div>
-                                  ))}
+                                  ) : (
+                                    <>
+                                      <div className="qm2-detail-item">
+                                        <span className="qm2-detail-label">Submitted</span>
+                                        <span className="qm2-count-pill qm2-count-pill--blue">{counts.submitted}</span>
+                                      </div>
+                                      <div className="qm2-detail-item">
+                                        <span className="qm2-detail-label">Not Turned In</span>
+                                        <span className="qm2-count-pill qm2-count-pill--red">{counts.notTurnedIn}</span>
+                                      </div>
+                                      <div className="qm2-detail-item">
+                                        <span className="qm2-detail-label">On Time</span>
+                                        <span className="qm2-count-pill qm2-count-pill--green">{counts.onTime}</span>
+                                      </div>
+                                      <div className="qm2-detail-item">
+                                        <span className="qm2-detail-label">Late</span>
+                                        <span className="qm2-count-pill qm2-count-pill--orange">{counts.late}</span>
+                                      </div>
+                                      <div className="qm2-detail-item">
+                                        <span className="qm2-detail-label">Returned</span>
+                                        <span className="qm2-count-pill qm2-count-pill--purple">{counts.returned}</span>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
-                              ) : counts === null ? (
-                                <div className="qm2-muted">Failed to load submissions</div>
-                              ) : (
-                                <div className="qm2-detail-grid">
-
-                                  <div className="qm2-detail-item">
-                                    <span className="qm2-detail-label">Submissions</span>
-                                    <span className="qm2-count-pill qm2-count-pill--blue">
-                                      {counts.submitted}
-                                    </span>
-                                  </div>
-
-                                  <div className="qm2-detail-item">
-                                    <span className="qm2-detail-label">Not Turned In</span>
-                                    <span className="qm2-count-pill qm2-count-pill--red">
-                                      {counts.notTurnedIn}
-                                    </span>
-                                  </div>
-
-                                  <div className="qm2-detail-item">
-                                    <span className="qm2-detail-label">On Time</span>
-                                    <span className="qm2-count-pill qm2-count-pill--green">
-                                      {counts.onTime}
-                                    </span>
-                                  </div>
-
-                                  <div className="qm2-detail-item">
-                                    <span className="qm2-detail-label">Late</span>
-                                    <span className="qm2-count-pill qm2-count-pill--orange">
-                                      {counts.late}
-                                    </span>
-                                  </div>
-
-                                  <div className="qm2-detail-item">
-                                    <span className="qm2-detail-label">Returned</span>
-                                    <span className="qm2-count-pill qm2-count-pill--purple">
-                                      {counts.returned}
-                                    </span>
-                                  </div>
-
-                                </div>
-                              )}
+                              </div>
 
                             </div>
                           </td>
                         </tr>
                       )}
-
                     </>
                   );
                 })}
-                </tbody>
+              </tbody>
             </table>
           )}
         </div>
