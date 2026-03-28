@@ -31,18 +31,19 @@ export default function AssignmentStudentsStatus() {
     }
   };
 
-  const renderStatus = (state) => {
-    switch (state) {
-      case "TURNED_IN":
-        return "🟢 Turned In";
-      case "RETURNED":
-        return "🔵 Returned";
-      case "NEW":
-      case "CREATED":
-        return "🔴 Not Turned In";
-      default:
-        return state;
+  const renderStatus = (state, isLate, isOnTime) => {
+    if (state === "TURNED_IN") {
+      if (isLate) return "🟠 Late";
+      if (isOnTime) return "🟢 On Time";
+      return "🟢 Turned In";
     }
+
+    if (state === "RETURNED") return "🔵 Returned";
+
+    if (state === "NEW" || state === "CREATED")
+      return "🔴 Not Turned In";
+
+    return state;
   };
 
   return (
@@ -68,6 +69,7 @@ export default function AssignmentStudentsStatus() {
             <tr>
               <th>Student ID</th>
               <th>Status</th>
+              <th>Submitted At</th>
               <th>Assigned Grade</th>
               <th>Last Update</th>
             </tr>
@@ -76,12 +78,23 @@ export default function AssignmentStudentsStatus() {
             {students.map((s, index) => (
               <tr key={index}>
                 <td>{s.studentId}</td>
-                <td>{renderStatus(s.state)}</td>
+
+                <td>
+                  {renderStatus(s.state, s.isLate, s.isOnTime)}
+                </td>
+
+                <td>
+                  {s.submittedAt
+                    ? new Date(s.submittedAt).toLocaleString()
+                    : "—"}
+                </td>
+
                 <td>
                   {s.assignedGrade !== null
                     ? s.assignedGrade
                     : "—"}
                 </td>
+
                 <td>
                   {s.updateTime
                     ? new Date(s.updateTime).toLocaleString()
