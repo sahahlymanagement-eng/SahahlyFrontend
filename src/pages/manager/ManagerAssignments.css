@@ -1,0 +1,123 @@
+.mgrAsgn-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #000827 0%, #051452 100%);
+  padding: 40px;
+  color: white;
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.mgrAsgn-shell {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.mgrAsgn-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.mgrAsgn-back {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+}
+
+.mgrAsgn-layout {
+  display: grid;
+  grid-template-columns: 260px 260px 1fr;
+  gap: 20px;
+}
+
+.mgrAsgn-column {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  padding: 20px;
+  min-height: 600px;
+}
+
+.mgrAsgn-wide {
+  min-width: 500px;
+}
+
+.mgrAsgn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.mgrAsgn-card {
+  background: rgba(255,255,255,0.05);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  cursor: pointer;
+}
+
+.mgrAsgn-card.active {
+  border: 2px solid #399cf2;
+  background: rgba(57,156,242,0.12);
+}
+
+.mgrAsgn-card h4 {
+  margin: 0;
+}
+
+.mgrAsgn-card span {
+  font-size: 13px;
+  color: rgba(255,255,255,0.6);
+}
+
+.mgrAsgn-tableWrap {
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+.mgrAsgn-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mgrAsgn-table th,
+.mgrAsgn-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-green {
+  background: rgba(46,204,113,0.2);
+  color: #2ecc71;
+}
+
+.badge-orange {
+  background: rgba(255,159,67,0.2);
+  color: #ff9f43;
+}
+
+.badge-blue {
+  background: rgba(57,156,242,0.15);
+  color: #399cf2;
+}
+
+.badge-red {
+  background: rgba(255,77,79,0.2);
+  color: #ff4d4f;
+}
+
+.badge-gray {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.6);
+}

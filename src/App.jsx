@@ -27,7 +27,7 @@ import ResetPassword from "./pages/ResetPassword";
 import AssistantAssignments from "./pages/assistant/AssistantAssignments";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerDelegations from "./pages/manager/ManagerDelegations";
-import TeacherManager from "./pages/TeacherManager";
+import TeacherManager from "./pages/director/TeacherManager";
 import ClassroomTeacherManager from "./pages/ClassroomTeacherManager";
 import QualityTeamDashboard from "./pages/quality team/QualityTeamDashboard";
 import QualityManagerDashboard from "./pages/quality manager/QualityManagerDashboard";
@@ -39,6 +39,8 @@ import DirectorClassroomManagers from "./pages/director/DirectorClassroomManager
 import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import OperationMetrics from "./pages/manager/operation-metrics";
+import ManagerAssignments from "./pages/manager/ManagerAssignments";
+import ManagerStudents from "./pages/manager/ManagerStudents";
 
 function App() {
   return (
@@ -138,6 +140,19 @@ function App() {
             <OperationMetrics defaultTab="metrics" />
           </RoleProtectedRoute>}
         />
+
+        <Route path="/manager/assignments" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <ManagerAssignments />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/students" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <ManagerStudents />
+          </RoleProtectedRoute>}
+        />
+        
 
         {/* Quality Team dashboard route */}
         <Route path="/quality-team/dashboard" element={
