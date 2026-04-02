@@ -10,7 +10,7 @@ import {
   FiHome, FiList, FiBarChart2, FiMenu, FiX,
   FiLogOut, FiSearch, FiCalendar, FiChevronRight,
   FiUser, FiUsers, FiBookOpen, FiClock, FiCheckCircle,
-  FiAlertTriangle, FiZap
+  FiAlertTriangle, FiZap,FiClipboard
 } from "react-icons/fi";
 
 const ALL_STATUSES = [
@@ -174,6 +174,8 @@ export default function ManagerDashboard() {
  const navItems = [
     { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard", active: true },
     { icon: <FiUsers />, label: "Students", path: "/manager/students" },
+    { icon: <FiClipboard />, label: "Assignments / Reports", path: "/manager/assignments" },
+    
   ];
 
   if (!user) return null;
@@ -517,7 +519,9 @@ const toggleRow = (id) => {
                                           <DatePicker
                                             selected={deadlines[a._id] || null}
                                             onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
-                                            showTimeSelect dateFormat="Pp"
+                                            showTimeSelect 
+                                            timeIntervals={1}
+                                            dateFormat="Pp"
                                             className="md-datepicker-input"
                                             placeholderText="Set deadline"
                                             portalId="root"
@@ -544,7 +548,9 @@ const toggleRow = (id) => {
                                           <DatePicker
                                             selected={deadlines[a._id] || null}
                                             onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
-                                            showTimeSelect dateFormat="Pp"
+                                            showTimeSelect
+                                            timeIntervals={1}
+                                            dateFormat="Pp"
                                             className="md-datepicker-input"
                                             placeholderText="New deadline (optional)"
                                             portalId="root"

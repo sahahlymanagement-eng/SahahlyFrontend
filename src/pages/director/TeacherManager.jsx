@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import "./TeacherManager.css";
+import { PhoneInput } from "react-international-phone";
+import "react-international-phone/style.css";
 import {
   FiHome,
   FiUsers,
@@ -163,17 +165,27 @@ export default function TeacherManager() {
                   />
                 </div>
 
-                <div className="tm-input-wrap">
-                  <FiPhone className="tm-input-icon" size={15} />
-                  <input
-                    name="phone"
-                    placeholder="Phone Number"
-                    value={form.phone}
-                    onChange={handleChange}
-                    className="tm-input"
+                <div className="tm-input-wrap tm-phone-wrap">
+                  <PhoneInput
+                    defaultCountry="eg"
+                    value={`+${form.phone}`}
+                    onChange={(value) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        phone: value.replace(/\D/g, "")
+                      }))
+                    }
+                    className="tm-phone-input"
+                    countrySelectorStyleProps={{
+                      dropdownStyleProps: {
+                        style: {
+                          maxHeight: "350px",
+                          zIndex: 9999
+                        }
+                      }
+                    }}
                   />
                 </div>
-
                 <div className="tm-input-wrap">
                   <FiMail className="tm-input-icon" size={15} />
                   <input

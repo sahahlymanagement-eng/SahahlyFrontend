@@ -7,7 +7,7 @@ import {
   FiHome, FiUsers, FiSearch, FiX, FiEdit2,
   FiCheck, FiChevronRight, FiLogOut, FiMenu,
   FiPhone, FiMail, FiUser, FiRefreshCw,
-  FiChevronLeft, FiChevronDown
+  FiChevronLeft, FiChevronDown,FiClipboard
 } from "react-icons/fi";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
@@ -161,8 +161,10 @@ export default function ManagerStudents() {
   };
 
   const navItems = [
-    { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard" },
-    { icon: <FiUsers />, label: "Students", active: true },
+    { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard",  },
+    { icon: <FiUsers />, label: "Students", path: "/manager/students", active: true },
+    { icon: <FiClipboard />, label: "Assignments / Reports", path: "/manager/assignments" },
+    
   ];
 
 
@@ -349,7 +351,7 @@ export default function ManagerStudents() {
                           </tr>
                         </thead>
                         <tbody>
-                          {paginated.map((s, i) => {
+                          {filtered.map((s, i) => {                            
                             const isEditing = editingId === s._id;
                             const globalIndex = (page - 1) * PAGE_SIZE + i + 1;
                             return (

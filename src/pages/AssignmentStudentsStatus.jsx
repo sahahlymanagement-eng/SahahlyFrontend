@@ -9,6 +9,8 @@ export default function AssignmentStudentsStatus() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [maxGrade, setMaxGrade] = useState(null);
+
   useEffect(() => {
     loadStudents();
   }, [assignmentId]);
@@ -23,7 +25,7 @@ export default function AssignmentStudentsStatus() {
       );
 
       setStudents(Array.isArray(res.data.students) ? res.data.students : []);
-    } catch (err) {
+      setMaxGrade(res.data.maxGrade ?? null);    } catch (err) {
       console.error("Failed to load student submissions", err);
       setError("Failed to load student submissions");
     } finally {
@@ -48,7 +50,10 @@ export default function AssignmentStudentsStatus() {
 
   return (
     <div style={{ padding: 30 }}>
-      <h2>Assignment – Student Submission Status</h2>
+      <h2>
+        Assignment – Student Submission Status
+          {maxGrade !== null && ` (Out of ${maxGrade})`}
+      </h2>
 
       <hr />
 
@@ -91,7 +96,7 @@ export default function AssignmentStudentsStatus() {
 
                 <td>
                   {s.assignedGrade !== null
-                    ? s.assignedGrade
+                    ? `${s.assignedGrade} / ${maxGrade ?? "—"}`
                     : "—"}
                 </td>
 

@@ -3,248 +3,665 @@ import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import "./ManagerAssignments.css";
+import { PhoneInput } from "react-international-phone";
+import "react-international-phone/style.css";
+import {
+  FiHome, FiClipboard, FiX, FiChevronRight,
+  FiLogOut, FiMenu, FiUsers, FiSend,
+  FiCheckSquare, FiCalendar, FiMessageSquare
+} from "react-icons/fi";
 
 export default function ManagerAssignments() {
   const navigate = useNavigate();
-
   const [user, setUser] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   const [classrooms, setClassrooms] = useState([]);
   const [selectedClassroom, setSelectedClassroom] = useState(null);
 
-  const [students, setStudents] = useState([]);
-  const [selectedStudent, setSelectedStudent] = useState(null);
-
   const [assignments, setAssignments] = useState([]);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
 
+  const [students, setStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
+
+  const [reportCart, setReportCart] = useState({});
+  const [sending, setSending] = useState(false);
+
+  const [classroomSearch, setClassroomSearch] = useState("");
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+
+  const [customPhone, setCustomPhone] = useState("");
+  const [selectedCountryCode, setSelectedCountryCode] = useState("20");
+
 
   /* AUTH */
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("token");
-
-    if (!storedUser || !token) {
-      navigate("/login", { replace: true });
-      return;
-    }
-
+    if (!storedUser || !token) { navigate("/login", { replace: true }); return; }
     const parsed = JSON.parse(storedUser);
     const role = parsed?.roleId?.name?.toLowerCase();
-
     if (role !== "manager" && role !== "quality manager") {
-      navigate("/login", { replace: true });
-      return;
+      navigate("/login", { replace: true }); return;
     }
-
     setUser(parsed);
   }, [navigate]);
 
   /* LOAD CLASSROOMS */
   useEffect(() => {
     if (!user?.id) return;
-
-    api
-      .get(`/students/my-classrooms?personId=${user.id}`)
-      .then((res) => setClassrooms(res.data || []))
+    api.get(`/students/my-classrooms?personId=${user.id}`)
+      .then(res => setClassrooms(res.data || []))
       .catch(() => toast.error("Failed to load classrooms"));
   }, [user?.id]);
 
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
-    setSelectedStudent(null);
-    setAssignments([]);
+    setSelectedAssignment(null);
     setStudents([]);
-
-    setLoadingStudents(true);
-
-    try {
-      const res = await api.get(`/students/classroom/${classroom._id}`);
-      setStudents(res.data || []);
-    } catch {
-      toast.error("Failed to load students");
-    } finally {
-      setLoadingStudents(false);
-    }
-  };
-
-  /* SELECT STUDENT */
-  const selectStudent = async (student) => {
-    setSelectedStudent(student);
     setAssignments([]);
-
+    setReportCart({});
     setLoadingAssignments(true);
-
     try {
-      const res = await api.get(
-        `/manager-assignments/student/${student._id}`
-      );
-
+      const res = await api.get(`/manager-assignments/classroom/${classroom._id}/assignments`);
       setAssignments(res.data || []);
     } catch {
-      toast.error("Failed to load student assignments");
+      toast.error("Failed to load assignments");
     } finally {
       setLoadingAssignments(false);
     }
   };
 
-  const renderStatus = (a) => {
-    if (a.isLate) {
-      return <span className="badge badge-orange">Late</span>;
+  /* SELECT ASSIGNMENT */
+  const selectAssignment = async (assignment) => {
+    if (selectedAssignment?._id === assignment._id) {
+      setSelectedAssignment(null);
+      setStudents([]);
+      return;
+    }
+    setSelectedAssignment(assignment);
+    setStudents([]);
+    setLoadingStudents(true);
+    try {
+      const res = await api.get(`/manager-assignments/${assignment._id}/full`);
+      setStudents(res.data.students || []);
+    } catch {
+      toast.error("Failed to load student submissions");
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  /* CART */
+  const toggleStudent = (student) => {
+    if (!selectedAssignment) return;
+    const asgId = selectedAssignment._id;
+    const stuId = String(student._id);
+    setReportCart(prev => {
+      const next = { ...prev };
+      if (!next[stuId]) {
+        next[stuId] = { studentMeta: student, items: { [asgId]: buildItem(student) } };
+      } else if (next[stuId].items[asgId]) {
+        const updatedItems = { ...next[stuId].items };
+        delete updatedItems[asgId];
+        if (Object.keys(updatedItems).length === 0) delete next[stuId];
+        else next[stuId] = { ...next[stuId], items: updatedItems };
+      } else {
+        next[stuId] = { ...next[stuId], items: { ...next[stuId].items, [asgId]: buildItem(student) } };
+      }
+      return next;
+    });
+  };
+
+  const selectAllStudentsForAssignment = () => {
+    if (!selectedAssignment || students.length === 0) return;
+
+    const asgId = selectedAssignment._id;
+
+    setReportCart((prev) => {
+      const next = { ...prev };
+
+      students.forEach((student) => {
+        const stuId = String(student._id);
+
+        if (!next[stuId]) {
+          next[stuId] = {
+            studentMeta: student,
+            items: {
+              [asgId]: buildItem(student),
+            },
+          };
+        } else if (!next[stuId].items[asgId]) {
+          next[stuId] = {
+            ...next[stuId],
+            items: {
+              ...next[stuId].items,
+              [asgId]: buildItem(student),
+            },
+          };
+        }
+      });
+
+      return next;
+    });
+
+  };
+
+  const buildItem = (student) => ({
+    assignmentTitle: selectedAssignment.title,
+    state: student.state,
+    submittedAt: student.submittedAt,
+    isLate: student.isLate,
+    isOnTime: student.isOnTime,
+    assignedGrade: student.assignedGrade,
+    comment: ""
+  });
+
+  const isStudentSelected = (studentId) =>
+    !!(reportCart[String(studentId)]?.items[selectedAssignment?._id]);
+
+  const setComment = (studentId, assignmentId, comment) => {
+    setReportCart(prev => ({
+      ...prev,
+      [studentId]: {
+        ...prev[studentId],
+        items: {
+          ...prev[studentId].items,
+          [assignmentId]: { ...prev[studentId].items[assignmentId], comment }
+        }
+      }
+    }));
+  };
+
+  /* SEND */
+  const sendReport = async () => {
+    const cartEntries = Object.entries(reportCart);
+    if (cartEntries.length === 0) { toast.warn("No students selected"); return; }
+    const reports = cartEntries.map(([, entry]) => ({
+      name: entry.studentMeta.name,
+      phone: entry.studentMeta.phone,
+      parentPhone: entry.studentMeta.parentPhone,
+      items: Object.values(entry.items)
+    }));
+    setSending(true);
+    try {
+      const res = await api.post("/manager-assignments/send-report", {
+        reports,
+        classroomId: selectedClassroom?._id
+      });
+      const summary = res.data.summary || [];
+      const succeeded = summary.filter(r => r.status === "fulfilled").length;
+      const failed = summary.filter(r => r.status === "rejected").length;
+      toast.success(`✅ Sent to ${succeeded} student(s)${failed ? `, ${failed} failed` : ""}`);
+      setReportCart({});
+    } catch {
+      toast.error("Failed to send reports");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const clearAllSelections = () => {
+    setReportCart({});
+  };
+
+  const cartCount = Object.keys(reportCart).length;
+  const totalItems = Object.values(reportCart).reduce((acc, e) => acc + Object.keys(e.items).length, 0);
+
+  const statusBadge = (student) => {
+    if (student.state === "TURNED_IN" || student.state === "RETURNED") {
+      if (student.isLate)   return <span className="ma-badge ma-badge--orange">Late</span>;
+      if (student.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
+      return <span className="ma-badge ma-badge--green">Submitted</span>;
+    }
+    if (student.state === "NEW" || student.state === "CREATED")
+      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
+    return <span className="ma-badge ma-badge--gray">{student.state}</span>;
+  };
+
+  const filteredClassrooms = classrooms.filter((c) =>
+    `${c.name} ${c.section || ""}`
+      .toLowerCase()
+      .includes(classroomSearch.toLowerCase())
+  );
+
+  const filteredAssignments = assignments.filter((a) =>
+    a.title.toLowerCase().includes(assignmentSearch.toLowerCase())
+  );
+
+
+  const sendTeacherCollectiveReport = async () => {
+    const cartEntries = Object.entries(reportCart);
+
+    if (cartEntries.length === 0) {
+      toast.warn("No students selected");
+      return;
     }
 
-    if (a.isOnTime) {
-      return <span className="badge badge-green">On Time</span>;
-    }
+    const reports = cartEntries.map(([, entry]) => ({
+      name: entry.studentMeta.name,
+      items: Object.values(entry.items)
+    }));
 
-    if (a.state === "RETURNED") {
-      return <span className="badge badge-blue">Returned</span>;
-    }
+    setSending(true);
 
-    if (a.state === "NEW" || a.state === "CREATED") {
-      return (
-        <span className="badge badge-red">
-          Not Turned In
-        </span>
+    try {
+      await api.post(
+        "/manager-assignments/send-teacher-collective-report",
+        {
+          reports,
+          classroomId: selectedClassroom?._id
+        }
       );
+
+      toast.success("Teacher collective report sent");
+    } catch {
+      toast.error("Failed to send teacher report");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const sendCustomCollectiveReport = async () => {
+    const cartEntries = Object.entries(reportCart);
+
+    if (cartEntries.length === 0) {
+      toast.warn("No students selected");
+      return;
     }
 
-    return (
-      <span className="badge badge-gray">
-        {a.state || "Unknown"}
-      </span>
-    );
+    if (!customPhone.trim()) {
+      toast.warn("Enter phone number");
+      return;
+    }
+
+    const reports = cartEntries.map(([, entry]) => ({
+      name: entry.studentMeta.name,
+      items: Object.values(entry.items)
+    }));
+
+    setSending(true);
+
+    try {
+      await api.post(
+        "/manager-assignments/send-custom-collective-report",
+        {
+          reports,
+          classroomId: selectedClassroom?._id,
+          phone: customPhone
+        }
+      );
+
+      toast.success("Custom report sent");
+    } catch {
+      toast.error("Failed to send custom report");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    navigate("/login", { replace: true });
   };
 
   if (!user) return null;
 
-  return (
-    <div className="mgrAsgn-page">
-      <div className="mgrAsgn-shell">
+  const navItems = [
+    { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard" },
+    { icon: <FiUsers />, label: "Students", path: "/manager/students" },
+    { icon: <FiClipboard />, label: "Assignments", active: true },
+  ];
 
-        <header className="mgrAsgn-header">
-          <h2>Assignments Management</h2>
-          <button
-            className="mgrAsgn-back"
-            onClick={() => navigate("/manager/dashboard")}
-          >
-            ← Back
+  return (
+    <div className="ma-root">
+
+      {/* SIDEBAR */}
+      <aside className={`ma-sidebar ${sidebarCollapsed ? "ma-sidebar--collapsed" : ""}`}>
+        <div className="ma-sidebar-top">
+          <div className="ma-sidebar-brand">
+            {!sidebarCollapsed && <span className="ma-brand-text">Manager</span>}
+            <button className="ma-sidebar-toggle" onClick={() => setSidebarCollapsed(v => !v)}>
+              {sidebarCollapsed ? <FiMenu size={18} /> : <FiX size={18} />}
+            </button>
+          </div>
+          {!sidebarCollapsed && (
+            <div className="ma-user-card">
+              <div className="ma-user-avatar">{user.name?.charAt(0).toUpperCase()}</div>
+              <div className="ma-user-info">
+                <span className="ma-user-name">{user.name}</span>
+                <span className="ma-user-role">Manager</span>
+              </div>
+            </div>
+          )}
+          {sidebarCollapsed && (
+            <div className="ma-user-avatar ma-user-avatar--solo">{user.name?.charAt(0).toUpperCase()}</div>
+          )}
+        </div>
+
+        <nav className="ma-sidebar-nav">
+          {navItems.map(item => (
+            <div
+              key={item.label}
+              className={`ma-nav-item ${item.active ? "ma-nav-item--active" : ""}`}
+              onClick={() => item.path && navigate(item.path)}
+            >
+              <span className="ma-nav-icon">{item.icon}</span>
+              {!sidebarCollapsed && <span className="ma-nav-label">{item.label}</span>}
+              {!sidebarCollapsed && item.active && <FiChevronRight className="ma-nav-arrow" size={14} />}
+            </div>
+          ))}
+        </nav>
+
+        <div className="ma-sidebar-bottom">
+          <button className="ma-logout-btn" onClick={handleLogout}>
+            <FiLogOut size={16} />
+            {!sidebarCollapsed && <span>Logout</span>}
           </button>
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <main className="ma-main">
+
+        {/* TOPBAR */}
+        <header className="ma-topbar">
+          <div className="ma-topbar-left">
+            <h1 className="ma-topbar-title">Assignments</h1>
+            <span className="ma-topbar-sub">
+              {selectedClassroom
+                ? selectedAssignment
+                  ? `${selectedClassroom.name} — ${selectedAssignment.title}`
+                  : `Select an assignment from ${selectedClassroom.name}`
+                : `Welcome back, ${user.name}`}
+            </span>
+          </div>
+          {cartCount > 0 && (
+            <div className="ma-topbar-right">
+              <div className="ma-cart-pill">
+                <FiCheckSquare size={13} />
+                <span>{cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} item{totalItems !== 1 ? "s" : ""}</span>
+              </div>
+              <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
+                <FiSend size={13} />
+                {sending ? "Sending…" : `Send Report`}
+              </button>
+              <button
+                className="ma-send-btn"
+                onClick={sendTeacherCollectiveReport}
+                disabled={sending}
+              >
+                <FiSend size={13} />
+                {sending ? "Sending…" : "Send Teacher Collective Report"}
+              </button>
+              <div style={{ minWidth: "260px" }}>
+                <PhoneInput
+                  defaultCountry="eg"
+                  value={`+${customPhone}`}
+                  onChange={(value) =>
+                    setCustomPhone(value.replace(/\D/g, ""))
+                  }
+                  className="tm-phone-input"
+                  countrySelectorStyleProps={{
+                    dropdownStyleProps: {
+                      style: {
+                        maxHeight: "350px",
+                        zIndex: 9999
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <button
+                className="ma-send-btn"
+                onClick={sendCustomCollectiveReport}
+                disabled={sending}
+              >
+                <FiSend size={13} />
+                {sending ? "Sending…" : "Send Custom Collective Report"}
+              </button>
+            </div>
+          )}
         </header>
 
-        <div className="mgrAsgn-layout">
+        <div className="ma-content">
+          <div className="ma-layout">
+          {/* COLUMN 1 — CLASSROOMS */}
+          <div className="ma-column">
+            <p className="ma-section-label">Classrooms</p>
 
-          {/* CLASSROOMS */}
-          <div className="mgrAsgn-column">
-            <h3>Classrooms</h3>
+            <input
+              className="ma-search-input"
+              placeholder="Search classrooms..."
+              value={classroomSearch}
+              onChange={(e) => setClassroomSearch(e.target.value)}
+            />
 
-            <div className="mgrAsgn-list">
-              {classrooms.map((c) => (
+            <div className="ma-scroll-list">
+              {filteredClassrooms.map(c => (
                 <div
                   key={c._id}
-                  className={`mgrAsgn-card ${
+                  className={`ma-classroom-card ${
                     selectedClassroom?._id === c._id
-                      ? "active"
+                      ? "ma-classroom-card--active"
                       : ""
                   }`}
                   onClick={() => selectClassroom(c)}
                 >
-                  <h4>{c.name}</h4>
-                  <span>{c.section || "No section"}</span>
+                  <div className="ma-classroom-icon">
+                    <FiUsers size={15} />
+                  </div>
+                  <div className="ma-classroom-info">
+                    <span className="ma-classroom-name">{c.name}</span>
+                    {c.section && (
+                      <span className="ma-classroom-section">{c.section}</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* STUDENTS */}
-          <div className="mgrAsgn-column">
-            <h3>Students</h3>
+          {/* COLUMN 2 — ASSIGNMENTS */}
+          <div className="ma-column">
+            <p className="ma-section-label">Assignments</p>
 
-            {loadingStudents && (
-              <p className="mgrAsgn-loading">
-                Loading students...
-              </p>
-            )}
+            <input
+              className="ma-search-input"
+              placeholder="Search assignments..."
+              value={assignmentSearch}
+              onChange={(e) => setAssignmentSearch(e.target.value)}
+              disabled={!selectedClassroom}
+            />
 
-            {!loadingStudents && (
-              <div className="mgrAsgn-list">
-                {students.map((s) => (
+            <div className="ma-scroll-list">
+              {!selectedClassroom ? (
+                <p className="ma-empty-msg">Select classroom first</p>
+              ) : (
+                filteredAssignments.map(a => (
                   <div
-                    key={s._id}
-                    className={`mgrAsgn-card ${
-                      selectedStudent?._id === s._id
-                        ? "active"
+                    key={a._id}
+                    className={`ma-assignment-card ${
+                      selectedAssignment?._id === a._id
+                        ? "ma-assignment-card--active"
                         : ""
                     }`}
-                    onClick={() => selectStudent(s)}
+                    onClick={() => selectAssignment(a)}
                   >
-                    <h4>{s.name}</h4>
-                    <span>{s.email}</span>
+                    <div className="ma-assignment-icon">
+                      <FiClipboard size={14} />
+                    </div>
+                    <div className="ma-assignment-info">
+                      <span className="ma-assignment-title">{a.title}</span>
+                      {a.dueDate && (
+                        <span className="ma-assignment-due">
+                          <FiCalendar size={10} />
+                          {new Date(a.dueDate).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                ))}
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* COLUMN 3 — STUDENTS */}
+          <div className="ma-right-panel">
+            {!selectedAssignment ? (
+              <div className="ma-empty-state">
+                <FiClipboard size={40} />
+                <p>Select assignment to view students</p>
+              </div>
+            ) : (
+              <div className="ma-panel">
+                <div className="ma-panel-header">
+                  <div className="ma-panel-title-wrap">
+                    <div className="ma-panel-dot" />
+                    <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
+                    <span className="ma-panel-count">{students.length} students</span>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    className="ma-send-btn"
+                    onClick={selectAllStudentsForAssignment}
+                    disabled={students.length === 0}
+                  >
+                    Select All
+                  </button>
+
+                  <button
+                    className="ma-send-btn"
+                    onClick={clearAllSelections}
+                    disabled={cartCount === 0}
+                  >
+                    Clear All
+                  </button>
+                </div>
+                  {cartCount > 0 && (
+                    <span className="ma-panel-hint">
+                      <FiCheckSquare size={12} /> {cartCount} selected for report
+                    </span>
+                  )}
+                </div>
+
+                {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
+
+                {!loadingStudents && students.length === 0 && (
+                  <p className="ma-empty-msg">No students found.</p>
+                )}
+
+                {!loadingStudents && students.length > 0 && (
+                  <div className="ma-table-wrap">
+                    <div className="ma-table-scroll">
+                      <table className="ma-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 44 }}></th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Submitted At</th>
+                            <th>Grade</th>
+                            <th>Comment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {students.map((s, i) => {
+                            const selected = isStudentSelected(s._id);
+                            const stuId = String(s._id);
+                            const asgId = selectedAssignment._id;
+                            return (
+                              <tr
+                                key={s._id}
+                                className={`ma-row ${selected ? "ma-row--selected" : ""}`}
+                                style={{ animationDelay: `${i * 0.025}s` }}
+                                onClick={() => toggleStudent(s)}
+                              >
+                                <td>
+                                  <div className={`ma-check ${selected ? "ma-check--on" : ""}`}>
+                                    {selected && "✓"}
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="ma-avatar-cell">
+                                    <div className="ma-avatar">
+                                      {(s.name || s.email || "?").charAt(0).toUpperCase()}
+                                    </div>
+                                    <span className="ma-cell-name">{s.name || <span className="ma-cell-empty">—</span>}</span>
+                                  </div>
+                                </td>
+                                <td><span className="ma-cell-muted">{s.email || "—"}</span></td>
+                                <td>{statusBadge(s)}</td>
+                                <td>
+                                  <span className="ma-cell-muted">
+                                    {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
+                                  </span>
+                                </td>
+                                <td>
+                                  {s.assignedGrade != null
+                                    ? <span className="ma-grade-pill">{s.assignedGrade}</span>
+                                    : <span className="ma-cell-empty">—</span>}
+                                </td>
+                                <td onClick={e => e.stopPropagation()}>
+                                  {selected && (
+                                    <div className="ma-comment-wrap">
+                                      <FiMessageSquare size={12} className="ma-comment-icon" />
+                                      <input
+                                        className="ma-comment-input"
+                                        placeholder="Add comment…"
+                                        value={reportCart[stuId]?.items[asgId]?.comment || ""}
+                                        onChange={e => setComment(stuId, asgId, e.target.value)}
+                                      />
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
-
-          {/* ASSIGNMENTS */}
-          <div className="mgrAsgn-column mgrAsgn-wide">
-            <h3>
-              {selectedStudent
-                ? `${selectedStudent.name}'s Assignments`
-                : "Assignments"}
-            </h3>
-
-            {loadingAssignments && (
-              <p className="mgrAsgn-loading">
-                Loading assignments...
-              </p>
-            )}
-
-            {!loadingAssignments &&
-              assignments.length > 0 && (
-                <div className="mgrAsgn-tableWrap">
-                  <table className="mgrAsgn-table">
-                    <thead>
-                      <tr>
-                        <th>Assignment</th>
-                        <th>Status</th>
-                        <th>Submitted At</th>
-                        <th>Grade</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assignments.map((a) => (
-                        <tr key={a._id}>
-                          <td>{a.title}</td>
-                          <td>{renderStatus(a)}</td>
-                          <td>
-                            {a.submittedAt
-                              ? new Date(
-                                  a.submittedAt
-                                ).toLocaleString()
-                              : "—"}
-                          </td>
-                          <td>
-                            {a.assignedGrade ?? "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-            {!loadingAssignments &&
-              selectedStudent &&
-              assignments.length === 0 && (
-                <p className="mgrAsgn-empty">
-                  No assignments found
-                </p>
-              )}
-          </div>
         </div>
-      </div>
+        </div>
+
+        {/* CART BAR */}
+        {cartCount > 0 && (
+          <div className="ma-cart-bar">
+            <div className="ma-cart-bar-left">
+              <span className="ma-cart-label">📋 Report Ready</span>
+              <span className="ma-cart-stats">{cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} assignment{totalItems !== 1 ? "s" : ""}</span>
+            </div>
+            <div className="ma-cart-students">
+              {Object.values(reportCart).map(entry => (
+                <div key={entry.studentMeta._id} className="ma-cart-chip">
+                  <div className="ma-cart-chip-avatar">
+                    {entry.studentMeta.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="ma-cart-chip-info">
+                    <strong>{entry.studentMeta.name}</strong>
+                    <span>{Object.values(entry.items).map(i => i.assignmentTitle).join(", ")}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
+              <FiSend size={14} />
+              {sending ? "Sending…" : `Send to ${cartCount} Student${cartCount !== 1 ? "s" : ""}`}
+            </button>
+          </div>
+        )}
+
+      </main>
     </div>
   );
 }

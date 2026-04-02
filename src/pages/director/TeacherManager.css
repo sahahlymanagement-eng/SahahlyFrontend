@@ -508,6 +508,33 @@
   background: rgba(37, 99, 235, 0.22);
 }
 
+.tm-phone-wrap {
+  width: 100%;
+}
+
+.tm-phone-input {
+  width: 100%;
+}
+
+.tm-phone-input .react-international-phone-input {
+  width: 100%;
+  background: #060f2e !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  color: #e2e8f0 !important;
+  border-radius: 10px !important;
+  height: 44px !important;
+  font-size: 13px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.tm-phone-input .react-international-phone-country-selector-button {
+  background:#000828 !important;
+border:none !important;
+color:white !important;
+padding:0 12px !important;
+margin: 0px 10px 0 0 !important;
+}
+
 .tm-delete-btn {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
