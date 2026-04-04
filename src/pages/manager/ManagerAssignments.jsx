@@ -314,7 +314,7 @@ export default function ManagerAssignments() {
   const navItems = [
     { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard" },
     { icon: <FiUsers />, label: "Students", path: "/manager/students" },
-    { icon: <FiClipboard />, label: "Assignments", active: true },
+    { icon: <FiClipboard />, label: "Assignments / Reports ", active: true },
   ];
 
   return (
