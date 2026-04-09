@@ -581,14 +581,14 @@ const toggleRow = (id) => {
                                         </div>
 
                                         {countsSpinning ? (
-                                          ["Submissions","Not Turned In","On Time","Late"].map((label) => (
+                                          ["Submissions","Not Turned In","On Time","Late","Returned"].map((label) => (
                                             <div className="md-detail-item" key={label}>
                                               <span className="md-detail-label">{label}</span>
                                               <span className="md-counts-spinner" />
                                             </div>
                                           ))
                                         ) : counts === null ? (
-                                          ["Submissions","Not Turned In","On Time","Late"].map((label) => (
+                                          ["Submissions","Not Turned In","On Time","Late", "Returned"].map((label) => (
                                             <div className="md-detail-item" key={label}>
                                               <span className="md-detail-label">{label}</span>
                                               <span className="md-no-assistants">Error</span>                                            </div>
@@ -612,6 +612,10 @@ const toggleRow = (id) => {
                                             <div className="md-detail-item">
                                               <span className="md-detail-label">Late</span>
                                               <span className="md-count-pill md-count-pill--orange">{counts.late}</span>
+                                            </div>
+                                            <div className="md-detail-item">
+                                              <span className="md-detail-label">Returned</span>
+                                              <span className="md-count-pill md-count-pill--orange">{counts.returned}</span>
                                             </div>
                                           </>
                                         )}
