@@ -19,6 +19,7 @@ import AssistantAssignmentsTest from "./pages/AssistantAssignmentsTest";
 import QualityManagerAssignmentDelegationTest from "./pages/QualityManagerAssignmentDelegationTest";
 import QualityTeamAssignmentsTest from "./pages/QualityTeamAssignmentsTest";
 import QualityChecklistItemsTest from "./pages/QualityChecklistItemsTest";
+import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import SetupPassword from "./pages/SetupPassword";
@@ -41,6 +42,7 @@ import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerAssignments from "./pages/manager/ManagerAssignments";
 import ManagerStudents from "./pages/manager/ManagerStudents";
+import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 
 function App() {
   return (
@@ -103,6 +105,7 @@ function App() {
 
         {/* The page for first-time users to set their password */}
         <Route path="/setup-password" element={<SetupPassword />} />
+        <Route path="/quality-checklist-items" element={<QualityChecklistItems />} />
 
 
         {/* Assistant dashboard route */}
@@ -186,6 +189,9 @@ function App() {
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
           <Route path="manage-teachers" element={<TeacherManager />} />
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
+          <Route path="google-accounts" element={<DirectorGoogleAccount />} />
+          
+          
 
 
         </Route>

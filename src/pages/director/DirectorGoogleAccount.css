@@ -1,0 +1,106 @@
+.directorGooglePage {
+  padding: 28px 36px 48px;
+  min-height: 100vh;
+  background: #020617;
+  color: #e2e8f0;
+}
+
+.directorGoogleSection {
+  margin-bottom: 28px;
+}
+
+.directorGoogleHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.directorGoogleTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.directorGoogleDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+}
+
+.directorGoogleTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.directorGooglePrimaryBtn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.directorGoogleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.directorGoogleCard {
+  background: #04091f;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+
+.directorGoogleCard h3 {
+  margin: 0 0 10px 0;
+  color: white;
+}
+
+.directorGoogleCard p {
+  color: #94a3b8;
+  margin: 6px 0;
+}
+
+.directorGoogleIconWrap {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.directorGoogleIcon {
+  color: #93c5fd;
+  font-size: 18px;
+}
+
+.directorGoogleActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.directorGoogleActions button {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 10px;
+  background: #1e293b;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}

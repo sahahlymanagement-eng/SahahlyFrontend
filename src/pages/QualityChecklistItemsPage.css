@@ -1,0 +1,145 @@
+.qualityChecklistPage {
+  padding: 28px 36px 48px;
+  color: #e2e8f0;
+  min-height: 100vh;
+  background: #020617;
+}
+
+.qualityChecklistSection {
+  margin-bottom: 28px;
+}
+
+.qualityChecklistHeader {
+  margin-bottom: 18px;
+}
+
+.qualityChecklistTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qualityChecklistDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+}
+
+.qualityChecklistTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.qualityChecklistFormCard,
+.qualityChecklistCard {
+  background: #04091f;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+
+.qualityChecklistFormGroup {
+  margin-bottom: 16px;
+}
+
+.qualityChecklistFormGroup label {
+  display: block;
+  margin-bottom: 8px;
+  color: #cbd5e1;
+}
+
+.qualityChecklistFormGroup input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #0f172a;
+  color: white;
+}
+
+.qualityChecklistActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.qualityChecklistPrimaryBtn,
+.qualityChecklistSecondaryBtn,
+.qualityChecklistCardActions button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.qualityChecklistPrimaryBtn {
+  background: #2563eb;
+  color: white;
+}
+
+.qualityChecklistSecondaryBtn {
+  background: #1e293b;
+  color: white;
+}
+
+.qualityChecklistMessage {
+  margin-top: 14px;
+  color: #93c5fd;
+}
+
+.qualityChecklistGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.qualityChecklistIconWrap {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.qualityChecklistIcon {
+  color: #93c5fd;
+  font-size: 18px;
+}
+
+.qualityChecklistCard h3 {
+  margin-bottom: 10px;
+  color: white;
+}
+
+.qualityChecklistStatus {
+  display: inline-block;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.qualityChecklistStatus.active {
+  color: #22c55e;
+}
+
+.qualityChecklistStatus.inactive {
+  color: #ef4444;
+}
+
+.qualityChecklistCardActions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qualityChecklistCardActions button {
+  background: #1e293b;
+  color: white;
+}

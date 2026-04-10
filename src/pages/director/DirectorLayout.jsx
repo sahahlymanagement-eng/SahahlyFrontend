@@ -63,6 +63,11 @@ export default function DirectorLayout() {
       name: "Assign Classroom Teacher",
       icon: <FiBarChart2 />,
       path: "/director/manage-classroom-teachers"
+    },
+    {
+      name: "Google Accounts",
+      icon: <FiBarChart2 />, 
+      path: "/director/google-accounts"
     }
   ];
 

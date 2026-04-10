@@ -70,7 +70,7 @@ export default function DirectorDashboard() {
 
   const totalPeople =
     stats.managers + stats.qualityManagers + stats.assistants;
-
+  
   return (
     <div className="directorDashboardPage">
       <section className="directorDashSection">
