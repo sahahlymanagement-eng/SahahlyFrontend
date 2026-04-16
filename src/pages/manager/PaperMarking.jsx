@@ -1,0 +1,227 @@
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "../../api/api";
+import { toast } from "react-toastify";
+import "./PaperMarking.css";
+
+export default function PaperMarking() {
+  const navigate = useNavigate();
+  const studentRef    = useRef();
+  const markSchemeRef = useRef();
+
+  const [studentFile,    setStudentFile]    = useState(null);
+  const [markSchemeFile, setMarkSchemeFile] = useState(null);
+  const [totalGrade,     setTotalGrade]     = useState("");
+  const [guidance,       setGuidance]       = useState("");
+  const [loading,        setLoading]        = useState(false);
+  const [result,         setResult]         = useState(null);
+
+  const handleMark = async () => {
+    if (!studentFile)    { toast.warn("Please upload the student answer PDF"); return; }
+    if (!markSchemeFile) { toast.warn("Please upload the mark scheme PDF");    return; }
+
+    const formData = new FormData();
+    formData.append("studentPdf",    studentFile);
+    formData.append("markSchemePdf", markSchemeFile);
+    formData.append("totalGrade",    totalGrade);
+    formData.append("guidance",      guidance);
+
+    setLoading(true);
+    setResult(null);
+
+    try {
+      const res = await api.post("/marking/mark", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setResult(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Marking failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getScoreColor = (awarded, max) => {
+    const pct = awarded / max;
+    if (pct >= 0.75) return "#22c55e";
+    if (pct >= 0.5)  return "#f59e0b";
+    return "#ef4444";
+  };
+
+  const totalPct = result
+    ? Math.round((result.totalMarks / result.maxTotalMarks) * 100)
+    : 0;
+
+  return (
+    <div className="pm-page">
+      <div className="pm-shell">
+
+        <header className="pm-header">
+          <h2>AI Paper Marking</h2>
+          <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>
+        </header>
+
+        {/* UPLOAD ROW */}
+        <div className="pm-upload-row">
+          <UploadCard
+            label="Student Answer Sheet"
+            icon="📄"
+            file={studentFile}
+            inputRef={studentRef}
+            onChange={setStudentFile}
+          />
+          <div className="pm-arrow">→</div>
+          <UploadCard
+            label="Mark Scheme"
+            icon="📋"
+            file={markSchemeFile}
+            inputRef={markSchemeRef}
+            onChange={setMarkSchemeFile}
+          />
+          <div className="pm-arrow">→</div>
+          <div className="pm-action-card">
+            <div className="pm-action-icon">🤖</div>
+            <p>AI Marking</p>
+            <button
+              className="pm-mark-btn"
+              onClick={handleMark}
+              disabled={loading || !studentFile || !markSchemeFile}
+            >
+              {loading ? <><span className="pm-spinner" /> Marking…</> : "Mark Paper"}
+            </button>
+          </div>
+        </div>
+
+        {/* EXTRA INPUTS */}
+        <div className="pm-inputs-row">
+          <div className="pm-input-group">
+            <label className="pm-input-label">Total Exam Grade</label>
+            <input
+              className="pm-input"
+              type="number"
+              placeholder="e.g. 100"
+              value={totalGrade}
+              onChange={e => setTotalGrade(e.target.value)}
+            />
+          </div>
+          <div className="pm-input-group pm-input-group--wide">
+            <label className="pm-input-label">Guidance for AI (optional)</label>
+            <textarea
+              className="pm-input pm-textarea"
+              placeholder="e.g. Be strict with spelling. Award full marks only if units are included."
+              value={guidance}
+              onChange={e => setGuidance(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+
+        {/* LOADING STATE */}
+        {loading && (
+          <div className="pm-loading-panel">
+            <div className="pm-loading-spinner" />
+            <p>Analysing student answers against mark scheme…</p>
+            <span>This may take up to 30 seconds</span>
+          </div>
+        )}
+
+        {/* RESULTS */}
+        {result && !loading && (
+          <div className="pm-results">
+
+            {/* SCORE HEADER */}
+            <div className="pm-score-header">
+              <div
+                className="pm-score-circle"
+                style={{
+                  "--pct": totalPct,
+                  "--color": getScoreColor(result.totalMarks, result.maxTotalMarks)
+                }}
+              >
+                <span className="pm-score-num">{result.totalMarks}</span>
+                <span className="pm-score-max">/ {result.maxTotalMarks}</span>
+              </div>
+              <div className="pm-score-info">
+                <h3>{totalPct}% — {
+                  totalPct >= 75 ? "Strong Performance" :
+                  totalPct >= 50 ? "Satisfactory Performance" :
+                  "Needs Improvement"
+                }</h3>
+                <p className="pm-summary">{result.summary}</p>
+              </div>
+            </div>
+
+            {/* QUESTION BREAKDOWN */}
+            <h3 className="pm-breakdown-title">Question Breakdown</h3>
+            <div className="pm-questions">
+              {result.questions.map((q, i) => {
+                const color = getScoreColor(q.marksAwarded, q.maxMarks);
+                const pct   = Math.round((q.marksAwarded / q.maxMarks) * 100);
+                return (
+                  <div key={i} className="pm-question-card">
+                    <div className="pm-q-header">
+                      <span className="pm-q-number">Q{q.questionNumber}</span>
+                      <div
+                        className="pm-q-score"
+                        style={{ color, borderColor: color, background: `${color}15` }}
+                      >
+                        {q.marksAwarded} / {q.maxMarks}
+                      </div>
+                    </div>
+
+                    <div className="pm-q-bar-wrap">
+                      <div className="pm-q-bar">
+                        <div
+                          className="pm-q-bar-fill"
+                          style={{ width: `${pct}%`, background: color }}
+                        />
+                      </div>
+                      <span className="pm-q-pct">{pct}%</span>
+                    </div>
+
+                    {q.studentAnswer && (
+                      <div className="pm-q-section">
+                        <span className="pm-q-label">Student Answer</span>
+                        <p>{q.studentAnswer}</p>
+                      </div>
+                    )}
+
+                    <div className="pm-q-section">
+                      <span className="pm-q-label">Examiner Note</span>
+                      <p>{q.reason}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+function UploadCard({ label, icon, file, inputRef, onChange }) {
+  return (
+    <div
+      className={`pm-upload-card ${file ? "pm-upload-card--done" : ""}`}
+      onClick={() => inputRef.current.click()}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf"
+        style={{ display: "none" }}
+        onChange={e => onChange(e.target.files[0] || null)}
+      />
+      <div className="pm-upload-icon">{file ? "✅" : icon}</div>
+      <p className="pm-upload-label">{label}</p>
+      {file
+        ? <span className="pm-upload-filename">{file.name}</span>
+        : <span className="pm-upload-hint">Click to upload PDF</span>
+      }
+    </div>
+  );
+}

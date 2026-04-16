@@ -43,6 +43,8 @@ import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerAssignments from "./pages/manager/ManagerAssignments";
 import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
+import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
+import PaperMarking from "./pages/manager/PaperMarking";
 
 function App() {
   return (
@@ -108,6 +110,7 @@ function App() {
         <Route path="/quality-checklist-items" element={<QualityChecklistItems />} />
 
 
+
         {/* Assistant dashboard route */}
         <Route path="/assistant/dashboard" element={
           <RoleProtectedRoute allowedRole="assistant">
@@ -153,6 +156,18 @@ function App() {
         <Route path="/manager/students" element={
           <RoleProtectedRoute allowedRole="manager">
             <ManagerStudents />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/submissions" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <ManagerSubmissionViewer />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/marking" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <PaperMarking />
           </RoleProtectedRoute>}
         />
         

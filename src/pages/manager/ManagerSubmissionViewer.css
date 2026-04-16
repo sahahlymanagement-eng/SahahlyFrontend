@@ -1,0 +1,108 @@
+.msv-root {
+  min-height: 100vh;
+  background: #0f172a;
+  color: white;
+  padding: 20px;
+}
+
+.msv-main {
+  width: 100%;
+}
+
+.msv-topbar {
+  margin-bottom: 20px;
+}
+
+.msv-topbar h1 {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.msv-topbar p {
+  color: #94a3b8;
+}
+
+.msv-layout {
+  display: grid;
+  grid-template-columns: 260px 320px 1fr;
+  gap: 20px;
+}
+
+.msv-column,
+.msv-right-panel {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 18px;
+  min-height: 700px;
+}
+
+.msv-label {
+  font-weight: 600;
+  margin-bottom: 14px;
+  color: #cbd5e1;
+}
+
+.msv-search {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  background: #334155;
+  color: white;
+}
+
+.msv-scroll {
+  max-height: 620px;
+  overflow-y: auto;
+}
+
+.msv-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #334155;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.msv-card:hover {
+  background: #475569;
+}
+
+.msv-card.active {
+  background: #2563eb;
+}
+
+.msv-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.msv-table th,
+.msv-table td {
+  padding: 14px;
+  border-bottom: 1px solid #334155;
+  text-align: left;
+}
+
+.msv-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.msv-actions button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.msv-actions button:hover {
+  background: #1d4ed8;
+}

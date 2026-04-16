@@ -10,7 +10,7 @@ import {
   FiHome, FiList, FiBarChart2, FiMenu, FiX,
   FiLogOut, FiSearch, FiCalendar, FiChevronRight,
   FiUser, FiUsers, FiBookOpen, FiClock, FiCheckCircle,
-  FiAlertTriangle, FiZap,FiClipboard
+  FiAlertTriangle, FiZap,FiClipboard,FiFileText
 } from "react-icons/fi";
 
 const ALL_STATUSES = [
@@ -175,6 +175,7 @@ export default function ManagerDashboard() {
     { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard", active: true },
     { icon: <FiUsers />, label: "Students", path: "/manager/students" },
     { icon: <FiClipboard />, label: "Assignments / Reports", path: "/manager/assignments" },
+    { icon: <FiFileText />, label: "AI Marking", path: "/manager/marking" },
     
   ];
 
