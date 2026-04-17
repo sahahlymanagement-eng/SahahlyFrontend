@@ -45,6 +45,7 @@ import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import PaperMarking from "./pages/manager/PaperMarking";
+import PaperMarkingClaude from "./pages/manager/PaperMarking"; 
 
 function App() {
   return (
@@ -170,6 +171,13 @@ function App() {
             <PaperMarking />
           </RoleProtectedRoute>}
         />
+
+        <Route path="/manager/markingclaude" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <PaperMarkingClaude />
+          </RoleProtectedRoute>}
+        />
+
         
 
         {/* Quality Team dashboard route */}
