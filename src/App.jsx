@@ -46,6 +46,10 @@ import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import PaperMarking from "./pages/manager/PaperMarking";
 import PaperMarkingClaude from "./pages/manager/PaperMarking"; 
+import QBManage from "./pages/questionbank/QBManage";
+import QBUpload from "./pages/questionbank/QBUpload";
+import QBBrowse from "./pages/questionbank/QBBrowse";
+import QBClassify from "./pages/questionbank/QBClassify";
 
 function App() {
   return (
@@ -111,6 +115,10 @@ function App() {
         <Route path="/quality-checklist-items" element={<QualityChecklistItems />} />
 
 
+        <Route path="/questionbank/manage" element={<QBManage />} />
+        <Route path="/questionbank/upload" element={<QBUpload />} />
+        <Route path="/questionbank/browse" element={<QBBrowse />} />
+        <Route path="/questionbank/classify" element={<QBClassify />} />
 
         {/* Assistant dashboard route */}
         <Route path="/assistant/dashboard" element={

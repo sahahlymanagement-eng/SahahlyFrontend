@@ -177,6 +177,8 @@ export default function ManagerDashboard() {
     { icon: <FiClipboard />, label: "Assignments / Reports", path: "/manager/assignments" },
     { icon: <FiFileText />, label: "Gemini AI Marking", path: "/manager/marking" },
     { icon: <FiFileText />, label: "Claude AI Marking", path: "/manager/markingclaude" },
+    { icon: <FiZap />, label: "AI Classifier", path: "/questionbank/manage" },
+    
     
   ];
 
