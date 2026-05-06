@@ -45,11 +45,12 @@ import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import PaperMarking from "./pages/manager/PaperMarking";
-import PaperMarkingClaude from "./pages/manager/PaperMarking"; 
+import PaperMarkingClaude from "./pages/manager/PaperMarkingClaude";
 import QBManage from "./pages/questionbank/QBManage";
 import QBUpload from "./pages/questionbank/QBUpload";
 import QBBrowse from "./pages/questionbank/QBBrowse";
 import QBClassify from "./pages/questionbank/QBClassify";
+import ExamPositionMapper from "./pages/admin/ExamPositionMapper";
 
 function App() {
   return (
@@ -119,6 +120,9 @@ function App() {
         <Route path="/questionbank/upload" element={<QBUpload />} />
         <Route path="/questionbank/browse" element={<QBBrowse />} />
         <Route path="/questionbank/classify" element={<QBClassify />} />
+
+        {/* Exam Position Mapper — admin-only tool */}
+        <Route path="/admin/exam-position-mapper" element={<ExamPositionMapper />} />
 
         {/* Assistant dashboard route */}
         <Route path="/assistant/dashboard" element={

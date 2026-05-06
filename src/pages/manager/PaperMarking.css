@@ -477,3 +477,123 @@
   color: #c2410c;
   cursor: default;
 }
+
+/* ─── DOWNLOAD BUTTON ────────────────────────────────────────────── */
+
+.pm-download-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.pm-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.pm-download-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.pm-download-btn:active {
+  transform: translateY(0);
+}
+
+/* ─── ANNOTATE PANEL ─────────────────────────────────────────────── */
+
+.pm-annotate-panel {
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(99,102,241,0.35);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pm-annotate-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.pm-annotate-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+  padding-top: 2px;
+}
+
+.pm-annotate-header h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.pm-annotate-header p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.pm-annotate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pm-annotate-select {
+  flex: 1;
+  min-width: 200px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  outline: none;
+  cursor: pointer;
+}
+.pm-annotate-select:focus { border-color: #6366f1; }
+.pm-annotate-select option { background: #1e293b; color: #e2e8f0; }
+
+.pm-annotate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.pm-annotate-btn:hover:not(:disabled) { opacity: 0.88; }
+.pm-annotate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pm-annotate-link {
+  font-size: 0.8rem;
+  color: #818cf8;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pm-annotate-link:hover { text-decoration: underline; }
