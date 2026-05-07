@@ -138,7 +138,7 @@ export default function PaperMarking() {
     try {
       const res = await api.post("/marking/mark", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000
+        timeout: 600000
       });
       setResult(res.data);
     } catch (err) {
