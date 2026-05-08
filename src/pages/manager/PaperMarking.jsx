@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -18,6 +18,106 @@ export default function PaperMarking() {
   const [result, setResult] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
+  // Subject selection
+  const [boards,     setBoards]     = useState([]);
+  const [subjects,   setSubjects]   = useState([]);
+  const [selBoard,   setSelBoard]   = useState("");
+  const [selSubject, setSelSubject] = useState("");
+  const [subjectRules,    setSubjectRules]    = useState("");
+  const [editingRules,    setEditingRules]    = useState(false);
+  const [savingRules,     setSavingRules]     = useState(false);
+  const [markingMode, setMarkingMode] = useState("normal");
+
+  // Saved prompts
+  const [savedPrompts,    setSavedPrompts]    = useState([]);
+  const [showPromptPanel, setShowPromptPanel] = useState(false);
+  const [newPromptName,   setNewPromptName]   = useState("");
+  const [newPromptContent,setNewPromptContent]= useState("");
+  const [editingPrompt,   setEditingPrompt]   = useState(null);
+  const [savingPrompt,    setSavingPrompt]    = useState(false);
+
+  // Load boards + prompts on mount
+  useEffect(() => {
+    api.get("/qb/boards").then(r => setBoards(r.data)).catch(() => {});
+    loadPrompts();
+  }, []);
+
+  useEffect(() => {
+    if (!selBoard) { setSubjects([]); setSelSubject(""); setSubjectRules(""); return; }
+    api.get(`/qb/subjects?boardId=${selBoard}`).then(r => setSubjects(r.data)).catch(() => {});
+    setSelSubject(""); setSubjectRules("");
+  }, [selBoard]);
+
+  useEffect(() => {
+    if (!selSubject) { setSubjectRules(""); return; }
+    api.get(`/marking/subject-rules/${selSubject}`)
+      .then(r => setSubjectRules(r.data.markingRules || ""))
+      .catch(() => {});
+  }, [selSubject]);
+
+  const loadPrompts = () => {
+    api.get("/marking/prompts").then(r => setSavedPrompts(r.data)).catch(() => {});
+  };
+
+  // ── SUBJECT RULES ──────────────────────────────────────────
+  const saveSubjectRules = async () => {
+    if (!selSubject) return;
+    setSavingRules(true);
+    try {
+      await api.put(`/marking/subject-rules/${selSubject}`, { markingRules: subjectRules });
+      toast.success("Subject rules saved");
+      setEditingRules(false);
+    } catch {
+      toast.error("Failed to save rules");
+    } finally {
+      setSavingRules(false);
+    }
+  };
+
+  // ── SAVED PROMPTS ──────────────────────────────────────────
+  const saveNewPrompt = async () => {
+    if (!newPromptName.trim() || !newPromptContent.trim()) {
+      return toast.warn("Name and content are required");
+    }
+    setSavingPrompt(true);
+    try {
+      await api.post("/marking/prompts", { name: newPromptName.trim(), content: newPromptContent.trim() });
+      toast.success("Prompt saved");
+      setNewPromptName(""); setNewPromptContent("");
+      loadPrompts();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save");
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const updatePrompt = async (id) => {
+    try {
+      await api.put(`/marking/prompts/${id}`, {
+        name:    editingPrompt.name,
+        content: editingPrompt.content
+      });
+      toast.success("Prompt updated");
+      setEditingPrompt(null);
+      loadPrompts();
+    } catch {
+      toast.error("Failed to update");
+    }
+  };
+
+  const deletePrompt = async (id) => {
+    if (!window.confirm("Delete this prompt?")) return;
+    try {
+      await api.delete(`/marking/prompts/${id}`);
+      toast.success("Deleted");
+      loadPrompts();
+    } catch {
+      toast.error("Failed to delete");
+    }
+  };
+
+  // ── MARK ──────────────────────────────────────────────────
   const handleMark = async () => {
     if (!studentFile) {
       toast.warn("Please upload the student answer PDF");
@@ -29,23 +129,16 @@ export default function PaperMarking() {
       return;
     }
 
-    const maxSize = 10 * 1024 * 1024;
-
-    if (studentFile.size > maxSize) {
-      toast.error("Student PDF is too large. Please compress it to under 10MB.");
-      return;
-    }
-
-    if (markSchemeFile.size > maxSize) {
-      toast.error("Mark scheme PDF is too large. Please compress it to under 10MB.");
-      return;
-    }
+    
+    
 
     const formData = new FormData();
     formData.append("studentPdf", studentFile);
     formData.append("markSchemePdf", markSchemeFile);
-    formData.append("totalGrade", totalGrade);
-    formData.append("guidance", guidance);
+    formData.append("totalGrade",    totalGrade);
+    formData.append("guidance",      guidance);
+    formData.append("markingMode", markingMode);
+    if (selSubject) formData.append("subjectId", selSubject);
 
     setLoading(true);
     setResult(null);
@@ -53,7 +146,7 @@ export default function PaperMarking() {
     try {
       const res = await api.post("/marking/mark", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000
+        timeout: 600000
       });
 
       setResult(res.data);
@@ -133,9 +226,184 @@ export default function PaperMarking() {
           <button className="pm-back" onClick={() => navigate(-1)}>
             ← Back
           </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              className="pm-back"
+              style={{ background: "rgba(57,156,242,0.15)", borderColor: "rgba(57,156,242,0.3)", color: "#399cf2" }}
+              onClick={() => setShowPromptPanel(v => !v)}
+            >
+              📋 Saved Prompts
+            </button>
+            <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>
+          </div>
         </header>
 
-        {/* UPLOAD ROW */}
+        {/* ── SAVED PROMPTS PANEL ── */}
+        {showPromptPanel && (
+          <div className="pm-panel">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>📋 Saved Prompts</h3>
+              <button className="pm-back" onClick={() => setShowPromptPanel(false)}>✕</button>
+            </div>
+
+            {/* Create new */}
+            <div style={{ marginBottom: 20, padding: 16, background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "rgba(255,255,255,0.6)" }}>New Prompt</div>
+              <input
+                className="pm-input"
+                placeholder="Prompt name (e.g. Cambridge Physics Strict)"
+                value={newPromptName}
+                onChange={e => setNewPromptName(e.target.value)}
+                style={{ marginBottom: 8 }}
+              />
+              <textarea
+                className="pm-input pm-textarea"
+                placeholder="Prompt content..."
+                value={newPromptContent}
+                onChange={e => setNewPromptContent(e.target.value)}
+                rows={3}
+                style={{ marginBottom: 8 }}
+              />
+              <button
+                className="pm-mark-btn"
+                onClick={saveNewPrompt}
+                disabled={savingPrompt}
+                style={{ fontSize: 13, padding: "8px 18px" }}
+              >
+                {savingPrompt ? "Saving…" : "💾 Save Prompt"}
+              </button>
+            </div>
+
+            {/* Saved list */}
+            {savedPrompts.length === 0 && (
+              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>No saved prompts yet.</p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {savedPrompts.map(p => (
+                <div key={p._id} style={{ padding: 14, background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
+                  {editingPrompt?._id === p._id ? (
+                    <>
+                      <input
+                        className="pm-input"
+                        value={editingPrompt.name}
+                        onChange={e => setEditingPrompt(prev => ({ ...prev, name: e.target.value }))}
+                        style={{ marginBottom: 8 }}
+                      />
+                      <textarea
+                        className="pm-input pm-textarea"
+                        value={editingPrompt.content}
+                        onChange={e => setEditingPrompt(prev => ({ ...prev, content: e.target.value }))}
+                        rows={3}
+                        style={{ marginBottom: 8 }}
+                      />
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button className="pm-mark-btn" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => updatePrompt(p._id)}>✅ Save</button>
+                        <button className="pm-back" onClick={() => setEditingPrompt(null)}>Cancel</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 10, whiteSpace: "pre-wrap" }}>{p.content}</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="pm-mark-btn"
+                          style={{ fontSize: 12, padding: "6px 14px", background: "#22c55e" }}
+                          onClick={() => { setGuidance(p.content); setShowPromptPanel(false); toast.success(`"${p.name}" applied`); }}
+                        >
+                          ✅ Use This
+                        </button>
+                        <button className="pm-back" style={{ fontSize: 12 }} onClick={() => setEditingPrompt({ _id: p._id, name: p.name, content: p.content })}>✏️ Edit</button>
+                        <button className="pm-back" style={{ fontSize: 12, color: "#ff4d4f", borderColor: "rgba(255,77,79,0.3)" }} onClick={() => deletePrompt(p._id)}>🗑 Delete</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── MODE SELECTOR ── */}
+        <div className="pm-mode-selector">
+          {[
+            { value: "normal",   label: "📋 Normal Marking",   desc: "Marks against the mark scheme using subject rules" },
+            { value: "criteria", label: "🎯 Criteria Marking",  desc: "Marks against custom criteria set in the guidance" }
+          ].map(m => (
+            <div
+              key={m.value}
+              className={`pm-mode-card ${markingMode === m.value ? "pm-mode-card--active" : ""}`}
+              onClick={() => setMarkingMode(m.value)}
+            >
+              <div className="pm-mode-label">{m.label}</div>
+              <div className="pm-mode-desc">{m.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── SUBJECT SELECTION ── */}
+        <div className="pm-panel">
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>📚 Subject (Optional)</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180, flex: 1 }}>
+              <label className="pm-input-label">Board</label>
+              <select className="pm-input" value={selBoard} onChange={e => setSelBoard(e.target.value)}>
+                <option value="">Select board</option>
+                {boards.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180, flex: 1 }}>
+              <label className="pm-input-label">Subject</label>
+              <select className="pm-input" value={selSubject} onChange={e => setSelSubject(e.target.value)} disabled={!selBoard}>
+                <option value="">Select subject</option>
+                {subjects.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Subject rules */}
+          {selSubject && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <label className="pm-input-label">Subject Rules (auto-injected into AI prompt)</label>
+                {!editingRules ? (
+                  <button className="pm-back" style={{ fontSize: 12 }} onClick={() => setEditingRules(true)}>✏️ Edit Rules</button>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="pm-mark-btn" style={{ fontSize: 12, padding: "5px 12px" }} onClick={saveSubjectRules} disabled={savingRules}>
+                      {savingRules ? "Saving…" : "💾 Save"}
+                    </button>
+                    <button className="pm-back" style={{ fontSize: 12 }} onClick={() => setEditingRules(false)}>Cancel</button>
+                  </div>
+                )}
+              </div>
+              {editingRules ? (
+                <textarea
+                  className="pm-input pm-textarea"
+                  value={subjectRules}
+                  onChange={e => setSubjectRules(e.target.value)}
+                  rows={4}
+                  placeholder="e.g. This is Cambridge IGCSE Physics. Always require units in answers. Accept both SI and CGS units..."
+                />
+              ) : (
+                <div style={{
+                  padding: "10px 14px",
+                  background: "rgba(57,156,242,0.06)",
+                  border: "1px solid rgba(57,156,242,0.2)",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: subjectRules ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.25)",
+                  whiteSpace: "pre-wrap",
+                  minHeight: 48
+                }}>
+                  {subjectRules || "No rules set for this subject yet. Click Edit Rules to add."}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── UPLOAD ROW ── */}
         <div className="pm-upload-row">
           <UploadCard
             label="Student Answer Sheet"
@@ -177,7 +445,7 @@ export default function PaperMarking() {
           </div>
         </div>
 
-        {/* INPUTS */}
+        {/* ── INPUTS ── */}
         <div className="pm-inputs-row">
           <div className="pm-input-group">
             <label className="pm-input-label">Maximum Exam Grade</label>
@@ -191,18 +459,54 @@ export default function PaperMarking() {
           </div>
 
           <div className="pm-input-group pm-input-group--wide">
-            <label className="pm-input-label">Guidance for AI (optional)</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <label className="pm-input-label">
+                {markingMode === "criteria"
+                  ? "Criteria * (required — describe how to mark and total marks)"
+                  : "Additional Guidance (optional)"}
+              </label>
+              {savedPrompts.length > 0 && (
+                <select
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 8, padding: "4px 10px", color: "white", fontSize: 12, cursor: "pointer" }}
+                  value=""
+                  onChange={e => { if (e.target.value) setGuidance(e.target.value); }}
+                >
+                  <option value="">📋 Load saved prompt…</option>
+                  {savedPrompts.map(p => (
+                    <option key={p._id} value={p.content}>{p.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
             <textarea
               className="pm-input pm-textarea"
-              placeholder="e.g. Be strict. Award full marks only if units are included. Accept alternative spellings."
+              placeholder={markingMode === "criteria"
+                ? "e.g. Mark this essay out of 20. Award marks for: clarity (5), structure (5), argument (5), evidence (5). Be strict."
+                : "e.g. Be strict. Award full marks only if units are included."
+              }
               value={guidance}
               onChange={(e) => setGuidance(e.target.value)}
               rows={3}
             />
+            {guidance && (
+              <button
+                style={{ marginTop: 6, background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", textAlign: "left" }}
+                onClick={() => {
+                  const name = window.prompt("Save this prompt as:");
+                  if (name?.trim()) {
+                    api.post("/marking/prompts", { name: name.trim(), content: guidance })
+                      .then(() => { toast.success("Prompt saved"); loadPrompts(); })
+                      .catch(err => toast.error(err.response?.data?.message || "Failed to save"));
+                  }
+                }}
+              >
+                💾 Save current as prompt
+              </button>
+            )}
           </div>
         </div>
 
-        {/* LOADING */}
+        {/* ── LOADING ── */}
         {loading && (
           <div className="pm-loading-panel">
             <div className="pm-loading-spinner" />
@@ -211,7 +515,7 @@ export default function PaperMarking() {
           </div>
         )}
 
-        {/* RESULTS */}
+        {/* ── RESULTS ── */}
         {result && !loading && (
           <div className="pm-results">
             {/* DOWNLOAD BUTTON */}
@@ -233,17 +537,10 @@ export default function PaperMarking() {
 
             {/* SCORE HEADER */}
             <div className="pm-score-header">
-              <div
-                className="pm-score-circle"
-                style={{
-                  "--pct": totalPct,
-                  "--color": getScoreColor(result.totalMarks, result.maxTotalMarks)
-                }}
-              >
+              <div className="pm-score-circle" style={{ "--pct": totalPct, "--color": getScoreColor(result.totalMarks, result.maxTotalMarks) }}>
                 <span className="pm-score-num">{result.totalMarks}</span>
                 <span className="pm-score-max">/ {result.maxTotalMarks}</span>
               </div>
-
               <div className="pm-score-info">
                 <h3>
                   {totalPct}% —{" "}
@@ -366,7 +663,6 @@ export default function PaperMarking() {
                       <span className="pm-q-pct">{pct}%</span>
                     </div>
 
-                    {/* CHECKLIST */}
                     {q.checklist && (
                       <div className="pm-checklist">
                         {CHECKLIST_CONFIG.map(({ key, label, passIsGood }) => {
@@ -444,4 +740,4 @@ function UploadCard({ label, icon, file, inputRef, onChange }) {
       )}
     </div>
   );
-}
+} 
