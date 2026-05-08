@@ -7,7 +7,8 @@ import {
   FiClipboard,
   FiFileText,
   FiDownload,
-  FiEye
+  FiEye,
+  FiCpu
 } from "react-icons/fi";
 import "./ManagerSubmissionViewer.css";
 
