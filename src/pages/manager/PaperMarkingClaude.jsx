@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
+import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
 
 export default function PaperMarkingClaude() {
@@ -13,8 +14,9 @@ export default function PaperMarkingClaude() {
   const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [totalGrade,     setTotalGrade]     = useState("");
   const [guidance,       setGuidance]       = useState("");
-  const [loading,        setLoading]        = useState(false);
-  const [result,         setResult]         = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  const [result,      setResult]      = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
   const handleMark = async () => {
     if (!studentFile)    { toast.warn("Please upload the student answer PDF"); return; }
@@ -80,6 +82,31 @@ export default function PaperMarkingClaude() {
       const val = checklist[key];
       return passIsGood ? val === false : val === true;
     });
+  };
+
+  const downloadGradedPDF = async () => {
+    if (!result || !studentFile) return;
+    setDownloading(true);
+    try {
+      const pdfBytes = await annotatePdf({
+        studentFile,
+        questions:     result.questions,
+        totalMarks:    result.totalMarks,
+        maxTotalMarks: result.maxTotalMarks,
+        summary:       result.summary || ""
+      });
+      const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
+      const a   = document.createElement("a");
+      a.href     = url;
+      a.download = studentFile.name.replace(/\.pdf$/i, "") + "_graded.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Marked paper downloaded!");
+    } catch (err) {
+      toast.error(err.message || "Failed to generate marked paper");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -161,6 +188,13 @@ export default function PaperMarkingClaude() {
         {/* RESULTS */}
         {result && !loading && (
           <div className="pm-results">
+
+            {/* DOWNLOAD BUTTON */}
+            <div className="pm-download-row">
+              <button className="pm-download-btn" onClick={downloadGradedPDF} disabled={downloading}>
+                {downloading ? <><span className="pm-spinner" /> Generating…</> : "⬇ Download Marked Paper"}
+              </button>
+            </div>
 
             {/* SCORE HEADER */}
             <div className="pm-score-header">
