@@ -596,4 +596,8 @@
   text-decoration: none;
   white-space: nowrap;
 }
+<<<<<<< Updated upstream
 .pm-annotate-link:hover { text-decoration: underline; }
+=======
+.pm-annotate-link:hover { text-decoration: underline; }
+>>>>>>> Stashed changes

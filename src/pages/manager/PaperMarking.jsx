@@ -123,9 +123,27 @@ export default function PaperMarking() {
       toast.warn("Please upload the student answer PDF");
       return;
     }
+<<<<<<< Updated upstream
 
     if (!markSchemeFile) {
       toast.warn("Please upload the mark scheme PDF");
+=======
+
+    if (!markSchemeFile) {
+      toast.warn("Please upload the mark scheme PDF");
+      return;
+    }
+
+    const maxSize = 10 * 1024 * 1024;
+
+    if (studentFile.size > maxSize) {
+      toast.error("Student PDF is too large. Please compress it to under 10MB.");
+      return;
+    }
+
+    if (markSchemeFile.size > maxSize) {
+      toast.error("Mark scheme PDF is too large. Please compress it to under 10MB.");
+>>>>>>> Stashed changes
       return;
     }
 
@@ -135,10 +153,15 @@ export default function PaperMarking() {
     const formData = new FormData();
     formData.append("studentPdf", studentFile);
     formData.append("markSchemePdf", markSchemeFile);
+<<<<<<< Updated upstream
     formData.append("totalGrade",    totalGrade);
     formData.append("guidance",      guidance);
     formData.append("markingMode", markingMode);
     if (selSubject) formData.append("subjectId", selSubject);
+=======
+    formData.append("totalGrade", totalGrade);
+    formData.append("guidance", guidance);
+>>>>>>> Stashed changes
 
     setLoading(true);
     setResult(null);
@@ -226,6 +249,7 @@ export default function PaperMarking() {
           <button className="pm-back" onClick={() => navigate(-1)}>
             ← Back
           </button>
+<<<<<<< Updated upstream
           <div style={{ display: "flex", gap: 10 }}>
             <button
               className="pm-back"
@@ -236,6 +260,8 @@ export default function PaperMarking() {
             </button>
             <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>
           </div>
+=======
+>>>>>>> Stashed changes
         </header>
 
         {/* ── SAVED PROMPTS PANEL ── */}
