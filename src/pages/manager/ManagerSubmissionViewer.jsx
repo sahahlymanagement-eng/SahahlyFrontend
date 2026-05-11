@@ -55,11 +55,17 @@ export default function ManagerSubmissionViewer() {
   const [downloading,      setDownloading]      = useState(false);
   const [returning,        setReturning]        = useState(false);
 
-  // Compute effective max total — for criteria mode use sum of question maxMarks
+  // Compute effective max total
   const effectiveMaxTotal = resultModal
     ? (resultModal.result.markingMode === "criteria"
-        ? editingQuestions.reduce((s, q) => s + (q.maxMarks || 0), 0)
+        ? (resultModal.result.criteriaGrade?.maxTotalMarks || 10)
         : resultModal.result.maxTotalMarks)
+    : 0;
+
+  const effectiveTotal = resultModal
+    ? (resultModal.result.markingMode === "criteria"
+        ? (resultModal.result.criteriaGrade?.totalMarks || 0)
+        : editingQuestions.reduce((s, q) => s + q.marksAwarded, 0))
     : 0;
 
   useEffect(() => {
@@ -78,7 +84,6 @@ export default function ManagerSubmissionViewer() {
       .catch(() => {});
   }, [user]);
 
-  // Close prompt dropdown on outside click
   useEffect(() => {
     if (!promptDropdownOpen) return;
     const close = () => setPromptDropdownOpen(false);
@@ -117,7 +122,6 @@ export default function ManagerSubmissionViewer() {
     finally   { setLoadingStudents(false); }
   };
 
-  // ── MARK SCHEME UPLOAD ───────────────────────────────────────
   const handleMsUpload = async (file) => {
     if (!file || !selectedAssignment) return;
     setUploadingMs(true);
@@ -142,7 +146,6 @@ export default function ManagerSubmissionViewer() {
     setPromptDropdownOpen(false);
   };
 
-  // ── RUN MARKING ──────────────────────────────────────────────
   const runMarkStudent = async (student, guidanceText, mode = "normal") => {
     setMarkingStudentId(student.submissionId);
     try {
@@ -163,7 +166,7 @@ export default function ManagerSubmissionViewer() {
       fd.append("studentPdf",    studentFile);
       fd.append("markSchemePdf", msFile);
       fd.append("markingMode",   mode);
-      if (guidanceText?.trim())        fd.append("guidance",   guidanceText.trim());
+      if (guidanceText?.trim())         fd.append("guidance",   guidanceText.trim());
       if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
 
       const res = await api.post("/marking/mark", fd, {
@@ -209,7 +212,7 @@ export default function ManagerSubmissionViewer() {
         fd.append("studentPdf",    studentFile);
         fd.append("markSchemePdf", msFile);
         fd.append("markingMode",   mode);
-        if (guidanceText?.trim())        fd.append("guidance",   guidanceText.trim());
+        if (guidanceText?.trim())         fd.append("guidance",   guidanceText.trim());
         if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
 
         const res = await api.post("/marking/mark", fd, {
@@ -242,7 +245,6 @@ export default function ManagerSubmissionViewer() {
     }
   };
 
-  // ── DOWNLOAD GRADED PDF ──────────────────────────────────────
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
     setDownloading(true);
@@ -251,7 +253,7 @@ export default function ManagerSubmissionViewer() {
       const pdfBytes = await annotatePdf({
         studentFile:   resultModal.studentFile,
         questions:     editingQuestions,
-        totalMarks,
+        totalMarks:    effectiveTotal,
         maxTotalMarks: effectiveMaxTotal,
         summary:       resultModal.result.summary || ""
       });
@@ -267,25 +269,23 @@ export default function ManagerSubmissionViewer() {
     } finally { setDownloading(false); }
   };
 
-  // ── RETURN TO STUDENT ────────────────────────────────────────
   const returnToStudent = async () => {
     if (!resultModal) return;
     setReturning(true);
     try {
-      const totalMarks    = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-      const maxTotalMarks = effectiveMaxTotal;
       const pdfBytes = await annotatePdf({
-        studentFile: resultModal.studentFile,
-        questions:   editingQuestions,
-        totalMarks, maxTotalMarks,
-        summary:     resultModal.result.summary || ""
+        studentFile:   resultModal.studentFile,
+        questions:     editingQuestions,
+        totalMarks:    effectiveTotal,
+        maxTotalMarks: effectiveMaxTotal,
+        summary:       resultModal.result.summary || ""
       });
       const fd = new FormData();
       fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
       fd.append("assignmentId",  selectedAssignment._id);
       fd.append("submissionId",  resultModal.student.submissionId);
-      fd.append("totalMarks",    totalMarks);
-      fd.append("maxTotalMarks", maxTotalMarks);
+      fd.append("totalMarks",    effectiveTotal);
+      fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -348,6 +348,8 @@ export default function ManagerSubmissionViewer() {
   };
 
   if (!user) return null;
+
+  const isCriteria = resultModal?.result?.markingMode === "criteria";
 
   return (
     <div className="ma-root">
@@ -417,8 +419,6 @@ export default function ManagerSubmissionViewer() {
                 </div>
               ) : (
                 <div className="ma-panel">
-
-                  {/* Mark scheme bar */}
                   <div className="msv-ms-bar">
                     <div className="msv-ms-info">
                       <div className="msv-ms-title">📋 Mark Scheme</div>
@@ -551,7 +551,7 @@ export default function ManagerSubmissionViewer() {
                 <div style={{ display: "flex", gap: 10 }}>
                   {[
                     { value: "normal",   label: "📋 Normal Marking",  desc: "Marks against the mark scheme" },
-                    { value: "criteria", label: "🎯 Criteria Marking", desc: "Marks against custom criteria" }
+                    { value: "criteria", label: "🎯 Criteria Marking", desc: "Two-layer: corrections + criteria grade" }
                   ].map(m => (
                     <div
                       key={m.value}
@@ -581,7 +581,6 @@ export default function ManagerSubmissionViewer() {
                       background: "rgba(255,255,255,0.04)", color: guidance ? "white" : "rgba(255,255,255,0.35)",
                       fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
                       justifyContent: "space-between", userSelect: "none",
-                      boxShadow: promptDropdownOpen ? "0 0 0 3px rgba(57,156,242,0.12)" : "none",
                       transition: "all 0.18s ease"
                     }}
                     onClick={e => { e.stopPropagation(); setPromptDropdownOpen(v => !v); }}
@@ -608,19 +607,18 @@ export default function ManagerSubmissionViewer() {
                 </div>
               )}
 
-              {/* Guidance textarea */}
               <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
                 {markingModeModal === "criteria"
-                  ? <><span style={{ color: "#e2e8f0" }}>Criteria</span> <span style={{ color: "#ef4444" }}>*</span> — describe how to mark and total marks</>
+                  ? <><span style={{ color: "#e2e8f0" }}>Criteria</span> <span style={{ color: "#ef4444" }}>*</span> — define the grading criteria and weights</>
                   : <>Additional Guidance <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span></>
                 }
               </label>
               <textarea
                 value={guidance}
                 onChange={e => setGuidance(e.target.value)}
-                rows={5}
+                rows={6}
                 placeholder={markingModeModal === "criteria"
-                  ? "e.g. Mark out of 20. Q1 (5 marks): award for correct identification. Q2 (10 marks): award for explanation..."
+                  ? "Define criteria e.g:\nOn-Time Submission: 2 marks — full marks if submitted on time\nCompleteness: 2 marks — all questions attempted\nShowing Steps: 2 marks — working shown\nSelf-Correction: 2 marks — evidence of review\nBase Score: 2 marks — guaranteed minimum"
                   : "e.g. Be strict with units. Award method marks if working is shown..."
                 }
                 style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
@@ -649,22 +647,21 @@ export default function ManagerSubmissionViewer() {
           <div className="msv-results-modal" onClick={e => e.stopPropagation()}>
             <div className="msv-modal-header">
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   AI Marking Results — {resultModal.student.name}
-                  {resultModal.result.markingMode && (
-                    <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
-                      background: resultModal.result.markingMode === "criteria" ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
-                      color: resultModal.result.markingMode === "criteria" ? "#a78bfa" : "#399cf2",
-                      border: `1px solid ${resultModal.result.markingMode === "criteria" ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`
-                    }}>
-                      {resultModal.result.markingMode === "criteria" ? "🎯 Criteria" : "📋 Normal"}
-                    </span>
-                  )}
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
+                    background: isCriteria ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
+                    color: isCriteria ? "#a78bfa" : "#399cf2",
+                    border: `1px solid ${isCriteria ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`
+                  }}>
+                    {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
+                  </span>
                 </div>
                 <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                  {editingQuestions.reduce((s, q) => s + q.marksAwarded, 0)} / {effectiveMaxTotal} marks
+                  Final Grade: {effectiveTotal} / {effectiveMaxTotal}
                   &nbsp;·&nbsp;
-                  {effectiveMaxTotal > 0 ? Math.round((editingQuestions.reduce((s, q) => s + q.marksAwarded, 0) / effectiveMaxTotal) * 100) : 0}%
+                  {effectiveMaxTotal > 0 ? Math.round((effectiveTotal / effectiveMaxTotal) * 100) : 0}%
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -680,54 +677,128 @@ export default function ManagerSubmissionViewer() {
 
             <div className="msv-modal-body">
 
-              {/* Summary */}
-              {resultModal.result.summary && (
-                <div className="msv-summary-box">
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
+              {/* ── TOKEN USAGE ── */}
+              {resultModal.result.tokenUsage && (
+                <div style={{ display: "flex", gap: 16, marginBottom: 18, padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginRight: 4, alignSelf: "center" }}>🔢 Tokens:</div>
+                  {[
+                    { label: "Input",  value: resultModal.result.tokenUsage.inputTokens  },
+                    { label: "Output", value: resultModal.result.tokenUsage.outputTokens },
+                    { label: "Total",  value: resultModal.result.tokenUsage.totalTokens  },
+                  ].map(t => (
+                    <div key={t.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{t.label}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{t.value?.toLocaleString()}</span>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* Score bar */}
-              <div className="msv-score-bar">
-                {(() => {
-                  const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-                  const max   = effectiveMaxTotal;
-                  const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
-                  const color = getScoreColor(total, max);
-                  return (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>Total Score</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color }}>{total} / {max} ({pct}%)</span>
-                      </div>
-                      <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
-                        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
+              {/* ── CRITERIA MODE: show criteria grade first ── */}
+              {isCriteria && resultModal.result.criteriaGrade && (
+                <div style={{ marginBottom: 20 }}>
+                  {/* Final grade card */}
+                  <div style={{ padding: "16px 20px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 12, marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(139,92,246,0.8)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
+                    {(() => {
+                      const cg    = resultModal.result.criteriaGrade;
+                      const total = cg.totalMarks || 0;
+                      const max   = cg.maxTotalMarks || 10;
+                      const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+                      const color = getScoreColor(total, max);
+                      return (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{total}</div>
+                            <div style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/ {max}</div>
+                            <div style={{ flex: 1, minWidth: 100 }}>
+                              <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                                <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
+                              </div>
+                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>{pct}%</div>
+                            </div>
+                          </div>
+                          {/* Criteria breakdown table */}
+                          {cg.breakdown?.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              {cg.breakdown.map((row, i) => (
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, flexWrap: "wrap" }}>
+                                  <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>{row.criterion}</div>
+                                  <div style={{ fontWeight: 700, fontSize: 13, color: getScoreColor(row.marksAwarded, row.maxMarks), minWidth: 60 }}>
+                                    {row.marksAwarded} / {row.maxMarks}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", flex: 1 }}>{row.reason}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {cg.summary && (
+                            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
 
-              {/* Confirm edits notice */}
-              {editingQuestions.some((q, idx) => q.marksAwarded !== resultModal.result.questions[idx]?.marksAwarded) && (
-                <div style={{ padding: "10px 16px", marginBottom: 16, borderRadius: 10, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — download or return to apply them</span>
-                  <button
-                    className="ma-send-btn"
-                    style={{ fontSize: 12, padding: "6px 14px", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b" }}
-                    onClick={() => {
+                  {/* Divider */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                    <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
+                    <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                  </div>
+                </div>
+              )}
+
+              {/* ── NORMAL MODE: summary + score bar ── */}
+              {!isCriteria && (
+                <>
+                  {resultModal.result.summary && (
+                    <div className="msv-summary-box">
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
+                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
+                    </div>
+                  )}
+                  <div className="msv-score-bar">
+                    {(() => {
                       const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-                      setResultModal(prev => ({ ...prev, result: { ...prev.result, totalMarks: total } }));
-                      toast.success(`Grades confirmed — total: ${total}/${effectiveMaxTotal}`);
-                    }}
-                  >
-                    ✅ Confirm Edits
-                  </button>
-                </div>
+                      const max   = effectiveMaxTotal;
+                      const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+                      const color = getScoreColor(total, max);
+                      return (
+                        <>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>Total Score</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color }}>{total} / {max} ({pct}%)</span>
+                          </div>
+                          <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                            <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Confirm edits notice for normal mode */}
+                  {editingQuestions.some((q, idx) => q.marksAwarded !== resultModal.result.questions[idx]?.marksAwarded) && (
+                    <div style={{ padding: "10px 16px", marginBottom: 16, borderRadius: 10, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — download or return to apply them</span>
+                      <button
+                        className="ma-send-btn"
+                        style={{ fontSize: 12, padding: "6px 14px", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b" }}
+                        onClick={() => {
+                          const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+                          setResultModal(prev => ({ ...prev, result: { ...prev.result, totalMarks: total } }));
+                          toast.success(`Grades confirmed — total: ${total}/${effectiveMaxTotal}`);
+                        }}
+                      >
+                        ✅ Confirm Edits
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
-              {/* Questions */}
+              {/* ── QUESTIONS (both modes) ── */}
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {editingQuestions.map((q, idx) => {
                   const color = getScoreColor(q.marksAwarded, q.maxMarks);
@@ -736,15 +807,22 @@ export default function ManagerSubmissionViewer() {
                     <div key={idx} className="msv-q-card">
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 14, fontWeight: 700 }}>Q{q.questionNumber}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="number" min={0} max={q.maxMarks}
-                            value={q.marksAwarded}
-                            onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(q.maxMarks, Math.max(0, Number(e.target.value))) } : x))}
-                            style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
-                          />
-                          <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/ {q.maxMarks}</span>
-                        </div>
+                        {/* In criteria mode, scores are read-only feedback */}
+                        {isCriteria ? (
+                          <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 13 }}>
+                            {q.marksAwarded} / {q.maxMarks}
+                          </span>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="number" min={0} max={q.maxMarks}
+                              value={q.marksAwarded}
+                              onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(q.maxMarks, Math.max(0, Number(e.target.value))) } : x))}
+                              style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
+                            />
+                            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/ {q.maxMarks}</span>
+                          </div>
+                        )}
                         <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
                           <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3 }} />
                         </div>
@@ -766,21 +844,34 @@ export default function ManagerSubmissionViewer() {
                       )}
 
                       {q.studentAnswer && q.studentAnswer !== "Not attempted" && (
-                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
                           <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
                         </div>
                       )}
                       {q.studentAnswer === "Not attempted" && (
-                        <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 8 }}>📭 Not attempted</div>
+                        <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 6 }}>📭 Not attempted</div>
                       )}
 
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Examiner Note</div>
-                      <textarea
-                        value={q.reason}
-                        onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
-                        rows={3}
-                        style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
-                      />
+                      {/* Correct answer — shown in criteria mode */}
+                      {isCriteria && q.correctAnswer && (
+                        <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
+                          <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        {isCriteria ? "Comment" : "Examiner Note"}
+                      </div>
+                      {isCriteria ? (
+                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
+                      ) : (
+                        <textarea
+                          value={q.reason}
+                          onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
+                          rows={3}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                        />
+                      )}
                     </div>
                   );
                 })}
