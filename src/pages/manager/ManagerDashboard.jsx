@@ -12,6 +12,7 @@ import {
   FiUser, FiUsers, FiBookOpen, FiClock, FiCheckCircle,
   FiAlertTriangle, FiZap,FiClipboard,FiFileText
 } from "react-icons/fi";
+import ManagerSidebar from "../../components/ManagerSidebar";
 
 const ALL_STATUSES = [
   "UNASSIGNED","ASSIGNED","IN_REVIEW","RECHECK_BY_ASSISTANT",
@@ -276,52 +277,7 @@ const toggleRow = (id) => {
 
   return (
     <div className="md-root">
-
-      {/* SIDEBAR */}
-        <aside className={`ms-sidebar ${sidebarCollapsed ? "ms-sidebar--collapsed" : ""}`}>
-          <div className="ms-sidebar-top">
-            <div className="ms-sidebar-brand">
-              {!sidebarCollapsed && <span className="ms-brand-text">Manager</span>}
-              <button className="ms-sidebar-toggle" onClick={() => setSidebarCollapsed(v => !v)}>
-                {sidebarCollapsed ? <FiMenu size={18} /> : <FiX size={18} />}
-              </button>
-            </div>
-            {!sidebarCollapsed && (
-              <div className="ms-user-card">
-                <div className="ms-user-avatar">{user.name?.charAt(0).toUpperCase()}</div>
-                <div className="ms-user-info">
-                  <span className="ms-user-name">{user.name}</span>
-                  <span className="ms-user-role">Manager</span>
-                </div>
-              </div>
-            )}
-            {sidebarCollapsed && (
-              <div className="ms-user-avatar ms-user-avatar--solo">{user.name?.charAt(0).toUpperCase()}</div>
-            )}
-          </div>
-
-          <nav className="ms-sidebar-nav">
-            {navItems.map(item => (
-              <div
-                key={item.label}
-                className={`ms-nav-item ${item.active ? "ms-nav-item--active" : ""}`}
-                onClick={() => item.path && navigate(item.path)}
-              >
-                <span className="ms-nav-icon">{item.icon}</span>
-                {!sidebarCollapsed && <span className="ms-nav-label">{item.label}</span>}
-                {!sidebarCollapsed && item.active && <FiChevronRight className="ms-nav-arrow" size={14} />}
-              </div>
-            ))}
-          </nav>
-
-          <div className="ms-sidebar-bottom">
-            <button className="ms-logout-btn" onClick={handleLogout}>
-              <FiLogOut size={16} />
-              {!sidebarCollapsed && <span>Logout</span>}
-            </button>
-          </div>
-        </aside>
-
+      <ManagerSidebar />
       {/* MAIN */}
       <main className="md-main">
 

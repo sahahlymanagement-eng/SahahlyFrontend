@@ -8,6 +8,8 @@ import {
   FiUploadCloud, FiX, FiChevronRight, FiMenu, FiLogOut,
   FiCalendar, FiSend
 } from "react-icons/fi";
+import ManagerSidebar from "../../components/ManagerSidebar";
+
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -52,6 +54,9 @@ export default function ManagerSubmissionViewer() {
   const [editingQuestions, setEditingQuestions] = useState([]);
   const [downloading,      setDownloading]      = useState(false);
   const [returning,        setReturning]        = useState(false);
+  // Add this state at the top with other states
+  const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
+
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -334,49 +339,7 @@ export default function ManagerSubmissionViewer() {
 
   return (
     <div className="ma-root">
-
-      {/* ── SIDEBAR ── */}
-      <aside className={`ma-sidebar ${sidebarCollapsed ? "ma-sidebar--collapsed" : ""}`}>
-        <div className="ma-sidebar-top">
-          <div className="ma-sidebar-brand">
-            {!sidebarCollapsed && <span className="ma-brand-text">Manager</span>}
-            <button className="ma-sidebar-toggle" onClick={() => setSidebarCollapsed(v => !v)}>
-              {sidebarCollapsed ? <FiMenu size={18} /> : <FiX size={18} />}
-            </button>
-          </div>
-          {!sidebarCollapsed && (
-            <div className="ma-user-card">
-              <div className="ma-user-avatar">{user.name?.charAt(0).toUpperCase()}</div>
-              <div className="ma-user-info">
-                <span className="ma-user-name">{user.name}</span>
-                <span className="ma-user-role">Manager</span>
-              </div>
-            </div>
-          )}
-          {sidebarCollapsed && (
-            <div className="ma-user-avatar ma-user-avatar--solo">{user.name?.charAt(0).toUpperCase()}</div>
-          )}
-        </div>
-        <nav className="ma-sidebar-nav">
-          {navItems.map(item => (
-            <div
-              key={item.label}
-              className={`ma-nav-item ${item.active ? "ma-nav-item--active" : ""}`}
-              onClick={() => item.path && navigate(item.path)}
-            >
-              <span className="ma-nav-icon">{item.icon}</span>
-              {!sidebarCollapsed && <span className="ma-nav-label">{item.label}</span>}
-              {!sidebarCollapsed && item.active && <FiChevronRight className="ma-nav-arrow" size={14} />}
-            </div>
-          ))}
-        </nav>
-        <div className="ma-sidebar-bottom">
-          <button className="ma-logout-btn" onClick={() => { localStorage.removeItem("user"); localStorage.removeItem("token"); navigate("/login"); }}>
-            <FiLogOut size={16} />
-            {!sidebarCollapsed && <span>Logout</span>}
-          </button>
-        </div>
-      </aside>
+        <ManagerSidebar />      
 
       {/* ── MAIN ── */}
       <main className="ma-main">
@@ -571,19 +534,76 @@ export default function ManagerSubmissionViewer() {
             <div style={{ padding: "20px 24px" }}>
               {/* Load saved prompt */}
               {savedPrompts.length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
-                  <select
-                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "white", fontSize: 13 }}
-                    value=""
-                    onChange={e => { if (e.target.value) setGuidance(e.target.value); }}
+                <div style={{ marginBottom: 14, position: "relative" }}>
+                  <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+                    Load saved prompt
+                  </label>
+                  <div
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      border: `1px solid ${promptDropdownOpen ? "rgba(57,156,242,0.5)" : "rgba(255,255,255,0.1)"}`,
+                      background: "rgba(255,255,255,0.04)", color: guidance ? "white" : "rgba(255,255,255,0.35)",
+                      fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
+                      justifyContent: "space-between", userSelect: "none",
+                      boxShadow: promptDropdownOpen ? "0 0 0 3px rgba(57,156,242,0.12)" : "none",
+                      transition: "all 0.18s ease"
+                    }}
+                    onClick={() => setPromptDropdownOpen(v => !v)}
                   >
-                    <option value="">📋 Select a saved prompt…</option>
-                    {savedPrompts.map(p => <option key={p._id} value={p.content}>{p.name}</option>)}
-                  </select>
+                    <span>
+                      {guidance
+                        ? (savedPrompts.find(p => p.content === guidance)?.name || "📋 Custom guidance entered")
+                        : "📋 Select a saved prompt…"}
+                    </span>
+                    <span style={{
+                      fontSize: 10, color: "rgba(255,255,255,0.3)",
+                      transform: promptDropdownOpen ? "rotate(180deg)" : "none",
+                      transition: "transform 0.2s ease"
+                    }}>▼</span>
+                  </div>
+
+                  {promptDropdownOpen && (
+                    <div style={{
+                      position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
+                      background: "#060f2e", border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: 10, zIndex: 100, overflow: "hidden",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                      animation: "ma-fade-up 0.15s ease"
+                    }}>
+                      {savedPrompts.map((p, i) => (
+                        <div
+                          key={p._id}
+                          onClick={() => {
+                            setGuidance(p.content);
+                            setPromptDropdownOpen(false);
+                          }}
+                          style={{
+                            padding: "10px 14px",
+                            cursor: "pointer",
+                            borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                            transition: "background 0.15s ease",
+                            background: guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent"
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                          onMouseLeave={e => e.currentTarget.style.background = guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent"}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 600, color: guidance === p.content ? "#399cf2" : "#e2e8f0", marginBottom: 3 }}>
+                            {guidance === p.content && "✓ "}{p.name}
+                          </div>
+                          <div style={{
+                            fontSize: 11, color: "rgba(255,255,255,0.35)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            maxWidth: "100%"
+                          }}>
+                            {p.content.slice(0, 80)}{p.content.length > 80 ? "…" : ""}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-
+              
               {/* Guidance textarea */}
               <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
                 Additional Guidance <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span>

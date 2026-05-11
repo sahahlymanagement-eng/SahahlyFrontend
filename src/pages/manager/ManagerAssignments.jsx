@@ -11,6 +11,9 @@ import {
   FiCheckSquare, FiCalendar, FiMessageSquare
 } from "react-icons/fi";
 
+import ManagerSidebar from "../../components/ManagerSidebar";
+
+
 export default function ManagerAssignments() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -320,50 +323,8 @@ export default function ManagerAssignments() {
   return (
     <div className="ma-root">
 
-      {/* SIDEBAR */}
-      <aside className={`ma-sidebar ${sidebarCollapsed ? "ma-sidebar--collapsed" : ""}`}>
-        <div className="ma-sidebar-top">
-          <div className="ma-sidebar-brand">
-            {!sidebarCollapsed && <span className="ma-brand-text">Manager</span>}
-            <button className="ma-sidebar-toggle" onClick={() => setSidebarCollapsed(v => !v)}>
-              {sidebarCollapsed ? <FiMenu size={18} /> : <FiX size={18} />}
-            </button>
-          </div>
-          {!sidebarCollapsed && (
-            <div className="ma-user-card">
-              <div className="ma-user-avatar">{user.name?.charAt(0).toUpperCase()}</div>
-              <div className="ma-user-info">
-                <span className="ma-user-name">{user.name}</span>
-                <span className="ma-user-role">Manager</span>
-              </div>
-            </div>
-          )}
-          {sidebarCollapsed && (
-            <div className="ma-user-avatar ma-user-avatar--solo">{user.name?.charAt(0).toUpperCase()}</div>
-          )}
-        </div>
-
-        <nav className="ma-sidebar-nav">
-          {navItems.map(item => (
-            <div
-              key={item.label}
-              className={`ma-nav-item ${item.active ? "ma-nav-item--active" : ""}`}
-              onClick={() => item.path && navigate(item.path)}
-            >
-              <span className="ma-nav-icon">{item.icon}</span>
-              {!sidebarCollapsed && <span className="ma-nav-label">{item.label}</span>}
-              {!sidebarCollapsed && item.active && <FiChevronRight className="ma-nav-arrow" size={14} />}
-            </div>
-          ))}
-        </nav>
-
-        <div className="ma-sidebar-bottom">
-          <button className="ma-logout-btn" onClick={handleLogout}>
-            <FiLogOut size={16} />
-            {!sidebarCollapsed && <span>Logout</span>}
-          </button>
-        </div>
-      </aside>
+    <ManagerSidebar />
+    
 
       {/* MAIN */}
       <main className="ma-main">
