@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import {
-  FiHome, FiUsers, FiClipboard, FiFileText,
+  FiHome, FiUsers, FiClipboard, FiFileText, FiBookOpen,
   FiZap, FiEye, FiMenu, FiX, FiChevronRight, FiLogOut
 } from "react-icons/fi";
 import "./ManagerSidebar.css";
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { icon: <FiFileText />,  label: "Gemini AI Marking",   path: "/manager/marking"        },
   { icon: <FiFileText />,  label: "Claude AI Marking",   path: "/manager/markingclaude"  },
   { icon: <FiZap />,       label: "Question Bank",       path: "/questionbank/manage"    },
+  { icon: <FiBookOpen />,  label: "Course Management",   path: "/manager/google-classroom" },
 ];
 
 export default function ManagerSidebar() {

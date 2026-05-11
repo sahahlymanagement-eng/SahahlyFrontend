@@ -50,7 +50,7 @@ import QBManage from "./pages/questionbank/QBManage";
 import QBUpload from "./pages/questionbank/QBUpload";
 import QBBrowse from "./pages/questionbank/QBBrowse";
 import QBClassify from "./pages/questionbank/QBClassify";
-// import ExamPositionMapper from "./pages/admin/ExamPositionMapper";
+import ExamPositionMapper from "./pages/admin/ExamPositionMapper";
 
 import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
 import CoursesList from "./pages/manager/CourseManagment/CourseList";
