@@ -55,6 +55,7 @@ import QBClassify from "./pages/questionbank/QBClassify";
 import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
 import CoursesList from "./pages/manager/CourseManagment/CourseList";
 import CourseWork from "./pages/manager/CourseManagment/CourseWork";
+import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
 
 function App() {
   return (
@@ -214,6 +215,14 @@ function App() {
             <CourseWork />
           </RoleProtectedRoute>}
         />
+
+        <Route
+          path="/manager/submission/:courseId/:courseWorkId/:submissionId" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <SubmissionActions />
+          </RoleProtectedRoute>}
+        />
+
 
         {/* Quality Team dashboard route */}
         <Route path="/quality-team/dashboard" element={
