@@ -1,4 +1,6 @@
+
 import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import api from "../../../api/api";
 import { toast } from "react-toastify";
@@ -45,6 +47,7 @@ export default function Coursework() {
 
     if (!isUngraded && (maxPoints === "" || Number(maxPoints) <= 0)) {
       return toast.warn("Valid max points required or select ungraded");
+
     }
 
     setLoading(true);
@@ -54,8 +57,7 @@ export default function Coursework() {
         courseId,
         courseworkData: {
           title,
-          description,
-          
+          description, 
           isUngraded,
 
           // grading
@@ -84,7 +86,6 @@ export default function Coursework() {
       });
 
       toast.success("Coursework created successfully");
-
       // reset form
       setTitle("");
       setDescription("");
