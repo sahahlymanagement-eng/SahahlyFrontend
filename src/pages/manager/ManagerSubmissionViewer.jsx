@@ -171,7 +171,7 @@ export default function ManagerSubmissionViewer() {
         timeout: 600000
       });
 
-      setResultModal({ student, result: res.data, studentFile });
+      setResultModal({ student, result: res.data, studentFile }); 
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
     } catch (err) {
       toast.error(err.response?.data?.message || "Marking failed");
@@ -685,6 +685,39 @@ export default function ManagerSubmissionViewer() {
                 <div className="msv-summary-box">
                   <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
+                </div>
+              )}
+
+                {/* AI TOKEN USAGE*/}
+              {resultModal.result.tokenUsage && (
+                <div className="msv-summary-box" style={{ marginTop: 12 }}>
+                  <div style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "rgba(255,255,255,0.5)",
+                    marginBottom: 6,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em"
+                  }}>
+                    AI Token Usage
+                  </div>
+
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: "#399cf2", fontWeight: 700 }}>Input:</span>{" "}
+                      {resultModal.result.tokenUsage.inputTokens}
+                    </div>
+
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: "#22c55e", fontWeight: 700 }}>Output:</span>{" "}
+                      {resultModal.result.tokenUsage.outputTokens}
+                    </div>
+
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
+                      {resultModal.result.tokenUsage.totalTokens}
+                    </div>
+                  </div>
                 </div>
               )}
 
