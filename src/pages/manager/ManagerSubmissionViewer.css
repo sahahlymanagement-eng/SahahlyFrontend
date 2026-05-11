@@ -179,3 +179,108 @@
   animation: ma-spin 0.7s linear infinite;
   display: inline-block;
 }
+
+/* ── MISSING BUTTON CLASSES ── */
+.ma-sidebar-toggle {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #94a3b8;
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+.ma-sidebar-toggle:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+/* ── FIX SEND BTN FLEX ── */
+.ma-send-btn {
+  display: flex !important;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ── FIX PANEL HEADER ALIGNMENT ── */
+.ma-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ── FIX TABLE ACTION COLUMN ── */
+.ma-table td:last-child {
+  white-space: nowrap;
+}
+
+/* ── MARK ALL BUTTON FIX ── */
+.msv-btn-ai {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── MS BAR BUTTON ALIGNMENT ── */
+.msv-ms-bar .ma-send-btn,
+.msv-ms-bar .msv-btn-ai {
+  flex-shrink: 0;
+}
+
+/* ── RESULTS MODAL HEADER BUTTON ROW ── */
+.msv-modal-header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── LOGOUT BTN IN MODAL ── */
+.ma-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.18);
+  border-radius: 10px;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+}
+.ma-logout-btn:hover {
+  background: rgba(239,68,68,0.18);
+  border-color: rgba(239,68,68,0.4);
+  color: #fecaca;
+}
+
+.msv-icon-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #94a3b8;
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+.msv-icon-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+.msv-cancel-btn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 18px;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.18);
+  border-radius: 10px;
+  color: #fca5a5; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s ease;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+}
+.msv-cancel-btn:hover { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.4); color: #fecaca; }
