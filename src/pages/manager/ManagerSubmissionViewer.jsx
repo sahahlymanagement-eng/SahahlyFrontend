@@ -174,7 +174,7 @@ export default function ManagerSubmissionViewer() {
         timeout: 600000
       });
 
-      setResultModal({ student, result: res.data, studentFile });
+      setResultModal({ student, result: res.data, studentFile }); 
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
     } catch (err) {
       toast.error(err.response?.data?.message || "Marking failed");
@@ -693,6 +693,60 @@ export default function ManagerSubmissionViewer() {
                   ))}
                 </div>
               )}
+
+                {/* AI TOKEN USAGE*/}
+              {resultModal.result.tokenUsage && (
+                <div className="msv-summary-box" style={{ marginTop: 12 }}>
+                  <div style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "rgba(255,255,255,0.5)",
+                    marginBottom: 6,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em"
+                  }}>
+                    AI Token Usage
+                  </div>
+
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: "#399cf2", fontWeight: 700 }}>Input:</span>{" "}
+                      {resultModal.result.tokenUsage.inputTokens}
+                    </div>
+
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: "#22c55e", fontWeight: 700 }}>Output:</span>{" "}
+                      {resultModal.result.tokenUsage.outputTokens}
+                    </div>
+
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
+                      {resultModal.result.tokenUsage.totalTokens}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Score bar */}
+              <div className="msv-score-bar">
+                {(() => {
+                  const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+                  const max   = effectiveMaxTotal;
+                  const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+                  const color = getScoreColor(total, max);
+                  return (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>Total Score</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color }}>{total} / {max} ({pct}%)</span>
+                      </div>
+                      <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
 
               {/* ── CRITERIA MODE: show criteria grade first ── */}
               {isCriteria && resultModal.result.criteriaGrade && (

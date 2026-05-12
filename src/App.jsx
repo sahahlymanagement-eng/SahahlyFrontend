@@ -52,6 +52,11 @@ import QBBrowse from "./pages/questionbank/QBBrowse";
 import QBClassify from "./pages/questionbank/QBClassify";
 import ExamPositionMapper from "./pages/admin/ExamPositionMapper";
 
+import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
+import CoursesList from "./pages/manager/CourseManagment/CourseList";
+import CourseWork from "./pages/manager/CourseManagment/CourseWork";
+import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
+
 function App() {
   return (
     <BrowserRouter>
@@ -78,7 +83,10 @@ function App() {
         <Route path="/test-subjects" element={<SubjectManagementTest />} />
         <Route path="/test-roles" element={<RoleManagementTest />} />
         <Route path="/test-people" element={<PeopleManagementTest />} />
-        
+
+
+
+        {/* <Route path="/google-classroom" element={<GoogleClassroom />} /> */}
         
         
 
@@ -122,7 +130,7 @@ function App() {
         <Route path="/questionbank/classify" element={<QBClassify />} />
 
         {/* Exam Position Mapper — admin-only tool */}
-        <Route path="/admin/exam-position-mapper" element={<ExamPositionMapper />} />
+        {/* <Route path="/admin/exam-position-mapper" element={<ExamPositionMapper />} /> */}
 
         {/* Assistant dashboard route */}
         <Route path="/assistant/dashboard" element={
@@ -190,7 +198,31 @@ function App() {
           </RoleProtectedRoute>}
         />
 
-        
+        <Route path="/manager/google-classroom" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <GoogleClassroom />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/courses" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <CoursesList />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/coursework/:courseId" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <CourseWork />
+          </RoleProtectedRoute>}
+        />
+
+        <Route
+          path="/manager/submission/:courseId/:courseWorkId/:submissionId" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <SubmissionActions />
+          </RoleProtectedRoute>}
+        />
+
 
         {/* Quality Team dashboard route */}
         <Route path="/quality-team/dashboard" element={
