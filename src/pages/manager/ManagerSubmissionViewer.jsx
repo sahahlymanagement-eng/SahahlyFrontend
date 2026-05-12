@@ -54,6 +54,7 @@ export default function ManagerSubmissionViewer() {
   const [editingQuestions, setEditingQuestions] = useState([]);
   const [downloading,      setDownloading]      = useState(false);
   const [returning,        setReturning]        = useState(false);
+  const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
 
   // Compute effective max total
   const effectiveMaxTotal = resultModal
@@ -62,10 +63,13 @@ export default function ManagerSubmissionViewer() {
         : resultModal.result.maxTotalMarks)
     : 0;
 
+  // Replace effectiveTotal computed value with:
   const effectiveTotal = resultModal
-    ? (resultModal.result.markingMode === "criteria"
-        ? (resultModal.result.criteriaGrade?.totalMarks || 0)
-        : editingQuestions.reduce((s, q) => s + q.marksAwarded, 0))
+    ? (editingTotal !== null
+        ? editingTotal
+        : resultModal.result.markingMode === "criteria"
+          ? (resultModal.result.criteriaGrade?.totalMarks || 0)
+          : editingQuestions.reduce((s, q) => s + q.marksAwarded, 0))
     : 0;
 
   useEffect(() => {
@@ -174,8 +178,9 @@ export default function ManagerSubmissionViewer() {
         timeout: 600000
       });
 
-      setResultModal({ student, result: res.data, studentFile }); 
+      setResultModal({ student, result: res.data, studentFile });
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
+      setEditingTotal(null);
     } catch (err) {
       toast.error(err.response?.data?.message || "Marking failed");
     } finally {
@@ -221,7 +226,8 @@ export default function ManagerSubmissionViewer() {
         });
 
         setBulkProgress(p => ({ ...p, [student.submissionId]: { status: "done", result: res.data, studentFile } }));
-      } catch {
+      } catch (err) {
+        console.error(`Bulk mark failed for ${student.name}:`, err.message);
         setBulkProgress(p => ({ ...p, [student.submissionId]: "error" }));
       }
     }
@@ -492,8 +498,9 @@ export default function ManagerSubmissionViewer() {
                                             title="Mark with AI"
                                             onClick={() => {
                                               if (bulkDone) {
-                                                setResultModal({ student: s, result: bulk.result, studentFile: bulk.studentFile });
+                                                ssetResultModal({ student: s, result: bulk.result, studentFile: bulk.studentFile });
                                                 setEditingQuestions(bulk.result.questions.map(q => ({ ...q })));
+                                                setEditingTotal(null);
                                               } else {
                                                 openGuidanceModal(s);
                                               }
@@ -658,10 +665,36 @@ export default function ManagerSubmissionViewer() {
                     {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                  Final Grade: {effectiveTotal} / {effectiveMaxTotal}
-                  &nbsp;·&nbsp;
-                  {effectiveMaxTotal > 0 ? Math.round((effectiveTotal / effectiveMaxTotal) * 100) : 0}%
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={effectiveMaxTotal}
+                      value={editingTotal !== null ? editingTotal : effectiveTotal}
+                      onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
+                      style={{
+                        width: 56, padding: "3px 8px", borderRadius: 6,
+                        border: `1px solid ${getScoreColor(effectiveTotal, effectiveMaxTotal)}`,
+                        background: `${getScoreColor(effectiveTotal, effectiveMaxTotal)}15`,
+                        color: getScoreColor(effectiveTotal, effectiveMaxTotal),
+                        fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none"
+                      }}
+                    />
+                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.4)" }}>/ {effectiveMaxTotal}</span>
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                      ({effectiveMaxTotal > 0 ? Math.round((effectiveTotal / effectiveMaxTotal) * 100) : 0}%)
+                    </span>
+                    {editingTotal !== null && (
+                      <button
+                        onClick={() => setEditingTotal(null)}
+                        style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
