@@ -56,6 +56,7 @@ import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
 import CoursesList from "./pages/manager/CourseManagment/CourseList";
 import CourseWork from "./pages/manager/CourseManagment/CourseWork";
 import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
+import AssistantSubmissionViewer from "./pages/assistant/AssistantSubmissionViewer";
 
 function App() {
   return (
@@ -145,6 +146,11 @@ function App() {
             <AssistantAssignments />
           </RoleProtectedRoute>}
         />
+        <Route path="/assistant/assignments/:assignmentId" element={
+          <RoleProtectedRoute allowedRole="assistant">
+            <AssistantSubmissionViewer />
+          </RoleProtectedRoute>
+        }/>
 
 
         {/* Manager dashboard route */}

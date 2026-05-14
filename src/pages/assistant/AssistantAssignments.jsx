@@ -60,7 +60,21 @@ const res = await api.get(
 {params:{personId}}
 );
 
-setAssignments(Array.isArray(res.data) ? res.data : []);
+// setAssignments(Array.isArray(res.data) ? res.data : []);
+const baseAssignments = Array.isArray(res.data) ? res.data : [];
+
+const enriched = await Promise.all(
+  baseAssignments.map(async (a) => {
+    const done = await getAllStudentsGraded(a._id);
+
+    return {
+      ...a,
+      allStudentsGraded: done
+    };
+  })
+);
+
+setAssignments(enriched);
 
 }
 catch(err){
@@ -155,7 +169,25 @@ return Array.from(set);
 },[assignments]);
 
 if(!user) return null;
+const getAllStudentsGraded = async (assignmentId) => {
+  try {
+    const res = await api.get(
+      `/assignment-submissions/${assignmentId}/students`
+    );
 
+    const students = res.data.students || [];
+
+    return (
+      students.length > 0 &&
+      students
+        .filter(s => s.submissionId)
+        .every(s => s.assignedGrade != null)
+    );
+
+  } catch {
+    return false;
+  }
+};
 return(
 
 <div className="assistantAssignPage">
@@ -190,15 +222,10 @@ onClick={()=>navigate("/assistant/dashboard")}
         value={statusFilter}
         onChange={(e)=>setStatusFilter(e.target.value)}
       >
-
         <option value="ALL">All Status</option>
-        <option value="ASSIGNED">Assigned</option>
-        <option value="IN_REVIEW">In Review</option>
-        <option value="RECHECK_BY_ASSISTANT">Recheck</option>
-        <option value="IN_REVIEW_AFTER_RECHECK">Review After Recheck</option>
-        <option value="DONE">Done</option>
-        <option value="DONE_BY_QUALITY">Done By Quality</option>
-        <option value="FAILED_DEADLINE">Failed Deadline</option>
+<option value="ASSIGNED">Assigned</option>
+<option value="DONE">Done</option>
+
 
       </select>
     </div>
@@ -312,8 +339,12 @@ return(
 
 <td>
 
-<span className={`statusBadge status-${a.assistantStatus}`}>
-{a.assistantStatus}
+<span
+  className={`statusBadge ${
+    a.allStudentsGraded ? "status-DONE" : "status-ASSIGNED"
+  }`}
+>
+  {a.allStudentsGraded ? "DONE" : "ASSIGNED"}
 </span>
 
 </td>
@@ -323,14 +354,12 @@ return(
 {(a.assistantStatus === "ASSIGNED" ||
 a.assistantStatus === "RECHECK_BY_ASSISTANT") && (
 
-<button
-className="submitBtn"
-onClick={()=>submitAssignment(a._id)}
+  <button
+  className="submitBtn"
+  onClick={() => navigate(`/assistant/assignments/${a._id}`)}
 >
-
-<FiSend/>
-Submit
-
+  <FiSend />
+  Open
 </button>
 
 )}
