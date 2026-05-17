@@ -402,7 +402,16 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
     color: sCol,
   });
 
-  summaryPage.drawText(`${totalMarks} / ${maxTotalMarks}`, {
+const isUngraded =
+  totalMarks === "Ungraded" ||
+  maxTotalMarks == null ||
+  maxTotalMarks === "";
+
+const scoreText = isUngraded
+  ? "Ungraded"
+  : `${totalMarks} / ${maxTotalMarks}`;
+
+  summaryPage.drawText(scoreText, {
     x: M + 14,
     y: yPos - 26,
     size: 28,
