@@ -288,12 +288,18 @@ const url = URL.createObjectURL(blob);
     setDownloading(true);
     try {
       const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+      // const total = editingQuestions.reduce(
+      //   (s, q) => s + (typeof q.marksAwarded === "number" ? q.marksAwarded : 0),0);
+      
+const isUngraded =
+  maxGrade == null ||
+  resultModal?.result?.totalMarks == null;
 
       const pdfBytes = await annotatePdf({
         studentFile: resultModal.studentFile,
         questions: editingQuestions,
-        totalMarks: total,
-        maxTotalMarks: maxGrade,
+        totalMarks: isUngraded ? "Ungraded" : total,
+        maxTotalMarks: isUngraded ? "" : maxGrade,
         summary:       resultModal.result.summary || ""
       });
 
@@ -394,6 +400,7 @@ return (
   </div>
 </header>
 
+<div className="ma-content">
 {/* MARK SCHEME BAR */}
 <div className="msv-ms-bar">
   <div className="msv-ms-info">
@@ -539,7 +546,7 @@ return (
     </div>
   </div>
 )}
-
+</div>
       </main>
 
       {/* ── GUIDANCE MODAL ── */}
