@@ -166,13 +166,13 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         height: badgeH,
         color: bg,
         borderColor: col,
-        borderWidth: 1,
+        borderWidth: 1.2,
       });
 
       page.drawText(scoreTxt, {
         x: badgeX + 5,
         y: badgeY + 5,
-        size: 10,
+        size: 11,
         font: bold,
         color: col,
       });
@@ -180,7 +180,7 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
       page.drawText(san(`Q${q.questionNumber}`).substring(0, 9), {
         x: badgeX,
         y: badgeY + badgeH + 3,
-        size: 8,
+        size: 9,
         font: bold,
         color: NAVY,
       });
@@ -203,7 +203,7 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
       page.drawLine({
         start: { x: badgeX + badgeW, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
         end: { x: LM + 2, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
-        thickness: 0.5,
+        thickness: 0.85,
         color: col,
         dashArray: [2, 2],
         dashPhase: 0,
@@ -211,9 +211,10 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
       const rx = width - RM + 5;
       const rWidth = RM - 8;
+      const noteSize = 8;
       const marked = (q.markedKeywords || []).slice(0, 3);
       const missing = (q.missingKeywords || []).slice(0, 3);
-      const noteLines = q.reason ? wrap(q.reason, reg, 7, rWidth).slice(0, 4) : [];
+      const noteLines = q.reason ? wrap(q.reason, bold, noteSize, rWidth).slice(0, 4) : [];
 
       const kwH = marked.length > 0 ? 11 + marked.length * 13 : 0;
       const misH = missing.length > 0 ? 11 + missing.length * 13 : 0;
@@ -226,55 +227,55 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
       page.drawLine({
         start: { x: width - RM - 2, y: lineY },
         end: { x: rx - 2, y: lineY },
-        thickness: 0.5,
+        thickness: 0.85,
         color: col,
         dashArray: [2, 2],
         dashPhase: 0,
       });
 
       if (marked.length > 0) {
-        page.drawText("Keywords:", { x: rx, y: ry, size: 7, font: bold, color: GREEN });
+        page.drawText("Keywords:", { x: rx, y: ry, size: 8, font: bold, color: GREEN });
         ry -= 10;
 
         for (const kw of marked) {
           const kwTxt = san(kw).substring(0, 22);
-          const kwW = reg.widthOfTextAtSize(kwTxt, 7) + 6;
+          const kwW = bold.widthOfTextAtSize(kwTxt, 8) + 6;
 
           page.drawRectangle({
             x: rx,
             y: ry - 3,
             width: kwW,
-            height: 11,
+            height: 12,
             color: rgb(0.88, 0.97, 0.91),
             borderColor: GREEN,
-            borderWidth: 0.6,
+            borderWidth: 0.9,
           });
 
-          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 7, font: reg, color: GREEN });
-          ry -= 13;
+          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 8, font: bold, color: GREEN });
+          ry -= 14;
         }
       }
 
       if (missing.length > 0) {
-        page.drawText("Missing:", { x: rx, y: ry, size: 7, font: bold, color: RED });
+        page.drawText("Missing:", { x: rx, y: ry, size: 8, font: bold, color: RED });
         ry -= 10;
 
         for (const kw of missing) {
           const kwTxt = san(kw).substring(0, 22);
-          const kwW = reg.widthOfTextAtSize(kwTxt, 7) + 6;
+          const kwW = bold.widthOfTextAtSize(kwTxt, 8) + 6;
 
           page.drawRectangle({
             x: rx,
             y: ry - 3,
             width: kwW,
-            height: 11,
+            height: 12,
             color: rgb(0.99, 0.90, 0.90),
             borderColor: RED,
-            borderWidth: 0.6,
+            borderWidth: 0.9,
           });
 
-          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 7, font: reg, color: RED });
-          ry -= 13;
+          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 8, font: bold, color: RED });
+          ry -= 14;
         }
       }
 
@@ -283,15 +284,15 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         page.drawLine({
           start: { x: rx, y: ry + 8 },
           end: { x: rx + rWidth, y: ry + 8 },
-          thickness: 0.4,
+          thickness: 0.6,
           color: LGREY,
         });
 
         ry -= 2;
 
         for (const line of noteLines) {
-          page.drawText(san(line), { x: rx, y: ry, size: 7, font: reg, color: rgb(0, 0, 1) });
-          ry -= 9;
+          page.drawText(san(line), { x: rx, y: ry, size: noteSize, font: bold, color: rgb(0, 0, 0.75) });
+          ry -= 10;
         }
       }
 
@@ -303,22 +304,22 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
     const stripH = 18;
 
     page.drawRectangle({ x: 0, y: 0, width, height: stripH, color: NAVY });
-    page.drawText("AI MARKED  ·  Sahahly", {
+    page.drawText("MARKED  ·  Sahahly", {
       x: 8,
       y: 5,
-      size: 8,
+      size: 9,
       font: bold,
       color: rgb(0.6, 0.72, 0.95),
     });
 
     if (qs.length > 0) {
       const ptxt = `Page marks: ${pageAwarded}/${pageMax}`;
-      const ptxtW = reg.widthOfTextAtSize(ptxt, 8);
+      const ptxtW = bold.widthOfTextAtSize(ptxt, 9);
       page.drawText(ptxt, {
         x: width / 2 - ptxtW / 2,
         y: 5,
-        size: 8,
-        font: reg,
+        size: 9,
+        font: bold,
         color: WHITE,
       });
     }
@@ -351,7 +352,7 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
   summaryPage.drawRectangle({ x: 0, y: sh - 62, width: sw, height: 62, color: NAVY });
 
-  summaryPage.drawText("AI GRADING REPORT", {
+  summaryPage.drawText("GRADING REPORT", {
     x: M,
     y: sh - 28,
     size: 18,
@@ -359,7 +360,7 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
     color: WHITE,
   });
 
-  summaryPage.drawText("Sahahly AI Grading Tool • Performance Report", {
+  summaryPage.drawText("Sahahly • Performance Report", {
     x: M,
     y: sh - 44,
     size: 8,
@@ -490,7 +491,7 @@ const scoreText = isUngraded
   yPos -= 12;
 
   const focusIntro =
-    "Below is a list of every question where you lost marks. For each, the AI examiner has recommended the chapter to review and what specifically to focus on.";
+    "Below is a list of every question where you lost marks. For each, the examiner has recommended the chapter to review and what specifically to focus on.";
 
   wrap(focusIntro, reg, 7.4, CW).slice(0, 2).forEach(line => {
     summaryPage.drawText(san(line), {
@@ -677,7 +678,7 @@ const scoreText = isUngraded
     color: LGREY,
   });
 
-  const footerText = "Generated by Sahahly AI Grading Tool";
+  const footerText = "Generated by Sahahly";
   summaryPage.drawText(footerText, {
     x: sw / 2 - reg.widthOfTextAtSize(footerText, 8) / 2,
     y: 16,
