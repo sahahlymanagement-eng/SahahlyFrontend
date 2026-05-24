@@ -39,18 +39,130 @@ function wrap(text, font, size, maxW) {
   const lines = [];
   let line = "";
 
+  const pushLine = (value) => {
+    if (value) lines.push(value);
+  };
+
+  const breakWord = (word) => {
+    let chunk = "";
+    for (const ch of word) {
+      const test = chunk + ch;
+      if (font.widthOfTextAtSize(test, size) <= maxW) {
+        chunk = test;
+      } else {
+        if (chunk) pushLine(chunk);
+        chunk = font.widthOfTextAtSize(ch, size) <= maxW ? ch : "";
+      }
+    }
+    return chunk;
+  };
+
   for (const w of words) {
+    if (font.widthOfTextAtSize(w, size) > maxW) {
+      if (line) {
+        pushLine(line);
+        line = "";
+      }
+      line = breakWord(w);
+      continue;
+    }
+
     const t = line ? `${line} ${w}` : w;
     if (font.widthOfTextAtSize(t, size) <= maxW) {
       line = t;
     } else {
-      if (line) lines.push(line);
+      pushLine(line);
       line = w;
     }
   }
 
-  if (line) lines.push(line);
+  if (line) pushLine(line);
   return lines;
+}
+
+function truncateToWidth(text, font, size, maxW) {
+  let value = san(text);
+  if (font.widthOfTextAtSize(value, size) <= maxW) return value;
+
+  while (value.length > 1 && font.widthOfTextAtSize(`${value}...`, size) > maxW) {
+    value = value.slice(0, -1);
+  }
+
+  return value.length < san(text).length ? `${value}...` : value;
+}
+
+/** Reserve space for scanned exam right margin (e.g. "IN THIS AREA" strip). */
+function rightAnnotationBox(pageWidth) {
+  const reserve = Math.max(155, Math.round(pageWidth * 0.24));
+  const pad = 10;
+  const rx = pageWidth - reserve + pad;
+  const rWidth = reserve - pad * 2;
+  const maxX = pageWidth - pad;
+  return { rx, rWidth, maxX, reserve };
+}
+
+function rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) {
+  const kwH = marked.length > 0 ? 11 + marked.length * kwLineH : 0;
+  const misH = missing.length > 0 ? 11 + missing.length * kwLineH : 0;
+  const noteH = noteLines.length > 0 ? 11 + noteLines.length * noteLineH : 0;
+  return kwH + misH + noteH + 6;
+}
+
+function fitRightBlockContent({
+  reason,
+  markedKeywords,
+  missingKeywords,
+  font,
+  noteSize,
+  maxW,
+  maxHeight,
+  kwLineH,
+  noteLineH,
+}) {
+  let marked = markedKeywords.slice(0, 3);
+  let missing = missingKeywords.slice(0, 3);
+  let noteLines = reason ? wrap(reason, font, noteSize, maxW) : [];
+
+  const trimToHeight = () => {
+    while (
+      rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight &&
+      noteLines.length > 0
+    ) {
+      noteLines = noteLines.slice(0, -1);
+    }
+    while (
+      rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight &&
+      missing.length > 0
+    ) {
+      missing = missing.slice(0, -1);
+    }
+    while (
+      rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight &&
+      marked.length > 0
+    ) {
+      marked = marked.slice(0, -1);
+    }
+  };
+
+  trimToHeight();
+
+  if (rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight) {
+    marked = [];
+    missing = [];
+    noteLines = reason ? wrap(reason, font, noteSize, maxW).slice(0, 1) : [];
+    trimToHeight();
+  }
+
+  return { marked, missing, noteLines };
+}
+
+function drawBoldText(page, text, { x, y, size, font, color, maxX }) {
+  let line = san(text);
+  if (maxX != null && font.widthOfTextAtSize(line, size) > maxX - x) {
+    line = truncateToWidth(line, font, size, maxX - x);
+  }
+  page.drawText(line, { x, y, size, font, color });
+  page.drawText(line, { x: x + 0.35, y, size, font, color });
 }
 
 function drawTick(page, cx, cy, size, color) {
@@ -128,19 +240,21 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
   }
 
   const LM = 50;
-  const RM = 130;
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i];
     const pageNum = i + 1;
     const { width, height } = page.getSize();
     const qs = byPage[pageNum] || [];
+    const { rx, rWidth, maxX, reserve: rightReserve } = rightAnnotationBox(width);
 
     const sortedQs = [...qs].sort((a, b) => (a.yPercent ?? 30) - (b.yPercent ?? 30));
 
-    const STRIP_H = 16;
-    let leftCursor = height - STRIP_H;
-    let rightCursor = height - STRIP_H;
+    const STRIP_H = 22;
+    const PAGE_BOTTOM = STRIP_H + 6;
+    const PAGE_TOP = height - 8;
+    let leftCursor = PAGE_TOP;
+    let rightCursor = PAGE_TOP;
 
     for (const q of sortedQs) {
       const yPct = Math.min(92, Math.max(5, q.yPercent ?? 30));
@@ -156,8 +270,9 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
       const badgeW = Math.max(34, bold.widthOfTextAtSize(scoreTxt, 10) + 10);
       const badgeX = 3;
 
-      const leftBlockTop = Math.min(anchorY + badgeH / 2, leftCursor);
-      const badgeY = leftBlockTop - badgeH;
+      let leftBlockTop = Math.min(anchorY + badgeH / 2, leftCursor);
+      let badgeY = Math.max(PAGE_BOTTOM, leftBlockTop - badgeH);
+      leftBlockTop = badgeY + badgeH;
 
       page.drawRectangle({
         x: badgeX,
@@ -185,7 +300,7 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         color: NAVY,
       });
 
-      const symbolY = badgeY - 18;
+      const symbolY = Math.max(PAGE_BOTTOM, badgeY - 18);
 
       if (notAttempted) {
         page.drawText("?", { x: badgeX + 9, y: symbolY + 2, size: 14, font: bold, color: AMBER });
@@ -198,7 +313,7 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         drawCross(page, badgeX + 16, symbolY, 12, RED);
       }
 
-      leftCursor = Math.min(leftCursor, symbolY - 8);
+      leftCursor = Math.max(PAGE_BOTTOM, Math.min(leftCursor, symbolY - 8));
 
       page.drawLine({
         start: { x: badgeX + badgeW, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
@@ -209,23 +324,30 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         dashPhase: 0,
       });
 
-      const rx = width - RM + 5;
-      const rWidth = RM - 8;
-      const noteSize = 8;
-      const marked = (q.markedKeywords || []).slice(0, 3);
-      const missing = (q.missingKeywords || []).slice(0, 3);
-      const noteLines = q.reason ? wrap(q.reason, bold, noteSize, rWidth).slice(0, 4) : [];
-
-      const kwH = marked.length > 0 ? 11 + marked.length * 13 : 0;
-      const misH = missing.length > 0 ? 11 + missing.length * 13 : 0;
-      const noteH = noteLines.length > 0 ? 8 + noteLines.length * 9 : 0;
-      const totalH = kwH + misH + noteH + 6;
+      const noteSize = 7.5;
+      const kwLineH = 14;
+      const noteLineH = 9;
+      const maxRightHeight = Math.max(28, rightCursor - PAGE_BOTTOM);
+      const { marked, missing, noteLines } = fitRightBlockContent({
+        reason: q.reason,
+        markedKeywords: q.markedKeywords || [],
+        missingKeywords: q.missingKeywords || [],
+        font: bold,
+        noteSize,
+        maxW: rWidth,
+        maxHeight: maxRightHeight,
+        kwLineH,
+        noteLineH,
+      });
+      const totalH = rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH);
 
       let ry = Math.min(anchorY + totalH / 2, rightCursor);
+      if (ry - totalH < PAGE_BOTTOM) ry = PAGE_BOTTOM + totalH;
+      ry = Math.min(ry, PAGE_TOP);
 
       const lineY = Math.min(anchorY, ry - totalH / 2);
       page.drawLine({
-        start: { x: width - RM - 2, y: lineY },
+        start: { x: width - rightReserve + 4, y: lineY },
         end: { x: rx - 2, y: lineY },
         thickness: 0.85,
         color: col,
@@ -234,12 +356,12 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
       });
 
       if (marked.length > 0) {
-        page.drawText("Keywords:", { x: rx, y: ry, size: 8, font: bold, color: GREEN });
+        drawBoldText(page, "Keywords:", { x: rx, y: ry, size: 8, font: bold, color: GREEN, maxX });
         ry -= 10;
 
         for (const kw of marked) {
-          const kwTxt = san(kw).substring(0, 22);
-          const kwW = bold.widthOfTextAtSize(kwTxt, 8) + 6;
+          const kwTxt = truncateToWidth(kw, bold, 7.5, rWidth - 6);
+          const kwW = Math.min(rWidth, bold.widthOfTextAtSize(kwTxt, 7.5) + 6);
 
           page.drawRectangle({
             x: rx,
@@ -251,18 +373,25 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             borderWidth: 0.9,
           });
 
-          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 8, font: bold, color: GREEN });
-          ry -= 14;
+          drawBoldText(page, kwTxt, {
+            x: rx + 3,
+            y: ry,
+            size: 7.5,
+            font: bold,
+            color: GREEN,
+            maxX,
+          });
+          ry -= kwLineH;
         }
       }
 
       if (missing.length > 0) {
-        page.drawText("Missing:", { x: rx, y: ry, size: 8, font: bold, color: RED });
+        drawBoldText(page, "Missing:", { x: rx, y: ry, size: 8, font: bold, color: RED, maxX });
         ry -= 10;
 
         for (const kw of missing) {
-          const kwTxt = san(kw).substring(0, 22);
-          const kwW = bold.widthOfTextAtSize(kwTxt, 8) + 6;
+          const kwTxt = truncateToWidth(kw, bold, 7.5, rWidth - 6);
+          const kwW = Math.min(rWidth, bold.widthOfTextAtSize(kwTxt, 7.5) + 6);
 
           page.drawRectangle({
             x: rx,
@@ -274,8 +403,15 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             borderWidth: 0.9,
           });
 
-          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 8, font: bold, color: RED });
-          ry -= 14;
+          drawBoldText(page, kwTxt, {
+            x: rx + 3,
+            y: ry,
+            size: 7.5,
+            font: bold,
+            color: RED,
+            maxX,
+          });
+          ry -= kwLineH;
         }
       }
 
@@ -291,12 +427,20 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         ry -= 2;
 
         for (const line of noteLines) {
-          page.drawText(san(line), { x: rx, y: ry, size: noteSize, font: bold, color: rgb(0, 0, 0.75) });
-          ry -= 10;
+          if (ry < PAGE_BOTTOM) break;
+          drawBoldText(page, line, {
+            x: rx,
+            y: ry,
+            size: noteSize,
+            font: bold,
+            color: rgb(0, 0, 0.82),
+            maxX,
+          });
+          ry -= noteLineH;
         }
       }
 
-      rightCursor = Math.min(rightCursor, ry - 8);
+      rightCursor = Math.max(PAGE_BOTTOM, Math.min(rightCursor, ry - 8));
     }
 
     const pageAwarded = qs.reduce((s, q) => s + Number(q.marksAwarded || 0), 0);
