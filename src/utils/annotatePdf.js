@@ -91,7 +91,6 @@ function truncateToWidth(text, font, size, maxW) {
   return value.length < san(text).length ? `${value}...` : value;
 }
 
-<<<<<<< Updated upstream
 /** Reserve space for scanned exam right margin (e.g. "IN THIS AREA" strip). */
 function rightAnnotationBox(pageWidth) {
   const reserve = Math.max(155, Math.round(pageWidth * 0.24));
@@ -120,22 +119,11 @@ function fitRightBlockContent({
   kwLineH,
   noteLineH,
 }) {
-=======
-function rightBlockHeight(marked, missing, noteLines) {
-  const kwH = marked.length > 0 ? 11 + marked.length * 13 : 0;
-  const misH = missing.length > 0 ? 11 + missing.length * 13 : 0;
-  const noteH = noteLines.length > 0 ? 11 + noteLines.length * 9 : 0;
-  return kwH + misH + noteH + 6;
-}
-
-function fitRightBlockContent({ reason, markedKeywords, missingKeywords, font, noteSize, maxW, maxHeight }) {
->>>>>>> Stashed changes
   let marked = markedKeywords.slice(0, 3);
   let missing = missingKeywords.slice(0, 3);
   let noteLines = reason ? wrap(reason, font, noteSize, maxW) : [];
 
   const trimToHeight = () => {
-<<<<<<< Updated upstream
     while (
       rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight &&
       noteLines.length > 0
@@ -152,28 +140,13 @@ function fitRightBlockContent({ reason, markedKeywords, missingKeywords, font, n
       rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight &&
       marked.length > 0
     ) {
-=======
-    while (rightBlockHeight(marked, missing, noteLines) > maxHeight && noteLines.length > 0) {
-      noteLines = noteLines.slice(0, -1);
-    }
-
-    while (rightBlockHeight(marked, missing, noteLines) > maxHeight && missing.length > 0) {
-      missing = missing.slice(0, -1);
-    }
-
-    while (rightBlockHeight(marked, missing, noteLines) > maxHeight && marked.length > 0) {
->>>>>>> Stashed changes
       marked = marked.slice(0, -1);
     }
   };
 
   trimToHeight();
 
-<<<<<<< Updated upstream
   if (rightBlockHeight(marked, missing, noteLines, kwLineH, noteLineH) > maxHeight) {
-=======
-  if (rightBlockHeight(marked, missing, noteLines) > maxHeight) {
->>>>>>> Stashed changes
     marked = [];
     missing = [];
     noteLines = reason ? wrap(reason, font, noteSize, maxW).slice(0, 1) : [];
@@ -183,7 +156,6 @@ function fitRightBlockContent({ reason, markedKeywords, missingKeywords, font, n
   return { marked, missing, noteLines };
 }
 
-<<<<<<< Updated upstream
 function drawBoldText(page, text, { x, y, size, font, color, maxX }) {
   let line = san(text);
   if (maxX != null && font.widthOfTextAtSize(line, size) > maxX - x) {
@@ -193,8 +165,6 @@ function drawBoldText(page, text, { x, y, size, font, color, maxX }) {
   page.drawText(line, { x: x + 0.35, y, size, font, color });
 }
 
-=======
->>>>>>> Stashed changes
 function drawTick(page, cx, cy, size, color) {
   const s = size;
   page.drawLine({
@@ -280,15 +250,9 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
     const sortedQs = [...qs].sort((a, b) => (a.yPercent ?? 30) - (b.yPercent ?? 30));
 
-<<<<<<< Updated upstream
     const STRIP_H = 22;
     const PAGE_BOTTOM = STRIP_H + 6;
     const PAGE_TOP = height - 8;
-=======
-    const STRIP_H = 16;
-    const PAGE_BOTTOM = 24;
-    const PAGE_TOP = height - STRIP_H - 4;
->>>>>>> Stashed changes
     let leftCursor = PAGE_TOP;
     let rightCursor = PAGE_TOP;
 
@@ -360,17 +324,10 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         dashPhase: 0,
       });
 
-<<<<<<< Updated upstream
       const noteSize = 7.5;
       const kwLineH = 14;
       const noteLineH = 9;
       const maxRightHeight = Math.max(28, rightCursor - PAGE_BOTTOM);
-=======
-      const rx = width - RM + 5;
-      const rWidth = RM - 8;
-      const noteSize = 7;
-      const maxRightHeight = Math.max(24, rightCursor - PAGE_BOTTOM);
->>>>>>> Stashed changes
       const { marked, missing, noteLines } = fitRightBlockContent({
         reason: q.reason,
         markedKeywords: q.markedKeywords || [],
@@ -379,7 +336,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         noteSize,
         maxW: rWidth,
         maxHeight: maxRightHeight,
-<<<<<<< Updated upstream
         kwLineH,
         noteLineH,
       });
@@ -387,15 +343,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
       let ry = Math.min(anchorY + totalH / 2, rightCursor);
       if (ry - totalH < PAGE_BOTTOM) ry = PAGE_BOTTOM + totalH;
-=======
-      });
-      const totalH = rightBlockHeight(marked, missing, noteLines);
-
-      let ry = Math.min(anchorY + totalH / 2, rightCursor);
-      if (ry - totalH < PAGE_BOTTOM) {
-        ry = PAGE_BOTTOM + totalH;
-      }
->>>>>>> Stashed changes
       ry = Math.min(ry, PAGE_TOP);
 
       const lineY = Math.min(anchorY, ry - totalH / 2);
@@ -413,13 +360,8 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         ry -= 10;
 
         for (const kw of marked) {
-<<<<<<< Updated upstream
           const kwTxt = truncateToWidth(kw, bold, 7.5, rWidth - 6);
           const kwW = Math.min(rWidth, bold.widthOfTextAtSize(kwTxt, 7.5) + 6);
-=======
-          const kwTxt = truncateToWidth(kw, bold, 7, rWidth - 6);
-          const kwW = Math.min(rWidth, bold.widthOfTextAtSize(kwTxt, 7) + 6);
->>>>>>> Stashed changes
 
           page.drawRectangle({
             x: rx,
@@ -431,7 +373,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             borderWidth: 0.9,
           });
 
-<<<<<<< Updated upstream
           drawBoldText(page, kwTxt, {
             x: rx + 3,
             y: ry,
@@ -441,10 +382,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             maxX,
           });
           ry -= kwLineH;
-=======
-          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 7, font: bold, color: GREEN });
-          ry -= 13;
->>>>>>> Stashed changes
         }
       }
 
@@ -453,13 +390,8 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
         ry -= 10;
 
         for (const kw of missing) {
-<<<<<<< Updated upstream
           const kwTxt = truncateToWidth(kw, bold, 7.5, rWidth - 6);
           const kwW = Math.min(rWidth, bold.widthOfTextAtSize(kwTxt, 7.5) + 6);
-=======
-          const kwTxt = truncateToWidth(kw, bold, 7, rWidth - 6);
-          const kwW = Math.min(rWidth, bold.widthOfTextAtSize(kwTxt, 7) + 6);
->>>>>>> Stashed changes
 
           page.drawRectangle({
             x: rx,
@@ -471,7 +403,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             borderWidth: 0.9,
           });
 
-<<<<<<< Updated upstream
           drawBoldText(page, kwTxt, {
             x: rx + 3,
             y: ry,
@@ -481,10 +412,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             maxX,
           });
           ry -= kwLineH;
-=======
-          page.drawText(kwTxt, { x: rx + 3, y: ry, size: 7, font: bold, color: RED });
-          ry -= 13;
->>>>>>> Stashed changes
         }
       }
 
@@ -501,7 +428,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
         for (const line of noteLines) {
           if (ry < PAGE_BOTTOM) break;
-<<<<<<< Updated upstream
           drawBoldText(page, line, {
             x: rx,
             y: ry,
@@ -511,10 +437,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
             maxX,
           });
           ry -= noteLineH;
-=======
-          page.drawText(san(line), { x: rx, y: ry, size: noteSize, font: bold, color: rgb(0, 0, 1) });
-          ry -= 9;
->>>>>>> Stashed changes
         }
       }
 
