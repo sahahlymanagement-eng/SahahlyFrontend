@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
+import { appendMarkingContext, currentUserId } from "../../utils/markingFormData";
 
 export default function PaperMarkingClaude() {
   const navigate = useNavigate();
@@ -37,6 +38,7 @@ export default function PaperMarkingClaude() {
     formData.append("markSchemePdf", markSchemeFile);
     formData.append("totalGrade",    totalGrade);
     formData.append("guidance",      guidance);
+    appendMarkingContext(formData, { personId: currentUserId() });
 
     setLoading(true);
     setResult(null);
