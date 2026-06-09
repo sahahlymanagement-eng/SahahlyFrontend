@@ -8,6 +8,14 @@ import {
   FiUploadCloud, FiX, FiCalendar, FiSend
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
+import {
+  appendMarkingContext,
+  assertPdfBlob,
+  currentUserId,
+  getApiErrorMessage,
+  guidanceForForm,
+  normalizeGuidance,
+} from "../../utils/markingFormData";
 import "./ManagerSubmissionViewer.css";
 
 const CHECKLIST_CONFIG = [
@@ -166,6 +174,9 @@ export default function ManagerSubmissionViewer() {
         })
       ]);
 
+      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+      await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
       const studentFile = new File([studentPdfRes.data], `${student.name || "student"}.pdf`, { type: "application/pdf" });
       const msFile      = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
 
@@ -173,8 +184,14 @@ export default function ManagerSubmissionViewer() {
       fd.append("studentPdf",    studentFile);
       fd.append("markSchemePdf", msFile);
       fd.append("markingMode",   mode);
-      if (guidanceText?.trim())         fd.append("guidance",   guidanceText.trim());
+      const guidanceValue = guidanceForForm(guidanceText);
+      if (guidanceValue) fd.append("guidance", guidanceValue);
       if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
+      appendMarkingContext(fd, {
+        personId: currentUserId(),
+        assignmentId: selectedAssignment._id,
+        classroomId: selectedClassroom?._id,
+      });
 
       const res = await api.post("/marking/mark", fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -185,7 +202,7 @@ export default function ManagerSubmissionViewer() {
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
       setEditingMaxTotal(null);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Marking failed");
+      toast.error(await getApiErrorMessage(err));
     } finally {
       setMarkingStudentId(null);
     }
@@ -213,6 +230,9 @@ export default function ManagerSubmissionViewer() {
           })
         ]);
 
+        await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+        await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
         const studentFile = new File([studentPdfRes.data], `${student.name || "student"}.pdf`, { type: "application/pdf" });
         const msFile      = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
 
@@ -220,8 +240,14 @@ export default function ManagerSubmissionViewer() {
         fd.append("studentPdf",    studentFile);
         fd.append("markSchemePdf", msFile);
         fd.append("markingMode",   mode);
-        if (guidanceText?.trim())         fd.append("guidance",   guidanceText.trim());
+        const guidanceValue = guidanceForForm(guidanceText);
+        if (guidanceValue) fd.append("guidance", guidanceValue);
         if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
+        appendMarkingContext(fd, {
+          personId: currentUserId(),
+          assignmentId: selectedAssignment._id,
+          classroomId: selectedClassroom?._id,
+        });
 
         const res = await api.post("/marking/mark", fd, {
           headers: { "Content-Type": "multipart/form-data" },
@@ -230,8 +256,9 @@ export default function ManagerSubmissionViewer() {
 
         setBulkProgress(p => ({ ...p, [student.submissionId]: { status: "done", result: res.data, studentFile } }));
       } catch (err) {
-        console.error(`Bulk mark failed for ${student.name}:`, err.message);
-        setBulkProgress(p => ({ ...p, [student.submissionId]: "error" }));
+        const message = await getApiErrorMessage(err);
+        console.error(`Bulk mark failed for ${student.name}:`, message);
+        setBulkProgress(p => ({ ...p, [student.submissionId]: { status: "error", message } }));
       }
     }
     setBulkMarking(false);
@@ -240,10 +267,10 @@ export default function ManagerSubmissionViewer() {
 
   const handleGuidanceConfirm = () => {
     if (!guidanceModal) return;
-    if (markingModeModal === "criteria" && !guidance.trim()) {
+    if (markingModeModal === "criteria" && !normalizeGuidance(guidance)) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
-    const g    = guidance;
+    const g    = normalizeGuidance(guidance);
     const mode = markingModeModal;
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
@@ -603,7 +630,7 @@ export default function ManagerSubmissionViewer() {
                       {savedPrompts.map((p, i) => (
                         <div
                           key={p._id}
-                          onClick={e => { e.stopPropagation(); setGuidance(p.content); setPromptDropdownOpen(false); }}
+                          onClick={e => { e.stopPropagation(); setGuidance(normalizeGuidance(p.content)); setPromptDropdownOpen(false); }}
                           style={{ padding: "10px 14px", cursor: "pointer", borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", background: guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent" }}
                           onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
                           onMouseLeave={e => e.currentTarget.style.background = guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent"}
@@ -638,8 +665,8 @@ export default function ManagerSubmissionViewer() {
                 <button
                   className="ma-send-btn"
                   onClick={handleGuidanceConfirm}
-                  disabled={markingModeModal === "criteria" && !guidance.trim()}
-                  style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}
+                  disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                  style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1 }}
                 >
                   <FiCpu size={14} />
                   {guidanceModal.bulk ? "Start Marking All" : "Start Marking"}

@@ -40,6 +40,7 @@ import DirectorClassroomManagers from "./pages/director/DirectorClassroomManager
 import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import OperationMetrics from "./pages/manager/operation-metrics";
+import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
 import ManagerAssignments from "./pages/manager/ManagerAssignments";
 import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
@@ -187,6 +188,12 @@ function App() {
         <Route path="/manager/operation-metrics" element={
           <RoleProtectedRoute allowedRole="manager">
             <OperationMetrics defaultTab="metrics" />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/token-usage" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <ManagerTokenUsage />
           </RoleProtectedRoute>}
         />
 

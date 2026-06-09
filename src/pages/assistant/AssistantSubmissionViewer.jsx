@@ -17,6 +17,14 @@ import {
 
 import "../manager/ManagerSubmissionViewer.css";
 import "./AssistantReports.jsx"
+import {
+  appendMarkingContext,
+  assertPdfBlob,
+  currentUserId,
+  getApiErrorMessage,
+  guidanceForForm,
+  normalizeGuidance,
+} from "../../utils/markingFormData";
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -36,6 +44,7 @@ export default function AssignmentSubmissionViewer() {
   const [dueDateTime, setDueDateTime] = useState(null);
   const [maxGrade, setMaxGrade] = useState(null);
   const [assignmentTitle, setAssignmentTitle] = useState("");
+  const [classroomId, setClassroomId] = useState(null);
 
   const [msInfo, setMsInfo] = useState(null);
   const [uploadingMs, setUploadingMs] = useState(false);
@@ -209,6 +218,22 @@ const openErrorViewer = (title, error) => {
       catch { 
         toast.error("Failed to load students"); 
       } finally { setLoading(false); } };
+  const fetchStudents = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/assignment-submissions/${assignmentId}/students`);
+      setStudents(res.data.students || []);
+      setDueDateTime(res.data.dueDateTime || null);
+      setMaxGrade(res.data.maxGrade || null);
+      setAssignmentTitle(res.data.assignmentTitle || "Assignment");
+      setClassroomId(res.data.classroomId || null);
+      
+    } catch {
+      toast.error("Failed to load students");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleMsUpload = async (file) => {
     if (!file) return;
@@ -300,6 +325,9 @@ const url = URL.createObjectURL(blob);
         // );
 
 
+      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+      await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
       const studentFile = new File(
         [studentPdfRes.data],
         `${student.name || "student"}.pdf`,
@@ -316,8 +344,10 @@ const url = URL.createObjectURL(blob);
       fd.append("studentPdf", studentFile);
       fd.append("markSchemePdf", msFile);
       if (maxGrade) fd.append("totalGrade", maxGrade);
-      fd.append("markingMode",   mode);
-      if (guidanceText?.trim())         fd.append("guidance",   guidanceText.trim());
+      fd.append("markingMode", mode);
+      const guidanceValue = guidanceForForm(guidanceText);
+      if (guidanceValue) fd.append("guidance", guidanceValue);
+      appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
 
       const res = await api.post("/marking/mark", fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -346,8 +376,8 @@ const url = URL.createObjectURL(blob);
 
       setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
 
-    } catch {
-      toast.error("AI marking failed");
+    } catch (err) {
+      toast.error(await getApiErrorMessage(err));
     } finally {
       setMarkingStudentId(null);
     }
@@ -374,6 +404,9 @@ const url = URL.createObjectURL(blob);
               responseType: "blob"
             })
           ]);
+  
+          // await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+          // await assertPdfBlob(msPdfRes.data, "Mark scheme");
 
           const studentFile = new File([studentPdfRes.data], `${student.name || "student"}.pdf`, { type: "application/pdf" });
           const msFile      = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
@@ -474,10 +507,10 @@ const url = URL.createObjectURL(blob);
 
   const handleGuidanceConfirm = () => {
     if (!guidanceModal) return;
-    if (markingModeModal === "criteria" && !guidance.trim()) {
+    if (markingModeModal === "criteria" && !normalizeGuidance(guidance)) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
-    const g    = guidance;
+    const g    = normalizeGuidance(guidance);
     const mode = markingModeModal;
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
