@@ -57,6 +57,9 @@ import CoursesList from "./pages/manager/CourseManagment/CourseList";
 import CourseWork from "./pages/manager/CourseManagment/CourseWork";
 import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
 import AssistantSubmissionViewer from "./pages/assistant/AssistantSubmissionViewer";
+import AssistantStudents from "./pages/assistant/AssistantStudents";
+
+import AssistantReports from "./pages/assistant/AssistantReports";
 
 function App() {
   return (
@@ -146,9 +149,22 @@ function App() {
             <AssistantAssignments />
           </RoleProtectedRoute>}
         />
+
         <Route path="/assistant/assignments/:assignmentId" element={
           <RoleProtectedRoute allowedRole="assistant">
             <AssistantSubmissionViewer />
+          </RoleProtectedRoute>
+        }/>
+
+       <Route path="/assistant/assignments/:assignmentId/students" element={
+          <RoleProtectedRoute allowedRole="assistant">
+            <AssistantStudents />
+          </RoleProtectedRoute>
+        }/>
+        
+        <Route path="/assistant/assignments/:assignmentId/students/reports" element={
+          <RoleProtectedRoute allowedRole="assistant">
+            <AssistantReports />
           </RoleProtectedRoute>
         }/>
 

@@ -501,7 +501,7 @@ export default function ManagerSubmissionViewer() {
                                             title="Mark with AI"
                                             onClick={() => {
                                               if (bulkDone) {
-                                                ssetResultModal({ student: s, result: bulk.result, studentFile: bulk.studentFile });
+                                                setResultModal({ student: s, result: bulk.result, studentFile: bulk.studentFile });
                                                 setEditingQuestions(bulk.result.questions.map(q => ({ ...q })));
                                                 setEditingMaxTotal(null);
                                               } else {
