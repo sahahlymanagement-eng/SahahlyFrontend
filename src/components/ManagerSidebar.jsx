@@ -8,8 +8,8 @@ import "./ManagerSidebar.css";
 
 const NAV_ITEMS = [
   { icon: <FiHome />,      label: "Dashboard",          path: "/manager/dashboard"      },
-  { icon: <FiUsers />,     label: "Students",            path: "/manager/students"       },
-  { icon: <FiClipboard />, label: "Assignments",         path: "/manager/assignments"    },
+  { icon: <FiUsers />,     label: "Students Data",            path: "/manager/students"       },
+  { icon: <FiClipboard />, label: "Reports",         path: "/manager/assignments"    },
   { icon: <FiEye />,       label: "Submission Viewer",   path: "/manager/submissions"    },
   { icon: <FiBarChart2 />, label: "Token Usage",         path: "/manager/token-usage"    },
   { icon: <FiFileText />,  label: "Gemini AI Marking",   path: "/manager/marking"        },
