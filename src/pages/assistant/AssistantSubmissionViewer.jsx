@@ -209,15 +209,16 @@ const openErrorViewer = (title, error) => {
       fetchPrompts();
     }, []);
 
-  const fetchStudents = async () => 
-    { setLoading(true); 
-      try { 
-        const res = await api.get( `/assignment-submissions/${assignmentId}/students` ); 
-        setStudents(res.data.students || []); 
-      } 
-      catch { 
-        toast.error("Failed to load students"); 
-      } finally { setLoading(false); } };
+  // const fetchStudents = async () => 
+  //   { setLoading(true); 
+  //     try { 
+  //       const res = await api.get( `/assignment-submissions/${assignmentId}/students` ); 
+  //       setStudents(res.data.students || []); 
+  //     } 
+  //     catch { 
+  //       toast.error("Failed to load students"); 
+  //     } finally { setLoading(false); } };
+  
   const fetchStudents = async () => {
     setLoading(true);
     try {
