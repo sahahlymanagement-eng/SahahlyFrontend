@@ -16,6 +16,7 @@ import {
   guidanceForForm,
   normalizeGuidance,
 } from "../../utils/markingFormData";
+import PdfCompressionStats from "../../components/PdfCompressionStats";
 import "./ManagerSubmissionViewer.css";
 
 const CHECKLIST_CONFIG = [
@@ -758,6 +759,8 @@ export default function ManagerSubmissionViewer() {
             </div>
 
             <div className="msv-modal-body">
+
+              <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
 
               {/* ── TOKEN USAGE ── */}
               {resultModal.result.tokenUsage && (

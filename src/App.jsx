@@ -39,6 +39,7 @@ import DirectorSubjects from "./pages/director/DirectorSubjects";
 import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
 import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
+import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
 import ManagerAssignments from "./pages/manager/ManagerAssignments";
@@ -267,6 +268,7 @@ function App() {
           <Route path="quality-managers" element={<DirectorQualityManagers/>}/> 
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
+          <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="manage-teachers" element={<TeacherManager />} />
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />

@@ -23,6 +23,7 @@ import {
   guidanceForForm,
   normalizeGuidance,
 } from "../../utils/markingFormData";
+import PdfCompressionStats from "../../components/PdfCompressionStats";
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -771,6 +772,8 @@ return (
       
       
                       {/* AI TOKEN USAGE*/}
+                    <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
+
                     {resultModal.result.tokenUsage && (
                       <div className="msv-summary-box" style={{ marginTop: 12 }}>
                         <div style={{
