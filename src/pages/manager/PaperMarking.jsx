@@ -226,9 +226,7 @@ export default function PaperMarking() {
       <div className="pm-shell">
         <header className="pm-header">
           <h2>AI Paper Marking</h2>
-          <button className="pm-back" onClick={() => navigate(-1)}>
-            ← Back
-          </button>
+
           <div style={{ display: "flex", gap: 10 }}>
             <button
               className="pm-back"
