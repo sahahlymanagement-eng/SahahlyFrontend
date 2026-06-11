@@ -40,6 +40,47 @@ function formatNum(n) {
   return Number(n || 0).toLocaleString();
 }
 
+function isSameCalendarDay(a, b) {
+  const d1 = new Date(a);
+  const d2 = new Date(b);
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+function formatShortDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/** Single day or range when usage spans multiple days in the filtered period. */
+function formatUsageDate(firstUsedAt, lastUsedAt) {
+  if (!lastUsedAt) return "—";
+  if (!firstUsedAt || isSameCalendarDay(firstUsedAt, lastUsedAt)) {
+    return formatShortDate(lastUsedAt);
+  }
+  const first = new Date(firstUsedAt).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  const last = formatShortDate(lastUsedAt);
+  return `${first} – ${last}`;
+}
+
+function usageDateTitle(firstUsedAt, lastUsedAt) {
+  if (!lastUsedAt) return undefined;
+  if (!firstUsedAt || isSameCalendarDay(firstUsedAt, lastUsedAt)) {
+    return new Date(lastUsedAt).toLocaleString();
+  }
+  return `${new Date(firstUsedAt).toLocaleString()} – ${new Date(lastUsedAt).toLocaleString()}`;
+}
+
 function daysInMonth(year, month) {
   if (!year || !month) return 31;
   return new Date(year, month, 0).getDate();
@@ -93,6 +134,16 @@ function UsageTable({ columns, rows, rowKey }) {
   );
 }
 
+const DATE_COLUMN = {
+  key: "date",
+  label: "Date",
+  render: (r) => (
+    <span className="tu-date-cell" title={usageDateTitle(r.firstUsedAt, r.lastUsedAt)}>
+      {formatUsageDate(r.firstUsedAt, r.lastUsedAt)}
+    </span>
+  ),
+};
+
 const TOKEN_COLUMNS = [
   { key: "input", label: "Input", numeric: true, render: (r) => formatNum(r.inputTokens) },
   { key: "output", label: "Output", numeric: true, render: (r) => formatNum(r.outputTokens) },
@@ -102,17 +153,20 @@ const TOKEN_COLUMNS = [
 
 const ASSISTANT_COLUMNS = [
   { key: "name", label: "Assistant", render: (r) => r.personName },
+  DATE_COLUMN,
   ...TOKEN_COLUMNS,
 ];
 
 const ASSIGNMENT_COLUMNS = [
   { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
   { key: "classroom", label: "Classroom", render: (r) => r.classroomName || "—" },
+  DATE_COLUMN,
   ...TOKEN_COLUMNS,
 ];
 
 const CLASSROOM_ASSIGNMENT_COLUMNS = [
   { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
+  DATE_COLUMN,
   ...TOKEN_COLUMNS,
 ];
 
@@ -487,7 +541,16 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                   >
                     <div className="tu-click-row-main">
                       <h3>{c.classroomName}</h3>
-                      <span>{c.requestCount} marking requests</span>
+                      <span>
+                        {c.requestCount} marking requests
+                        {" · "}
+                        <span
+                          className="tu-date-cell"
+                          title={usageDateTitle(c.firstUsedAt, c.lastUsedAt)}
+                        >
+                          {formatUsageDate(c.firstUsedAt, c.lastUsedAt)}
+                        </span>
+                      </span>
                     </div>
                     <div className="tu-click-row-meta">
                       <span className="tu-num">{formatNum(c.totalTokens)} tokens</span>
