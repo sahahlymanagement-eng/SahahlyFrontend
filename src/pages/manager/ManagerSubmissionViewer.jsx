@@ -191,7 +191,7 @@ export default function ManagerSubmissionViewer() {
       appendMarkingContext(fd, {
         personId: currentUserId(),
         assignmentId: selectedAssignment._id,
-        classroomId: selectedClassroom?._id,
+        classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
 
       const res = await api.post("/marking/mark", fd, {
@@ -247,7 +247,7 @@ export default function ManagerSubmissionViewer() {
         appendMarkingContext(fd, {
           personId: currentUserId(),
           assignmentId: selectedAssignment._id,
-          classroomId: selectedClassroom?._id,
+          classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
 
         const res = await api.post("/marking/mark", fd, {

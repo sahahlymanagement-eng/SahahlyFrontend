@@ -416,11 +416,11 @@ const url = URL.createObjectURL(blob);
           fd.append("studentPdf",    studentFile);
           fd.append("markSchemePdf", msFile);
           fd.append("markingMode",   mode);
-          if (guidanceText?.trim())         fd.append("guidance",   guidanceText.trim());
-          // if (assignmentId.maxPoints) fd.append("totalGrade", assignmentId.maxPoints);
-          if (assignmentId.maxPoints) fd.append("totalGrade", assignmentId.maxPoints);
-  // if (maxGrade) fd.append("totalGrade", maxGrade);
-  
+          const guidanceValue = guidanceForForm(guidanceText);
+          if (guidanceValue) fd.append("guidance", guidanceValue);
+          if (maxGrade) fd.append("totalGrade", maxGrade);
+          appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
+
           const res = await api.post("/marking/mark", fd, {
             headers: { "Content-Type": "multipart/form-data" },
             timeout: 600000

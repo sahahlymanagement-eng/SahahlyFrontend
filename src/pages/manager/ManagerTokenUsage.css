@@ -202,6 +202,12 @@
   color: #93c5fd;
 }
 
+.tu-date-cell {
+  color: #94a3b8;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
 .tu-table tr:last-child td {
   border-bottom: none;
 }
