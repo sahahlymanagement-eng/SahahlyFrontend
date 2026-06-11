@@ -16,7 +16,6 @@ import {
 } from "react-icons/fi";
 
 import "../manager/ManagerSubmissionViewer.css";
-import "./AssistantReports.jsx"
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -25,6 +24,7 @@ import {
   guidanceForForm,
   normalizeGuidance,
 } from "../../utils/markingFormData";
+import PdfCompressionStats from "../../components/PdfCompressionStats";
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -1366,6 +1366,8 @@ return (
                         paddingRight: 8
                       }}
                     >
+
+                        <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
                           {/* AI TOKEN USAGE*/}
                         {resultModal.result.tokenUsage && (
@@ -1642,9 +1644,8 @@ return (
                     </div>
                   </div>
                 
-                )}  
-                
-          </div>
+                )}
 
-        );
-      }
+    </div>
+  );
+}

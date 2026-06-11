@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId } from "../../utils/markingFormData";
+import PdfCompressionStats from "../../components/PdfCompressionStats";
 
 export default function PaperMarking() {
   const navigate = useNavigate();
@@ -554,6 +555,8 @@ export default function PaperMarking() {
               </div>
             </div>
 
+            <PdfCompressionStats pdfCompression={result.pdfCompression} />
+
             {/* TOKEN USAGE */}
             {result.tokenUsage && (
               <div
@@ -569,7 +572,8 @@ export default function PaperMarking() {
                   style={{
                     marginBottom: "14px",
                     fontSize: "18px",
-                    fontWeight: "700"
+                    fontWeight: "700",
+                    color: "#ffffff"
                   }}
                 >
                   Gemini Token Usage
@@ -583,24 +587,24 @@ export default function PaperMarking() {
                   }}
                 >
                   <div>
-                    <p style={{ opacity: 0.6, fontSize: "12px" }}>
+                    <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
                       INPUT TOKENS
                     </p>
-                    <h2>{result.tokenUsage.inputTokens}</h2>
+                    <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.inputTokens}</h2>
                   </div>
 
                   <div>
-                    <p style={{ opacity: 0.6, fontSize: "12px" }}>
+                    <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
                       OUTPUT TOKENS
                     </p>
-                    <h2>{result.tokenUsage.outputTokens}</h2>
+                    <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.outputTokens}</h2>
                   </div>
 
                   <div>
-                    <p style={{ opacity: 0.6, fontSize: "12px" }}>
+                    <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
                       TOTAL TOKENS
                     </p>
-                    <h2>{result.tokenUsage.totalTokens}</h2>
+                    <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.totalTokens}</h2>
                   </div>
                 </div>
               </div>

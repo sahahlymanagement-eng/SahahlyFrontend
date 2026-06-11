@@ -55,6 +55,11 @@ export default function DirectorLayout() {
       path: "/director/manager-workload"
     },
     {
+      name: "Token Usage",
+      icon: <FiBarChart2 />,
+      path: "/director/token-usage"
+    },
+    {
       name: "Create Teachers",
       icon: <FiBarChart2 />,
       path: "/director/manage-teachers"
