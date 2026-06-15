@@ -44,7 +44,7 @@ export default function PaperMarkingClaude() {
     setResult(null);
 
     try {
-      const res = await api.post("/markingClaude/mark", formData, {
+      const res = await api.post("/markingClaude/mark-claude", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000
       });

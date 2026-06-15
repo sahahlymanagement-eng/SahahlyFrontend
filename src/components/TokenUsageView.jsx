@@ -30,6 +30,12 @@ const PRESETS = [
 
 const TABS = [
   { id: "classroom", label: "Classrooms" },
+  { id: "assistant", label: "Staff" },
+  { id: "assignment", label: "Assignments" },
+];
+
+const MANAGER_TABS = [
+  { id: "classroom", label: "Classrooms" },
   { id: "assistant", label: "Assistants" },
   { id: "assignment", label: "Assignments" },
 ];
@@ -151,11 +157,20 @@ const TOKEN_COLUMNS = [
   { key: "requests", label: "Requests", numeric: true, render: (r) => r.requestCount },
 ];
 
-const ASSISTANT_COLUMNS = [
-  { key: "name", label: "Assistant", render: (r) => r.personName },
-  DATE_COLUMN,
-  ...TOKEN_COLUMNS,
-];
+function formatRole(role) {
+  return role || "—";
+}
+
+function staffColumns(showRole) {
+  const cols = [
+    { key: "name", label: "Name", render: (r) => r.personName },
+  ];
+  if (showRole) {
+    cols.push({ key: "role", label: "Role", render: (r) => formatRole(r.personRole) });
+  }
+  cols.push(DATE_COLUMN, ...TOKEN_COLUMNS);
+  return cols;
+}
 
 const ASSIGNMENT_COLUMNS = [
   { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
@@ -176,6 +191,9 @@ const CLASSROOM_ASSIGNMENT_COLUMNS = [
 export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const navigate = useNavigate();
   const requiredRole = scope === "manager" ? "manager" : "admin";
+  const isDirector = scope === "director";
+  const tabs = isDirector ? TABS : MANAGER_TABS;
+  const personColumns = staffColumns(isDirector);
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState("classroom");
   const [period, setPeriod] = useState("custom");
@@ -397,7 +415,10 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       return { count: byClassroom.classrooms?.length ?? 0, label: "Classrooms with usage" };
     }
     if (tab === "assistant" && byAssistant) {
-      return { count: byAssistant.assistants?.length ?? 0, label: "Assistants with usage" };
+      return {
+        count: byAssistant.assistants?.length ?? 0,
+        label: isDirector ? "Staff with usage" : "Assistants with usage",
+      };
     }
     if (tab === "assignment" && byAssignment) {
       return { count: byAssignment.assignments?.length ?? 0, label: "Assignments with usage" };
@@ -405,7 +426,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     if (inClassroomBreakdown && classroomDetail) {
       return {
         count: classroomDetail.rows?.length ?? 0,
-        label: classroomBreakdown === "assistant" ? "Assistants" : "Assignments",
+        label: classroomBreakdown === "assistant"
+          ? (isDirector ? "Staff" : "Assistants")
+          : "Assignments",
       };
     }
     return null;
@@ -425,7 +448,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
 
       <div className="tu-toolbar">
         <div className="tu-tabs">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -525,8 +548,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         <>
           {!byClassroom?.classrooms?.length ? (
             <div className="tu-empty">
-              No token usage recorded for this period. Usage is tracked when assistants
-              run AI marking on assignments.
+              No token usage recorded for this period. Usage is tracked when{" "}
+              {isDirector ? "managers and assistants" : "assistants"} run AI marking on
+              assignments.
             </div>
           ) : (
             <div className="tu-click-list">
@@ -576,9 +600,13 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
               className="tu-breakdown-btn"
               onClick={() => setClassroomBreakdown("assistant")}
             >
-              <span className="tu-breakdown-btn-title">Per Assistant</span>
+              <span className="tu-breakdown-btn-title">
+                {isDirector ? "Per staff member" : "Per assistant"}
+              </span>
               <span className="tu-breakdown-btn-desc">
-                See which assistants used tokens in this classroom
+                {isDirector
+                  ? "See which managers and assistants used tokens in this classroom"
+                  : "See which assistants used tokens in this classroom"}
               </span>
             </button>
             <button
@@ -600,7 +628,11 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           <div className="tu-detail-header">
             <h2>{classroomDetail?.classroomName || selectedClassroom?.classroomName}</h2>
             <p>
-              Token usage per {classroomBreakdown === "assistant" ? "assistant" : "assignment"} ·{" "}
+              Token usage per{" "}
+              {classroomBreakdown === "assistant"
+                ? (isDirector ? "staff member" : "assistant")
+                : "assignment"}{" "}
+              ·{" "}
               {rangeLabel}
             </p>
           </div>
@@ -612,7 +644,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             <UsageTable
               columns={
                 classroomBreakdown === "assistant"
-                  ? ASSISTANT_COLUMNS
+                  ? personColumns
                   : CLASSROOM_ASSIGNMENT_COLUMNS
               }
               rows={classroomDetail.rows}
@@ -632,7 +664,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             <div className="tu-empty">No token usage recorded for this period.</div>
           ) : (
             <UsageTable
-              columns={ASSISTANT_COLUMNS}
+              columns={personColumns}
               rows={byAssistant.assistants}
               rowKey={(r) => String(r.personId)}
             />
