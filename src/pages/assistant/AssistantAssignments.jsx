@@ -60,7 +60,8 @@ export default function AssistantAssignments() {
           .filter((s) => s.submissionId)
           .every((s) => s.assignedGrade != null)
       );
-    } catch {
+    } catch (err) {
+      console.error("getAllStudentsGraded error:", err);
       return false;
     }
   };

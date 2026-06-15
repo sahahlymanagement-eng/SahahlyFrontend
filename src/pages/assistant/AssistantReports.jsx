@@ -10,8 +10,6 @@ import {
   FiRefreshCw
 } from "react-icons/fi";
 
-import {getSummary} from "../../utils/sharedSummary";
-
 export default function AssistantReports() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
@@ -24,7 +22,9 @@ export default function AssistantReports() {
   const [customPhone, setCustomPhone] = useState("");
   const [sendingCollective, setSendingCollective] = useState(false);
   
-  const summary = getSummary();
+  const [summaryMap, setSummaryMap] = useState({});
+  const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
+
   /* LOAD STUDENTS */
   useEffect(() => {
     if (!assignmentId) return;
@@ -38,6 +38,7 @@ export default function AssistantReports() {
         `/assignment-submissions/${assignmentId}/students`
       );
       setStudents(res.data.students || []);
+      setSummaryMap(res.data.summaryMap || {});
     } catch {
       toast.error("Failed to load students");
     } finally {
@@ -262,9 +263,7 @@ await api.post(
           </div>
 
           <div className="ma-topbar-right">
-    <div>
-      <p>{JSON.stringify(summary, null, 2)}</p>
-    </div>
+
             <button className="ma-send-btn" onClick={fetchStudents}>
               <FiRefreshCw /> Refresh
             </button>
@@ -364,27 +363,26 @@ await api.post(
                           <td style={{ color: "white" }}>{s.name}</td>
                           <td style={{ color: "white" }}>{s.email}</td>
                           <td style={{ color: "white" }}>{s.state}</td>
-                          <td style={{ color: "white" }}>
-                            {s.assignedGrade ?? "-"}
-                          </td>
-
+                          <td style={{ color: "white" }}>{s.assignedGrade ?? "-"}</td>
                           <td onClick={(e) => e.stopPropagation()}>
-                            {selected && (
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <FiMessageSquare size={12} />
-                                <input
-                                  value={
-                                    reportCart?.[stuId]?.items?.[asgId]
-                                      ?.comment || ""
-                                  }
-                                  onChange={(e) =>
-                                    setComment(stuId, e.target.value)
-                                  }
-                                  placeholder="Comment..."
-                                />
-                              </div>
+                            {summaryMap[s.submissionId] && (
+                              <button
+                                className="msv-action-btn msv-action-btn--view"
+                                title="View Summary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSummaryViewer({
+                                    open: true,
+                                    title: `Summary - ${s.name}`,
+                                    message: summaryMap[s.submissionId]
+                                  });
+                                }}
+                              >
+                                View Summary
+                              </button>
                             )}
                           </td>
+
                         </tr>
                       );
                     })}
@@ -395,7 +393,36 @@ await api.post(
             </div>
           </div>
         </div>
-
+{summaryViewer.open && (
+  <div
+    style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center"
+    }}
+    onClick={() => setSummaryViewer({ open: false, title: "", message: "" })}
+  >
+    <div
+      style={{
+        background: "#1e1e2e", borderRadius: 14, padding: 24,
+        width: "min(520px, 90vw)", border: "1px solid rgba(139,92,246,0.3)",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{summaryViewer.title}</span>
+        <button
+          onClick={() => setSummaryViewer({ open: false, title: "", message: "" })}
+          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 18 }}
+        >✕</button>
+      </div>
+      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, margin: 0 }}>
+        {summaryViewer.message}
+      </p>
+    </div>
+  </div>
+)}
       </main>
     </div>
   );
