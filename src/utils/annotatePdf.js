@@ -1,4 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const GREEN = rgb(0.04, 0.60, 0.25);
@@ -928,5 +929,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
   drawReportFooter(reportPage, sw, reg);
 
-  return await pdfDoc.save();
+  const rawBytes = await pdfDoc.save();
+  return await compressAnnotatedPdf(rawBytes);
 }
