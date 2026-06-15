@@ -29,6 +29,8 @@ export default function PaperMarking() {
   const [editingRules,    setEditingRules]    = useState(false);
   const [savingRules,     setSavingRules]     = useState(false);
   const [markingMode, setMarkingMode] = useState("normal");
+  const [geminiModels, setGeminiModels] = useState([]);
+  const [geminiModel, setGeminiModel] = useState("gemini-3-flash-preview");
 
   // Saved prompts
   const [savedPrompts,    setSavedPrompts]    = useState([]);
@@ -42,6 +44,9 @@ export default function PaperMarking() {
   useEffect(() => {
     api.get("/qb/boards").then(r => setBoards(r.data)).catch(() => {});
     loadPrompts();
+    api.get("/marking/gemini-models")
+      .then(r => setGeminiModels(r.data || []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -140,6 +145,7 @@ export default function PaperMarking() {
     formData.append("totalGrade",    totalGrade);
     formData.append("guidance",      guidance);
     formData.append("markingMode", markingMode);
+    formData.append("geminiModel", geminiModel);
     if (selSubject) formData.append("subjectId", selSubject);
     appendMarkingContext(formData, { personId: currentUserId() });
 
@@ -340,6 +346,23 @@ export default function PaperMarking() {
               <div className="pm-mode-desc">{m.desc}</div>
             </div>
           ))}
+        </div>
+
+        {/* ── GEMINI MODEL ── */}
+        <div className="pm-panel">
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>🤖 Gemini Model</div>
+          <select
+            className="pm-input"
+            value={geminiModel}
+            onChange={e => setGeminiModel(e.target.value)}
+          >
+            {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+          <p style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
+            Flash-Lite models are cheaper and faster — use this dropdown to compare marking quality.
+          </p>
         </div>
 
         {/* ── SUBJECT SELECTION ── */}
@@ -577,6 +600,7 @@ export default function PaperMarking() {
                   }}
                 >
                   Gemini Token Usage
+                  {result.geminiModel ? ` — ${result.geminiModel}` : ""}
                 </h3>
 
                 <div
@@ -606,6 +630,15 @@ export default function PaperMarking() {
                     </p>
                     <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.totalTokens}</h2>
                   </div>
+
+                  {result.estimatedCostUsd != null && (
+                    <div>
+                      <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
+                        EST. COST (USD)
+                      </p>
+                      <h2 style={{ color: "#ffffff" }}>${result.estimatedCostUsd}</h2>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
