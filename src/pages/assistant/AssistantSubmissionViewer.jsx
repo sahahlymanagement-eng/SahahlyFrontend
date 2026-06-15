@@ -55,6 +55,7 @@ export default function AssignmentSubmissionViewer() {
   const [bulkMarking, setBulkMarking] = useState(false);
   const [bulkProgress,     setBulkProgress]     = useState({});
   const [bulkErrors, setBulkErrors] = useState({});
+  const [bulkLocked, setBulkLocked] = useState(false);
  
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
@@ -67,6 +68,10 @@ export default function AssignmentSubmissionViewer() {
   const [returning,        setReturning]        = useState(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
+
+  const [studentErrors, setStudentErrors] = useState({});
+
+  const [markingProvider, setMarkingProvider] = useState("gemini");
 
   // const [cachedMsFile, setCachedMsFile] = useState(null);
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
@@ -167,58 +172,67 @@ const openErrorViewer = (title, error) => {
     return () => document.removeEventListener("mousedown", close);
   }, [promptDropdownOpen]);
 
-    useEffect(() => {
-      const generatePreview = async () => {
-        if (!resultModal) return;
+  useEffect(() => {
+    const generatePreview = async () => {
+      if (!resultModal) return;
 
-        try {
-          const pdfBytes = await annotatePdf({
-            studentFile: resultModal.studentFile,
-            questions: editingQuestions,
-            totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
-            maxTotalMarks: effectiveMaxTotal,
-            summary: resultModal.result.summary || ""
-          });
+      try {
+        const pdfBytes = await annotatePdf({
+          studentFile: resultModal.studentFile,
+          questions: editingQuestions,
+          totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
+          maxTotalMarks: effectiveMaxTotal,
+        });
 
-          const blob = new Blob([pdfBytes], { type: "application/pdf" });
-          const url = URL.createObjectURL(blob);
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
 
-          setAnnotatedPreviewUrl(url);
-        } catch (err) {
-          console.error("Failed to generate preview", err);
-        }
-      };
+        setAnnotatedPreviewUrl(url);
+      } catch (err) {
+        console.error("Failed to generate preview", err);
+      }
+    };
 
-      generatePreview();
+    generatePreview();
 
-      return () => {
-        if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
-      };
-    }, [resultModal]);
+    return () => {
+      if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
+    };
+  }, [resultModal]);
 
-    useEffect(() => {
-      const fetchPrompts = async () => {
-        try {
-          const res = await api.get("/marking/prompts")
-          setSavedPrompts(res.data || []);
-        } catch (err) {
-          console.error("Failed to load prompts", err);
-        }
-      };
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const res = await api.get("/marking/prompts")
+        setSavedPrompts(res.data || []);
+      } catch (err) {
+        console.error("Failed to load prompts", err);
+      }
+    };
 
-      fetchPrompts();
-    }, []);
+    fetchPrompts();
+  }, []);
 
-  // const fetchStudents = async () => 
-  //   { setLoading(true); 
-  //     try { 
-  //       const res = await api.get( `/assignment-submissions/${assignmentId}/students` ); 
-  //       setStudents(res.data.students || []); 
-  //     } 
-  //     catch { 
-  //       toast.error("Failed to load students"); 
-  //     } finally { setLoading(false); } };
-  
+  // to upload mark scheme if it exists for the assignment
+  useEffect(() => {
+    api.get(`/manager-assignments/${assignmentId}/full`)
+      .then(res => {
+        setStudents(res.data.students);
+        setMsInfo({
+          fileId: res.data.assignment.markSchemeFileId,
+          webLink: res.data.assignment.markSchemeWebLink
+        });
+      });
+  }, [assignmentId]);
+
+  useEffect(() => {
+    if (!assignmentId) return;
+  api.get(`/manager-assignments/${assignmentId}/bulk-lock`)
+    .then(res => {
+      setBulkLocked(res.data.locked);
+    });
+}, [assignmentId]);
+
   const fetchStudents = async () => {
     setLoading(true);
     try {
@@ -297,7 +311,7 @@ const url = URL.createObjectURL(blob);
     setPromptDropdownOpen(false);
   };
 
-  const runMarkStudent = async (student, guidanceText, mode = "normal") => {
+  const runMarkStudent = async (student, guidanceText, mode = "normal", markingProvider) => {
     setMarkingStudentId(student.submissionId);
 
     try {
@@ -310,20 +324,6 @@ const url = URL.createObjectURL(blob);
           responseType: "blob"
         })
       ]);
-      // const studentPdfRes = await api.get("/submission-files/pdf", {
-      //   params: { assignmentId, submissionId: student.submissionId },
-      //   responseType: "blob"
-      // });
-
-      // const msFile =
-        // cachedMsFile ||
-        // new File(
-        //   [await (await api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-        //     responseType: "blob"
-        //   })).data],
-        //   "markscheme.pdf",
-        //   { type: "application/pdf" }
-        // );
 
 
       await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
@@ -350,7 +350,12 @@ const url = URL.createObjectURL(blob);
       if (guidanceValue) fd.append("guidance", guidanceValue);
       appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
 
-      const res = await api.post("/marking/mark", fd, {
+      const endpoint =
+      markingProvider === "claude"
+        ? "/markingClaude/mark-claude"
+        : "/marking/mark";
+
+      const res = await api.post(endpoint, fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000
       });
@@ -378,17 +383,44 @@ const url = URL.createObjectURL(blob);
       setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
 
     } catch (err) {
-      toast.error(await getApiErrorMessage(err));
+          const message = extractHumanError
+        ? extractHumanError(err)
+        : await getApiErrorMessage(err);
+
+      setStudentErrors(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          message,
+          raw: err.response?.data
+        }
+      }));
+
+      openErrorViewer(
+        `Marking Failed - ${student.name}`,
+        message
+      );
+
+      toast.error(message);
     } finally {
       setMarkingStudentId(null);
     }
   };
 
-  const runBulkMark = async (guidanceText, mode = "normal") => {
+  const runBulkMark = async (guidanceText, mode = "normal", markingProvider) => {
       const eligible = students.filter(s => s.submissionId);
       if (!eligible.length) return toast.warn("No students with submissions");
   
       setBulkMarking(true);
+      // setBulkLocked(true);
+      try {
+        const res = await api.post(`/manager-assignments/${assignmentId}/bulk-lock`);
+        setBulkLocked(res.data.locked);
+      } catch (err) {
+        setBulkMarking(false);
+        toast.error("Failed to lock bulk marking");
+        return;
+      }
+      
       const progress = {};
       eligible.forEach(s => { progress[s.submissionId] = "pending"; });
       setBulkProgress({ ...progress });
@@ -416,29 +448,39 @@ const url = URL.createObjectURL(blob);
           fd.append("studentPdf",    studentFile);
           fd.append("markSchemePdf", msFile);
           fd.append("markingMode",   mode);
+          
           const guidanceValue = guidanceForForm(guidanceText);
           if (guidanceValue) fd.append("guidance", guidanceValue);
           if (maxGrade) fd.append("totalGrade", maxGrade);
           appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
 
-          const res = await api.post("/marking/mark", fd, {
+          // if (assignmentId.maxPoints) fd.append("totalGrade", assignmentId.maxPoints);
+          // if (assignmentId.maxPoints) fd.append("totalGrade", assignmentId.maxPoints);
+          // if (maxGrade) fd.append("totalGrade", maxGrade);
+  
+          const endpoint =
+          markingProvider === "claude"
+            ? "/markingClaude/mark-claude"
+            : "/marking/mark";
+
+          const res = await api.post(endpoint, fd, {
             headers: { "Content-Type": "multipart/form-data" },
             timeout: 600000
           });
   
           setBulkProgress(p => ({ ...p, [student.submissionId]: { status: "done", result: res.data, studentFile } }));
           setStudents(prev =>
-  prev.map(s =>
-    s.submissionId === student.submissionId
-      ? {
-          ...s,
-          assignedGrade:
-            res.data?.criteriaGrade?.totalMarks ??
-            res.data?.totalMarks ??
-            null
-        }
-      : s
-  )
+          prev.map(s =>
+            s.submissionId === student.submissionId
+              ? {
+                  ...s,
+                  assignedGrade:
+                    res.data?.criteriaGrade?.totalMarks ??
+                    res.data?.totalMarks ??
+                    null
+                }
+              : s
+          )
 );
 
         } 
@@ -459,6 +501,8 @@ const url = URL.createObjectURL(blob);
         }
       }
       setBulkMarking(false);
+      
+
       toast.success("Bulk marking complete");
   };
 
@@ -515,10 +559,10 @@ const url = URL.createObjectURL(blob);
     const mode = markingModeModal;
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
-      runBulkMark(g, mode);
+      runBulkMark(g, mode, markingProvider);
     } else {
       setGuidanceModal(null);
-      runMarkStudent(guidanceModal.student, g, mode);
+      runMarkStudent(guidanceModal.student, g, mode, markingProvider);
     }
   };
 
@@ -540,7 +584,6 @@ const url = URL.createObjectURL(blob);
         questions: editingQuestions,
         totalMarks: isUngraded ? "Ungraded" : total,
         maxTotalMarks: isUngraded ? "" : maxGrade,
-        summary:       resultModal.result.summary || ""
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes]));
@@ -577,7 +620,6 @@ const url = URL.createObjectURL(blob);
         questions: editingQuestions,
         totalMarks: total,
         maxTotalMarks: maxGrade,
-        summary:       resultModal.result.summary || ""
       });
 
 
@@ -588,164 +630,170 @@ const url = URL.createObjectURL(blob);
       fd.append("totalMarks",    effectiveTotal);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
+      
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000
       });
+      // await api.post("/submission-files/save-summary")
+
+      
       toast.success("Marked paper returned to student");
+      toast.success(resultModal.summary)
       setResultModal(null);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to return paper");
     } finally { setReturning(false); }
   };
 
-//   const returnAllToStudents = async () => {
-//     const doneStudents = students.filter(s => {
-//       const bulk = bulkProgress[s.submissionId];
-//       return bulk?.status === "done" && bulk?.result && bulk?.studentFile;
-//     });
+  // const returnAllToStudents = async () => {
+  //   const doneStudents = students.filter(s => {
+  //     const bulk = bulkProgress[s.submissionId];
+  //     return bulk?.status === "done" && bulk?.result && bulk?.studentFile && !bulk?.returned;
+  //   });
 
-//     if (!doneStudents.length) {
-//       toast.warn("No graded students to return");
-//       return;
-//     }
+  //   if (!doneStudents.length) {
+  //     toast.warn("No new graded students to return");
+  //     return;
+  //   }
 
-//     setReturning(true);
+  //   setReturning(true);
 
-//     try {
-//       for (const student of doneStudents) {
-//         const bulk = bulkProgress[student.submissionId];
+  //   try {
+  //     for (const student of doneStudents) {
+  //       const bulk = bulkProgress[student.submissionId];
+  //       const editingQs = bulk.result.questions || [];
 
-//         const editingQs = bulk.result.questions || [];
+  //       const total =
+  //         bulk.result?.criteriaGrade?.totalMarks ??
+  //         bulk.result?.totalMarks ??
+  //         editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0);
 
-// const total =
-//   bulk.result?.criteriaGrade?.totalMarks ??
-//   bulk.result?.totalMarks ??       // ← already there, good
-//   editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0);
-// const max =
-//   bulk.result?.criteriaGrade?.maxTotalMarks ??
-//   bulk.result?.maxTotalMarks ??   // ← add this line
-//   maxGrade ??
-//   0;
+  //       const max =
+  //         bulk.result?.criteriaGrade?.maxTotalMarks ??
+  //         bulk.result?.maxTotalMarks ??   // ← your fix from before
+  //         maxGrade ??
+  //         0;
 
+  //       const pdfBytes = await annotatePdf({
+  //         studentFile: bulk.studentFile,
+  //         questions: editingQs,
+  //         totalMarks: total,
+  //         maxTotalMarks: max,
+  //         summary: bulk.result.summary || ""
+  //       });
 
-//         const pdfBytes = await annotatePdf({
-//           studentFile: bulk.studentFile,
-//           questions: editingQs,
-//           totalMarks: total,
-//           maxTotalMarks: max,
-//           summary: bulk.result.summary || ""
-//         });
+  //       const fd = new FormData();
+  //       fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+  //       fd.append("assignmentId", assignmentId);
+  //       fd.append("submissionId", student.submissionId);
+  //       fd.append("totalMarks", total);
+  //       fd.append("maxTotalMarks", max);
+  //       fd.append("studentName", student.name || "Student");
 
-//         const fd = new FormData();
-//         fd.append( "annotatedPdf",new Blob([pdfBytes], { type: "application/pdf" }),"graded.pdf");
-//         fd.append("assignmentId", assignmentId);
-//         fd.append("submissionId", student.submissionId);
-//         fd.append("totalMarks",    total);
-//         fd.append("maxTotalMarks", max);
-//         fd.append("studentName", student.name || "Student");
+  //       await api.post("/submission-files/return-marked", fd, {
+  //         headers: { "Content-Type": "multipart/form-data" },
+  //         timeout: 120000
+  //       });
 
-//         await api.post("/submission-files/return-marked", fd, {
-//           headers: { "Content-Type": "multipart/form-data" },
-//           timeout: 120000
-//         });
-//   //       setStudents(prev =>
-//   //   prev.map(s =>
-//   //     s.submissionId === student.submissionId
-//   //       ? {
-//   //           ...s,
-//   //           assignedGrade: total
-//   //         }
-//   //       : s
-//   //   )
-//   // );
+  //       // ← mark as returned so re-clicking Return All skips them
+  //       setBulkProgress(p => ({
+  //         ...p,
+  //         [student.submissionId]: { ...bulk, returned: true }
+  //       }));
+  //     }
 
-//       }
+  //     toast.success("All graded papers returned");
+  //   } catch (err) {
+  //     console.error("RETURN ALL ERROR", err);
+  //     toast.error(
+  //       err.response?.data?.message ||
+  //       `Bulk return failed (${err.response?.status})`
+  //     );
+  //   } finally {
+  //     setReturning(false);
+  //   }
+  // };
 
-//       toast.success("All graded papers returned");
-//     } catch (err) {
-      
-//   console.error("RETURN ALL ERROR", err);
-//   console.error("STATUS", err.response?.status);
-//   console.error("DATA", err.response?.data);
+  const returnAllToStudents = async () => {
+    const doneStudents = students.filter(s => {
+      const bulk = bulkProgress[s.submissionId];
+      return bulk?.status === "done" && bulk?.result && bulk?.studentFile && !bulk?.returned;
+    });
 
-//   toast.error(
-//     err.response?.data?.message ||
-//     `Bulk return failed (${err.response?.status})`
-//   );
-//     } finally {
-//       setReturning(false);
-//     }
-//   };
-
-const returnAllToStudents = async () => {
-  const doneStudents = students.filter(s => {
-    const bulk = bulkProgress[s.submissionId];
-    return bulk?.status === "done" && bulk?.result && bulk?.studentFile && !bulk?.returned;
-  });
-
-  if (!doneStudents.length) {
-    toast.warn("No new graded students to return");
-    return;
-  }
-
-  setReturning(true);
-
-  try {
-    for (const student of doneStudents) {
-      const bulk = bulkProgress[student.submissionId];
-      const editingQs = bulk.result.questions || [];
-
-      const total =
-        bulk.result?.criteriaGrade?.totalMarks ??
-        bulk.result?.totalMarks ??
-        editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0);
-
-      const max =
-        bulk.result?.criteriaGrade?.maxTotalMarks ??
-        bulk.result?.maxTotalMarks ??   // ← your fix from before
-        maxGrade ??
-        0;
-
-      const pdfBytes = await annotatePdf({
-        studentFile: bulk.studentFile,
-        questions: editingQs,
-        totalMarks: total,
-        maxTotalMarks: max,
-        summary: bulk.result.summary || ""
-      });
-
-      const fd = new FormData();
-      fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
-      fd.append("assignmentId", assignmentId);
-      fd.append("submissionId", student.submissionId);
-      fd.append("totalMarks", total);
-      fd.append("maxTotalMarks", max);
-      fd.append("studentName", student.name || "Student");
-
-      await api.post("/submission-files/return-marked", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000
-      });
-
-      // ← mark as returned so re-clicking Return All skips them
-      setBulkProgress(p => ({
-        ...p,
-        [student.submissionId]: { ...bulk, returned: true }
-      }));
+    if (!doneStudents.length) {
+      toast.warn("No new graded students to return");
+      return;
     }
 
-    toast.success("All graded papers returned");
-  } catch (err) {
-    console.error("RETURN ALL ERROR", err);
-    toast.error(
-      err.response?.data?.message ||
-      `Bulk return failed (${err.response?.status})`
-    );
-  } finally {
-    setReturning(false);
-  }
-};
+    setReturning(true);
+
+    try {
+      for (const student of doneStudents) {
+        const bulk = bulkProgress[student.submissionId];
+
+        if (!bulk?.result || !bulk?.studentFile) {
+          toast.error(`Missing data for ${student.name}. Stopping return process.`);
+          throw new Error("Missing bulk data");
+        }
+
+        const editingQs = bulk.result.questions || [];
+
+        const total =
+          bulk.result?.criteriaGrade?.totalMarks ??
+          bulk.result?.totalMarks ??
+          editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0);
+
+        const max =
+          bulk.result?.criteriaGrade?.maxTotalMarks ??
+          bulk.result?.maxTotalMarks ??
+          maxGrade ??
+          0;
+
+        let pdfBytes;
+        try {
+          pdfBytes = await annotatePdf({
+            studentFile: bulk.studentFile,
+            questions: editingQs,
+            totalMarks: total,
+            maxTotalMarks: max,
+          });
+        } catch (err) {
+          console.error("PDF annotation failed for:", student.name, err);
+          toast.error(`Failed to generate PDF for ${student.name}. Stopping process.`);
+          throw err; // ⛔ stops ALL remaining students
+        }
+
+        const fd = new FormData();
+        fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+        fd.append("assignmentId", assignmentId);
+        fd.append("submissionId", student.submissionId);
+        fd.append("totalMarks", total);
+        fd.append("maxTotalMarks", max);
+        fd.append("studentName", student.name || "Student");
+
+        try {
+          await api.post("/submission-files/return-marked", fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 120000
+          });
+        } catch (err) {
+          console.error("Return failed for:", student.name, err);
+          toast.error(`Return failed for ${student.name}. Stopping process.`);
+          throw err; // ⛔ STOP EVERYTHING
+        }
+
+        setBulkProgress(p => ({
+          ...p,
+          [student.submissionId]: { ...bulk, returned: true }
+        }));
+      }
+
+      toast.success("All graded papers returned");
+    } finally {
+      setReturning(false);
+    }
+  };
 
   const getStatusBadge = (s) => {
       if (s.state === "TURNED_IN" || s.state === "RETURNED") {
@@ -774,13 +822,29 @@ const returnAllToStudents = async () => {
       JSON.stringify(err, null, 2)
     );
   };
+  
+  const openMarkScheme = (msInfo) => {
+    if (!msInfo?.webLink) return;
 
-const isCriteria = resultModal?.result?.markingMode === "criteria";
+    window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
+  };
 
-const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-const max   = effectiveMaxTotal;
-const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
-const color = getScoreColor(total, max);
+  // useEffect(() => {
+  //   if (!resultModal?.result?.criteriaGrade?.summary) return;
+
+  //   api.post("/submission-files/save-summary", {
+  //     assignmentId,
+  //     submissionId: resultModal.student.submissionId,
+  //     summary: resultModal.result.criteriaGrade.summary
+  //   });
+  // }, [resultModal?.result?.criteriaGrade?.summary]);
+
+  const isCriteria = resultModal?.result?.markingMode === "criteria";
+
+  const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+  const max   = effectiveMaxTotal;
+  const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+  const color = getScoreColor(total, max);
 
 return (
     <div className="ma-root">
@@ -833,27 +897,47 @@ return (
         >
           {uploadingMs ? "Uploading…" : msInfo ? "Replace MS" : "Upload MS"}
         </button>
+        
+        {msInfo && (
+          <button
+            className="msv-btn-ai"
+            onClick={() => openMarkScheme(msInfo)}
+            style={{
+              marginLeft: 10,
+              background: "rgba(59,130,246,0.15)",
+              border: "1px solid rgba(59,130,246,0.3)"
+            }}
+          >
+            View Mark Scheme
+          </button>
+        )}
 
         {msInfo && (
           <button
             className="msv-btn-ai"
             // onClick={runBulkMark}
             onClick={() => openGuidanceModal()}
-            disabled={bulkMarking}
+            disabled={bulkMarking || bulkLocked}
+            title={bulkLocked ? "This action can only be run once per assignment" : ""}
+            style={{
+              opacity: bulkLocked ? 0.4 : 1,
+              cursor: bulkLocked ? "not-allowed" : "pointer"
+            }}
           >
-            {bulkMarking ? "Marking all…" : "Mark All"}
+            {bulkMarking ? "Marking all…" : bulkLocked ? "Mark All (Locked)":"Mark All"}
           </button>
         )}
-            {msInfo && !bulkMarking && (
-      <button
-        className="msv-btn-ai"
-        onClick={returnAllToStudents}
-        disabled={returning}
-        style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
-      >
-        {returning ? "Returning…" : "Return All"}
-      </button>
-    )}
+        
+        {msInfo && !bulkMarking && (
+          <button
+            className="msv-btn-ai"
+            onClick={returnAllToStudents}
+            disabled={returning}
+            style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
+          >
+            {returning ? "Returning…" : "Return All"}
+          </button>
+          )}
       </div>
 
         {/* TABLE */}
@@ -925,64 +1009,101 @@ return (
 
                               <button className="msv-action-btn" onClick={() => openPdf(s)}> <FiEye size={13} /> </button>
                               <button className="msv-action-btn" onClick={() => downloadPdf(s)}> <FiDownload size={13} /> </button>
-          {msInfo && (
-            <>
-              <button
-                className={`msv-action-btn msv-action-btn--ai ${
-                  bulkDone
-                    ? "msv-action-btn--done"
-                    : bulk === "error"
-                    ? "msv-action-btn--error"
-                    : ""
-                }`}
-                title="Mark with AI"
-                onClick={() => {
-                  if (bulkDone) {
-                    setResultModal({
-                      student: s,
-                      result: bulk.result,
-                      studentFile: bulk.studentFile
-                    });
-                    setEditingQuestions(bulk.result.questions.map(q => ({ ...q })));
-                    setEditingMaxTotal(null);
-                  } else {
-                    openGuidanceModal(s);
-                  }
-                }}
-                disabled={
-                  markingStudentId === s.submissionId || bulk === "marking"
-                }
-              >
-                {markingStudentId === s.submissionId || bulk === "marking"
-                  ? <span className="pm-spinner" />
-                  : bulkDone
-                  ? "✅ Results"
-                  : bulk === "error"
-                  ? "❌ Retry"
-                  : <><FiCpu size={12} /> Mark</>
-                }
-              </button>
 
-              {bulk === "error" && (
-                <button
-                  className="msv-action-btn msv-action-btn--view"
-                  title="View Error"
-            //       onClick={() =>
-            // setErrorViewer({
-            //   open: true,
-            //   title: `Marking Failed - ${s.name}`,
-            //   message:
-            //     bulkErrors[s.submissionId].message
-            // })
-            onClick={() =>
-  openErrorViewer(`Marking Failed - ${s.name}`, bulkErrors[s.submissionId].message)
-          }
-                >
-                  View Error
-                </button>
-              )}
-            </>
-          )}
+                              
+                              
+                              {msInfo && (
+                                <>
+                                  <button
+                                    className={`msv-action-btn msv-action-btn--ai ${
+                                      bulkDone
+                                        ? "msv-action-btn--done"
+                                        : bulk === "error"
+                                        ? "msv-action-btn--error"
+                                        : ""
+                                    }`}
+                                    title="Mark with AI"
+                                    onClick={() => {
+                                      if (bulkDone) {
+                                        setResultModal({
+                                          student: s,
+                                          result: bulk.result,
+                                          studentFile: bulk.studentFile
+                                        });
+                                        setEditingQuestions(bulk.result.questions.map(q => ({ ...q })));
+                                        setEditingMaxTotal(null);
+                                      } else {
+                                        openGuidanceModal(s);
+                                      }
+                                    }}
+                                    disabled={
+                                      markingStudentId === s.submissionId || bulk === "marking"
+                                    }
+                                  >
+                                    {markingStudentId === s.submissionId || bulk === "marking"
+                                      ? <span className="pm-spinner" />
+                                      : bulkDone
+                                      ? "✅ Results"
+                                      : (studentErrors[s.submissionId] || bulk === "error")
+                                      ? "❌ Retry"
+                                      : <><FiCpu size={12} /> Mark</>
+                                    }
+                                  </button>
+                                  
+                                  {studentErrors[s.submissionId] && (
+                                    <button
+                                      className="msv-action-btn msv-action-btn--view"
+                                      title="View Error"
+                                      onClick={() =>
+                                        openErrorViewer(
+                                          `Marking Failed - ${s.name}`,
+                                          studentErrors[s.submissionId].message
+                                        )
+                                      }
+                                    >
+                                      View Error
+                                    </button>
+                                  )}
+                                  {bulk === "error" && (
+                                    <button
+                                      className="msv-action-btn msv-action-btn--view"
+                                      title="View Error"
+                                      onClick={() =>
+                                        openErrorViewer(`Marking Failed - ${s.name}`, bulkErrors[s.submissionId].message)
+                                      }
+                                    >
+                                      View Error
+                                    </button>
+                                  )}
+
+                                  {bulkDone && bulk?.result?.tokenUsage && (
+                                      <div style={{
+                                        marginTop: 6,
+                                        fontSize: 11,
+                                        display: "flex",
+                                        gap: 10,
+                                        color: "rgba(255,255,255,0.6)",
+                                        flexWrap: "wrap"
+                                      }}>
+                                        <span>
+                                          <span style={{ color: "#399cf2", fontWeight: 700 }}>In:</span>{" "}
+                                          {bulk.result.tokenUsage.inputTokens}
+                                        </span>
+
+                                        <span>
+                                          <span style={{ color: "#22c55e", fontWeight: 700 }}>Out:</span>{" "}
+                                          {bulk.result.tokenUsage.outputTokens}
+                                        </span>
+
+                                        <span>
+                                          <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
+                                          {bulk.result.tokenUsage.totalTokens}
+                                        </span>
+                                      </div>
+                                    )}
+                                </>
+                              )}
+                            
                             </div>
                           ) : "—"}
                         </td>
@@ -993,62 +1114,64 @@ return (
                   </tbody>
                 </table>
 
-    </div>
-  </div>
-      )}
-      </div>
-
-      </main>
-      {errorViewer.open && (
-        <div className="msv-overlay" onClick={() =>
-          setErrorViewer({ open: false, title: "", message: null })
-        }>
-          <div
-            className="msv-results-modal"
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: 500 }}
-          >
-            <div className="msv-modal-header">
-              <div style={{ fontSize: 15, fontWeight: 700 }}>
-                ❌ {errorViewer.title}
+                </div>
               </div>
-
-              <button
-                className="msv-icon-btn"
-                onClick={() =>
-                  setErrorViewer({ open: false, title: "", message: null })
-                }
-              >
-                <FiX />
-              </button>
+            )}
             </div>
 
-            <div style={{ padding: "16px 20px" }}>
-              <div style={{
-                fontSize: 12,
-                color: "rgba(255,255,255,0.5)",
-                marginBottom: 8
-              }}>
-                Error Details
+            </main>
+
+        {errorViewer.open && (
+          <div className="msv-overlay" onClick={() =>
+            setErrorViewer({ open: false, title: "", message: null })
+          }>
+            <div
+              className="msv-results-modal"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: 500 }}
+            >
+              <div className="msv-modal-header">
+                <div style={{ fontSize: 15, fontWeight: 700 }}>
+                  ❌ {errorViewer.title}
+                </div>
+
+                <button
+                  className="msv-icon-btn"
+                  onClick={() =>
+                    setErrorViewer({ open: false, title: "", message: null })
+                  }
+                >
+                  <FiX />
+                </button>
               </div>
 
-              <div style={{
-                background: "rgba(255,0,0,0.08)",
-                border: "1px solid rgba(255,0,0,0.2)",
-                padding: 12,
-                borderRadius: 10,
-                fontSize: 13,
-                color: "#fca5a5",
-                whiteSpace: "pre-wrap",
-                maxHeight: 300,
-                overflowY: "auto"
-              }}>
-                {formatError(errorViewer.message)}
+              <div style={{ padding: "16px 20px" }}>
+                <div style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.5)",
+                  marginBottom: 8
+                }}>
+                  Error Details
+                </div>
+
+                <div style={{
+                  background: "rgba(255,0,0,0.08)",
+                  border: "1px solid rgba(255,0,0,0.2)",
+                  padding: 12,
+                  borderRadius: 10,
+                  fontSize: 13,
+                  color: "#fca5a5",
+                  whiteSpace: "pre-wrap",
+                  maxHeight: 300,
+                  overflowY: "auto"
+                }}>
+                  {formatError(errorViewer.message)}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
           {/* ── GUIDANCE MODAL ── */}
           {guidanceModal && (
             <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
@@ -1130,76 +1253,62 @@ return (
                            boxShadow: "0 8px 32px rgba(0,0,0,0.5)" 
                         }}>
                           {savedPrompts.map((p, i) => (
-                            // <div
-                            //   key={p._id}
-                            //   onMouseDown={(e) => { 
-                            //     e.preventDefault(); // prevents blur/close race
-                            //     e.stopPropagation(); 
-                            //     setGuidance(p.content); 
-                            //     setPromptDropdownOpen(false); }}
-                            //   style={{ padding: "10px 14px", cursor: "pointer", borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", background: guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent" }}
-                            //   onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                            //   onMouseLeave={e => e.currentTarget.style.background = guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent"}
-                            // >
-                            //   <div style={{ fontSize: 13, fontWeight: 600, color: guidance === p.content ? "#399cf2" : "#e2e8f0", marginBottom: 3 }}>{guidance === p.content && "✓ "}{p.name}</div>
-                            //   <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.content.slice(0, 80)}{p.content.length > 80 ? "…" : ""}</div>
-                            // </div>
                           <div
-  key={p._id}
-  style={{
-    padding: "10px 14px",
-    cursor: "pointer",
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 10,
-    alignItems: "flex-start",
-    borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
-  }}
->
-  {/* LEFT: prompt content (click to select) */}
-  <div
-    style={{ flex: 1 }}
-    onMouseDown={(e) => {
-      e.preventDefault();
-      setGuidance(p.content);
-      setPromptDropdownOpen(false);
-    }}
-  >
-    <div style={{ fontSize: 13, fontWeight: 600 }}>
-      {p.name}
-    </div>
-    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-      {p.content.slice(0, 80)}...
-    </div>
-  </div>
+                            key={p._id}
+                            style={{
+                              padding: "10px 14px",
+                              cursor: "pointer",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              alignItems: "flex-start",
+                              borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                            }}
+                          >
+                            {/* LEFT: prompt content (click to select) */}
+                            <div
+                              style={{ flex: 1 }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setGuidance(p.content);
+                                setPromptDropdownOpen(false);
+                              }}
+                            >
+                              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                {p.name}
+                              </div>
+                              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                                {p.content.slice(0, 80)}...
+                              </div>
+                            </div>
 
-  {/* RIGHT: delete button */}
-  <button
-    onMouseDown={async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+                            {/* RIGHT: delete button */}
+                            <button
+                              onMouseDown={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
 
-      try {
-        await api.delete(`/marking/prompts/${p._id}`);
+                                try {
+                                  await api.delete(`/marking/prompts/${p._id}`);
 
-        setSavedPrompts(prev => prev.filter(x => x._id !== p._id));
-        toast.success("Prompt deleted");
-      } catch {
-        toast.error("Failed to delete prompt");
-      }
-    }}
-    style={{
-      background: "transparent",
-      border: "none",
-      color: "#ef4444",
-      cursor: "pointer",
-      fontSize: 12,
-      padding: "4px 6px"
-    }}
-  >
-    ✕
-  </button>
-</div>
+                                  setSavedPrompts(prev => prev.filter(x => x._id !== p._id));
+                                  toast.success("Prompt deleted");
+                                } catch {
+                                  toast.error("Failed to delete prompt");
+                                }
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "#ef4444",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                padding: "4px 6px"
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
                           
                           ))}
                         </div>
@@ -1224,39 +1333,55 @@ return (
                     style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
                   />
                   <button
-  className="ma-send-btn"
-  onClick={async () => {
-    if (!guidance.trim()) return toast.warn("Cannot save empty prompt");
+                      className="ma-send-btn"
+                      onClick={async () => {
+                        if (!guidance.trim()) return toast.warn("Cannot save empty prompt");
 
-    const name = prompt("Name this prompt:");
-    if (!name) return;
+                        const name = prompt("Name this prompt:");
+                        if (!name) return;
 
-    try {
-      const res = await api.post("/marking/prompts", {
-        name,
-        content: guidance
-      });
+                        try {
+                          const res = await api.post("/marking/prompts", {
+                            name,
+                            content: guidance
+                          });
 
-      setSavedPrompts(prev => [...prev, res.data]);
-      toast.success("Prompt saved");
-    } catch {
-      toast.error("Failed to save prompt");
-    }
-  }}
->
-  Save Prompt
-</button>
+                          setSavedPrompts(prev => [...prev, res.data]);
+                          toast.success("Prompt saved");
+                        } catch {
+                          toast.error("Failed to save prompt");
+                        }
+                      }}
+                    >
+                      Save Prompt
+                    </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                     <button
                       className="ma-send-btn"
-                      onClick={handleGuidanceConfirm}
+                      onClick={() => {
+                        setMarkingProvider("gemini");
+                        handleGuidanceConfirm();
+                      }}
                       disabled={markingModeModal === "criteria" && !guidance.trim()}
                       style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}
                     >
+                     
                       <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All" : "Start Marking"}
+                      {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
                     </button>
+                   
+                    <button
+                      className="ma-send-btn"
+                      onClick={() => {
+                        setMarkingProvider("claude");
+                        handleGuidanceConfirm();
+                      }}
+                    >
+                    <FiCpu size={14} />
+                      {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Gemini"}
+                    </button>
+
                     <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
                   </div>
                 </div>
@@ -1442,6 +1567,9 @@ return (
                                     )}
                                     {cg.summary && (
                                       <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
+                                    
+                                    
+                                    
                                     )}
                                   </>
                                 );
@@ -1464,6 +1592,40 @@ return (
                               <div className="msv-summary-box">
                                 <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
                                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
+                                 <button
+      onClick={async () => {
+        try {
+      console.log("Saving summary payload:", {
+  assignmentId,
+  submissionId: resultModal.student.submissionId,
+  summary: resultModal.result.summary,
+});
+          await api.post("/submission-files/save-summary", {
+            assignmentId,
+            submissionId: resultModal.student.submissionId,
+            summary: resultModal.result.summary,
+          });
+
+          toast.success("Summary saved");
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to save summary");
+        }
+      }}
+      style={{
+        marginTop: 10,
+        padding: "6px 12px",
+        borderRadius: 8,
+        border: "1px solid rgba(139,92,246,0.4)",
+        background: "rgba(139,92,246,0.1)",
+        color: "#fff",
+        cursor: "pointer",
+        fontSize: 12,
+      }}
+    >
+      Save Summary
+    </button>
+                              
                               </div>
                             )}
                             <div className="msv-score-bar">
@@ -1649,3 +1811,4 @@ return (
     </div>
   );
 }
+
