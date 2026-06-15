@@ -346,7 +346,12 @@ export default function DirectorPeople() {
 
                 <div className="personTop">
                   <div className="personIdentity">
-                    <h3>{p.name}</h3>
+                    <div className="personNameRow">
+                      <h3>{p.name}</h3>
+                      {p.roleId && (
+                        <span className="personRoleBadge">{roleNameById(p.roleId)}</span>
+                      )}
+                    </div>
                     <div className="personMeta">
                       <span><FiMail /> {p.email}</span>
                       <span><FiPhone /> +{p.phone}</span>
