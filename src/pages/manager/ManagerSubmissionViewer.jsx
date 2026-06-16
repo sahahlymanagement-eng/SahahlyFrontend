@@ -57,14 +57,186 @@ export default function ManagerSubmissionViewer() {
   const [markingStudentId, setMarkingStudentId] = useState(null);
   const [bulkMarking,      setBulkMarking]      = useState(false);
   const [bulkProgress,     setBulkProgress]     = useState({});
-
+  const [bulkErrors, setBulkErrors] = useState({});
+  const [bulkLocked, setBulkLocked] = useState(false);
+ 
   // Results modal
+  const [singleProgress, setSingleProgress] = useState({});
   const [resultModal,      setResultModal]      = useState(null);
   const [editingQuestions, setEditingQuestions] = useState([]);
   const [downloading,      setDownloading]      = useState(false);
   const [returning,        setReturning]        = useState(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
+
+  const [studentErrors, setStudentErrors] = useState({});
+
+  const [markingProvider, setMarkingProvider] = useState("gemini");
+  const [savedResults, setSavedResults] = useState({});
+
+  // const [cachedMsFile, setCachedMsFile] = useState(null);
+  const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
+
+  const [errorViewer, setErrorViewer] = useState({
+  open: false,
+  title: "",
+  message: null,
+});
+
+useEffect(() => {
+  const fetchSavedResults = async () => {
+    try {
+      const res = await api.get(
+        `/submission-files/save-results/${selectedAssignment._id}`
+      );
+
+      const map = {};
+
+      res.data.data.forEach(r => {
+        map[r.submissionId] = {
+          status: "done",
+          result: r.result,
+          studentFile: r.studentFileMeta,
+          totalMarks: r.totalMarks
+        };
+      });
+
+      setSavedResults(map);
+
+      // sync into UI progress state (same idea as assistant)
+      setSingleProgress(prev => ({
+        ...prev,
+        ...map
+      }));
+
+      // optional: also sync student list grades (manager usually needs this)
+      setStudents(prev =>
+        prev.map(s =>
+          map[s.submissionId]
+            ? {
+                ...s,
+                assignedGrade:
+                  map[s.submissionId]?.totalMarks ??
+                  map[s.submissionId]?.result?.totalMarks ??
+                  null
+              }
+            : s
+        )
+      );
+
+    } catch (err) {
+      console.error("Failed to load saved results", err);
+    }
+  };
+
+  if (selectedAssignment?._id) {
+    fetchSavedResults();
+  }
+}, [selectedAssignment?._id]);
+
+
+  const openErrorViewer = (title, error) => {
+    let message = "";
+
+    if (!error) {
+      message = "An unknown error occurred.";
+    } else if (typeof error === "string") {
+      message = error;
+    } else if (error?.response) {
+      // Axios / Fetch HTTP errors
+      const status = error.response.status;
+      const data = error.response.data;
+
+      if (data?.error?.message) {
+        // Example: nested OpenAI error
+        message = data.error.message;
+      } else if (data?.message) {
+        // Standard backend message
+        message = data.message;
+      } else {
+        // Translate common HTTP status codes
+        switch (status) {
+          case 400:
+            message = "Bad request. Please check your input.";
+            break;
+          case 401:
+            message = "You are not authorized. Please login again or check credentials.";
+            break;
+          case 403:
+            message = "Access denied. You do not have permission.";
+            break;
+          case 404:
+            message =
+              "The requested resource was not found. Check the API endpoint or route you are calling.";
+            break;
+          case 500:
+          case 502:
+          case 503:
+            message =
+              "Server error. The service may be temporarily unavailable. Please try again later.";
+            break;
+          default:
+            message = `Unexpected error (HTTP ${status}).`;
+        }
+      }
+    } else if (error?.message) {
+      // Generic JS error
+      message = error.message;
+    } else {
+      // Unknown object
+      try {
+        message = JSON.stringify(error, null, 2);
+      } catch {
+        message = "An unknown error occurred (cannot parse error object).";
+      }
+    }
+
+    setErrorViewer({ open: true, title, message });
+  };
+
+    const safeParse = (value) => {
+    if (typeof value !== "string") return value;
+
+    try {
+      const parsed = JSON.parse(value);
+      // handle double-encoded JSON
+      return typeof parsed === "string" ? safeParse(parsed) : parsed;
+    } catch {
+      return value;
+    }
+  };
+
+  const extractHumanError = (err) => {
+    console.log("RAW ERROR:", err?.response?.data);
+    console.log("MESSAGE TYPE:", typeof err?.response?.data?.message);
+    const data = err?.response?.data;
+
+    // 1. Normalize data.message
+    const parsedMessage = safeParse(data?.message);
+
+    // 2. If message itself contains error object, prefer it
+    const errorObj =
+      parsedMessage?.error ? parsedMessage : data?.error ? data : parsedMessage;
+
+    if (
+      errorObj?.error?.status === "UNAVAILABLE" ||
+      errorObj?.error?.code === 503
+    ) {
+      return "The AI marking service is currently experiencing high demand. Please try again in a few minutes.";
+    }
+
+    if (err?.response?.status === 404) {
+      return "The requested file or resource could not be found.";
+    }
+
+    return (
+      errorObj?.error?.message ||
+      data?.error?.message ||
+      parsedMessage?.message ||
+      err?.message ||
+      "An unexpected error occurred."
+    );
+  };
 
   // Compute effective max total
   const effectiveMaxTotal = editingMaxTotal !== null
@@ -106,6 +278,49 @@ export default function ManagerSubmissionViewer() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [promptDropdownOpen]);
+
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const res = await api.get("/marking/prompts")
+        setSavedPrompts(res.data || []);
+      } catch (err) {
+        console.error("Failed to load prompts", err);
+      }
+    };
+
+    fetchPrompts();
+  }, []);
+
+    useEffect(() => {
+      const generatePreview = async () => {
+        if (!resultModal) return;
+  
+        try {
+          const pdfBytes = await annotatePdf({
+            studentFile: resultModal.studentFile,
+            questions: editingQuestions,
+            totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
+            maxTotalMarks: effectiveMaxTotal,
+          });
+  
+          const blob = new Blob([pdfBytes], { type: "application/pdf" });
+          const url = URL.createObjectURL(blob);
+  
+          setAnnotatedPreviewUrl(url);
+        } catch (err) {
+          console.error("Failed to generate preview", err);
+        }
+      };
+  
+      generatePreview();
+  
+      return () => {
+        if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
+      };
+    }, [resultModal]);
+    
+    
 
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
@@ -161,9 +376,17 @@ export default function ManagerSubmissionViewer() {
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
   };
-
+  
+  
   const runMarkStudent = async (student, guidanceText, mode = "normal") => {
     setMarkingStudentId(student.submissionId);
+    setSingleProgress(prev => ({
+      ...prev,
+      [student.submissionId]: {
+        status: "marking"
+      }
+    }));
+
     try {
       const [studentPdfRes, msPdfRes] = await Promise.all([
         api.get("/submission-files/pdf", {
@@ -194,20 +417,83 @@ export default function ManagerSubmissionViewer() {
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
 
-      const res = await api.post("/marking/mark", fd, {
+      const endpoint =
+      markingProvider === "claude"
+        ? "/markingClaude/mark-claude"
+        : "/marking/mark";
+
+      const res = await api.post(endpoint, fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000
       });
 
+      
       setResultModal({ student, result: res.data, studentFile });
+      setSingleProgress(prev => ({
+          ...prev,
+          [student.submissionId]: {
+            status: "done",
+            result: res.data,
+            studentFile
+          }
+        }));
+        await api.post("/submission-files/save-results", {
+            assignmentId:selectedAssignment._id,
+            submissionId: student.submissionId,
+            studentId: student.studentId,
+            studentName: student.name,
+            mode,
+            provider: markingProvider,
+            result: res.data
+          });
+        
+          setStudents(prev =>
+        prev.map(s =>
+          s.submissionId === student.submissionId
+            ? {
+                ...s,
+                assignedGrade:
+                  res.data?.criteriaGrade?.totalMarks ??
+                  res.data?.totalMarks ??
+                  null
+              }
+            : s
+        )
+      );
+      
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
       setEditingMaxTotal(null);
     } catch (err) {
-      toast.error(await getApiErrorMessage(err));
+      const message = extractHumanError
+              ? extractHumanError(err)
+              : await getApiErrorMessage(err);
+      
+            setStudentErrors(prev => ({
+              ...prev,
+              [student.submissionId]: {
+                message,
+                raw: err.response?.data
+              }
+            }));
+            setSingleProgress(prev => ({
+              ...prev,
+              [student.submissionId]: {
+                status: "error"
+              }
+            }));
+      
+            openErrorViewer(
+              `Marking Failed - ${student.name}`,
+              message
+            );
+      
+            toast.error(message);
+            toast.error(await getApiErrorMessage(err));
     } finally {
       setMarkingStudentId(null);
     }
   };
+
 
   const runBulkMark = async (guidanceText, mode = "normal") => {
     const eligible = students.filter(s => s.submissionId);
@@ -372,6 +658,28 @@ export default function ManagerSubmissionViewer() {
   const filteredAssignments = assignments.filter(a =>
     a.title.toLowerCase().includes(assignmentSearch.toLowerCase())
   );
+    const formatError = (err) => {
+    if (!err) return "Unknown error";
+
+    if (typeof err === "string") {
+      return err;
+    }
+
+    return (
+      err?.error?.message ||
+      err?.data?.error?.message ||
+      err?.message ||
+      err?.errorMessage ||
+      err?.data?.message ||
+      JSON.stringify(err, null, 2)
+    );
+  };
+  
+  const openMarkScheme = (msInfo) => {
+    if (!msInfo?.webLink) return;
+
+    window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
+  };
 
   const statusBadge = (student) => {
     if (student.state === "TURNED_IN" || student.state === "RETURNED") {
@@ -503,6 +811,26 @@ export default function ManagerSubmissionViewer() {
                             {students.map((s, i) => {
                               const bulk     = bulkProgress[s.submissionId];
                               const bulkDone = bulk?.status === "done";
+                              const bulkPending = bulk?.status === "pending";
+                              const bulkMarking = bulk?.status === "marking";
+                              const bulkError   = bulk?.status === "error";
+                              const bulkRetrying = bulk?.status === "retrying";  // ← add this
+                              
+                              const single = singleProgress[s.submissionId];
+                              // const singleMarking = single?.status === "marking";
+                              // const singleError = single?.status === "error";
+
+                              const db = savedResults[s.submissionId];
+                              
+                              const hasResult = !!(single?.status === "done" || db?.result);
+                              const isMarking = single?.status === "marking" || markingStudentId === s.submissionId;
+                              const hasError = single?.status === "error" || studentErrors[s.submissionId];
+
+                              const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId;
+                              const markingDone = bulkDone || hasResult;
+                              const markingError = bulkError || hasError || studentErrors[s.submissionId];
+                            
+
                               return (
                                 <tr key={s._id || s.submissionId} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
                                   <td>
@@ -523,7 +851,9 @@ export default function ManagerSubmissionViewer() {
                                       <div className="msv-actions">
                                         <button className="msv-action-btn" title="View PDF" onClick={() => openPdf(s)}><FiEye size={13} /></button>
                                         <button className="msv-action-btn" title="Download PDF" onClick={() => downloadPdf(s)}><FiDownload size={13} /></button>
+                                        
                                         {msInfo && (
+                                         <>
                                           <button
                                             className={`msv-action-btn msv-action-btn--ai ${bulkDone ? "msv-action-btn--done" : bulk === "error" ? "msv-action-btn--error" : ""}`}
                                             title="Mark with AI"
@@ -545,6 +875,7 @@ export default function ManagerSubmissionViewer() {
                                               : <><FiCpu size={12} /> Mark</>
                                             }
                                           </button>
+                                        </>
                                         )}
                                       </div>
                                     ) : "—"}
@@ -627,18 +958,79 @@ export default function ManagerSubmissionViewer() {
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
                   </div>
                   {promptDropdownOpen && (
-                    <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: "#060f2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, zIndex: 200, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+                    <div 
+                      style={{ 
+                        position: "absolute",
+                        top: "calc(100% + 6px)", 
+                        left: 0, 
+                        right: 0, 
+                        background: "#060f2e", 
+                        border: "1px solid rgba(255,255,255,0.1)", 
+                        borderRadius: 10, 
+                        zIndex: 200, 
+                        maxHeight: 220,          // 👈 important
+                        overflowY: "auto",       // 👈 enables scroll
+                        overflowX: "hidden",
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.5)" 
+                      }}>
+
                       {savedPrompts.map((p, i) => (
-                        <div
-                          key={p._id}
-                          onClick={e => { e.stopPropagation(); setGuidance(normalizeGuidance(p.content)); setPromptDropdownOpen(false); }}
-                          style={{ padding: "10px 14px", cursor: "pointer", borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", background: guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent" }}
-                          onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                          onMouseLeave={e => e.currentTarget.style.background = guidance === p.content ? "rgba(57,156,242,0.12)" : "transparent"}
-                        >
-                          <div style={{ fontSize: 13, fontWeight: 600, color: guidance === p.content ? "#399cf2" : "#e2e8f0", marginBottom: 3 }}>{guidance === p.content && "✓ "}{p.name}</div>
-                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.content.slice(0, 80)}{p.content.length > 80 ? "…" : ""}</div>
-                        </div>
+                                <div
+                                  key={p._id}
+                                  style={{
+                                    padding: "10px 14px",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    alignItems: "flex-start",
+                                    borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                                  }}
+                                >
+                                  {/* LEFT: prompt content (click to select) */}
+                                  <div
+                                    style={{ flex: 1 }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setGuidance(p.content);
+                                      setPromptDropdownOpen(false);
+                                    }}
+                                  >
+                                    <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                      {p.name}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                                      {p.content.slice(0, 80)}...
+                                    </div>
+                                  </div>
+
+                                  {/* RIGHT: delete button */}
+                                  <button
+                                    onMouseDown={async (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+
+                                      try {
+                                        await api.delete(`/marking/prompts/${p._id}`);
+
+                                        setSavedPrompts(prev => prev.filter(x => x._id !== p._id));
+                                        toast.success("Prompt deleted");
+                                      } catch {
+                                        toast.error("Failed to delete prompt");
+                                      }
+                                    }}
+                                    style={{
+                                      background: "transparent",
+                                      border: "none",
+                                      color: "#ef4444",
+                                      cursor: "pointer",
+                                      fontSize: 12,
+                                      padding: "4px 6px"
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
                       ))}
                     </div>
                   )}
