@@ -631,6 +631,14 @@ const url = URL.createObjectURL(blob);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
       
+      if (resultModal.result?.summary) {
+        await api.post("/submission-files/save-summary", {
+          assignmentId,
+          submissionId: resultModal.student.submissionId,
+          summary: resultModal.result.summary,
+        });
+      }
+
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000
@@ -829,15 +837,30 @@ const url = URL.createObjectURL(blob);
     window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
   };
 
-  // useEffect(() => {
-  //   if (!resultModal?.result?.criteriaGrade?.summary) return;
+  const handleReturnAll = async () => {
+    try {
+      setReturning(true);
 
-  //   api.post("/submission-files/save-summary", {
-  //     assignmentId,
-  //     submissionId: resultModal.student.submissionId,
-  //     summary: resultModal.result.criteriaGrade.summary
-  //   });
-  // }, [resultModal?.result?.criteriaGrade?.summary]);
+      const saveRequests = Object.entries(bulkProgress)
+        .filter(([_, bulk]) =>
+          bulk?.status === "done" &&
+          bulk?.result?.summary
+        )
+        .map(([submissionId, bulk]) =>
+          api.post("/submission-files/save-summary", {
+            assignmentId,
+            submissionId,
+            summary: bulk.result.summary,
+          })
+        );
+
+      await Promise.all(saveRequests);
+
+      await returnAllToStudents();
+    } finally {
+      setReturning(false);
+    }
+  };
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
 
@@ -931,7 +954,7 @@ return (
         {msInfo && !bulkMarking && (
           <button
             className="msv-btn-ai"
-            onClick={returnAllToStudents}
+            onClick={handleReturnAll}
             disabled={returning}
             style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
           >
@@ -1379,7 +1402,7 @@ return (
                       }}
                     >
                     <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Gemini"}
+                      {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
                     </button>
 
                     <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
@@ -1592,39 +1615,39 @@ return (
                               <div className="msv-summary-box">
                                 <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
                                 <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
-                                 <button
-      onClick={async () => {
-        try {
-      console.log("Saving summary payload:", {
-  assignmentId,
-  submissionId: resultModal.student.submissionId,
-  summary: resultModal.result.summary,
-});
-          await api.post("/submission-files/save-summary", {
-            assignmentId,
-            submissionId: resultModal.student.submissionId,
-            summary: resultModal.result.summary,
-          });
+                                 {/* <button
+                                    onClick={async () => {
+                                      try {
+                                    console.log("Saving summary payload:", {
+                                assignmentId,
+                                submissionId: resultModal.student.submissionId,
+                                summary: resultModal.result.summary,
+                              });
+                                        await api.post("/submission-files/save-summary", {
+                                          assignmentId,
+                                          submissionId: resultModal.student.submissionId,
+                                          summary: resultModal.result.summary,
+                                        });
 
-          toast.success("Summary saved");
-        } catch (err) {
-          console.error(err);
-          toast.error("Failed to save summary");
-        }
-      }}
-      style={{
-        marginTop: 10,
-        padding: "6px 12px",
-        borderRadius: 8,
-        border: "1px solid rgba(139,92,246,0.4)",
-        background: "rgba(139,92,246,0.1)",
-        color: "#fff",
-        cursor: "pointer",
-        fontSize: 12,
-      }}
-    >
-      Save Summary
-    </button>
+                                        toast.success("Summary saved");
+                                      } catch (err) {
+                                        console.error(err);
+                                        toast.error("Failed to save summary");
+                                      }
+                                    }}
+                                    style={{
+                                      marginTop: 10,
+                                      padding: "6px 12px",
+                                      borderRadius: 8,
+                                      border: "1px solid rgba(139,92,246,0.4)",
+                                      background: "rgba(139,92,246,0.1)",
+                                      color: "#fff",
+                                      cursor: "pointer",
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    Save Summary
+                                  </button> */}
                               
                               </div>
                             )}
