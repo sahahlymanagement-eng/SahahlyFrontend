@@ -23,15 +23,15 @@ export default function PaperMarkingClaude() {
     if (!studentFile)    { toast.warn("Please upload the student answer PDF"); return; }
     if (!markSchemeFile) { toast.warn("Please upload the mark scheme PDF");    return; }
 
-    const maxSize = 10 * 1024 * 1024;
-    if (studentFile.size > maxSize) {
-      toast.error("Student PDF is too large. Please compress it to under 10MB.");
-      return;
-    }
-    if (markSchemeFile.size > maxSize) {
-      toast.error("Mark scheme PDF is too large. Please compress it to under 10MB.");
-      return;
-    }
+    // const maxSize = 10 * 1024 * 1024;
+    // if (studentFile.size > maxSize) {
+    //   toast.error("Student PDF is too large. Please compress it to under 10MB.");
+    //   return;
+    // }
+    // if (markSchemeFile.size > maxSize) {
+    //   toast.error("Mark scheme PDF is too large. Please compress it to under 10MB.");
+    //   return;
+    // }
 
     const formData = new FormData();
     formData.append("studentPdf",    studentFile);
