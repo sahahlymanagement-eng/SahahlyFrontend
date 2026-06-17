@@ -24,6 +24,8 @@ export default function AssistantReports() {
   
   const [summaryMap, setSummaryMap] = useState({});
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
+  const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
+  const [classroomId, setClassroomId] = useState(null);
 
   /* LOAD STUDENTS */
   useEffect(() => {
@@ -39,6 +41,8 @@ export default function AssistantReports() {
       );
       setStudents(res.data.students || []);
       setSummaryMap(res.data.summaryMap || {});
+      setAssignmentTitle(res.data.assignmentTitle || "Assignment");
+      setClassroomId(res.data.classroomId || null);
     } catch {
       toast.error("Failed to load students");
     } finally {
@@ -49,14 +53,16 @@ export default function AssistantReports() {
   /* HELPERS */
   const getStudentId = (s) => s.studentId || s._id;
 
-  const buildItem = () => ({
-    assignmentTitle: "Assignment",
-    state: "",
-    submittedAt: null,
-    isLate: false,
-    isOnTime: false,
-    assignedGrade: null,
-    comment: ""
+  const buildItem = (student) => ({
+    assignmentTitle,
+    assignmentId,
+    submissionId: student.submissionId || null,
+    state: student.state,
+    submittedAt: student.submittedAt,
+    isLate: student.isLate,
+    isOnTime: student.isOnTime,
+    assignedGrade: student.assignedGrade,
+    comment: student.summary || summaryMap[student.submissionId] || ""
   });
 
   /* TOGGLE SINGLE STUDENT */
@@ -70,7 +76,7 @@ export default function AssistantReports() {
       if (!next[stuId]) {
         next[stuId] = {
           studentMeta: student,
-          items: { [asgId]: buildItem() }
+          items: { [asgId]: buildItem(student) }
         };
       } else if (next[stuId].items[asgId]) {
         delete next[stuId].items[asgId];
@@ -79,7 +85,7 @@ export default function AssistantReports() {
           delete next[stuId];
         }
       } else {
-        next[stuId].items[asgId] = buildItem();
+        next[stuId].items[asgId] = buildItem(student);
       }
 
       return next;
@@ -99,10 +105,10 @@ export default function AssistantReports() {
         if (!next[stuId]) {
           next[stuId] = {
             studentMeta: s,
-            items: { [asgId]: buildItem() }
+            items: { [asgId]: buildItem(s) }
           };
         } else if (!next[stuId].items[asgId]) {
-          next[stuId].items[asgId] = buildItem();
+          next[stuId].items[asgId] = buildItem(s);
         }
       });
 
@@ -142,35 +148,68 @@ export default function AssistantReports() {
   };
 
   /* BUILD PAYLOAD */
-  const buildReportsPayload = () => {
+  const buildReportsPayload = (activeSummaryMap = summaryMap, activeStudents = students) => {
+    const studentByKey = Object.fromEntries(
+      activeStudents.map((s) => [String(getStudentId(s)), s])
+    );
+
     return Object.entries(reportCart).map(([, entry]) => ({
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
-      items: Object.values(entry.items)
+      items: Object.values(entry.items).map((item) => {
+        const liveStudent =
+          studentByKey[String(getStudentId(entry.studentMeta))] || entry.studentMeta;
+        const submissionId = item.submissionId || liveStudent?.submissionId;
+        const savedSummary =
+          liveStudent?.summary ||
+          (submissionId ? activeSummaryMap[submissionId] : "");
+        return {
+          ...item,
+          assignmentId: item.assignmentId || assignmentId,
+          submissionId,
+          comment: (item.comment || savedSummary || "").trim()
+        };
+      })
     }));
   };
 
   /* SEND NORMAL REPORT */
   const sendReport = async () => {
-    const reports = buildReportsPayload();
-
-    if (!reports.length) {
+    if (!Object.keys(reportCart).length) {
       toast.warn("No students selected");
       return;
     }
 
+    if (!classroomId) {
+      toast.error("Missing classroom for this assignment");
+      return;
+    }
+
+    let freshSummaryMap = summaryMap;
+    let freshStudents = students;
+    try {
+      const fresh = await api.get(`/assignment-submissions/${assignmentId}/students`);
+      freshSummaryMap = fresh.data.summaryMap || summaryMap;
+      freshStudents = fresh.data.students || students;
+      setSummaryMap(freshSummaryMap);
+      setStudents(freshStudents);
+    } catch {
+      // use cached summaries if refresh fails
+    }
+
+    const reports = buildReportsPayload(freshSummaryMap, freshStudents);
+
     setSending(true);
     try {
-await api.post(
-  `/assignment-submissions/${assignmentId}/students/reports`,
-  {
-    type: "individual",
-    reports
-  }
-);
-
-      toast.success("Reports sent successfully");
+      const res = await api.post("/manager-assignments/send-report", {
+        reports,
+        classroomId
+      });
+      const summary = res.data.summary || [];
+      const succeeded = summary.filter((r) => r.status === "fulfilled").length;
+      const failed = summary.filter((r) => r.status === "rejected").length;
+      toast.success(`Sent to ${succeeded} student(s)${failed ? `, ${failed} failed` : ""}`);
       setReportCart({});
     } catch {
       toast.error("Failed to send reports");

@@ -152,6 +152,21 @@ function drawReportFooter(page, sw, reg) {
   });
 }
 
+/** Insert the next report page immediately before the marked student work. */
+function openNextReportPage(pdfDoc, reportPageCount, currentPage, sw, sh, M, bold, reg, title) {
+  drawReportFooter(currentPage, sw, reg);
+  const page = pdfDoc.insertPage(reportPageCount, [sw, sh]);
+  page.drawRectangle({ x: 0, y: sh - 40, width: sw, height: 40, color: NAVY });
+  page.drawText(title, {
+    x: M,
+    y: sh - 26,
+    size: 11,
+    font: bold,
+    color: WHITE,
+  });
+  return { page, yPos: sh - 52, reportPageCount: reportPageCount + 1 };
+}
+
 function drawBoldText(page, text, { x, y, size, font, color }) {
   const line = san(text);
   page.drawText(line, { x, y, size, font, color });
@@ -604,6 +619,8 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
   const { width: sw, height: sh } = summaryPage.getSize();
   const M = 38;
   const CW = sw - M * 2;
+  let reportPage = summaryPage;
+  let reportPageCount = 1;
 
   const pct = maxTotalMarks > 0 ? Math.round((totalMarks / maxTotalMarks) * 100) : 0;
   const sCol = scoreCol(totalMarks, maxTotalMarks);
@@ -763,69 +780,146 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
 
   const topics = buildTopicsMap(questions);
 
-  topics.slice(0, 2).forEach(([topic, data]) => {
-    const boxH = 52;
-
-    summaryPage.drawRectangle({
+  if (topics.length === 0) {
+    const boxH = 44;
+    if (yPos - boxH < BD_FOOTER_Y + 20) {
+      const next = openNextReportPage(
+        pdfDoc,
+        reportPageCount,
+        reportPage,
+        sw,
+        sh,
+        M,
+        bold,
+        reg,
+        "GRADING REPORT (continued)"
+      );
+      reportPage = next.page;
+      reportPageCount = next.reportPageCount;
+      yPos = next.yPos;
+    }
+    reportPage.drawRectangle({
       x: M,
       y: yPos - boxH,
       width: CW,
       height: boxH,
-      color: rgb(0.96, 0.97, 1),
-      borderColor: rgb(0.82, 0.84, 0.9),
+      color: rgb(0.88, 0.97, 0.91),
+      borderColor: GREEN,
       borderWidth: 0.7,
     });
-
-    summaryPage.drawRectangle({
-      x: M,
-      y: yPos - boxH,
-      width: 5,
-      height: boxH,
-      color: NAVY,
-    });
-
-    summaryPage.drawText(san(topic).substring(0, 60), {
+    reportPage.drawText("Excellent Work", {
       x: M + 14,
-      y: yPos - 16,
-      size: 10,
+      y: yPos - 18,
+      size: 11,
       font: bold,
-      color: NAVY,
+      color: GREEN,
     });
-
-    const qText = `Questions: ${data.questions.join(", ")}`;
-    wrap(qText, bold, 6.4, CW - 25)
-      .slice(0, 1)
-      .forEach((line) => {
-        summaryPage.drawText(san(line), {
-          x: M + 14,
-          y: yPos - 30,
-          size: 6.4,
-          font: bold,
-          color: RED,
-        });
-      });
-
-    const advice =
-      data.advice[0] || "Revise this topic carefully and practise similar exam questions.";
-
-    wrap(advice, reg, 6.8, CW - 25)
-      .slice(0, 2)
-      .forEach((line, i) => {
-        summaryPage.drawText(san(line), {
-          x: M + 14,
-          y: yPos - 43 - i * 8,
-          size: 6.8,
-          font: reg,
-          color: rgb(0.25, 0.25, 0.3),
-        });
-      });
-
+    reportPage.drawText("No revision topics — full marks on all questions.", {
+      x: M + 14,
+      y: yPos - 32,
+      size: 7.4,
+      font: reg,
+      color: rgb(0.25, 0.25, 0.3),
+    });
     yPos -= boxH + 9;
-  });
+  } else {
+    topics.forEach(([topic, data]) => {
+      const boxH = 52;
+      if (yPos - boxH < BD_FOOTER_Y + 20) {
+        const next = openNextReportPage(
+          pdfDoc,
+          reportPageCount,
+          reportPage,
+          sw,
+          sh,
+          M,
+          bold,
+          reg,
+          "GRADING REPORT (continued)"
+        );
+        reportPage = next.page;
+        reportPageCount = next.reportPageCount;
+        yPos = next.yPos;
+      }
+
+      reportPage.drawRectangle({
+        x: M,
+        y: yPos - boxH,
+        width: CW,
+        height: boxH,
+        color: rgb(0.96, 0.97, 1),
+        borderColor: rgb(0.82, 0.84, 0.9),
+        borderWidth: 0.7,
+      });
+
+      reportPage.drawRectangle({
+        x: M,
+        y: yPos - boxH,
+        width: 5,
+        height: boxH,
+        color: NAVY,
+      });
+
+      reportPage.drawText(san(topic).substring(0, 60), {
+        x: M + 14,
+        y: yPos - 16,
+        size: 10,
+        font: bold,
+        color: NAVY,
+      });
+
+      const qText = `Questions: ${data.questions.join(", ")}`;
+      wrap(qText, bold, 6.4, CW - 25)
+        .slice(0, 1)
+        .forEach((line) => {
+          reportPage.drawText(san(line), {
+            x: M + 14,
+            y: yPos - 30,
+            size: 6.4,
+            font: bold,
+            color: RED,
+          });
+        });
+
+      const advice =
+        data.advice[0] || "Revise this topic carefully and practise similar exam questions.";
+
+      wrap(advice, reg, 6.8, CW - 25)
+        .slice(0, 2)
+        .forEach((line, i) => {
+          reportPage.drawText(san(line), {
+            x: M + 14,
+            y: yPos - 43 - i * 8,
+            size: 6.8,
+            font: reg,
+            color: rgb(0.25, 0.25, 0.3),
+          });
+        });
+
+      yPos -= boxH + 9;
+    });
+  }
 
   yPos -= 4;
 
-  summaryPage.drawText("QUESTION BREAKDOWN", {
+  if (yPos - 25 < BD_FOOTER_Y) {
+    const next = openNextReportPage(
+      pdfDoc,
+      reportPageCount,
+      reportPage,
+      sw,
+      sh,
+      M,
+      bold,
+      reg,
+      "GRADING REPORT (continued)"
+    );
+    reportPage = next.page;
+    reportPageCount = next.reportPageCount;
+    yPos = next.yPos;
+  }
+
+  reportPage.drawText("QUESTION BREAKDOWN", {
     x: M,
     y: yPos,
     size: 8,
@@ -836,7 +930,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
   yPos -= 5;
 
   const noteW = CW - BD_NOTE_W_OFFSET;
-  let reportPage = summaryPage;
   let rowIndex = 0;
   yPos = drawBreakdownColumnHeaders(reportPage, yPos, M, CW, bold);
 
@@ -845,17 +938,20 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
     const { topicLines, noteLines, rowH } = measureBreakdownRow(q, reg, bold, noteW);
 
     if (yPos - rowH < BD_FOOTER_Y) {
-      drawReportFooter(reportPage, sw, reg);
-      reportPage = pdfDoc.addPage([sw, sh]);
-      reportPage.drawRectangle({ x: 0, y: sh - 40, width: sw, height: 40, color: NAVY });
-      reportPage.drawText("QUESTION BREAKDOWN (continued)", {
-        x: M,
-        y: sh - 26,
-        size: 11,
-        font: bold,
-        color: WHITE,
-      });
-      yPos = sh - 52;
+      const next = openNextReportPage(
+        pdfDoc,
+        reportPageCount,
+        reportPage,
+        sw,
+        sh,
+        M,
+        bold,
+        reg,
+        "QUESTION BREAKDOWN (continued)"
+      );
+      reportPage = next.page;
+      reportPageCount = next.reportPageCount;
+      yPos = next.yPos;
       yPos = drawBreakdownColumnHeaders(reportPage, yPos, M, CW, bold);
     }
 

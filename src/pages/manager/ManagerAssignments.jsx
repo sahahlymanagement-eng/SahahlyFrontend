@@ -38,7 +38,7 @@ export default function ManagerAssignments() {
   const [customPhone, setCustomPhone] = useState("");
   const [selectedCountryCode, setSelectedCountryCode] = useState("20");
   const [summaryMap, setSummaryMap] = useState({});
-  const [summaryViewer, setSummaryViewer] = useState({open: false,title: "",message: ""});
+  const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
 
   /* AUTH */
   useEffect(() => {
@@ -88,6 +88,7 @@ export default function ManagerAssignments() {
     }
     setSelectedAssignment(assignment);
     setStudents([]);
+    setSummaryMap({});
     setLoadingStudents(true);
     try {
       const res = await api.get(`/manager-assignments/${assignment._id}/full`);
@@ -157,12 +158,14 @@ export default function ManagerAssignments() {
 
   const buildItem = (student) => ({
     assignmentTitle: selectedAssignment.title,
+    assignmentId: selectedAssignment._id,
+    submissionId: student.submissionId || null,
     state: student.state,
     submittedAt: student.submittedAt,
     isLate: student.isLate,
     isOnTime: student.isOnTime,
     assignedGrade: student.assignedGrade,
-    comment: ""
+    comment: student.summary || summaryMap[student.submissionId] || ""
   });
 
   const isStudentSelected = (studentId) =>
@@ -185,11 +188,40 @@ export default function ManagerAssignments() {
   const sendReport = async () => {
     const cartEntries = Object.entries(reportCart);
     if (cartEntries.length === 0) { toast.warn("No students selected"); return; }
+
+    let freshSummaryMap = summaryMap;
+    let freshStudents = students;
+    try {
+      const fresh = await api.get(`/manager-assignments/${selectedAssignment._id}/full`);
+      freshSummaryMap = fresh.data.summaryMap || summaryMap;
+      freshStudents = fresh.data.students || students;
+      setSummaryMap(freshSummaryMap);
+      setStudents(freshStudents);
+    } catch {
+      // use cached summaries if refresh fails
+    }
+
+    const studentById = Object.fromEntries(
+      freshStudents.map((s) => [String(s._id), s])
+    );
+
     const reports = cartEntries.map(([, entry]) => ({
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
-      items: Object.values(entry.items)
+      items: Object.values(entry.items).map((item) => {
+        const liveStudent = studentById[String(entry.studentMeta._id)] || entry.studentMeta;
+        const submissionId = item.submissionId || liveStudent?.submissionId;
+        const savedSummary =
+          liveStudent?.summary ||
+          (submissionId ? freshSummaryMap[submissionId] : "");
+        return {
+          ...item,
+          assignmentId: item.assignmentId || selectedAssignment._id,
+          submissionId,
+          comment: (item.comment || savedSummary || "").trim()
+        };
+      })
     }));
     setSending(true);
     try {
@@ -570,8 +602,8 @@ export default function ManagerAssignments() {
                                     ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                     : <span className="ma-cell-empty">—</span>}
                                 </td>
-                                {/* <td onClick={e => e.stopPropagation()}>
-                                  {selected && (
+                                <td onClick={e => e.stopPropagation()}>
+                                  {selected ? (
                                     <div className="ma-comment-wrap">
                                       <FiMessageSquare size={12} className="ma-comment-icon" />
                                       <input
@@ -581,54 +613,23 @@ export default function ManagerAssignments() {
                                         onChange={e => setComment(stuId, asgId, e.target.value)}
                                       />
                                     </div>
-                                  )}
-                                </td> */}
-
-                                <td onClick={(e) => e.stopPropagation()}>
-  {/* <div
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: 8
-    }}
-  >
-    {selected && (
-      <div className="ma-comment-wrap">
-        <FiMessageSquare
-          size={12}
-          className="ma-comment-icon"
-        />
-        <input
-          className="ma-comment-input"
-          placeholder="Add comment…"
-          value={
-            reportCart[stuId]?.items[asgId]?.comment || ""
-          }
-          onChange={(e) =>
-            setComment(stuId, asgId, e.target.value)
-          }
-        />
-      </div>
-    )} */}
-
-    {summaryMap[s.submissionId] && (
-      <button
-        className="msv-action-btn msv-action-btn--view"
-        onClick={(e) => {
-          e.stopPropagation();
-
-          setSummaryViewer({
-            open: true,
-            title: `Summary - ${s.name}`,
-            message: summaryMap[s.submissionId]
-          });
-        }}
-      >
-        View Summary
-      </button>
-    )}
-
-</td>
+                                  ) : (s.summary || summaryMap[s.submissionId]) ? (
+                                    <button
+                                      className="msv-action-btn msv-action-btn--view"
+                                      title="View Summary"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSummaryViewer({
+                                          open: true,
+                                          title: `Summary – ${s.name}`,
+                                          message: s.summary || summaryMap[s.submissionId]
+                                        });
+                                      }}
+                                    >
+                                      View Summary
+                                    </button>
+                                  ) : null}
+                                </td>
                               </tr>
                             );
                           })}
