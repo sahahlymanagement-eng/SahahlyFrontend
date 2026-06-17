@@ -37,7 +37,8 @@ export default function ManagerAssignments() {
 
   const [customPhone, setCustomPhone] = useState("");
   const [selectedCountryCode, setSelectedCountryCode] = useState("20");
-
+  const [summaryMap, setSummaryMap] = useState({});
+  const [summaryViewer, setSummaryViewer] = useState({open: false,title: "",message: ""});
 
   /* AUTH */
   useEffect(() => {
@@ -91,6 +92,7 @@ export default function ManagerAssignments() {
     try {
       const res = await api.get(`/manager-assignments/${assignment._id}/full`);
       setStudents(res.data.students || []);
+      setSummaryMap(res.data.summaryMap || {});
     } catch {
       toast.error("Failed to load student submissions");
     } finally {
@@ -568,7 +570,7 @@ export default function ManagerAssignments() {
                                     ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                     : <span className="ma-cell-empty">—</span>}
                                 </td>
-                                <td onClick={e => e.stopPropagation()}>
+                                {/* <td onClick={e => e.stopPropagation()}>
                                   {selected && (
                                     <div className="ma-comment-wrap">
                                       <FiMessageSquare size={12} className="ma-comment-icon" />
@@ -580,7 +582,53 @@ export default function ManagerAssignments() {
                                       />
                                     </div>
                                   )}
-                                </td>
+                                </td> */}
+
+                                <td onClick={(e) => e.stopPropagation()}>
+  {/* <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }}
+  >
+    {selected && (
+      <div className="ma-comment-wrap">
+        <FiMessageSquare
+          size={12}
+          className="ma-comment-icon"
+        />
+        <input
+          className="ma-comment-input"
+          placeholder="Add comment…"
+          value={
+            reportCart[stuId]?.items[asgId]?.comment || ""
+          }
+          onChange={(e) =>
+            setComment(stuId, asgId, e.target.value)
+          }
+        />
+      </div>
+    )} */}
+
+    {summaryMap[s.submissionId] && (
+      <button
+        className="msv-action-btn msv-action-btn--view"
+        onClick={(e) => {
+          e.stopPropagation();
+
+          setSummaryViewer({
+            open: true,
+            title: `Summary - ${s.name}`,
+            message: summaryMap[s.submissionId]
+          });
+        }}
+      >
+        View Summary
+      </button>
+    )}
+
+</td>
                               </tr>
                             );
                           })}
@@ -621,6 +669,89 @@ export default function ManagerAssignments() {
             </button>
           </div>
         )}
+
+        {summaryViewer.open && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
+              background: "rgba(0,0,0,0.6)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+            onClick={() =>
+              setSummaryViewer({
+                open: false,
+                title: "",
+                message: ""
+              })
+            }
+          >
+            <div
+              style={{
+                background: "#1e1e2e",
+                borderRadius: 14,
+                padding: 24,
+                width: "min(520px, 90vw)",
+                border: "1px solid rgba(139,92,246,0.3)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 16
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color: "#fff",
+                    fontSize: 15
+                  }}
+                >
+                  {summaryViewer.title}
+                </span>
+
+                <button
+                  onClick={() =>
+                    setSummaryViewer({
+                      open: false,
+                      title: "",
+                      message: ""
+                    })
+                  }
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(255,255,255,0.5)",
+                    cursor: "pointer",
+                    fontSize: 18
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "rgba(255,255,255,0.75)",
+                  lineHeight: 1.7,
+                  margin: 0
+                }}
+              >
+                {summaryViewer.message}
+              </p>
+            </div>
+          </div>
+)}
 
       </main>
     </div>
