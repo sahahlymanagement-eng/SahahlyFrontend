@@ -55,12 +55,14 @@ export default function AssistantReports() {
 
   const buildItem = (student) => ({
     assignmentTitle,
+    assignmentId,
+    submissionId: student.submissionId || null,
     state: student.state,
     submittedAt: student.submittedAt,
     isLate: student.isLate,
     isOnTime: student.isOnTime,
     assignedGrade: student.assignedGrade,
-    comment: summaryMap[student.submissionId] || ""
+    comment: student.summary || summaryMap[student.submissionId] || ""
   });
 
   /* TOGGLE SINGLE STUDENT */
@@ -146,16 +148,26 @@ export default function AssistantReports() {
   };
 
   /* BUILD PAYLOAD */
-  const buildReportsPayload = () => {
+  const buildReportsPayload = (activeSummaryMap = summaryMap, activeStudents = students) => {
+    const studentByKey = Object.fromEntries(
+      activeStudents.map((s) => [String(getStudentId(s)), s])
+    );
+
     return Object.entries(reportCart).map(([, entry]) => ({
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
       items: Object.values(entry.items).map((item) => {
-        const submissionId = entry.studentMeta?.submissionId;
-        const savedSummary = submissionId ? summaryMap[submissionId] : "";
+        const liveStudent =
+          studentByKey[String(getStudentId(entry.studentMeta))] || entry.studentMeta;
+        const submissionId = item.submissionId || liveStudent?.submissionId;
+        const savedSummary =
+          liveStudent?.summary ||
+          (submissionId ? activeSummaryMap[submissionId] : "");
         return {
           ...item,
+          assignmentId: item.assignmentId || assignmentId,
+          submissionId,
           comment: (item.comment || savedSummary || "").trim()
         };
       })
@@ -164,9 +176,7 @@ export default function AssistantReports() {
 
   /* SEND NORMAL REPORT */
   const sendReport = async () => {
-    const reports = buildReportsPayload();
-
-    if (!reports.length) {
+    if (!Object.keys(reportCart).length) {
       toast.warn("No students selected");
       return;
     }
@@ -176,10 +186,24 @@ export default function AssistantReports() {
       return;
     }
 
+    let freshSummaryMap = summaryMap;
+    let freshStudents = students;
+    try {
+      const fresh = await api.get(`/assignment-submissions/${assignmentId}/students`);
+      freshSummaryMap = fresh.data.summaryMap || summaryMap;
+      freshStudents = fresh.data.students || students;
+      setSummaryMap(freshSummaryMap);
+      setStudents(freshStudents);
+    } catch {
+      // use cached summaries if refresh fails
+    }
+
+    const reports = buildReportsPayload(freshSummaryMap, freshStudents);
+
     setSending(true);
     try {
       const res = await api.post("/manager-assignments/send-report", {
-        reports: buildReportsPayload(),
+        reports,
         classroomId
       });
       const summary = res.data.summary || [];

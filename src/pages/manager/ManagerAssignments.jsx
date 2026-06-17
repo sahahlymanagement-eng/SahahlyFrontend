@@ -38,12 +38,7 @@ export default function ManagerAssignments() {
   const [customPhone, setCustomPhone] = useState("");
   const [selectedCountryCode, setSelectedCountryCode] = useState("20");
   const [summaryMap, setSummaryMap] = useState({});
-<<<<<<< Updated upstream
-  const [summaryViewer, setSummaryViewer] = useState({open: false,title: "",message: ""});
-=======
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
-
->>>>>>> Stashed changes
 
   /* AUTH */
   useEffect(() => {
@@ -163,12 +158,14 @@ export default function ManagerAssignments() {
 
   const buildItem = (student) => ({
     assignmentTitle: selectedAssignment.title,
+    assignmentId: selectedAssignment._id,
+    submissionId: student.submissionId || null,
     state: student.state,
     submittedAt: student.submittedAt,
     isLate: student.isLate,
     isOnTime: student.isOnTime,
     assignedGrade: student.assignedGrade,
-    comment: summaryMap[student.submissionId] || ""
+    comment: student.summary || summaryMap[student.submissionId] || ""
   });
 
   const isStudentSelected = (studentId) =>
@@ -191,15 +188,37 @@ export default function ManagerAssignments() {
   const sendReport = async () => {
     const cartEntries = Object.entries(reportCart);
     if (cartEntries.length === 0) { toast.warn("No students selected"); return; }
+
+    let freshSummaryMap = summaryMap;
+    let freshStudents = students;
+    try {
+      const fresh = await api.get(`/manager-assignments/${selectedAssignment._id}/full`);
+      freshSummaryMap = fresh.data.summaryMap || summaryMap;
+      freshStudents = fresh.data.students || students;
+      setSummaryMap(freshSummaryMap);
+      setStudents(freshStudents);
+    } catch {
+      // use cached summaries if refresh fails
+    }
+
+    const studentById = Object.fromEntries(
+      freshStudents.map((s) => [String(s._id), s])
+    );
+
     const reports = cartEntries.map(([, entry]) => ({
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
       items: Object.values(entry.items).map((item) => {
-        const submissionId = entry.studentMeta?.submissionId;
-        const savedSummary = submissionId ? summaryMap[submissionId] : "";
+        const liveStudent = studentById[String(entry.studentMeta._id)] || entry.studentMeta;
+        const submissionId = item.submissionId || liveStudent?.submissionId;
+        const savedSummary =
+          liveStudent?.summary ||
+          (submissionId ? freshSummaryMap[submissionId] : "");
         return {
           ...item,
+          assignmentId: item.assignmentId || selectedAssignment._id,
+          submissionId,
           comment: (item.comment || savedSummary || "").trim()
         };
       })
@@ -583,13 +602,8 @@ export default function ManagerAssignments() {
                                     ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                     : <span className="ma-cell-empty">—</span>}
                                 </td>
-<<<<<<< Updated upstream
-                                {/* <td onClick={e => e.stopPropagation()}>
-                                  {selected && (
-=======
                                 <td onClick={e => e.stopPropagation()}>
                                   {selected ? (
->>>>>>> Stashed changes
                                     <div className="ma-comment-wrap">
                                       <FiMessageSquare size={12} className="ma-comment-icon" />
                                       <input
@@ -599,57 +613,7 @@ export default function ManagerAssignments() {
                                         onChange={e => setComment(stuId, asgId, e.target.value)}
                                       />
                                     </div>
-<<<<<<< Updated upstream
-                                  )}
-                                </td> */}
-
-                                <td onClick={(e) => e.stopPropagation()}>
-  {/* <div
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: 8
-    }}
-  >
-    {selected && (
-      <div className="ma-comment-wrap">
-        <FiMessageSquare
-          size={12}
-          className="ma-comment-icon"
-        />
-        <input
-          className="ma-comment-input"
-          placeholder="Add comment…"
-          value={
-            reportCart[stuId]?.items[asgId]?.comment || ""
-          }
-          onChange={(e) =>
-            setComment(stuId, asgId, e.target.value)
-          }
-        />
-      </div>
-    )} */}
-
-    {summaryMap[s.submissionId] && (
-      <button
-        className="msv-action-btn msv-action-btn--view"
-        onClick={(e) => {
-          e.stopPropagation();
-
-          setSummaryViewer({
-            open: true,
-            title: `Summary - ${s.name}`,
-            message: summaryMap[s.submissionId]
-          });
-        }}
-      >
-        View Summary
-      </button>
-    )}
-
-</td>
-=======
-                                  ) : summaryMap[s.submissionId] ? (
+                                  ) : (s.summary || summaryMap[s.submissionId]) ? (
                                     <button
                                       className="msv-action-btn msv-action-btn--view"
                                       title="View Summary"
@@ -658,7 +622,7 @@ export default function ManagerAssignments() {
                                         setSummaryViewer({
                                           open: true,
                                           title: `Summary – ${s.name}`,
-                                          message: summaryMap[s.submissionId]
+                                          message: s.summary || summaryMap[s.submissionId]
                                         });
                                       }}
                                     >
@@ -666,7 +630,6 @@ export default function ManagerAssignments() {
                                     </button>
                                   ) : null}
                                 </td>
->>>>>>> Stashed changes
                               </tr>
                             );
                           })}
@@ -792,36 +755,6 @@ export default function ManagerAssignments() {
 )}
 
       </main>
-      {summaryViewer.open && (
-        <div
-          style={{
-            position: "fixed", inset: 0, zIndex: 1000,
-            background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-            display: "flex", alignItems: "center", justifyContent: "center"
-          }}
-          onClick={() => setSummaryViewer({ open: false, title: "", message: "" })}
-        >
-          <div
-            style={{
-              background: "#1e1e2e", borderRadius: 14, padding: 24,
-              width: "min(520px, 90vw)", border: "1px solid rgba(139,92,246,0.3)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <span style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{summaryViewer.title}</span>
-              <button
-                onClick={() => setSummaryViewer({ open: false, title: "", message: "" })}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 18 }}
-              >✕</button>
-            </div>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, margin: 0 }}>
-              {summaryViewer.message}
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
