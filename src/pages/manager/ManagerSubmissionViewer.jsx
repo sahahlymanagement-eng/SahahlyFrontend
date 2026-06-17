@@ -61,6 +61,17 @@ export default function ManagerSubmissionViewer() {
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
 
+  const [batchProgress, setBatchProgress] = useState(null);
+// {
+//   phase: "validating" | "submitting" | "processing" | "done" | "error"
+//   jobId: string | null
+//   total: number           -- how many valid students were submitted
+//   skipped: number         -- how many were skipped (bad PDF)
+//   results: {              -- filled in after SUCCEEDED
+//     [submissionId]: { status: "done"|"error", result?, error? }
+//   }
+// }
+
 
   // Results modal
   const [singleProgress, setSingleProgress] = useState({});
@@ -84,6 +95,8 @@ export default function ManagerSubmissionViewer() {
   title: "",
   message: null,
 });
+
+const selectedGeminiModel = "gemini-3-flash-preview"
 
 useEffect(() => {
   const fetchSavedResults = async () => {
@@ -294,34 +307,7 @@ useEffect(() => {
     fetchPrompts();
   }, []);
 
-    useEffect(() => {
-      const generatePreview = async () => {
-        if (!resultModal) return;
-  
-        try {
-          const pdfBytes = await annotatePdf({
-            studentFile: resultModal.studentFile,
-            questions: editingQuestions,
-            totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
-            maxTotalMarks: effectiveMaxTotal,
-          });
-  
-          const blob = new Blob([pdfBytes], { type: "application/pdf" });
-          const url = URL.createObjectURL(blob);
-  
-          setAnnotatedPreviewUrl(url);
-        } catch (err) {
-          console.error("Failed to generate preview", err);
-        }
-      };
-  
-      generatePreview();
-  
-      return () => {
-        if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
-      };
-    }, [resultModal]);
-    
+ 
     
 
   const selectClassroom = async (classroom) => {
@@ -372,6 +358,60 @@ useEffect(() => {
     } finally { setUploadingMs(false); }
   };
 
+
+useEffect(() => {
+  const generatePreview = async () => {
+    if (!resultModal) return;
+    if (!selectedAssignment?._id) return;
+    const db = savedResults[students.submissionId];
+    
+    const submissionId =
+      resultModal?.submissionId ||
+      resultModal?.student?.submissionId ||
+      db?.submissionId;
+
+    try {
+      const pdfRes = await api.get("/submission-files/pdf", {
+        params: {
+          assignmentId: selectedAssignment._id,
+          submissionId: submissionId
+        },
+        responseType: "blob"
+      });
+
+      const studentFile = new File(
+        [pdfRes.data],
+        "student.pdf",
+        { type: "application/pdf" }
+      );
+
+      const pdfBytes = await annotatePdf({
+        studentFile,
+        questions: editingQuestions,
+        totalMarks: editingQuestions.reduce(
+          (s, q) => s + q.marksAwarded,
+          0
+        ),
+        maxTotalMarks: effectiveMaxTotal,
+      });
+
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+
+      setAnnotatedPreviewUrl(url);
+    } catch (err) {
+      console.error("Failed to generate preview", err);
+    }
+  };
+
+  generatePreview();
+
+  return () => {
+    if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
+  };
+}, [resultModal, editingQuestions, effectiveMaxTotal]);
+
+
   const openGuidanceModal = (student = null) => {
     setGuidanceModal(student ? { student } : { bulk: true });
     setGuidance("");
@@ -379,41 +419,6 @@ useEffect(() => {
     setPromptDropdownOpen(false);
   };
 
-
-//     useEffect(() => {
-//   const fetchSavedResults = async () => {
-//     try {
-//       const res = await api.get(
-//         `/submission-files/save-results/${selectedAssignment._id}`
-//       );
-
-//       const map = {};
-
-//       res.data.data.forEach(r => {
-//         map[r.submissionId] = {
-//           status: "done",
-//           result: r.result,
-//           studentFile: r.studentFileMeta,
-//           totalMarks: r.totalMarks
-//         };
-//       });
-
-//       setSavedResults(map);
-
-//       // optional: sync into your existing state
-//       setSingleProgress(prev => ({
-//         ...prev,
-//         ...map
-//       }));
-
-//     } catch (err) {
-//       console.error("Failed to load saved results", err);
-//     }
-//   };
-
-//   fetchSavedResults();
-// }, [selectedAssignment._id]);
-  
 
   const runMarkStudent = async (student, guidanceText, mode = "normal") => {
     setMarkingStudentId(student.submissionId);
@@ -465,7 +470,7 @@ useEffect(() => {
       });
 
       
-      setResultModal({ student, result: res.data, studentFile });
+      setResultModal({ student, result: res.data, studentFile, submissionId: student.submissionId});
       setSingleProgress(prev => ({
           ...prev,
           [student.submissionId]: {
@@ -531,9 +536,24 @@ useEffect(() => {
     }
   };
 
-
   const runBulkMark = async (guidanceText, mode = "normal") => {
-    const eligible = students.filter(s => s.submissionId);
+    // const eligible = students.filter(s => s.submissionId);
+    const res = await api.post(
+      "/submission-files/eligible-for-bulk-marking",
+      {
+        assignmentId,
+        submissions: students
+      }
+    );
+
+    const backendEligible = new Set(
+      res.data.map(s => s.submissionId)
+    );
+
+    const eligible = students.filter(
+      s => s.submissionId && backendEligible.has(s.submissionId)
+    );
+    
     if (!eligible.length) return toast.warn("No students with submissions");
 
     bulkStopRef.current = false;
@@ -765,7 +785,134 @@ while (
 
   setBulkMarking(false);
   toast.success("Bulk marking complete");
+  };
+
+
+
+const runBatchMark = async (guidanceText, mode = "normal") => {
+  const eligible = students.filter(s => s.submissionId);
+  if (!eligible.length) return toast.warn("No students with submissions");
+
+  setBatchProgress({ phase: "uploading", total: eligible.length });
+
+  // Step 1 — upload
+  let msUri, succeeded, failed;
+  try {
+    const res = await api.post("/marking/mark-batch/upload", {
+      assignmentId: selectedAssignment._id,
+      students: eligible.map(s => ({
+        submissionId: s.submissionId,
+        studentId:    s.studentId,
+        name:         s.name,
+      })),
+    });
+    ({ msUri, succeeded, failed } = res.data);
+  } catch (err) {
+    toast.error(`Upload failed: ${extractHumanError(err)}`);
+    setBatchProgress({ phase: "error" });
+    return;
+  }
+
+  // Immediately surface failed uploads
+  if (failed.length) {
+    toast.warning(`${failed.length} student(s) could not be uploaded`);
+    setBatchProgress(prev => ({
+      ...prev,
+      results: Object.fromEntries(
+        failed.map(({ student, error }) => [student.submissionId, { status: "error", error }])
+      ),
+    }));
+  }
+
+  if (!succeeded.length) {
+    toast.error("No valid submissions to mark.");
+    setBatchProgress({ phase: "error" });
+    return;
+  }
+
+  // Step 2 — submit
+  setBatchProgress(prev => ({ ...prev, phase: "submitting" }));
+
+  let jobId;
+  try {
+    const res = await api.post("/marking/mark-batch/submit", {
+      assignmentId:  selectedAssignment._id,
+      msUri,
+      succeeded,
+      markingMode:   mode,
+      guidance:      guidanceForForm(guidanceText),
+      geminiModel:   selectedGeminiModel,
+      subjectId:     selectedAssignment.subjectId,
+      ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
+      personId:      currentUserId(),
+      classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
+    });
+    jobId = res.data.jobId;
+  } catch (err) {
+    toast.error(`Batch submission failed: ${extractHumanError(err)}`);
+    setBatchProgress({ phase: "error" });
+    return;
+  }
+
+  // Step 3 — poll
+  setBatchProgress(prev => ({ ...prev, phase: "processing", jobId }));
+
+  try {
+    const results = await new Promise((resolve, reject) => {
+      const interval = setInterval(async () => {
+        try {
+          const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
+          if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") return;
+          clearInterval(interval);
+          if (data.state === "JOB_STATE_FAILED") reject(new Error(data.message));
+          else resolve(data.results);
+        } catch (err) {
+          clearInterval(interval);
+          reject(err);
+        }
+      }, 15_000);
+    });
+
+    // Fan out
+    const resultMap = {};
+    for (const { student, result, success, error } of results) {
+      resultMap[student.submissionId] = success ? { status: "done", result } : { status: "error", error };
+
+      if (success) {
+        setStudents(prev =>
+          prev.map(s => s.submissionId === student.submissionId
+            ? { ...s, assignedGrade: result?.criteriaGrade?.totalMarks ?? result?.totalMarks ?? null }
+            : s
+          )
+        );
+        await api.post("/submission-files/save-results", {
+          assignmentId: selectedAssignment._id,
+          submissionId: student.submissionId,
+          studentId:    student.studentId,
+          studentName:  student.name,
+          mode,
+          provider:     "gemini-batch",
+          result,
+        }).catch(e => console.error("save-results:", e.message));
+      }
+    }
+
+    setBatchProgress(prev => ({
+      ...prev,
+      phase: "done",
+      results: { ...prev?.results, ...resultMap },
+    }));
+
+    toast.success(`Batch complete — ${results.filter(r => r.success).length} marked.`);
+
+  } catch (err) {
+    toast.error(`Batch failed: ${extractHumanError(err)}`);
+    setBatchProgress(prev => ({ ...prev, phase: "error" }));
+  }
 };
+
+
+
 
   const handleGuidanceConfirm = () => {
     if (!guidanceModal) return;
@@ -1143,6 +1290,18 @@ while (
                       {returning ? "Returning…" : "Return All"}
                     </button>
                     )}
+                  
+                  {/* BATCH  MARKING */}
+                  {/* {msInfo && !bulkMarking && (
+                    <button
+                      className="msv-btn-ai"
+                      onClick={openGuidanceModal}
+                      disabled={returning}
+                      style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
+                    >
+                      {returning ? "Returning…" : "batch"}
+                    </button>
+                    )} */}
                   </div>
 
 
@@ -1249,7 +1408,7 @@ while (
                                               const source = bulkDone ? bulk : single?.status === "done" ? single : null;
                                               const result = source?.result ?? db?.result;
                                               const studentFile = source?.studentFile ?? null;
-                                              setResultModal({ student: s, result, studentFile });
+                                              setResultModal({ student: s, result, studentFile,submissionId: s.submissionId });
                                               setEditingQuestions((result.questions || []).map(q => ({ ...q })));
                                               setEditingMaxTotal(null);
                                             }}
@@ -1717,12 +1876,29 @@ while (
               </div>
             </div>
 
-            <div className="msv-modal-body">
-
+            {/* <div className="msv-modal-body"> */}
+            <div 
+                        className="msv-modal-body"
+                        style={{
+                          display: "flex",
+                          gap: 20,
+                          height: "80vh",   // important
+                          overflow: "hidden"
+                        }}
+              >
+              {/* LEFT CARD (UNCHANGED - your current results UI) */}
+              <div 
+                style={{
+                  flex: "0 0 60%",
+                  overflowY: "auto",
+                  height: "100%",
+                  paddingRight: 8
+                }}
+              >
               <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
 
               {/* ── TOKEN USAGE ── */}
-              {resultModal.result.tokenUsage && (
+              {/* {resultModal.result.tokenUsage && (
                 <div style={{ display: "flex", gap: 16, marginBottom: 18, padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, flexWrap: "wrap" }}>
                   <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginRight: 4, alignSelf: "center" }}>🔢 Tokens:</div>
                   {[
@@ -1736,7 +1912,7 @@ while (
                     </div>
                   ))}
                 </div>
-              )}
+              )} */}
 
                 {/* AI TOKEN USAGE*/}
               {resultModal.result.tokenUsage && (
@@ -1975,6 +2151,63 @@ while (
                 })}
               </div>
             </div>
+                               {/* RIGHT CARD (NEW - Annotated File) */}
+                    <div style={{
+                      flex: "0 0 40%",
+                      height: "100%",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 12,
+                      padding: 12
+                    }}>
+                      <div style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        marginBottom: 10,
+                        color: "rgba(255,255,255,0.6)",
+                        textTransform: "uppercase"
+                      }}>
+                        📄 Annotated PDF Preview
+                      </div>
+
+                      {annotatedPreviewUrl ? (
+                        // <iframe
+                        //   src={annotatedPreviewUrl}
+                        //   style={{
+                        //     flex: 1,
+                        //     border: "none",
+                        //     borderRadius: 8,
+                        //     background: "#111"
+                        //   }}
+                        //   title="Annotated PDF"
+                        // />
+                        <div
+                          style={{
+                            flex: 1,
+                            minHeight: 0
+                          }}
+                        >
+                          <iframe
+                            src={annotatedPreviewUrl}
+                            title="Annotated PDF"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              border: "none",
+                              borderRadius: 8
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                          Generating preview...
+                        </div>
+                      )}
+                    </div> 
+                </div>
           </div>
         </div>
       )}

@@ -219,34 +219,6 @@ const openErrorViewer = (title, error) => {
   }, [promptDropdownOpen]);
 
   useEffect(() => {
-    const generatePreview = async () => {
-      if (!resultModal) return;
-
-      try {
-        const pdfBytes = await annotatePdf({
-          studentFile: resultModal.studentFile,
-          questions: editingQuestions,
-          totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
-          maxTotalMarks: effectiveMaxTotal,
-        });
-
-        const blob = new Blob([pdfBytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-
-        setAnnotatedPreviewUrl(url);
-      } catch (err) {
-        console.error("Failed to generate preview", err);
-      }
-    };
-
-    generatePreview();
-
-    return () => {
-      if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
-    };
-  }, [resultModal]);
-
-  useEffect(() => {
     const fetchPrompts = async () => {
       try {
         const res = await api.get("/marking/prompts")
@@ -304,6 +276,57 @@ const openErrorViewer = (title, error) => {
 
   fetchSavedResults();
 }, [assignmentId]);
+
+  useEffect(() => {
+    const generatePreview = async () => {
+      if (!resultModal) return;
+      if (!assignmentId) return;
+
+      const db = savedResults[students.submissionId];
+      
+      const submissionId =
+        resultModal?.submissionId ||
+        resultModal?.student?.submissionId ||
+        db?.submissionId;
+
+      try {
+        const pdfRes = await api.get("/submission-files/pdf", {
+          params: {
+            assignmentId,
+            submissionId: submissionId
+          },
+          responseType: "blob"
+        });
+
+        const studentFile = new File(
+          [pdfRes.data],
+          "student.pdf",
+          { type: "application/pdf" }
+        );
+        const pdfBytes = await annotatePdf({
+          studentFile, //: resultModal.studentFile || resultModal.submissionId,
+          questions: editingQuestions,
+          totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
+          maxTotalMarks: effectiveMaxTotal,
+        });
+
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+
+        setAnnotatedPreviewUrl(url);
+      } catch (err) {
+        console.error("Failed to generate preview", err);
+      }
+    };
+
+    generatePreview();
+
+    return () => {
+      if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
+    };
+  }, [resultModal]);
+
+
 
 //fetch the locked mark all 
 //   useEffect(() => {
@@ -456,14 +479,16 @@ const url = URL.createObjectURL(blob);
       setResultModal({
         student,
         result: res.data,
-        studentFile
+        studentFile,
+        submissionId: student.submissionId
       });
       setSingleProgress(prev => ({
         ...prev,
         [student.submissionId]: {
           status: "done",
           result: res.data,
-          studentFile
+          studentFile,
+          submissionId: student.submissionId
         }
       }));
       await api.post("/submission-files/save-results", {
@@ -524,7 +549,24 @@ const url = URL.createObjectURL(blob);
   };
 
   const runBulkMark = async (guidanceText, mode = "normal", markingProvider) => {
-    const eligible = students.filter(s => s.submissionId);
+    // const eligible = students.filter(s => s.submissionId);
+    
+    const res = await api.post(
+      "/submission-files/eligible-for-bulk-marking",
+      {
+        assignmentId,
+        submissions: students
+      }
+    );
+
+    const backendEligible = new Set(
+      res.data.map(s => s.submissionId)
+    );
+
+    const eligible = students.filter(
+      s => s.submissionId && backendEligible.has(s.submissionId)
+    );
+    
     if (!eligible.length) return toast.warn("No students with submissions");
 
     bulkStopRef.current = false;
@@ -1929,6 +1971,7 @@ return (
                             );
                           })}
                         </div>
+
                       </div>
                     
                     {/* RIGHT CARD (NEW - Annotated File) */}
