@@ -523,329 +523,6 @@ const url = URL.createObjectURL(blob);
     }
   };
 
-  // const runBulkMark = async (guidanceText, mode = "normal", markingProvider) => {
-  //     const eligible = students.filter(s => s.submissionId);
-  //     if (!eligible.length) return toast.warn("No students with submissions");
-      
-  //     bulkStopRef.current = false;
-  //     setBulkMarking(true);
-  //     // try {
-  //     //   const res = await api.post(`/manager-assignments/${assignmentId}/bulk-lock`);
-  //     //   setBulkLocked(res.data.locked);
-  //     // } catch (err) {
-  //     //   setBulkMarking(false);
-  //     //   toast.error("Failed to lock bulk marking");
-  //     //   return;
-  //     // }
-      
-  //     const progress = {};
-  //     eligible.forEach(s => { progress[s.submissionId] = { status: "pending" }; });
-  //     setBulkProgress({ ...progress });
-  
-  //     for (const student of eligible) {
-  //       setBulkProgress(p => ({ ...p, [student.submissionId]: {status: "marking"} }));
-  //       let attempt = 0;
-  //       const maxAttempts = 10; // safety cap
-  //       let success = false;
-   
-
-  //       while (!success && !bulkStopRef.current && attempt < maxAttempts) {
-  //                 const [studentPdfRes, msPdfRes] = await Promise.all([
-  //             api.get("/submission-files/pdf", {
-  //               params: { assignmentId: assignmentId, submissionId: student.submissionId },
-  //               responseType: "blob"
-  //             }),
-  //             api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-  //               responseType: "blob"
-  //             })
-  //           ]);
-
-  //           const studentFile = new File(
-  //             [studentPdfRes.data],
-  //             `${student.name || "student"}.pdf`,
-  //             { type: "application/pdf" }
-  //           );
-
-  //           const msFile = new File(
-  //             [msPdfRes.data],
-  //             "markscheme.pdf",
-  //             { type: "application/pdf" }
-  //           );
-
-  //           const fd = new FormData();
-  //           fd.append("studentPdf", studentFile);
-  //           fd.append("markSchemePdf", msFile);
-  //           fd.append("markingMode", mode);
-
-  //           const guidanceValue = guidanceForForm(guidanceText);
-  //           if (guidanceValue) fd.append("guidance", guidanceValue);
-  //           if (maxGrade) fd.append("totalGrade", maxGrade);
-  //           appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
-
-
-  //         attempt++;
-
-  //         try {
-
-  //           const endpoint =
-  //             markingProvider === "claude"
-  //               ? "/markingClaude/mark-claude"
-  //               : "/marking/mark";
-
-  //           const res = await api.post(endpoint, fd, {
-  //             headers: { "Content-Type": "multipart/form-data" },
-  //             timeout: 600000
-  //           });
-
-  //           // ✅ SUCCESS
-  //           setBulkProgress(p => ({
-  //             ...p,
-  //             [student.submissionId]: {
-  //               status: "done",
-  //               result: res.data,
-  //               studentFile
-  //             }
-  //           }));
-
-  //           setStudents(prev =>
-  //             prev.map(s =>
-  //               s.submissionId === student.submissionId
-  //                 ? {
-  //                     ...s,
-  //                     assignedGrade:
-  //                       res.data?.criteriaGrade?.totalMarks ??
-  //                       res.data?.totalMarks ??
-  //                       null
-  //                   }
-  //                 : s
-  //             )
-  //           );
-
-  //           await api.post("/submission-files/save-results", {
-  //             assignmentId,
-  //             submissionId: student.submissionId,
-  //             studentId: student.studentId,
-  //             studentName: student.name,
-  //             mode,
-  //             provider: markingProvider,
-  //             result: res.data
-  //           });
-
-  //           success = true;
-  //         } catch (err) {
-  //           const status = err?.response?.status;
-
-  //           // 🔁 ONLY retry on 503
-  //           if (status === 503) {
-  //             console.warn(`503 retry ${student.name} attempt ${attempt}`);
-
-  //             setBulkProgress(p => ({
-  //               ...p,
-  //               [student.submissionId]: { status: "marking" }
-  //             }));
-
-  //             await new Promise(r => setTimeout(r, 2000));
-  //             continue;
-  //           }
-
-  //           // ❌ OTHER ERRORS → fail immediately
-  //           console.error(`Bulk mark failed for ${student.name}:`, err.message);
-
-  //           setBulkProgress(p => ({
-  //             ...p,
-  //             [student.submissionId]: { status: "error" }
-  //           }));
-
-  //           setBulkErrors(e => ({
-  //             ...e,
-  //             [student.submissionId]: {
-  //               message: extractHumanError(err),
-  //               raw: err.response?.data
-  //             }
-  //           }));
-
-  //           break;
-  //         }
-  //       }
-
-  //     }
-  //     setBulkMarking(false);
-      
-
-  //     toast.success("Bulk marking complete");
-  // };
-
-  
-//   const runBulkMark = async (guidanceText, mode = "normal", markingProvider) => {
-//   const eligible = students.filter(s => s.submissionId);
-//   if (!eligible.length) return toast.warn("No students with submissions");
-
-//   bulkStopRef.current = false;
-//   setBulkMarking(true);
-
-//   const progress = {};
-//   eligible.forEach(s => {
-//     progress[s.submissionId] = { status: "pending" };
-//   });
-//   setBulkProgress({ ...progress });
-
-//   for (const student of eligible) {
-//     if (bulkStopRef.current) break;
-
-//     setBulkProgress(p => ({
-//       ...p,
-//       [student.submissionId]: { status: "marking" }
-//     }));
-
-//     // -----------------------------
-//     // 1. FETCH FILES (NO RETRY HERE)
-//     // -----------------------------
-//     let studentFile;
-//     let msFile;
-
-//     try {
-//       const [studentPdfRes, msPdfRes] = await Promise.all([
-//         api.get("/submission-files/pdf", {
-//           params: {
-//             assignmentId,
-//             submissionId: student.submissionId
-//           },
-//           responseType: "blob"
-//         }),
-//         api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-//           responseType: "blob"
-//         })
-//       ]);
-
-//       studentFile = new File(
-//         [studentPdfRes.data],
-//         `${student.name || "student"}.pdf`,
-//         { type: "application/pdf" }
-//       );
-
-//       msFile = new File(
-//         [msPdfRes.data],
-//         "markscheme.pdf",
-//         { type: "application/pdf" }
-//       );
-
-//     } catch (err) {
-//       const status = err?.response?.status;
-
-//       setBulkProgress(p => ({
-//         ...p,
-//         [student.submissionId]: { status: "error" }
-//       }));
-
-//       setBulkErrors(e => ({
-//         ...e,
-//         [student.submissionId]: {
-//           message:
-//             status === 404
-//               ? "Submission file not found"
-//               : "Failed to load files",
-//           raw: err.response?.data
-//         }
-//       }));
-
-//       continue; // skip student
-//     }
-
-//     // -----------------------------
-//     // 2. PREP FORM DATA (ONCE)
-//     // -----------------------------
-//     const fd = new FormData();
-//     fd.append("studentPdf", studentFile);
-//     fd.append("markSchemePdf", msFile);
-//     fd.append("markingMode", mode);
-
-//     const guidanceValue = guidanceForForm(guidanceText);
-//     if (guidanceValue) fd.append("guidance", guidanceValue);
-//     if (maxGrade) fd.append("totalGrade", maxGrade);
-
-//     appendMarkingContext(fd, {
-//       personId: currentUserId(),
-//       assignmentId,
-//       classroomId
-//     });
-
-//     // -----------------------------
-//     // 3. AI RETRY LOOP (ONLY HERE)
-//     // -----------------------------
-//     let attempt = 0;
-//     const maxAttempts = 20;
-//     let success = false;
-
-// while (!success && !bulkStopRef.current && attempt < maxAttempts) {
-//   attempt++;
-
-//   let data = null;           // ← declare here
-//   let parsedMessage = null;  // ← declare here
-
-//   try {
-//     const endpoint =
-//       markingProvider === "claude"
-//         ? "/markingClaude/mark-claude"
-//         : "/marking/mark";
-
-//     const res = await api.post(endpoint, fd, {
-//       headers: { "Content-Type": "multipart/form-data" },
-//       timeout: 600000
-//     });
-
-//     // SUCCESS path stays the same...
-//     success = true;
-
-//   } catch (err) {
-//     data = err?.response?.data;           // ← assign (not declare)
-//     parsedMessage = safeParse(data?.message); // ← assign (not declare)
-
-//     const httpStatus = err?.response?.status;
-//     const innerCode =
-//       parsedMessage?.error?.code ||
-//       data?.error?.code ||
-//       parsedMessage?.error?.status;
-
-//     const retryable =
-//       httpStatus === 503 ||
-//       innerCode === 503 ||
-//       innerCode === "UNAVAILABLE" ||
-//       parsedMessage?.error?.status === "UNAVAILABLE" ||
-//       err.code === "ECONNABORTED" ||
-//       !httpStatus;
-
-//     if (retryable) {
-//       console.warn(`Retry ${student.name} attempt ${attempt}`);
-//       setBulkProgress(p => ({
-//         ...p,
-//         [student.submissionId]: { status: "marking" }
-//       }));
-//       await new Promise(r => setTimeout(r, 2000));
-//       continue;
-//     }
-
-//     // FINAL FAIL
-//     setBulkProgress(p => ({
-//       ...p,
-//       [student.submissionId]: { status: "error" }
-//     }));
-//     setBulkErrors(e => ({
-//       ...e,
-//       [student.submissionId]: {
-//         message: extractHumanError(err),
-//         raw: err.response?.data
-//       }
-//     }));
-
-//     break;
-//   }
-// }
-//   }
-
-//   setBulkMarking(false);
-//   toast.success("Bulk marking complete");
-// };
-
   const runBulkMark = async (guidanceText, mode = "normal", markingProvider) => {
     const eligible = students.filter(s => s.submissionId);
     if (!eligible.length) return toast.warn("No students with submissions");
@@ -1157,6 +834,7 @@ const url = URL.createObjectURL(blob);
         questions: editingQuestions,
         totalMarks: total,
         maxTotalMarks: maxGrade,
+        summary:       resultModal.result.summary || ""
       });
 
 
@@ -1383,13 +1061,15 @@ return (
                 onChange={(e) => handleMsUpload(e.target.files[0])}
               />
 
+              {/* Upload Mark Scheme */}
               <button
                 className="ma-send-btn"
                 onClick={() => document.getElementById("ms-upload").click()}
               >
                 {uploadingMs ? "Uploading…" : msInfo ? "Replace MS" : "Upload MS"}
               </button>
-              
+
+               {/* View Mark Scheme */}
               {msInfo && (
                 <button
                   className="msv-btn-ai"
@@ -1404,6 +1084,7 @@ return (
                 </button>
               )}
 
+              {/* Mark All */}
               {msInfo  && (
                 <button
                   className="msv-btn-ai"
@@ -1416,11 +1097,13 @@ return (
                     cursor: bulkLocked ? "not-allowed" : "pointer"
                   }}
                 >
-                  {bulkMarking ? "Marking all…" : bulkLocked ? "Mark All (Locked)":"Mark All"}
+                  {/* {bulkMarking ? "Marking all…" : bulkLocked ? "Mark All (Locked)":"Mark All Students"} */}
+                {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
+                
                 </button>
               )}
 
-              
+              {/* Return All */}
               {msInfo && !bulkMarking && (
                 <button
                   className="msv-btn-ai"
