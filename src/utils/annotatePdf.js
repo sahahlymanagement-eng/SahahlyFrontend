@@ -30,6 +30,48 @@ function scoreBg(awarded, max) {
       : rgb(0.99, 0.90, 0.90);
 }
 
+function extractOptionLetter(text) {
+  if (!text || text === "Not attempted") return null;
+  const s = String(text).trim();
+  const m =
+    s.match(/^(?:option\s*)?([A-E])\b/i) ||
+    s.match(/^([A-E])\s*[-–—:.]/i) ||
+    s.match(/\(([A-E])\)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function looksLikeMcq(q) {
+  if (q?.isMcq === true || q?.questionType === "mcq") return true;
+  const max = Number(q?.maxMarks ?? 0);
+  if (max > 2) return false;
+  const blob = [
+    q?.studentAnswer,
+    q?.correctAnswer,
+    q?.reason,
+    ...(q?.markedKeywords || []),
+    ...(q?.missingKeywords || []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (/\b(mcq|multiple choice|tick|circle one)\b/i.test(blob)) return true;
+  if (/\b[A-E]\s*[-–—:]/i.test(blob)) return true;
+  if (max === 1 && (extractOptionLetter(q?.studentAnswer) || extractOptionLetter(q?.correctAnswer))) {
+    return true;
+  }
+  return false;
+}
+
+function mcqChoiceSummary(q) {
+  const isMcq = looksLikeMcq(q);
+  const student =
+    q?.studentAnswer && q.studentAnswer !== "Not attempted" ? q.studentAnswer : null;
+  const correct = q?.correctAnswer || null;
+  const awarded = Number(q?.marksAwarded ?? 0);
+  const max = Number(q?.maxMarks ?? 0);
+  const full = max > 0 && awarded >= max;
+  return { isMcq, student, correct, full, notAttempted: q?.studentAnswer === "Not attempted" };
+}
+
 function san(s) {
   return (s || "")
     .replace(/[\u2019\u2018\u02BC]/g, "'")
@@ -316,20 +358,53 @@ function drawColumnHeader(page, layout, bold) {
 function buildColumnBlock(q, font, noteSize, colWidth) {
   const marked = (q.markedKeywords || []).filter(Boolean);
   const missing = (q.missingKeywords || []).filter(Boolean);
+  const mcq = mcqChoiceSummary(q);
   const noteLines = q.reason ? wrap(q.reason, font, noteSize, colWidth) : [];
+  const studentLines =
+    mcq.isMcq && (mcq.student || mcq.notAttempted)
+      ? wrap(mcq.student || "Not attempted", font, noteSize - 0.5, colWidth)
+      : [];
+  const correctLines =
+    mcq.isMcq && mcq.correct ? wrap(mcq.correct, font, noteSize - 0.5, colWidth) : [];
 
   const kwLineH = noteSize + 5;
   const noteLineH = noteSize + 2.5;
   const sectionGap = 5;
   const blockPad = 6;
+  const labelH = 9;
 
   let h = 14 + blockPad; // Q header
-  if (marked.length) h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
-  if (missing.length) h += 9 + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
-  if (noteLines.length) h += sectionGap + noteLines.length * noteLineH;
+
+  if (mcq.isMcq) {
+    if (studentLines.length) h += labelH + studentLines.length * kwLineH;
+    if (correctLines.length && (!mcq.full || mcq.notAttempted)) h += labelH + correctLines.length * kwLineH;
+    if (noteLines.length) h += sectionGap + labelH + noteLines.length * noteLineH;
+  } else {
+    if (marked.length) {
+      h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+    }
+    if (missing.length) {
+      h += 9 + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+    }
+    if (noteLines.length) h += sectionGap + noteLines.length * noteLineH;
+  }
+
   h += blockPad + 4;
 
-  return { q, marked, missing, noteLines, kwLineH, noteLineH, sectionGap, blockPad, height: h };
+  return {
+    q,
+    marked,
+    missing,
+    noteLines,
+    studentLines,
+    correctLines,
+    mcq,
+    kwLineH,
+    noteLineH,
+    sectionGap,
+    blockPad,
+    height: h,
+  };
 }
 
 function measureColumnLayout(blocks, headerBottom, colBottom, noteSize, colWidth, font) {
@@ -377,7 +452,19 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
   let y = headerBottom;
 
   for (const block of built) {
-    const { q, marked, missing, noteLines, kwLineH, noteLineH, sectionGap, blockPad } = block;
+    const {
+      q,
+      marked,
+      missing,
+      noteLines,
+      studentLines,
+      correctLines,
+      mcq,
+      kwLineH,
+      noteLineH,
+      sectionGap,
+      blockPad,
+    } = block;
     const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
     const blockTop = y;
     const blockH = block.height;
@@ -402,12 +489,39 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
 
     let cy = blockTop - 18;
 
-    if (marked.length > 0) {
-      drawBoldText(page, "Earned:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: GREEN });
-      cy -= 8;
-      for (const kw of marked) {
-        const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
-        cy = drawWrappedLines(page, lines, {
+    if (mcq.isMcq) {
+      if (studentLines.length > 0) {
+        const studentLabel = mcq.notAttempted ? "Not attempted:" : mcq.full ? "Chose:" : "Wrong:";
+        const studentColor = mcq.notAttempted ? AMBER : mcq.full ? GREEN : RED;
+        drawBoldText(page, studentLabel, {
+          x: layout.colX,
+          y: cy,
+          size: noteSize - 0.5,
+          font: bold,
+          color: studentColor,
+        });
+        cy -= 8;
+        cy = drawWrappedLines(page, studentLines, {
+          x: layout.colX + 2,
+          y: cy,
+          size: noteSize - 0.5,
+          font: reg,
+          color: studentColor,
+          lineH: kwLineH,
+        });
+        cy -= 2;
+      }
+
+      if (correctLines.length > 0 && (!mcq.full || mcq.notAttempted)) {
+        drawBoldText(page, "Correct:", {
+          x: layout.colX,
+          y: cy,
+          size: noteSize - 0.5,
+          font: bold,
+          color: GREEN,
+        });
+        cy -= 8;
+        cy = drawWrappedLines(page, correctLines, {
           x: layout.colX + 2,
           y: cy,
           size: noteSize - 0.5,
@@ -415,44 +529,88 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
           color: GREEN,
           lineH: kwLineH,
         });
+        cy -= 2;
       }
-      cy -= 2;
-    }
 
-    if (missing.length > 0) {
-      drawBoldText(page, "Missing:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: RED });
-      cy -= 8;
-      for (const kw of missing) {
-        const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
-        cy = drawWrappedLines(page, lines, {
-          x: layout.colX + 2,
+      if (noteLines.length > 0) {
+        cy -= sectionGap;
+        page.drawLine({
+          start: { x: layout.colX, y: cy + 4 },
+          end: { x: layout.colX + layout.colWidth, y: cy + 4 },
+          thickness: 0.4,
+          color: LGREY,
+        });
+        cy -= 4;
+        drawBoldText(page, "Why:", {
+          x: layout.colX,
           y: cy,
           size: noteSize - 0.5,
+          font: bold,
+          color: NAVY,
+        });
+        cy -= 8;
+        drawWrappedLines(page, noteLines, {
+          x: layout.colX,
+          y: cy,
+          size: noteSize,
           font: reg,
-          color: RED,
-          lineH: kwLineH,
+          color: rgb(0.12, 0.14, 0.22),
+          lineH: noteLineH,
         });
       }
-      cy -= 2;
-    }
+    } else {
+      if (marked.length > 0) {
+        drawBoldText(page, "Earned:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: GREEN });
+        cy -= 8;
+        for (const kw of marked) {
+          const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
+          cy = drawWrappedLines(page, lines, {
+            x: layout.colX + 2,
+            y: cy,
+            size: noteSize - 0.5,
+            font: reg,
+            color: GREEN,
+            lineH: kwLineH,
+          });
+        }
+        cy -= 2;
+      }
 
-    if (noteLines.length > 0) {
-      cy -= sectionGap;
-      page.drawLine({
-        start: { x: layout.colX, y: cy + 4 },
-        end: { x: layout.colX + layout.colWidth, y: cy + 4 },
-        thickness: 0.4,
-        color: LGREY,
-      });
-      cy -= 4;
-      drawWrappedLines(page, noteLines, {
-        x: layout.colX,
-        y: cy,
-        size: noteSize,
-        font: reg,
-        color: rgb(0.12, 0.14, 0.22),
-        lineH: noteLineH,
-      });
+      if (missing.length > 0) {
+        drawBoldText(page, "Missing:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: RED });
+        cy -= 8;
+        for (const kw of missing) {
+          const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
+          cy = drawWrappedLines(page, lines, {
+            x: layout.colX + 2,
+            y: cy,
+            size: noteSize - 0.5,
+            font: reg,
+            color: RED,
+            lineH: kwLineH,
+          });
+        }
+        cy -= 2;
+      }
+
+      if (noteLines.length > 0) {
+        cy -= sectionGap;
+        page.drawLine({
+          start: { x: layout.colX, y: cy + 4 },
+          end: { x: layout.colX + layout.colWidth, y: cy + 4 },
+          thickness: 0.4,
+          color: LGREY,
+        });
+        cy -= 4;
+        drawWrappedLines(page, noteLines, {
+          x: layout.colX,
+          y: cy,
+          size: noteSize,
+          font: reg,
+          color: rgb(0.12, 0.14, 0.22),
+          lineH: noteLineH,
+        });
+      }
     }
 
     // Link from paper edge to this block (stays off the scan)
@@ -471,150 +629,8 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
   }
 }
 
-export async function annotatePdf({ studentFile, questions, totalMarks, maxTotalMarks, summary }) {
-  const buf = await studentFile.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  const pages = pdfDoc.getPages();
-
-  const byPage = {};
-  for (const q of questions) {
-    const p = Math.max(1, Math.min(q.pageNumber || 1, pages.length));
-    (byPage[p] = byPage[p] || []).push(q);
-  }
-
-  const STRIP_H = 22;
-  const LM = 50;
-
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    const pageNum = i + 1;
-    const qs = byPage[pageNum] || [];
-
-    const layout = await appendExaminerColumn(pdfDoc, page, STRIP_H);
-    const { paperW, totalW, height } = { paperW: layout.paperW, totalW: layout.totalW, height: page.getSize().height };
-
-    const PAGE_BOTTOM = STRIP_H + 6;
-    const PAGE_TOP = height - 8;
-    let leftCursor = PAGE_TOP;
-
-    const sortedQs = [...qs].sort((a, b) => (a.yPercent ?? 30) - (b.yPercent ?? 30));
-
-    for (const q of sortedQs) {
-      const yPct = Math.min(92, Math.max(5, q.yPercent ?? 30));
-      const anchorY = height - (height * yPct) / 100;
-      const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
-      const bg = scoreBg(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
-      const full = Number(q.marksAwarded || 0) >= Number(q.maxMarks || 0);
-      const none = Number(q.marksAwarded || 0) === 0;
-      const notAttempted = q.studentAnswer === "Not attempted";
-
-      const badgeH = 18;
-      const scoreTxt = `${q.marksAwarded}/${q.maxMarks}`;
-      const badgeW = Math.max(34, bold.widthOfTextAtSize(scoreTxt, 10) + 10);
-      const badgeX = 3;
-
-      let leftBlockTop = Math.min(anchorY + badgeH / 2, leftCursor);
-      let badgeY = Math.max(PAGE_BOTTOM, leftBlockTop - badgeH);
-      leftBlockTop = badgeY + badgeH;
-
-      page.drawRectangle({
-        x: badgeX,
-        y: badgeY,
-        width: badgeW,
-        height: badgeH,
-        color: bg,
-        borderColor: col,
-        borderWidth: 1.2,
-      });
-
-      page.drawText(scoreTxt, {
-        x: badgeX + 5,
-        y: badgeY + 5,
-        size: 11,
-        font: bold,
-        color: col,
-      });
-
-      page.drawText(san(`Q${q.questionNumber}`).substring(0, 9), {
-        x: badgeX,
-        y: badgeY + badgeH + 3,
-        size: 9,
-        font: bold,
-        color: NAVY,
-      });
-
-      const symbolY = Math.max(PAGE_BOTTOM, badgeY - 18);
-
-      if (notAttempted) {
-        page.drawText("?", { x: badgeX + 9, y: symbolY + 2, size: 14, font: bold, color: AMBER });
-      } else if (full) {
-        drawTick(page, badgeX + 3, symbolY, 14, GREEN);
-      } else if (none) {
-        drawCross(page, badgeX + 3, symbolY, 13, RED);
-      } else {
-        drawTick(page, badgeX + 1, symbolY, 12, GREEN);
-        drawCross(page, badgeX + 16, symbolY, 12, RED);
-      }
-
-      leftCursor = Math.max(PAGE_BOTTOM, Math.min(leftCursor, symbolY - 8));
-
-      // Pointer on the paper only — ends at the left edge, not across the scan
-      page.drawLine({
-        start: { x: badgeX + badgeW, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
-        end: { x: LM + 2, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
-        thickness: 0.85,
-        color: col,
-        dashArray: [2, 2],
-        dashPhase: 0,
-      });
-    }
-
-    drawExaminerColumn(page, layout, qs, bold, reg);
-
-    const pageAwarded = qs.reduce((s, q) => s + Number(q.marksAwarded || 0), 0);
-    const pageMax = qs.reduce((s, q) => s + Number(q.maxMarks || 0), 0);
-    const stripH = 18;
-
-    page.drawRectangle({ x: 0, y: 0, width: totalW, height: stripH, color: NAVY });
-    page.drawText("MARKED  ·  Sahahly", {
-      x: 8,
-      y: 5,
-      size: 9,
-      font: bold,
-      color: rgb(0.6, 0.72, 0.95),
-    });
-
-    if (qs.length > 0) {
-      const ptxt = `Page marks: ${pageAwarded}/${pageMax}`;
-      const ptxtW = bold.widthOfTextAtSize(ptxt, 9);
-      page.drawText(ptxt, {
-        x: paperW / 2 - ptxtW / 2,
-        y: 5,
-        size: 9,
-        font: bold,
-        color: WHITE,
-      });
-    }
-
-    if (pageNum === pages.length) {
-      const pct = maxTotalMarks > 0 ? Math.round((totalMarks / maxTotalMarks) * 100) : 0;
-      const ttxt = `TOTAL: ${totalMarks}/${maxTotalMarks} (${pct}%)`;
-      const ttxtW = bold.widthOfTextAtSize(ttxt, 9);
-
-      page.drawText(ttxt, {
-        x: totalW - ttxtW - 8,
-        y: 5,
-        size: 9,
-        font: bold,
-        color: scoreCol(totalMarks, maxTotalMarks),
-      });
-    }
-  }
-
-  // ── Report page at beginning ────────────────────────────────────────────────
+/** Prepend all grading report pages (1, 2, 3…) before the student work. */
+function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary }) {
   const summaryPage = pdfDoc.insertPage(0, [595, 842]);
   const { width: sw, height: sh } = summaryPage.getSize();
   const M = 38;
@@ -1024,6 +1040,158 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
   }
 
   drawReportFooter(reportPage, sw, reg);
+  return reportPageCount;
+}
+
+export async function annotatePdf({ studentFile, questions, totalMarks, maxTotalMarks, summary }) {
+  const buf = await studentFile.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const studentPageCount = pdfDoc.getPageCount();
+
+  const byPage = {};
+  for (const q of questions) {
+    const p = Math.max(1, Math.min(q.pageNumber || 1, studentPageCount));
+    (byPage[p] = byPage[p] || []).push(q);
+  }
+
+  const reportPageCount = prependGradingReport(pdfDoc, {
+    bold,
+    reg,
+    questions,
+    totalMarks,
+    maxTotalMarks,
+    summary,
+  });
+
+  const pages = pdfDoc.getPages();
+  const STRIP_H = 22;
+  const LM = 50;
+
+  for (let i = reportPageCount; i < pages.length; i++) {
+    const page = pages[i];
+    const pageNum = i - reportPageCount + 1;
+    const qs = byPage[pageNum] || [];
+
+    const layout = await appendExaminerColumn(pdfDoc, page, STRIP_H);
+    const { paperW, totalW, height } = { paperW: layout.paperW, totalW: layout.totalW, height: page.getSize().height };
+
+    const PAGE_BOTTOM = STRIP_H + 6;
+    const PAGE_TOP = height - 8;
+    let leftCursor = PAGE_TOP;
+
+    const sortedQs = [...qs].sort((a, b) => (a.yPercent ?? 30) - (b.yPercent ?? 30));
+
+    for (const q of sortedQs) {
+      const yPct = Math.min(92, Math.max(5, q.yPercent ?? 30));
+      const anchorY = height - (height * yPct) / 100;
+      const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
+      const bg = scoreBg(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
+      const full = Number(q.marksAwarded || 0) >= Number(q.maxMarks || 0);
+      const none = Number(q.marksAwarded || 0) === 0;
+      const notAttempted = q.studentAnswer === "Not attempted";
+
+      const badgeH = 18;
+      const scoreTxt = `${q.marksAwarded}/${q.maxMarks}`;
+      const badgeW = Math.max(34, bold.widthOfTextAtSize(scoreTxt, 10) + 10);
+      const badgeX = 3;
+
+      let leftBlockTop = Math.min(anchorY + badgeH / 2, leftCursor);
+      let badgeY = Math.max(PAGE_BOTTOM, leftBlockTop - badgeH);
+      leftBlockTop = badgeY + badgeH;
+
+      page.drawRectangle({
+        x: badgeX,
+        y: badgeY,
+        width: badgeW,
+        height: badgeH,
+        color: bg,
+        borderColor: col,
+        borderWidth: 1.2,
+      });
+
+      page.drawText(scoreTxt, {
+        x: badgeX + 5,
+        y: badgeY + 5,
+        size: 11,
+        font: bold,
+        color: col,
+      });
+
+      page.drawText(san(`Q${q.questionNumber}`).substring(0, 9), {
+        x: badgeX,
+        y: badgeY + badgeH + 3,
+        size: 9,
+        font: bold,
+        color: NAVY,
+      });
+
+      const mcq = mcqChoiceSummary(q);
+      const symbolY = Math.max(PAGE_BOTTOM, badgeY - 18);
+
+      if (notAttempted) {
+        page.drawText("?", { x: badgeX + 9, y: symbolY + 2, size: 14, font: bold, color: AMBER });
+      } else if (mcq.isMcq && mcq.student) {
+        const letter = extractOptionLetter(mcq.student) || san(mcq.student).substring(0, 6);
+        const choiceColor = full ? GREEN : RED;
+        const tag = full ? letter : `${letter} X`;
+        page.drawText(san(tag), {
+          x: badgeX + 2,
+          y: symbolY + 2,
+          size: 9,
+          font: bold,
+          color: choiceColor,
+        });
+      } else if (full) {
+        drawTick(page, badgeX + 3, symbolY, 14, GREEN);
+      } else if (none) {
+        drawCross(page, badgeX + 3, symbolY, 13, RED);
+      } else {
+        drawTick(page, badgeX + 1, symbolY, 12, GREEN);
+        drawCross(page, badgeX + 16, symbolY, 12, RED);
+      }
+
+      leftCursor = Math.max(PAGE_BOTTOM, Math.min(leftCursor, symbolY - 8));
+
+      page.drawLine({
+        start: { x: badgeX + badgeW, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
+        end: { x: LM + 2, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
+        thickness: 0.85,
+        color: col,
+        dashArray: [2, 2],
+        dashPhase: 0,
+      });
+    }
+
+    drawExaminerColumn(page, layout, qs, bold, reg);
+
+    const pageAwarded = qs.reduce((s, q) => s + Number(q.marksAwarded || 0), 0);
+    const pageMax = qs.reduce((s, q) => s + Number(q.maxMarks || 0), 0);
+    const stripH = 18;
+
+    page.drawRectangle({ x: 0, y: 0, width: totalW, height: stripH, color: NAVY });
+    page.drawText("MARKED  ·  Sahahly", {
+      x: 8,
+      y: 5,
+      size: 9,
+      font: bold,
+      color: rgb(0.6, 0.72, 0.95),
+    });
+
+    if (qs.length > 0) {
+      const ptxt = `Page marks: ${pageAwarded}/${pageMax}`;
+      const ptxtW = bold.widthOfTextAtSize(ptxt, 9);
+      page.drawText(ptxt, {
+        x: paperW / 2 - ptxtW / 2,
+        y: 5,
+        size: 9,
+        font: bold,
+        color: WHITE,
+      });
+    }
+  }
 
   const rawBytes = await pdfDoc.save();
   return await compressAnnotatedPdf(rawBytes);

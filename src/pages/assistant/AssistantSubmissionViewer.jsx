@@ -19,9 +19,13 @@ import "../manager/ManagerSubmissionViewer.css";
 import {
   appendMarkingContext,
   assertPdfBlob,
+  buildFinalMarkingResult,
+  confirmTeacherEdits,
   currentUserId,
+  ensureAssignmentMemory,
   getApiErrorMessage,
   guidanceForForm,
+  hasTeacherEdits,
   normalizeGuidance,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
@@ -74,6 +78,8 @@ export default function AssignmentSubmissionViewer() {
   const [studentErrors, setStudentErrors] = useState({});
 
   const [markingProvider, setMarkingProvider] = useState("gemini");
+  const [geminiModels, setGeminiModels] = useState([]);
+  const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
 
   // const [cachedMsFile, setCachedMsFile] = useState(null);
@@ -229,6 +235,9 @@ const openErrorViewer = (title, error) => {
     };
 
     fetchPrompts();
+    api.get("/marking/gemini-models")
+      .then(r => setGeminiModels(r.data || []))
+      .catch(() => {});
   }, []);
 
   // to upload mark scheme if it exists for the assignment
@@ -256,6 +265,7 @@ const openErrorViewer = (title, error) => {
         map[r.submissionId] = {
           status: "done",
           result: r.result,
+          aiOriginalResult: r.aiOriginalResult || r.result,
           studentFile: r.studentFileMeta,
           totalMarks: r.totalMarks
         };
@@ -421,6 +431,48 @@ const url = URL.createObjectURL(blob);
     setPromptDropdownOpen(false);
   };
 
+  const getOriginalQuestions = (modal) =>
+    modal?.originalAiResult?.questions || modal?.result?.questions || [];
+
+  const handleConfirmEdits = async () => {
+    if (!resultModal) return;
+    const originalQuestions = getOriginalQuestions(resultModal);
+    if (!hasTeacherEdits(originalQuestions, editingQuestions)) {
+      toast.info("No edits to save");
+      return;
+    }
+
+    try {
+      const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
+      const data = await confirmTeacherEdits(api, {
+        assignmentId,
+        submissionId: resultModal.student.submissionId,
+        studentId: resultModal.student.studentId,
+        studentName: resultModal.student.name,
+        mode: resultModal.result.markingMode || markingModeModal,
+        provider: markingProvider,
+        originalQuestions,
+        finalQuestions: editingQuestions,
+        finalResult,
+      });
+
+      setResultModal((prev) => ({
+        ...prev,
+        result: finalResult,
+        originalAiResult: JSON.parse(JSON.stringify(finalResult)),
+      }));
+
+      const count = data.addedReviewer || data.addedSamples || 0;
+      toast.success(
+        count
+          ? `Edits saved — ${count} correction(s) added to assignment memory`
+          : "Edits saved"
+      );
+    } catch (err) {
+      toast.error(await getApiErrorMessage(err));
+    }
+  };
+
   const runMarkStudent = async (student, guidanceText, mode = "normal", markingProvider) => {
     setMarkingStudentId(student.submissionId);
     setSingleProgress(prev => ({
@@ -459,12 +511,28 @@ const url = URL.createObjectURL(blob);
 
       const fd = new FormData();
       fd.append("studentPdf", studentFile);
-      fd.append("markSchemePdf", msFile);
       if (maxGrade) fd.append("totalGrade", maxGrade);
       fd.append("markingMode", mode);
       const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
       appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
+
+      if (markingProvider !== "claude") {
+        fd.append("geminiModel", geminiModel);
+        const memory = await ensureAssignmentMemory(api, {
+          assignmentId,
+          studentFile,
+          msFile,
+          markingMode: mode,
+          guidance: guidanceValue,
+          totalGrade: maxGrade,
+          classroomId,
+          geminiModel: geminiModel,
+        });
+        fd.append("assignmentMemoryId", memory.memoryId);
+      } else {
+        fd.append("markSchemePdf", msFile);
+      }
 
       const endpoint =
       markingProvider === "claude"
@@ -479,6 +547,7 @@ const url = URL.createObjectURL(blob);
       setResultModal({
         student,
         result: res.data,
+        originalAiResult: JSON.parse(JSON.stringify(res.data)),
         studentFile,
         submissionId: student.submissionId
       });
@@ -548,9 +617,8 @@ const url = URL.createObjectURL(blob);
     }
   };
 
-  const runBulkMark = async (guidanceText, mode = "normal", markingProvider) => {
-    // const eligible = students.filter(s => s.submissionId);
-    
+  const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
+    try {
     const res = await api.post(
       "/submission-files/eligible-for-bulk-marking",
       {
@@ -567,7 +635,65 @@ const url = URL.createObjectURL(blob);
       s => s.submissionId && backendEligible.has(s.submissionId)
     );
     
-    if (!eligible.length) return toast.warn("No students with submissions");
+    if (!eligible.length) {
+      const withSubmissions = students.filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        return toast.warn("No students with submissions");
+      }
+      return toast.warn("All submitted students are already marked for this assignment");
+    }
+
+    const guidanceValue = guidanceForForm(guidanceText);
+    let assignmentMemoryId = null;
+
+    if (provider !== "claude") {
+      try {
+        toast.info("Preparing assignment correction memory…");
+        const firstStudent = eligible[0];
+        const [studentPdfRes, msPdfRes] = await Promise.all([
+          api.get("/submission-files/pdf", {
+            params: { assignmentId, submissionId: firstStudent.submissionId },
+            responseType: "blob",
+          }),
+          api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
+            responseType: "blob",
+          }),
+        ]);
+
+        await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
+        await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+        const gateStudentFile = new File(
+          [studentPdfRes.data],
+          `${firstStudent.name || "student"}.pdf`,
+          { type: "application/pdf" }
+        );
+        const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
+          type: "application/pdf",
+        });
+
+        const memory = await ensureAssignmentMemory(api, {
+          assignmentId,
+          studentFile: gateStudentFile,
+          msFile: gateMsFile,
+          markingMode: mode,
+          guidance: guidanceValue,
+          totalGrade: maxGrade,
+          classroomId,
+          geminiModel: geminiModel,
+        });
+
+        assignmentMemoryId = memory.memoryId;
+        if (memory.reused) {
+          toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
+        } else {
+          toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
+        }
+      } catch (err) {
+        toast.error(err.message || "Assignment memory preparation failed");
+        return;
+      }
+    }
 
     bulkStopRef.current = false;
     setBulkMarking(true);
@@ -593,15 +719,25 @@ const url = URL.createObjectURL(blob);
       let msFile;
 
       try {
-        const [studentPdfRes, msPdfRes] = await Promise.all([
+        const fetches = [
           api.get("/submission-files/pdf", {
             params: { assignmentId, submissionId: student.submissionId },
             responseType: "blob"
           }),
-          api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-            responseType: "blob"
-          })
-        ]);
+        ];
+
+        if (provider === "claude" || !assignmentMemoryId) {
+          fetches.push(
+            api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
+              responseType: "blob"
+            })
+          );
+        }
+
+        const responses = await Promise.all(fetches);
+        const studentPdfRes = responses[0];
+
+        await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
 
         studentFile = new File(
           [studentPdfRes.data],
@@ -609,11 +745,15 @@ const url = URL.createObjectURL(blob);
           { type: "application/pdf" }
         );
 
-        msFile = new File(
-          [msPdfRes.data],
-          "markscheme.pdf",
-          { type: "application/pdf" }
-        );
+        if (provider === "claude" || !assignmentMemoryId) {
+          const msPdfRes = responses[1];
+          await assertPdfBlob(msPdfRes.data, "Mark scheme");
+          msFile = new File(
+            [msPdfRes.data],
+            "markscheme.pdf",
+            { type: "application/pdf" }
+          );
+        }
 
       } catch (err) {
         const status = err?.response?.status;
@@ -639,10 +779,8 @@ const url = URL.createObjectURL(blob);
       // -----------------------------
       const fd = new FormData();
       fd.append("studentPdf", studentFile);
-      fd.append("markSchemePdf", msFile);
       fd.append("markingMode", mode);
 
-      const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
       if (maxGrade) fd.append("totalGrade", maxGrade);
 
@@ -651,6 +789,16 @@ const url = URL.createObjectURL(blob);
         assignmentId,
         classroomId
       });
+      if (provider !== "claude") {
+        fd.append("geminiModel", geminiModel);
+        if (assignmentMemoryId) {
+          fd.append("assignmentMemoryId", assignmentMemoryId);
+        } else if (msFile) {
+          fd.append("markSchemePdf", msFile);
+        }
+      } else if (msFile) {
+        fd.append("markSchemePdf", msFile);
+      }
 
       // -----------------------------
       // 3. AI RETRY LOOP
@@ -667,7 +815,7 @@ const url = URL.createObjectURL(blob);
 
         try {
           const endpoint =
-            markingProvider === "claude"
+            provider === "claude"
               ? "/markingClaude/mark-claude"
               : "/marking/mark";
 
@@ -706,7 +854,7 @@ const url = URL.createObjectURL(blob);
             studentId: student.studentId,
             studentName: student.name,
             mode,
-            provider: markingProvider,
+            provider,
             result: res.data
           });
 
@@ -804,21 +952,26 @@ const url = URL.createObjectURL(blob);
 
     setBulkMarking(false);
     toast.success("Bulk marking complete");
+  } catch (err) {
+    setBulkMarking(false);
+    toast.error(await getApiErrorMessage(err));
+  }
   };
 
-  const handleGuidanceConfirm = () => {
+  const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
     if (markingModeModal === "criteria" && !normalizeGuidance(guidance)) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
     const g    = normalizeGuidance(guidance);
     const mode = markingModeModal;
+    setMarkingProvider(provider);
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
-      runBulkMark(g, mode, markingProvider);
+      runBulkMark(g, mode, provider);
     } else {
       setGuidanceModal(null);
-      runMarkStudent(guidanceModal.student, g, mode, markingProvider);
+      runMarkStudent(guidanceModal.student, g, mode, provider);
     }
   };
 
@@ -869,6 +1022,27 @@ const url = URL.createObjectURL(blob);
 
     setReturning(true);
     try {
+      const originalQuestions = getOriginalQuestions(resultModal);
+      if (hasTeacherEdits(originalQuestions, editingQuestions)) {
+        const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
+        await confirmTeacherEdits(api, {
+          assignmentId,
+          submissionId: resultModal.student.submissionId,
+          studentId: resultModal.student.studentId,
+          studentName: resultModal.student.name,
+          mode: resultModal.result.markingMode || markingModeModal,
+          provider: markingProvider,
+          originalQuestions,
+          finalQuestions: editingQuestions,
+          finalResult,
+        });
+        setResultModal((prev) => ({
+          ...prev,
+          result: finalResult,
+          originalAiResult: JSON.parse(JSON.stringify(finalResult)),
+        }));
+      }
+
       const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
 
       const pdfBytes = await annotatePdf({
@@ -1260,7 +1434,16 @@ return (
                                               const source = bulkDone ? bulk : single?.status === "done" ? single : null;
                                               const result = source?.result ?? db?.result;
                                               const studentFile = source?.studentFile ?? null;
-                                              setResultModal({ student: s, result, studentFile });
+                                              const originalAiResult =
+                                                source?.originalAiResult ??
+                                                db?.aiOriginalResult ??
+                                                result;
+                                              setResultModal({
+                                                student: s,
+                                                result,
+                                                originalAiResult: JSON.parse(JSON.stringify(originalAiResult)),
+                                                studentFile,
+                                              });
                                               setEditingQuestions((result.questions || []).map(q => ({ ...q })));
                                               setEditingMaxTotal(null);
                                             }}
@@ -1477,6 +1660,34 @@ return (
                           </div>
                         </div>
 
+                        {/* Gemini model (bulk + single mark) */}
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+                            Gemini Model
+                          </label>
+                          <select
+                            value={geminiModel}
+                            onChange={e => setGeminiModel(e.target.value)}
+                            style={{
+                              width: "100%",
+                              padding: "9px 12px",
+                              borderRadius: 8,
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              background: "rgba(255,255,255,0.04)",
+                              color: "rgba(255,255,255,0.85)",
+                              fontSize: 13,
+                              outline: "none",
+                            }}
+                          >
+                            {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
+                              <option key={m.id} value={m.id}>{m.label}</option>
+                            ))}
+                          </select>
+                          <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                            Used when you start marking with Gemini. Flash-Lite models are cheaper and faster.
+                          </p>
+                        </div>
+
                         {/* Saved prompt dropdown */}
                         {savedPrompts.length > 0 && (
                           <div style={{ marginBottom: 14, position: "relative" }}>
@@ -1620,10 +1831,7 @@ return (
                         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                           <button
                             className="ma-send-btn"
-                            onClick={() => {
-                              setMarkingProvider("gemini");
-                              handleGuidanceConfirm();
-                            }}
+                            onClick={() => handleGuidanceConfirm("gemini")}
                             disabled={markingModeModal === "criteria" && !guidance.trim()}
                             style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}
                           >
@@ -1634,10 +1842,7 @@ return (
                         
                           <button
                             className="ma-send-btn"
-                            onClick={() => {
-                              setMarkingProvider("claude");
-                              handleGuidanceConfirm();
-                            }}
+                            onClick={() => handleGuidanceConfirm("claude")}
                           >
                           <FiCpu size={14} />
                             {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
@@ -1874,17 +2079,16 @@ return (
                             </div>
           
                             {/* Confirm edits notice for normal mode */}
-                            {editingQuestions.some((q, idx) => q.marksAwarded !== resultModal.result.questions[idx]?.marksAwarded) && (
+                            {hasTeacherEdits(
+                              getOriginalQuestions(resultModal),
+                              editingQuestions
+                            ) && (
                               <div style={{ padding: "10px 16px", marginBottom: 16, borderRadius: 10, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                                <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — download or return to apply them</span>
+                                <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — confirm to save to assignment memory</span>
                                 <button
                                   className="ma-send-btn"
                                   style={{ fontSize: 12, padding: "6px 14px", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b" }}
-                                  onClick={() => {
-                                    const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-                                    setResultModal(prev => ({ ...prev, result: { ...prev.result, totalMarks: total } }));
-                                    toast.success(`Grades confirmed — total: ${total}/${effectiveMaxTotal}`);
-                                  }}
+                                  onClick={handleConfirmEdits}
                                 >
                                   ✅ Confirm Edits
                                 </button>
@@ -1948,7 +2152,8 @@ return (
                                 )}
           
                                 {/* Correct answer — shown in criteria mode */}
-                                {isCriteria && q.correctAnswer && (
+                                {/* Correct answer — criteria mode or MCQ */}
+                                {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
                                   <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
                                     <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
                                   </div>

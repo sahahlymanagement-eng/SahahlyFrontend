@@ -11,9 +11,13 @@ import ManagerSidebar from "../../components/ManagerSidebar";
 import {
   appendMarkingContext,
   assertPdfBlob,
+  buildFinalMarkingResult,
+  confirmTeacherEdits,
   currentUserId,
+  ensureAssignmentMemory,
   getApiErrorMessage,
   guidanceForForm,
+  hasTeacherEdits,
   normalizeGuidance,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
@@ -85,6 +89,8 @@ export default function ManagerSubmissionViewer() {
   const [studentErrors, setStudentErrors] = useState({});
 
   const [markingProvider, setMarkingProvider] = useState("gemini");
+  const [geminiModels, setGeminiModels] = useState([]);
+  const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
 
   // const [cachedMsFile, setCachedMsFile] = useState(null);
@@ -95,8 +101,6 @@ export default function ManagerSubmissionViewer() {
   title: "",
   message: null,
 });
-
-const selectedGeminiModel = "gemini-3-flash-preview"
 
 useEffect(() => {
   const fetchSavedResults = async () => {
@@ -111,6 +115,7 @@ useEffect(() => {
         map[r.submissionId] = {
           status: "done",
           result: r.result,
+          aiOriginalResult: r.aiOriginalResult || r.result,
           studentFile: r.studentFileMeta,
           totalMarks: r.totalMarks
         };
@@ -285,6 +290,9 @@ useEffect(() => {
     api.get("/marking/prompts")
       .then(r => setSavedPrompts(r.data || []))
       .catch(() => {});
+    api.get("/marking/gemini-models")
+      .then(r => setGeminiModels(r.data || []))
+      .catch(() => {});
   }, [user]);
 
   useEffect(() => {
@@ -419,8 +427,50 @@ useEffect(() => {
     setPromptDropdownOpen(false);
   };
 
+  const getOriginalQuestions = (modal) =>
+    modal?.originalAiResult?.questions || modal?.result?.questions || [];
 
-  const runMarkStudent = async (student, guidanceText, mode = "normal") => {
+  const handleConfirmEdits = async () => {
+    if (!resultModal) return;
+    const originalQuestions = getOriginalQuestions(resultModal);
+    if (!hasTeacherEdits(originalQuestions, editingQuestions)) {
+      toast.info("No edits to save");
+      return;
+    }
+
+    try {
+      const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
+      const data = await confirmTeacherEdits(api, {
+        assignmentId: selectedAssignment._id,
+        submissionId: resultModal.student.submissionId,
+        studentId: resultModal.student.studentId,
+        studentName: resultModal.student.name,
+        mode: resultModal.result.markingMode || markingModeModal,
+        provider: markingProvider,
+        originalQuestions,
+        finalQuestions: editingQuestions,
+        finalResult,
+      });
+
+      setResultModal((prev) => ({
+        ...prev,
+        result: finalResult,
+        originalAiResult: JSON.parse(JSON.stringify(finalResult)),
+      }));
+
+      const count = data.addedReviewer || data.addedSamples || 0;
+      toast.success(
+        count
+          ? `Edits saved — ${count} correction(s) added to assignment memory`
+          : "Edits saved"
+      );
+    } catch (err) {
+      toast.error(await getApiErrorMessage(err));
+    }
+  };
+
+
+  const runMarkStudent = async (student, guidanceText, mode = "normal", provider = markingProvider) => {
     setMarkingStudentId(student.submissionId);
     setSingleProgress(prev => ({
       ...prev,
@@ -448,7 +498,6 @@ useEffect(() => {
 
       const fd = new FormData();
       fd.append("studentPdf",    studentFile);
-      fd.append("markSchemePdf", msFile);
       fd.append("markingMode",   mode);
       const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
@@ -459,8 +508,25 @@ useEffect(() => {
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
 
+      if (provider !== "claude") {
+        fd.append("geminiModel", geminiModel);
+        const memory = await ensureAssignmentMemory(api, {
+          assignmentId: selectedAssignment._id,
+          studentFile,
+          msFile,
+          markingMode: mode,
+          guidance: guidanceValue,
+          totalGrade: selectedAssignment.maxPoints,
+          classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+          geminiModel: geminiModel,
+        });
+        fd.append("assignmentMemoryId", memory.memoryId);
+      } else {
+        fd.append("markSchemePdf", msFile);
+      }
+
       const endpoint =
-      markingProvider === "claude"
+      provider === "claude"
         ? "/markingClaude/mark-claude"
         : "/marking/mark";
 
@@ -470,7 +536,13 @@ useEffect(() => {
       });
 
       
-      setResultModal({ student, result: res.data, studentFile, submissionId: student.submissionId});
+      setResultModal({
+        student,
+        result: res.data,
+        originalAiResult: JSON.parse(JSON.stringify(res.data)),
+        studentFile,
+        submissionId: student.submissionId,
+      });
       setSingleProgress(prev => ({
           ...prev,
           [student.submissionId]: {
@@ -485,7 +557,7 @@ useEffect(() => {
             studentId: student.studentId,
             studentName: student.name,
             mode,
-            provider: markingProvider,
+            provider,
             result: res.data
           });
         
@@ -536,12 +608,12 @@ useEffect(() => {
     }
   };
 
-  const runBulkMark = async (guidanceText, mode = "normal") => {
-    // const eligible = students.filter(s => s.submissionId);
+  const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
+    try {
     const res = await api.post(
       "/submission-files/eligible-for-bulk-marking",
       {
-        assignmentId,
+        assignmentId: selectedAssignment._id,
         submissions: students
       }
     );
@@ -554,7 +626,68 @@ useEffect(() => {
       s => s.submissionId && backendEligible.has(s.submissionId)
     );
     
-    if (!eligible.length) return toast.warn("No students with submissions");
+    if (!eligible.length) {
+      const withSubmissions = students.filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        return toast.warn("No students with submissions");
+      }
+      return toast.warn("All submitted students are already marked for this assignment");
+    }
+
+    const guidanceValue = guidanceForForm(guidanceText);
+    let assignmentMemoryId = null;
+
+    if (provider !== "claude") {
+      try {
+        toast.info("Preparing assignment correction memory…");
+        const firstStudent = eligible[0];
+        const [studentPdfRes, msPdfRes] = await Promise.all([
+          api.get("/submission-files/pdf", {
+            params: {
+              assignmentId: selectedAssignment._id,
+              submissionId: firstStudent.submissionId,
+            },
+            responseType: "blob",
+          }),
+          api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
+            responseType: "blob",
+          }),
+        ]);
+
+        await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
+        await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+        const gateStudentFile = new File(
+          [studentPdfRes.data],
+          `${firstStudent.name || "student"}.pdf`,
+          { type: "application/pdf" }
+        );
+        const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
+          type: "application/pdf",
+        });
+
+        const memory = await ensureAssignmentMemory(api, {
+          assignmentId: selectedAssignment._id,
+          studentFile: gateStudentFile,
+          msFile: gateMsFile,
+          markingMode: mode,
+          guidance: guidanceValue,
+          totalGrade: selectedAssignment.maxPoints,
+          classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+          geminiModel: geminiModel,
+        });
+
+        assignmentMemoryId = memory.memoryId;
+        if (memory.reused) {
+          toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
+        } else {
+          toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
+        }
+      } catch (err) {
+        toast.error(err.message || "Assignment memory preparation failed");
+        return;
+      }
+    }
 
     bulkStopRef.current = false;
     setBulkMarking(true);
@@ -579,33 +712,41 @@ useEffect(() => {
       let msFile;
 
       try {
-        const [studentPdfRes, msPdfRes] = await Promise.all([
+        const fetches = [
           api.get("/submission-files/pdf", {
             params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
             responseType: "blob"
           }),
-          api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-            responseType: "blob"
-          })
-        ]);
+        ];
+
+        if (provider === "claude" || !assignmentMemoryId) {
+          fetches.push(
+            api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
+              responseType: "blob"
+            })
+          );
+        }
+
+        const responses = await Promise.all(fetches);
+        const studentPdfRes = responses[0];
 
         await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-        await assertPdfBlob(msPdfRes.data, "Mark scheme");
 
-        // const studentFile = new File([studentPdfRes.data], `${student.name || "student"}.pdf`, { type: "application/pdf" });
-        // const msFile      = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
-        
         studentFile = new File(
           [studentPdfRes.data],
           `${student.name || "student"}.pdf`,
           { type: "application/pdf" }
         );
 
-        msFile = new File(
-          [msPdfRes.data],
-          "markscheme.pdf",
-          { type: "application/pdf" }
-        );
+        if (provider === "claude" || !assignmentMemoryId) {
+          const msPdfRes = responses[1];
+          await assertPdfBlob(msPdfRes.data, "Mark scheme");
+          msFile = new File(
+            [msPdfRes.data],
+            "markscheme.pdf",
+            { type: "application/pdf" }
+          );
+        }
       } catch (err) {
       const status = err?.response?.status;
 
@@ -630,10 +771,8 @@ useEffect(() => {
 
         const fd = new FormData();
         fd.append("studentPdf",    studentFile);
-        fd.append("markSchemePdf", msFile);
         fd.append("markingMode",   mode);
 
-        const guidanceValue = guidanceForForm(guidanceText);
         if (guidanceValue) fd.append("guidance", guidanceValue);
 
         if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
@@ -643,6 +782,16 @@ useEffect(() => {
           assignmentId: selectedAssignment._id,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
+        if (provider !== "claude") {
+          fd.append("geminiModel", geminiModel);
+          if (assignmentMemoryId) {
+            fd.append("assignmentMemoryId", assignmentMemoryId);
+          } else if (msFile) {
+            fd.append("markSchemePdf", msFile);
+          }
+        } else if (msFile) {
+          fd.append("markSchemePdf", msFile);
+        }
 
         let attempt = 0;
         const maxAttempts = 20;
@@ -657,7 +806,7 @@ while (
 
       try {
         const endpoint =
-          markingProvider === "claude"
+          provider === "claude"
             ? "/markingClaude/mark-claude"
             : "/marking/mark";
 
@@ -697,7 +846,7 @@ while (
           studentId: student.studentId,
           studentName: student.name,
           mode,
-          provider: markingProvider,
+          provider,
           result: res.data
         });
 
@@ -785,6 +934,10 @@ while (
 
   setBulkMarking(false);
   toast.success("Bulk marking complete");
+  } catch (err) {
+    setBulkMarking(false);
+    toast.error(await getApiErrorMessage(err));
+  }
   };
 
 
@@ -841,7 +994,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
       succeeded,
       markingMode:   mode,
       guidance:      guidanceForForm(guidanceText),
-      geminiModel:   selectedGeminiModel,
+      geminiModel:   geminiModel,
       subjectId:     selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
       personId:      currentUserId(),
@@ -914,19 +1067,20 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
 
 
 
-  const handleGuidanceConfirm = () => {
+  const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
     if (markingModeModal === "criteria" && !normalizeGuidance(guidance)) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
     const g    = normalizeGuidance(guidance);
     const mode = markingModeModal;
+    setMarkingProvider(provider);
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
-      runBulkMark(g, mode);
+      runBulkMark(g, mode, provider);
     } else {
       setGuidanceModal(null);
-      runMarkStudent(guidanceModal.student, g, mode);
+      runMarkStudent(guidanceModal.student, g, mode, provider);
     }
   };
 
@@ -958,6 +1112,27 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
     if (!resultModal) return;
     setReturning(true);
     try {
+      const originalQuestions = getOriginalQuestions(resultModal);
+      if (hasTeacherEdits(originalQuestions, editingQuestions)) {
+        const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
+        await confirmTeacherEdits(api, {
+          assignmentId: selectedAssignment._id,
+          submissionId: resultModal.student.submissionId,
+          studentId: resultModal.student.studentId,
+          studentName: resultModal.student.name,
+          mode: resultModal.result.markingMode || markingModeModal,
+          provider: markingProvider,
+          originalQuestions,
+          finalQuestions: editingQuestions,
+          finalResult,
+        });
+        setResultModal((prev) => ({
+          ...prev,
+          result: finalResult,
+          originalAiResult: JSON.parse(JSON.stringify(finalResult)),
+        }));
+      }
+
       const pdfBytes = await annotatePdf({
         studentFile:   resultModal.studentFile,
         questions:     editingQuestions,
@@ -1408,7 +1583,17 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                                               const source = bulkDone ? bulk : single?.status === "done" ? single : null;
                                               const result = source?.result ?? db?.result;
                                               const studentFile = source?.studentFile ?? null;
-                                              setResultModal({ student: s, result, studentFile,submissionId: s.submissionId });
+                                              const originalAiResult =
+                                                source?.originalAiResult ??
+                                                db?.aiOriginalResult ??
+                                                result;
+                                              setResultModal({
+                                                student: s,
+                                                result,
+                                                originalAiResult: JSON.parse(JSON.stringify(originalAiResult)),
+                                                studentFile,
+                                                submissionId: s.submissionId,
+                                              });
                                               setEditingQuestions((result.questions || []).map(q => ({ ...q })));
                                               setEditingMaxTotal(null);
                                             }}
@@ -1627,6 +1812,34 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                 </div>
               </div>
 
+              {/* Gemini model (bulk + single mark) */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+                  Gemini Model
+                </label>
+                <select
+                  value={geminiModel}
+                  onChange={e => setGeminiModel(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                >
+                  {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+                <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                  Used when you start marking with Gemini. Flash-Lite models are cheaper and faster.
+                </p>
+              </div>
+
               {/* Saved prompt dropdown */}
               {savedPrompts.length > 0 && (
                 <div style={{ marginBottom: 14, position: "relative" }}>
@@ -1768,10 +1981,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
               <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                 <button
                   className="ma-send-btn"
-                  onClick={() => {
-                    setMarkingProvider("gemini");
-                    handleGuidanceConfirm();
-                  }}
+                  onClick={() => handleGuidanceConfirm("gemini")}
                   disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
                   style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1 }}
                 >
@@ -1781,10 +1991,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
 
                 <button
                   className="ma-send-btn"
-                  onClick={() => {
-                    setMarkingProvider("claude");
-                    handleGuidanceConfirm();
-                  }}
+                  onClick={() => handleGuidanceConfirm("claude")}
                 >
                 <FiCpu size={14} />
                   {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
@@ -2053,17 +2260,16 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                   </div>
 
                   {/* Confirm edits notice for normal mode */}
-                  {editingQuestions.some((q, idx) => q.marksAwarded !== resultModal.result.questions[idx]?.marksAwarded) && (
+                  {hasTeacherEdits(
+                    getOriginalQuestions(resultModal),
+                    editingQuestions
+                  ) && (
                     <div style={{ padding: "10px 16px", marginBottom: 16, borderRadius: 10, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — download or return to apply them</span>
+                      <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — confirm to save to assignment memory</span>
                       <button
                         className="ma-send-btn"
                         style={{ fontSize: 12, padding: "6px 14px", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b" }}
-                        onClick={() => {
-                          const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-                          setResultModal(prev => ({ ...prev, result: { ...prev.result, totalMarks: total } }));
-                          toast.success(`Grades confirmed — total: ${total}/${effectiveMaxTotal}`);
-                        }}
+                        onClick={handleConfirmEdits}
                       >
                         ✅ Confirm Edits
                       </button>
@@ -2126,8 +2332,8 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                         <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 6 }}>📭 Not attempted</div>
                       )}
 
-                      {/* Correct answer — shown in criteria mode */}
-                      {isCriteria && q.correctAnswer && (
+                      {/* Correct answer — criteria mode or MCQ */}
+                      {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
                         <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
                           <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
                         </div>
