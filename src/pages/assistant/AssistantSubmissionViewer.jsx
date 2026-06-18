@@ -1448,6 +1448,9 @@ return (
                             const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId;
                             const markingDone = bulkDone || hasResult;
                             const markingError = bulkError || hasError || studentErrors[s.submissionId];
+                            const inlineMarkResult =
+                              (bulkDone && bulk?.result) ||
+                              (db?.result?.tokenUsage ? db.result : null);
                           
 
                           
@@ -1579,7 +1582,7 @@ return (
                                           </button>
                                         )}
 
-                                        {bulkDone && bulk?.result?.tokenUsage && (
+                                        {inlineMarkResult?.tokenUsage && (
                                             <div style={{
                                               marginTop: 6,
                                               fontSize: 11,
@@ -1590,20 +1593,34 @@ return (
                                             }}>
                                               <span>
                                                 <span style={{ color: "#399cf2", fontWeight: 700 }}>In:</span>{" "}
-                                                {bulk.result.tokenUsage.inputTokens}
+                                                {inlineMarkResult.tokenUsage.inputTokens}
                                               </span>
 
                                               <span>
                                                 <span style={{ color: "#22c55e", fontWeight: 700 }}>Out:</span>{" "}
-                                                {bulk.result.tokenUsage.outputTokens}
+                                                {inlineMarkResult.tokenUsage.outputTokens}
                                               </span>
 
                                               <span>
                                                 <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
-                                                {bulk.result.tokenUsage.totalTokens}
+                                                {inlineMarkResult.tokenUsage.totalTokens}
                                               </span>
                                             </div>
                                           )}
+
+                                        {inlineMarkResult?.pdfCompression && (
+                                          <div style={{
+                                            marginTop: 4,
+                                            fontSize: 11,
+                                            color: "rgba(255,255,255,0.45)",
+                                          }}>
+                                            {inlineMarkResult.pdfCompression.applied
+                                              ? `PDF compressed — saved ${inlineMarkResult.pdfCompression.savingsPercent}%`
+                                              : (inlineMarkResult.pdfCompression.student?.reason ||
+                                                  inlineMarkResult.pdfCompression.method ||
+                                                  "PDF compression not applied")}
+                                          </div>
+                                        )}
                                           
                                         {bulkRetrying && bulkMarking && (
                                           <div style={{

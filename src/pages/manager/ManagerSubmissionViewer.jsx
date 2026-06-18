@@ -12,6 +12,7 @@ import {
   appendMarkingContext,
   assertPdfBlob,
   buildFinalMarkingResult,
+  buildBatchMarkingResult,
   confirmTeacherEdits,
   currentUserId,
   ensureAssignmentMemory,
@@ -1088,10 +1089,11 @@ const pollBatchJob = async (jobId) => {
 
       // SUCCEEDED
       const resultMap = {};
-      for (const { student, result, success, error } of data.results) {
+      for (const { student, result, success, error, tokenUsage } of data.results) {
+        const enrichedResult = success ? buildBatchMarkingResult(result, tokenUsage) : null;
         resultMap[student.submissionId] = success
-          ? { status: "done",  result }
-          : { status: "error", error  };
+          ? { status: "done", result: enrichedResult }
+          : { status: "error", error };
 
         if (success) {
           setStudents(prev =>
@@ -1114,7 +1116,7 @@ const pollBatchJob = async (jobId) => {
             studentName:  student.name,
             mode:         batchJob?.mode || "normal",
             provider:     "gemini-batch",
-            result,
+            result:         enrichedResult,
           }).catch(e => console.error("save-results:", e.message));
         }
       }
@@ -1850,6 +1852,10 @@ useEffect(() => {
                               const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId || batchQueued;
                               const markingDone = bulkDone || hasResult || batchDone;
                               const markingError = bulkError || hasError || batchError || studentErrors[s.submissionId];
+                              const inlineMarkResult =
+                                (batchDone && batch?.result) ||
+                                (bulkDone && bulk?.result) ||
+                                (db?.result?.tokenUsage ? db.result : null);
                             
 
                               return (
@@ -1962,7 +1968,7 @@ useEffect(() => {
                                           </button>
                                         )}
 
-                                        {bulkDone && bulk?.result?.tokenUsage && (
+                                        {inlineMarkResult?.tokenUsage && (
                                             <div style={{
                                               marginTop: 6,
                                               fontSize: 11,
@@ -1973,20 +1979,34 @@ useEffect(() => {
                                             }}>
                                               <span>
                                                 <span style={{ color: "#399cf2", fontWeight: 700 }}>In:</span>{" "}
-                                                {bulk.result.tokenUsage.inputTokens}
+                                                {inlineMarkResult.tokenUsage.inputTokens}
                                               </span>
 
                                               <span>
                                                 <span style={{ color: "#22c55e", fontWeight: 700 }}>Out:</span>{" "}
-                                                {bulk.result.tokenUsage.outputTokens}
+                                                {inlineMarkResult.tokenUsage.outputTokens}
                                               </span>
 
                                               <span>
                                                 <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
-                                                {bulk.result.tokenUsage.totalTokens}
+                                                {inlineMarkResult.tokenUsage.totalTokens}
                                               </span>
                                             </div>
                                           )}
+
+                                        {inlineMarkResult?.pdfCompression && (
+                                          <div style={{
+                                            marginTop: 4,
+                                            fontSize: 11,
+                                            color: "rgba(255,255,255,0.45)",
+                                          }}>
+                                            {inlineMarkResult.pdfCompression.applied
+                                              ? `PDF compressed — saved ${inlineMarkResult.pdfCompression.savingsPercent}%`
+                                              : (inlineMarkResult.pdfCompression.student?.reason ||
+                                                  inlineMarkResult.pdfCompression.method ||
+                                                  "PDF compression not applied")}
+                                          </div>
+                                        )}
                                           
                                         {bulkRetrying && bulkMarking && (
                                           <div style={{

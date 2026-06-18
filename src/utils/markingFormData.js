@@ -324,4 +324,24 @@ export async function confirmTeacherEdits(
 
 }
 
+/** Merge batch API marking JSON with per-student token usage for UI + save-results. */
+export function buildBatchMarkingResult(parsed, tokenUsage) {
+  return {
+    ...parsed,
+    provider: "gemini-batch",
+    tokenUsage: tokenUsage || null,
+    pdfCompression: {
+      applied: false,
+      method: "gemini-batch",
+      student: {
+        applied: false,
+        reason: "Batch API — student PDF uploaded directly to Gemini",
+      },
+      markScheme: {
+        applied: false,
+        reason: "Batch API — mark scheme shared via Gemini file URI",
+      },
+    },
+  };
+}
 
