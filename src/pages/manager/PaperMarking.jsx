@@ -6,6 +6,8 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
+import TokenUsageStats from "../../components/TokenUsageStats";
+import { parseGeminiModelsResponse } from "../../utils/markingCost";
 
 export default function PaperMarking() {
   const navigate = useNavigate();
@@ -45,7 +47,7 @@ export default function PaperMarking() {
     api.get("/qb/boards").then(r => setBoards(r.data)).catch(() => {});
     loadPrompts();
     api.get("/marking/gemini-models")
-      .then(r => setGeminiModels(r.data || []))
+      .then(r => setGeminiModels(parseGeminiModelsResponse(r.data).models))
       .catch(() => {});
   }, []);
 
@@ -580,68 +582,7 @@ export default function PaperMarking() {
 
             <PdfCompressionStats pdfCompression={result.pdfCompression} />
 
-            {/* TOKEN USAGE */}
-            {result.tokenUsage && (
-              <div
-                style={{
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "16px",
-                  padding: "20px",
-                  marginBottom: "24px"
-                }}
-              >
-                <h3
-                  style={{
-                    marginBottom: "14px",
-                    fontSize: "18px",
-                    fontWeight: "700",
-                    color: "#ffffff"
-                  }}
-                >
-                  Gemini Token Usage
-                  {result.geminiModel ? ` — ${result.geminiModel}` : ""}
-                </h3>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "20px",
-                    flexWrap: "wrap"
-                  }}
-                >
-                  <div>
-                    <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
-                      INPUT TOKENS
-                    </p>
-                    <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.inputTokens}</h2>
-                  </div>
-
-                  <div>
-                    <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
-                      OUTPUT TOKENS
-                    </p>
-                    <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.outputTokens}</h2>
-                  </div>
-
-                  <div>
-                    <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
-                      TOTAL TOKENS
-                    </p>
-                    <h2 style={{ color: "#ffffff" }}>{result.tokenUsage.totalTokens}</h2>
-                  </div>
-
-                  {result.estimatedCostUsd != null && (
-                    <div>
-                      <p style={{ opacity: 0.6, fontSize: "12px", color: "#ffffff" }}>
-                        EST. COST (USD)
-                      </p>
-                      <h2 style={{ color: "#ffffff" }}>${result.estimatedCostUsd}</h2>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            <TokenUsageStats result={result} title="Gemini Token Usage" />
 
             {/* QUESTION BREAKDOWN */}
             <h3 className="pm-breakdown-title">Question Breakdown</h3>

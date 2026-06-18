@@ -29,6 +29,8 @@ import {
   normalizeGuidance,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
+import TokenUsageStats from "../../components/TokenUsageStats";
+import { parseGeminiModelsResponse } from "../../utils/markingCost";
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -236,7 +238,7 @@ const openErrorViewer = (title, error) => {
 
     fetchPrompts();
     api.get("/marking/gemini-models")
-      .then(r => setGeminiModels(r.data || []))
+      .then(r => setGeminiModels(parseGeminiModelsResponse(r.data).models))
       .catch(() => {});
   }, []);
 
@@ -1583,30 +1585,8 @@ return (
                                         )}
 
                                         {inlineMarkResult?.tokenUsage && (
-                                            <div style={{
-                                              marginTop: 6,
-                                              fontSize: 11,
-                                              display: "flex",
-                                              gap: 10,
-                                              color: "rgba(255,255,255,0.6)",
-                                              flexWrap: "wrap"
-                                            }}>
-                                              <span>
-                                                <span style={{ color: "#399cf2", fontWeight: 700 }}>In:</span>{" "}
-                                                {inlineMarkResult.tokenUsage.inputTokens}
-                                              </span>
-
-                                              <span>
-                                                <span style={{ color: "#22c55e", fontWeight: 700 }}>Out:</span>{" "}
-                                                {inlineMarkResult.tokenUsage.outputTokens}
-                                              </span>
-
-                                              <span>
-                                                <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
-                                                {inlineMarkResult.tokenUsage.totalTokens}
-                                              </span>
-                                            </div>
-                                          )}
+                                          <TokenUsageStats result={inlineMarkResult} compact />
+                                        )}
 
                                         {inlineMarkResult?.pdfCompression && (
                                           <div style={{
@@ -2045,38 +2025,7 @@ return (
 
                         <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
-                          {/* AI TOKEN USAGE*/}
-                        {resultModal.result.tokenUsage && (
-                          <div className="msv-summary-box" style={{ marginTop: 12 }}>
-                            <div style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "rgba(255,255,255,0.5)",
-                              marginBottom: 6,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.08em"
-                            }}>
-                              AI Token Usage
-                            </div>
-          
-                            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                              <div style={{ fontSize: 13 }}>
-                                <span style={{ color: "#399cf2", fontWeight: 700 }}>Input:</span>{" "}
-                                {resultModal.result.tokenUsage.inputTokens}
-                              </div>
-          
-                              <div style={{ fontSize: 13 }}>
-                                <span style={{ color: "#22c55e", fontWeight: 700 }}>Output:</span>{" "}
-                                {resultModal.result.tokenUsage.outputTokens}
-                              </div>
-          
-                              <div style={{ fontSize: 13 }}>
-                                <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
-                                {resultModal.result.tokenUsage.totalTokens}
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                        <TokenUsageStats result={resultModal.result} />
           
                         {/* ── CRITERIA MODE: show criteria grade first ── */}
                         {isCriteria && resultModal.result.criteriaGrade && (

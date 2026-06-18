@@ -22,6 +22,8 @@ import {
   normalizeGuidance,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
+import TokenUsageStats from "../../components/TokenUsageStats";
+import { parseGeminiModelsResponse } from "../../utils/markingCost";
 import "./ManagerSubmissionViewer.css";
 
 const CHECKLIST_CONFIG = [
@@ -302,7 +304,7 @@ useEffect(() => {
       .then(r => setSavedPrompts(r.data || []))
       .catch(() => {});
     api.get("/marking/gemini-models")
-      .then(r => setGeminiModels(r.data || []))
+      .then(r => setGeminiModels(parseGeminiModelsResponse(r.data).models))
       .catch(() => {});
   }, [user]);
 
@@ -961,7 +963,7 @@ const checkForActiveJob = async () => {
     );
     console.log("checkForActiveJob response:", data);
     if (data.active) {
-      const { jobId, studentOrder, submittedAt } = data.active;
+      const { jobId, studentOrder, submittedAt, assignmentMemoryId } = data.active;
       console.log("restoring batch job:", jobId);
       setBatchJob({
         phase:       "processing",
@@ -971,8 +973,9 @@ const checkForActiveJob = async () => {
         skipped:     {},
         results:     {},
         mode:        "normal",
+        assignmentMemoryId: assignmentMemoryId || null,
       });
-      pollBatchJob(jobId);
+      pollBatchJob(jobId, { assignmentMemoryId, mode: "normal" });
     }
   } catch (err) {
     console.error("checkForActiveJob:", err.message);
@@ -1058,7 +1061,7 @@ useEffect(() => {
 //   }, 15_000);
 // };
 
-const pollBatchJob = async (jobId) => {
+const pollBatchJob = async (jobId, jobMeta = {}) => {
   // Clear any existing poll first
   if (batchPollRef.current) {
     clearInterval(batchPollRef.current);
@@ -1089,10 +1092,22 @@ const pollBatchJob = async (jobId) => {
 
       // SUCCEEDED
       const resultMap = {};
+      const memoryMeta = {
+        assignmentMemoryId:
+          jobMeta.assignmentMemoryId ??
+          data.assignmentMemoryId ??
+          null,
+      };
+      const saveMode = jobMeta.mode || "normal";
       for (const { student, result, success, error, tokenUsage } of data.results) {
-        const enrichedResult = success ? buildBatchMarkingResult(result, tokenUsage) : null;
+        const enrichedResult = success
+          ? buildBatchMarkingResult(result, tokenUsage, geminiModel, memoryMeta)
+          : null;
+        const originalAiResult = enrichedResult
+          ? JSON.parse(JSON.stringify(enrichedResult))
+          : null;
         resultMap[student.submissionId] = success
-          ? { status: "done", result: enrichedResult }
+          ? { status: "done", result: enrichedResult, originalAiResult }
           : { status: "error", error };
 
         if (success) {
@@ -1114,7 +1129,7 @@ const pollBatchJob = async (jobId) => {
             submissionId: student.submissionId,
             studentId:    student.studentId,
             studentName:  student.name,
-            mode:         batchJob?.mode || "normal",
+            mode:         saveMode,
             provider:     "gemini-batch",
             result:         enrichedResult,
           }).catch(e => console.error("save-results:", e.message));
@@ -1142,22 +1157,107 @@ const pollBatchJob = async (jobId) => {
 };
 
 
-// ── Submit batch — just upload + submit, then hand off to pollBatchJob
+// ── Submit batch — memory setup + upload + submit, then hand off to pollBatchJob
 const runBatchMark = async (guidanceText, mode = "normal") => {
   if (!BATCH_ALLOWED_IDS.includes(currentUserId())) {
     toast.error("You are not allowed to do batch marking. ");
     return;
   }
-  const eligible = students.filter(s => s.submissionId);
-  if (!eligible.length) return toast.warn("No students with submissions");
 
-  setBatchJob({ phase: "uploading", total: eligible.length, skipped: {}, results: {}, mode });
+  let eligible;
+  try {
+    const res = await api.post(
+      "/submission-files/eligible-for-bulk-marking",
+      {
+        assignmentId: selectedAssignment._id,
+        submissions: students,
+      }
+    );
+    const backendEligible = new Set(res.data.map((s) => s.submissionId));
+    eligible = students.filter(
+      (s) => s.submissionId && backendEligible.has(s.submissionId)
+    );
+  } catch (err) {
+    toast.error(extractHumanError(err) || "Failed to check eligible students");
+    return;
+  }
 
-  // Step 1 — upload PDFs
+  if (!eligible.length) {
+    const withSubmissions = students.filter((s) => s.submissionId);
+    if (!withSubmissions.length) {
+      return toast.warn("No students with submissions");
+    }
+    return toast.warn("All submitted students are already marked for this assignment");
+  }
+
+  const guidanceValue = guidanceForForm(guidanceText);
+  let assignmentMemoryId = null;
+
+  try {
+    toast.info("Preparing assignment correction memory…");
+    const firstStudent = eligible[0];
+    const [studentPdfRes, msPdfRes] = await Promise.all([
+      api.get("/submission-files/pdf", {
+        params: {
+          assignmentId: selectedAssignment._id,
+          submissionId: firstStudent.submissionId,
+        },
+        responseType: "blob",
+      }),
+      api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
+        responseType: "blob",
+      }),
+    ]);
+
+    await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
+    await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+    const gateStudentFile = new File(
+      [studentPdfRes.data],
+      `${firstStudent.name || "student"}.pdf`,
+      { type: "application/pdf" }
+    );
+    const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
+      type: "application/pdf",
+    });
+
+    const memory = await ensureAssignmentMemory(api, {
+      assignmentId: selectedAssignment._id,
+      studentFile: gateStudentFile,
+      msFile: gateMsFile,
+      markingMode: mode,
+      guidance: guidanceValue,
+      totalGrade: selectedAssignment.maxPoints,
+      classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+      geminiModel: geminiModel,
+    });
+
+    assignmentMemoryId = memory.memoryId;
+    if (memory.reused) {
+      toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
+    } else {
+      toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
+    }
+  } catch (err) {
+    toast.error(err.message || "Assignment memory preparation failed");
+    return;
+  }
+
+  setBatchJob({
+    phase: "uploading",
+    total: eligible.length,
+    skipped: {},
+    results: {},
+    mode,
+    assignmentMemoryId,
+  });
+
+  // Step 1 — upload student PDFs (mark scheme skipped when using memory)
   let msUri, succeeded, failed;
   try {
     const res = await api.post("/marking/mark-batch/upload", {
       assignmentId: selectedAssignment._id,
+      assignmentMemoryId,
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
@@ -1194,10 +1294,11 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
   try {
     const res = await api.post("/marking/mark-batch/submit", {
       assignmentId:  selectedAssignment._id,
+      assignmentMemoryId,
       msUri,
       succeeded,
       markingMode:   mode,
-      guidance:      guidanceForForm(guidanceText),
+      guidance:      guidanceValue,
       geminiModel:   geminiModel,
       subjectId:     selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
@@ -1219,7 +1320,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
   setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
 
   // Step 3 — hand off to standalone poller
-  pollBatchJob(jobId);
+  pollBatchJob(jobId, { assignmentMemoryId, mode });
 };
 
 
@@ -1235,7 +1336,10 @@ useEffect(() => {
 // (e.g. user navigated away and came back — if you persist batchJob to localStorage)
 useEffect(() => {
   if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
-    pollBatchJob(batchJob.jobId);
+    pollBatchJob(batchJob.jobId, {
+      assignmentMemoryId: batchJob.assignmentMemoryId,
+      mode: batchJob.mode,
+    });
   }
 }, []); // only on mount
 
@@ -1737,7 +1841,10 @@ useEffect(() => {
       className="msv-btn-ai"
       onClick={() => {
         if (batchJob?.phase === "processing") {
-          pollBatchJob(batchJob.jobId); // "Check now" behaviour
+          pollBatchJob(batchJob.jobId, {
+            assignmentMemoryId: batchJob.assignmentMemoryId,
+            mode: batchJob.mode,
+          }); // "Check now" behaviour
         } else {
           openGuidanceModal(null, true);
         }
@@ -1780,7 +1887,10 @@ useEffect(() => {
   <button
     onClick={() => {
       console.log("Check now clicked, jobId:", batchJob.jobId);
-      pollBatchJob(batchJob.jobId);
+      pollBatchJob(batchJob.jobId, {
+        assignmentMemoryId: batchJob.assignmentMemoryId,
+        mode: batchJob.mode,
+      });
     }}
     style={{
       marginLeft: "auto", fontSize: 11, color: "#818cf8",
@@ -1898,6 +2008,7 @@ useEffect(() => {
                                                 single?.status === "done" ? single.studentFile :
                                                 null;
                                               const originalAiResult =
+                                                (batchDone ? batch?.originalAiResult : null) ??
                                                 (bulkDone ? bulk?.originalAiResult : null) ??
                                                 (single?.status === "done" ? single?.originalAiResult : null) ??
                                                 db?.aiOriginalResult ??
@@ -1969,30 +2080,8 @@ useEffect(() => {
                                         )}
 
                                         {inlineMarkResult?.tokenUsage && (
-                                            <div style={{
-                                              marginTop: 6,
-                                              fontSize: 11,
-                                              display: "flex",
-                                              gap: 10,
-                                              color: "rgba(255,255,255,0.6)",
-                                              flexWrap: "wrap"
-                                            }}>
-                                              <span>
-                                                <span style={{ color: "#399cf2", fontWeight: 700 }}>In:</span>{" "}
-                                                {inlineMarkResult.tokenUsage.inputTokens}
-                                              </span>
-
-                                              <span>
-                                                <span style={{ color: "#22c55e", fontWeight: 700 }}>Out:</span>{" "}
-                                                {inlineMarkResult.tokenUsage.outputTokens}
-                                              </span>
-
-                                              <span>
-                                                <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
-                                                {inlineMarkResult.tokenUsage.totalTokens}
-                                              </span>
-                                            </div>
-                                          )}
+                                          <TokenUsageStats result={inlineMarkResult} compact />
+                                        )}
 
                                         {inlineMarkResult?.pdfCompression && (
                                           <div style={{
@@ -2486,37 +2575,7 @@ useEffect(() => {
               )} */}
 
                 {/* AI TOKEN USAGE*/}
-              {resultModal.result.tokenUsage && (
-                <div className="msv-summary-box" style={{ marginTop: 12 }}>
-                  <div style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "rgba(255,255,255,0.5)",
-                    marginBottom: 6,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em"
-                  }}>
-                    AI Token Usage
-                  </div>
-
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 13 }}>
-                      <span style={{ color: "#399cf2", fontWeight: 700 }}>Input:</span>{" "}
-                      {resultModal.result.tokenUsage.inputTokens}
-                    </div>
-
-                    <div style={{ fontSize: 13 }}>
-                      <span style={{ color: "#22c55e", fontWeight: 700 }}>Output:</span>{" "}
-                      {resultModal.result.tokenUsage.outputTokens}
-                    </div>
-
-                    <div style={{ fontSize: 13 }}>
-                      <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span>{" "}
-                      {resultModal.result.tokenUsage.totalTokens}
-                    </div>
-                  </div>
-                </div>
-              )}
+              <TokenUsageStats result={resultModal.result} />
 
               {/* Score bar */}
               <div className="msv-score-bar">

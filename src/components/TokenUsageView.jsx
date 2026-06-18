@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FiArrowLeft, FiChevronRight } from "react-icons/fi";
 import api from "../api/api";
 import { toast } from "react-toastify";
+import { formatCostEgp, formatCostUsd } from "../utils/markingCost";
 import "../pages/manager/ManagerTokenUsage.css";
 
 const MONTHS = [
@@ -154,6 +155,8 @@ const TOKEN_COLUMNS = [
   { key: "input", label: "Input", numeric: true, render: (r) => formatNum(r.inputTokens) },
   { key: "output", label: "Output", numeric: true, render: (r) => formatNum(r.outputTokens) },
   { key: "total", label: "Total", numeric: true, render: (r) => formatNum(r.totalTokens) },
+  { key: "costUsd", label: "Cost (USD)", numeric: true, render: (r) => formatCostUsd(r.costUsd) },
+  { key: "costEgp", label: "Cost (EGP)", numeric: true, render: (r) => formatCostEgp(r.costEgp) },
   { key: "requests", label: "Requests", numeric: true, render: (r) => r.requestCount },
 ];
 
@@ -385,6 +388,26 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     return byAssignment?.grandTotal ?? 0;
   })();
 
+  const grandCostUsd = (() => {
+    if (tab === "classroom") {
+      if (classroomDetail) return classroomDetail.grandCostUsd ?? 0;
+      if (selectedClassroom) return selectedClassroom.costUsd ?? 0;
+      return byClassroom?.grandCostUsd ?? 0;
+    }
+    if (tab === "assistant") return byAssistant?.grandCostUsd ?? 0;
+    return byAssignment?.grandCostUsd ?? 0;
+  })();
+
+  const grandCostEgp = (() => {
+    if (tab === "classroom") {
+      if (classroomDetail) return classroomDetail.grandCostEgp ?? 0;
+      if (selectedClassroom) return selectedClassroom.costEgp ?? 0;
+      return byClassroom?.grandCostEgp ?? 0;
+    }
+    if (tab === "assistant") return byAssistant?.grandCostEgp ?? 0;
+    return byAssignment?.grandCostEgp ?? 0;
+  })();
+
   const activePreset =
     period === "all"
       ? "all"
@@ -534,6 +557,14 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           <h3 className="tu-num">{formatNum(grandTotal)}</h3>
           <span>Total tokens</span>
         </div>
+        <div className="tu-summary-card">
+          <h3 className="tu-num">{formatCostUsd(grandCostUsd)}</h3>
+          <span>Est. cost (USD)</span>
+        </div>
+        <div className="tu-summary-card">
+          <h3 className="tu-num">{formatCostEgp(grandCostEgp)}</h3>
+          <span>Est. cost (EGP)</span>
+        </div>
         {summarySecondary && (
           <div className="tu-summary-card">
             <h3>{summarySecondary.count}</h3>
@@ -577,7 +608,13 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                       </span>
                     </div>
                     <div className="tu-click-row-meta">
-                      <span className="tu-num">{formatNum(c.totalTokens)} tokens</span>
+                      <span className="tu-num">
+                        {formatNum(c.totalTokens)} tokens
+                        {" · "}
+                        {formatCostUsd(c.costUsd)}
+                        {" · "}
+                        {formatCostEgp(c.costEgp)}
+                      </span>
                       <FiChevronRight size={18} />
                     </div>
                   </button>

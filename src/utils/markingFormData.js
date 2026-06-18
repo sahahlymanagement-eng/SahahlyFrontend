@@ -1,4 +1,5 @@
 /** Attach user/assignment context so the backend can log AI token usage. */
+import { estimateMarkingCost } from "./markingCost";
 
 export function appendMarkingContext(formData, { personId, assignmentId, classroomId } = {}) {
 
@@ -325,23 +326,51 @@ export async function confirmTeacherEdits(
 }
 
 /** Merge batch API marking JSON with per-student token usage for UI + save-results. */
-export function buildBatchMarkingResult(parsed, tokenUsage) {
-  return {
+export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, memoryMeta = {}) {
+  const usedMemory = Boolean(memoryMeta.assignmentMemoryId);
+  const result = {
     ...parsed,
     provider: "gemini-batch",
+    geminiModel: geminiModel || null,
     tokenUsage: tokenUsage || null,
-    pdfCompression: {
-      applied: false,
-      method: "gemini-batch",
-      student: {
-        applied: false,
-        reason: "Batch API — student PDF uploaded directly to Gemini",
-      },
-      markScheme: {
-        applied: false,
-        reason: "Batch API — mark scheme shared via Gemini file URI",
-      },
-    },
+    assignmentMemoryId: memoryMeta.assignmentMemoryId || null,
+    usedAssignmentMemory: usedMemory,
+    pdfCompression: usedMemory
+      ? {
+          applied: false,
+          method: "assignment-memory",
+          student: {
+            applied: false,
+            reason: "Batch + assignment memory — student PDF only (mark scheme in memory)",
+          },
+          markScheme: {
+            applied: false,
+            reason: "Mark scheme stored in assignment correction memory",
+          },
+        }
+      : {
+          applied: false,
+          method: "gemini-batch",
+          student: {
+            applied: false,
+            reason: "Batch API — student PDF uploaded directly to Gemini",
+          },
+          markScheme: {
+            applied: false,
+            reason: "Batch API — mark scheme shared via Gemini file URI",
+          },
+        },
   };
+
+  if (tokenUsage && geminiModel) {
+    const cost = estimateMarkingCost(geminiModel, tokenUsage);
+    if (cost) {
+      result.estimatedCost = cost;
+      result.estimatedCostUsd = cost.usd;
+      result.estimatedCostEgp = cost.egp;
+    }
+  }
+
+  return result;
 }
 
