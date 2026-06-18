@@ -2144,18 +2144,9 @@ useEffect(() => {
                   Gemini Model
                 </label>
                 <select
+                  className="msv-gemini-select"
                   value={geminiModel}
                   onChange={e => setGeminiModel(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    background: "rgba(255,255,255,0.04)",
-                    color: "rgba(255,255,255,0.85)",
-                    fontSize: 13,
-                    outline: "none",
-                  }}
                 >
                   {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
                     <option key={m.id} value={m.id}>{m.label}</option>

@@ -277,6 +277,17 @@
   border-color: #399cf2;
 }
 
+select.pm-input {
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+select.pm-input option {
+  color: #0f172a;
+  background: #ffffff;
+}
+
 .pm-textarea {
   resize: vertical;
   min-height: 80px;
