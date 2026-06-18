@@ -363,11 +363,12 @@ export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, memoryM
   };
 
   if (tokenUsage && geminiModel) {
-    const cost = estimateMarkingCost(geminiModel, tokenUsage);
+    const cost = estimateMarkingCost(geminiModel, tokenUsage, { batch: true });
     if (cost) {
       result.estimatedCost = cost;
       result.estimatedCostUsd = cost.usd;
       result.estimatedCostEgp = cost.egp;
+      result.batchPricing = true;
     }
   }
 

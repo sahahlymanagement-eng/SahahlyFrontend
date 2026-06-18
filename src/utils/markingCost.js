@@ -7,32 +7,84 @@ export const MARKING_GEMINI_PRICING = [
 
 export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 export let USD_TO_EGP_RATE = 50;
+export let CACHED_INPUT_RATE_FACTOR = 0.25;
+export let BATCH_RATE_FACTOR = 0.5;
 
 export function setUsdToEgpRate(rate) {
   const n = Number(rate);
   if (Number.isFinite(n) && n > 0) USD_TO_EGP_RATE = n;
 }
 
+export function setCachedInputRateFactor(factor) {
+  const n = Number(factor);
+  if (Number.isFinite(n) && n > 0) CACHED_INPUT_RATE_FACTOR = n;
+}
+
+export function setBatchRateFactor(factor) {
+  const n = Number(factor);
+  if (Number.isFinite(n) && n > 0) BATCH_RATE_FACTOR = n;
+}
+
 export function parseGeminiModelsResponse(data) {
   if (Array.isArray(data)) {
-    return { models: data, usdToEgpRate: USD_TO_EGP_RATE };
+    return {
+      models: data,
+      usdToEgpRate: USD_TO_EGP_RATE,
+      cachedInputRateFactor: CACHED_INPUT_RATE_FACTOR,
+      batchRateFactor: BATCH_RATE_FACTOR,
+    };
   }
   const models = data?.models || [];
   if (data?.usdToEgpRate) setUsdToEgpRate(data.usdToEgpRate);
-  return { models, usdToEgpRate: USD_TO_EGP_RATE };
+  if (data?.cachedInputRateFactor) setCachedInputRateFactor(data.cachedInputRateFactor);
+  if (data?.batchRateFactor) setBatchRateFactor(data.batchRateFactor);
+  return {
+    models,
+    usdToEgpRate: USD_TO_EGP_RATE,
+    cachedInputRateFactor: CACHED_INPUT_RATE_FACTOR,
+    batchRateFactor: BATCH_RATE_FACTOR,
+  };
 }
 
-export function estimateMarkingCost(modelId, tokenUsage) {
+function cachedInputPer1M(meta) {
+  return meta.inputPer1M * CACHED_INPUT_RATE_FACTOR;
+}
+
+export function estimateMarkingCost(modelId, tokenUsage, options = {}) {
   if (!tokenUsage) return null;
-  const meta = MARKING_GEMINI_PRICING.find((m) => m.id === modelId) ||
+  const meta =
+    MARKING_GEMINI_PRICING.find((m) => m.id === modelId) ||
     MARKING_GEMINI_PRICING.find((m) => m.id === DEFAULT_GEMINI_MODEL);
   if (!meta) return null;
 
-  const input = ((Number(tokenUsage.inputTokens) || 0) / 1_000_000) * meta.inputPer1M;
-  const output = ((Number(tokenUsage.outputTokens) || 0) / 1_000_000) * meta.outputPer1M;
-  const usd = Math.round((input + output) * 1_000_000) / 1_000_000;
+  const batch = Boolean(options.batch || tokenUsage.batch);
+
+  const prompt = Number(tokenUsage.inputTokens) || 0;
+  const cached = Number(tokenUsage.cachedContentTokens) || 0;
+  const toolUse = Number(tokenUsage.toolUseTokens) || 0;
+  const candidates =
+    tokenUsage.candidatesTokens != null
+      ? Number(tokenUsage.candidatesTokens) || 0
+      : Math.max(0, (Number(tokenUsage.outputTokens) || 0) - (Number(tokenUsage.thoughtsTokens) || 0));
+  const thoughts = Number(tokenUsage.thoughtsTokens) || 0;
+
+  const freshInput =
+    tokenUsage.freshInputTokens != null
+      ? Number(tokenUsage.freshInputTokens) || 0
+      : Math.max(0, prompt - cached) + toolUse;
+
+  // Thinking tokens bill at the same rate as visible output.
+  const billableOutput = candidates + thoughts;
+
+  const inputCost = (freshInput / 1_000_000) * meta.inputPer1M;
+  const cachedCost = (cached / 1_000_000) * cachedInputPer1M(meta);
+  const outputCost = (billableOutput / 1_000_000) * meta.outputPer1M;
+  let usd = inputCost + cachedCost + outputCost;
+  if (batch) usd *= BATCH_RATE_FACTOR;
+
+  usd = Math.round(usd * 1_000_000) / 1_000_000;
   const egp = Math.round(usd * USD_TO_EGP_RATE * 100) / 100;
-  return { usd, egp };
+  return { usd, egp, batchPricing: batch || undefined };
 }
 
 export function resolveMarkingCost(result) {
@@ -42,9 +94,17 @@ export function resolveMarkingCost(result) {
     return {
       usd: result.estimatedCostUsd,
       egp: result.estimatedCostEgp ?? result.estimatedCostUsd * USD_TO_EGP_RATE,
+      batchPricing: result.batchPricing || result.estimatedCost?.batchPricing,
     };
   }
-  return estimateMarkingCost(result.geminiModel || DEFAULT_GEMINI_MODEL, result.tokenUsage);
+  const batch =
+    result.batchPricing ||
+    result.provider === "gemini-batch";
+  return estimateMarkingCost(
+    result.geminiModel || DEFAULT_GEMINI_MODEL,
+    result.tokenUsage,
+    { batch }
+  );
 }
 
 export function formatCostUsd(usd) {
@@ -66,4 +126,10 @@ export function formatCostEgp(egp) {
 export function formatCostPair(cost) {
   if (!cost) return null;
   return `${formatCostUsd(cost.usd)} · ${formatCostEgp(cost.egp)}`;
+}
+
+export function formatBatchPricingNote(cost) {
+  if (!cost?.batchPricing) return null;
+  const pct = Math.round((1 - BATCH_RATE_FACTOR) * 100);
+  return `Batch API pricing (−${pct}%)`;
 }

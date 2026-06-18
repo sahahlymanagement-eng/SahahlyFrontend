@@ -1,29 +1,55 @@
-import { formatCostEgp, formatCostUsd, resolveMarkingCost } from "../utils/markingCost";
+import { formatBatchPricingNote, formatCostEgp, formatCostUsd, resolveMarkingCost } from "../utils/markingCost";
+
+function tokenLines(tokenUsage) {
+  const cached = Number(tokenUsage.cachedContentTokens) || 0;
+  const thoughts = Number(tokenUsage.thoughtsTokens) || 0;
+  const candidates =
+    tokenUsage.candidatesTokens != null
+      ? Number(tokenUsage.candidatesTokens) || 0
+      : Math.max(0, (Number(tokenUsage.outputTokens) || 0) - thoughts);
+
+  return [
+    { key: "input", label: "Input", value: tokenUsage.inputTokens, color: "#399cf2" },
+  ]
+    .concat(cached > 0 ? [{ key: "cached", label: "Cached", value: cached, color: "#38bdf8" }] : [])
+    .concat([
+      { key: "output", label: "Output", value: candidates, color: "#22c55e" },
+    ])
+    .concat(
+      thoughts > 0
+        ? [{ key: "thinking", label: "Thinking", value: thoughts, color: "#f472b6" }]
+        : []
+    )
+    .concat([
+      { key: "total", label: "Total", value: tokenUsage.totalTokens, color: "#f59e0b" },
+    ]);
+}
 
 export default function TokenUsageStats({ result, compact = false, title = "AI Token Usage" }) {
   const tokenUsage = result?.tokenUsage;
   if (!tokenUsage) return null;
 
   const cost = resolveMarkingCost(result);
+  const batchNote = formatBatchPricingNote(cost);
+  const lines = tokenLines(tokenUsage);
 
   if (compact) {
     return (
       <div style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <span>
-            <span style={{ color: "#399cf2", fontWeight: 700 }}>In:</span> {tokenUsage.inputTokens}
-          </span>
-          <span>
-            <span style={{ color: "#22c55e", fontWeight: 700 }}>Out:</span> {tokenUsage.outputTokens}
-          </span>
-          <span>
-            <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span> {tokenUsage.totalTokens}
-          </span>
+          {lines.map((line) => (
+            <span key={line.key}>
+              <span style={{ color: line.color, fontWeight: 700 }}>{line.label}:</span> {line.value}
+            </span>
+          ))}
         </div>
         {cost && (
           <div style={{ marginTop: 4, color: "rgba(255,255,255,0.5)" }}>
             <span style={{ color: "#a78bfa", fontWeight: 700 }}>Cost:</span>{" "}
             {formatCostUsd(cost.usd)} · {formatCostEgp(cost.egp)}
+            {batchNote ? (
+              <span style={{ marginLeft: 6, color: "rgba(129,140,248,0.85)" }}>({batchNote})</span>
+            ) : null}
           </div>
         )}
       </div>
@@ -51,15 +77,11 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 13 }}>
-          <span style={{ color: "#399cf2", fontWeight: 700 }}>Input:</span> {tokenUsage.inputTokens}
-        </div>
-        <div style={{ fontSize: 13 }}>
-          <span style={{ color: "#22c55e", fontWeight: 700 }}>Output:</span> {tokenUsage.outputTokens}
-        </div>
-        <div style={{ fontSize: 13 }}>
-          <span style={{ color: "#f59e0b", fontWeight: 700 }}>Total:</span> {tokenUsage.totalTokens}
-        </div>
+        {lines.map((line) => (
+          <div key={line.key} style={{ fontSize: 13 }}>
+            <span style={{ color: line.color, fontWeight: 700 }}>{line.label}:</span> {line.value}
+          </div>
+        ))}
       </div>
 
       {cost && (
@@ -70,6 +92,9 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
           <div>
             <span style={{ color: "#c084fc", fontWeight: 700 }}>Cost (EGP):</span> {formatCostEgp(cost.egp)}
           </div>
+          {batchNote ? (
+            <div style={{ color: "rgba(129,140,248,0.85)" }}>{batchNote}</div>
+          ) : null}
         </div>
       )}
     </div>
