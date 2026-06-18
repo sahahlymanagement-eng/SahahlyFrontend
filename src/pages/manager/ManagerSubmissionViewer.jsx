@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
-  FiUploadCloud, FiX, FiCalendar, FiSend
+  FiUploadCloud, FiX, FiCalendar, FiSend,FiLayers, FiAlertCircle,FiCheck
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import {
@@ -32,6 +32,7 @@ const CHECKLIST_CONFIG = [
 ];
 
 export default function ManagerSubmissionViewer() {
+  const BATCH_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const navigate   = useNavigate();
   const msInputRef = useRef();
 
@@ -66,6 +67,15 @@ export default function ManagerSubmissionViewer() {
   const bulkStopRef = useRef(false);
 
   const [batchProgress, setBatchProgress] = useState(null);
+  const [batchJob, setBatchJob] = useState(null);
+  // {
+//   phase: "uploading" | "submitting" | "processing" | "done" | "error"
+//   jobId: string | null
+//   total: number
+//   skipped: { [submissionId]: { error } }
+//   results: { [submissionId]: { status: "done"|"error", result?, error? } }
+// }
+  const batchPollRef = useRef(null); 
 // {
 //   phase: "validating" | "submitting" | "processing" | "done" | "error"
 //   jobId: string | null
@@ -420,8 +430,12 @@ useEffect(() => {
 }, [resultModal, editingQuestions, effectiveMaxTotal]);
 
 
-  const openGuidanceModal = (student = null) => {
-    setGuidanceModal(student ? { student } : { bulk: true });
+  const openGuidanceModal = (student = null, isBatch = false) => {
+    setGuidanceModal(
+      isBatch  ? { batch: true } :
+      student ? { student } 
+      : { bulk: true }
+    );
     setGuidance("");
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
@@ -939,16 +953,205 @@ while (
     toast.error(await getApiErrorMessage(err));
   }
   };
+const checkForActiveJob = async () => {
+  try {
+    const { data } = await api.get(
+      `/marking/mark-batch/active/${selectedAssignment._id}`
+    );
+    console.log("checkForActiveJob response:", data);
+    if (data.active) {
+      const { jobId, studentOrder, submittedAt } = data.active;
+      console.log("restoring batch job:", jobId);
+      setBatchJob({
+        phase:       "processing",
+        jobId,
+        total:       studentOrder?.length || 0,
+        submittedAt,
+        skipped:     {},
+        results:     {},
+        mode:        "normal",
+      });
+      pollBatchJob(jobId);
+    }
+  } catch (err) {
+    console.error("checkForActiveJob:", err.message);
+  }
+};
+useEffect(() => {
+  if (!selectedAssignment?._id) return;
+  checkForActiveJob();
+}, [selectedAssignment?._id]); // runs whenever selected assignment changes
 
 
+// ── Standalone poll — can be called any time, from anywhere ──────
+// const pollBatchJob = async (jobId) => {
+//   if (batchPollRef.current) clearInterval(batchPollRef.current);
 
+//   batchPollRef.current = setInterval(async () => {
+//     try {
+//       const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
+
+//       if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+//         setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
+//         return;
+//       }
+
+//       clearInterval(batchPollRef.current);
+//       batchPollRef.current = null;
+
+//       if (data.state === "JOB_STATE_FAILED") {
+//         setBatchJob(prev => ({ ...prev, phase: "error" }));
+//         toast.error("Batch marking job failed.");
+//         return;
+//       }
+
+//       // JOB_STATE_SUCCEEDED — fan out results
+//       const resultMap = {};
+
+//       for (const { student, result, success, error } of data.results) {
+//         resultMap[student.submissionId] = success
+//           ? { status: "done", result }
+//           : { status: "error", error };
+
+//         if (success) {
+//           setStudents(prev =>
+//             prev.map(s => s.submissionId === student.submissionId
+//               ? {
+//                   ...s,
+//                   assignedGrade:
+//                     result?.criteriaGrade?.totalMarks ??
+//                     result?.totalMarks ??
+//                     null
+//                 }
+//               : s
+//             )
+//           );
+
+//           await api.post("/submission-files/save-results", {
+//             assignmentId:  selectedAssignment._id,
+//             submissionId:  student.submissionId,
+//             studentId:     student.studentId,
+//             studentName:   student.name,
+//             mode:          batchJob?.mode || "normal",
+//             provider:      "gemini-batch",
+//             result,
+//           }).catch(e => console.error("save-results:", e.message));
+//         }
+//       }
+
+//       setBatchJob(prev => ({
+//         ...prev,
+//         phase: "done",
+//         results: { ...prev?.results, ...resultMap },
+//       }));
+
+//       const doneCount = data.results.filter(r => r.success).length;
+//       toast.success(`Batch complete — ${doneCount} students marked.`);
+
+//     } catch (err) {
+//       clearInterval(batchPollRef.current);
+//       batchPollRef.current = null;
+//       setBatchJob(prev => ({ ...prev, phase: "error" }));
+//       toast.error(`Polling failed: ${extractHumanError(err)}`);
+//     }
+//   }, 15_000);
+// };
+
+const pollBatchJob = async (jobId) => {
+  // Clear any existing poll first
+  if (batchPollRef.current) {
+    clearInterval(batchPollRef.current);
+    batchPollRef.current = null;
+  }
+
+  console.log("Starting poll for jobId:", jobId);
+
+  const doPoll = async () => {
+    console.log("Polling:", jobId);
+    try {
+      const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
+      console.log("Poll response state:", data.state);
+
+      if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+        setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
+        return;
+      }
+
+      clearInterval(batchPollRef.current);
+      batchPollRef.current = null;
+
+      if (data.state === "JOB_STATE_FAILED") {
+        setBatchJob(prev => ({ ...prev, phase: "error" }));
+        toast.error("Batch marking job failed.");
+        return;
+      }
+
+      // SUCCEEDED
+      const resultMap = {};
+      for (const { student, result, success, error } of data.results) {
+        resultMap[student.submissionId] = success
+          ? { status: "done",  result }
+          : { status: "error", error  };
+
+        if (success) {
+          setStudents(prev =>
+            prev.map(s => s.submissionId === student.submissionId
+              ? {
+                  ...s,
+                  assignedGrade:
+                    result?.criteriaGrade?.totalMarks ??
+                    result?.totalMarks ??
+                    null
+                }
+              : s
+            )
+          );
+
+          await api.post("/submission-files/save-results", {
+            assignmentId: selectedAssignment._id,
+            submissionId: student.submissionId,
+            studentId:    student.studentId,
+            studentName:  student.name,
+            mode:         batchJob?.mode || "normal",
+            provider:     "gemini-batch",
+            result,
+          }).catch(e => console.error("save-results:", e.message));
+        }
+      }
+
+      setBatchJob(prev => ({
+        ...prev,
+        phase: "done",
+        results: { ...prev?.results, ...resultMap },
+      }));
+      toast.success(`Batch complete — ${data.results.filter(r => r.success).length} students marked.`);
+
+    } catch (err) {
+      console.error("Poll error:", err);
+      clearInterval(batchPollRef.current);
+      batchPollRef.current = null;
+      setBatchJob(prev => ({ ...prev, phase: "error" }));
+      toast.error(`Polling failed: ${extractHumanError(err)}`);
+    }
+  };
+
+  doPoll();
+  batchPollRef.current = setInterval(doPoll, 15_000);
+};
+
+
+// ── Submit batch — just upload + submit, then hand off to pollBatchJob
 const runBatchMark = async (guidanceText, mode = "normal") => {
+  if (!BATCH_ALLOWED_IDS.includes(currentUserId())) {
+    toast.error("You are not allowed to do batch marking. ");
+    return;
+  }
   const eligible = students.filter(s => s.submissionId);
   if (!eligible.length) return toast.warn("No students with submissions");
 
-  setBatchProgress({ phase: "uploading", total: eligible.length });
+  setBatchJob({ phase: "uploading", total: eligible.length, skipped: {}, results: {}, mode });
 
-  // Step 1 — upload
+  // Step 1 — upload PDFs
   let msUri, succeeded, failed;
   try {
     const res = await api.post("/marking/mark-batch/upload", {
@@ -962,29 +1165,28 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
     ({ msUri, succeeded, failed } = res.data);
   } catch (err) {
     toast.error(`Upload failed: ${extractHumanError(err)}`);
-    setBatchProgress({ phase: "error" });
+    setBatchJob(prev => ({ ...prev, phase: "error" }));
     return;
   }
 
-  // Immediately surface failed uploads
-  if (failed.length) {
+  // Surface upload failures immediately
+  const skipped = {};
+  if (failed?.length) {
     toast.warning(`${failed.length} student(s) could not be uploaded`);
-    setBatchProgress(prev => ({
-      ...prev,
-      results: Object.fromEntries(
-        failed.map(({ student, error }) => [student.submissionId, { status: "error", error }])
-      ),
-    }));
+    failed.forEach(({ student, error }) => {
+      skipped[student.submissionId] = { error };
+    });
+    setBatchJob(prev => ({ ...prev, skipped }));
   }
 
-  if (!succeeded.length) {
+  if (!succeeded?.length) {
     toast.error("No valid submissions to mark.");
-    setBatchProgress({ phase: "error" });
+    setBatchJob(prev => ({ ...prev, phase: "error" }));
     return;
   }
 
-  // Step 2 — submit
-  setBatchProgress(prev => ({ ...prev, phase: "submitting" }));
+  // Step 2 — submit job
+  setBatchJob(prev => ({ ...prev, phase: "submitting" }));
 
   let jobId;
   try {
@@ -1002,67 +1204,38 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
     });
     jobId = res.data.jobId;
   } catch (err) {
+    if (err.response?.status === 409) {
+    // Job already running — just resume polling it
+    jobId = err.response.data.jobId;
+    toast.info("Resuming existing batch job...");
+    }else {
     toast.error(`Batch submission failed: ${extractHumanError(err)}`);
-    setBatchProgress({ phase: "error" });
+    setBatchJob(prev => ({ ...prev, phase: "error" }));
     return;
-  }
+  }}
 
-  // Step 3 — poll
-  setBatchProgress(prev => ({ ...prev, phase: "processing", jobId }));
+  setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
 
-  try {
-    const results = await new Promise((resolve, reject) => {
-      const interval = setInterval(async () => {
-        try {
-          const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
-          if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") return;
-          clearInterval(interval);
-          if (data.state === "JOB_STATE_FAILED") reject(new Error(data.message));
-          else resolve(data.results);
-        } catch (err) {
-          clearInterval(interval);
-          reject(err);
-        }
-      }, 15_000);
-    });
-
-    // Fan out
-    const resultMap = {};
-    for (const { student, result, success, error } of results) {
-      resultMap[student.submissionId] = success ? { status: "done", result } : { status: "error", error };
-
-      if (success) {
-        setStudents(prev =>
-          prev.map(s => s.submissionId === student.submissionId
-            ? { ...s, assignedGrade: result?.criteriaGrade?.totalMarks ?? result?.totalMarks ?? null }
-            : s
-          )
-        );
-        await api.post("/submission-files/save-results", {
-          assignmentId: selectedAssignment._id,
-          submissionId: student.submissionId,
-          studentId:    student.studentId,
-          studentName:  student.name,
-          mode,
-          provider:     "gemini-batch",
-          result,
-        }).catch(e => console.error("save-results:", e.message));
-      }
-    }
-
-    setBatchProgress(prev => ({
-      ...prev,
-      phase: "done",
-      results: { ...prev?.results, ...resultMap },
-    }));
-
-    toast.success(`Batch complete — ${results.filter(r => r.success).length} marked.`);
-
-  } catch (err) {
-    toast.error(`Batch failed: ${extractHumanError(err)}`);
-    setBatchProgress(prev => ({ ...prev, phase: "error" }));
-  }
+  // Step 3 — hand off to standalone poller
+  pollBatchJob(jobId);
 };
+
+
+// Clean up interval on unmount
+useEffect(() => {
+  return () => {
+    if (batchPollRef.current) clearInterval(batchPollRef.current);
+  };
+}, []);
+
+
+// Resume polling if page was already in "processing" state
+// (e.g. user navigated away and came back — if you persist batchJob to localStorage)
+useEffect(() => {
+  if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
+    pollBatchJob(batchJob.jobId);
+  }
+}, []); // only on mount
 
 
 
@@ -1078,6 +1251,9 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
       runBulkMark(g, mode, provider);
+    } else if (guidanceModal.batch) {
+      setGuidanceModal(null);
+      runBatchMark(g, mode);
     } else {
       setGuidanceModal(null);
       runMarkStudent(guidanceModal.student, g, mode, provider);
@@ -1086,16 +1262,51 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
+    if (!selectedAssignment?._id) return; 
     setDownloading(true);
     try {
       const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-      const pdfBytes = await annotatePdf({
-        studentFile:   resultModal.studentFile,
-        questions:     editingQuestions,
-        totalMarks:    effectiveTotal,
-        maxTotalMarks: effectiveMaxTotal,
-        summary:       resultModal.result.summary || ""
+
+      const db = savedResults[students.submissionId];
+    
+      const submissionId =
+        resultModal?.submissionId ||
+        resultModal?.student?.submissionId ||
+        db?.submissionId;
+
+
+      // const pdfBytes = await annotatePdf({
+      //   studentFile:   resultModal.studentFile,
+      //   questions:     editingQuestions,
+      //   totalMarks:    effectiveTotal,
+      //   maxTotalMarks: effectiveMaxTotal,
+      //   summary:       resultModal.result.summary || ""
+      // });
+
+      const pdfRes = await api.get("/submission-files/pdf", {
+        params: {
+          assignmentId: selectedAssignment._id,
+          submissionId: submissionId
+        },
+        responseType: "blob"
       });
+      const studentFile = new File(
+        [pdfRes.data],
+        "student.pdf",
+        { type: "application/pdf" }
+      );
+
+      const pdfBytes = await annotatePdf({
+        studentFile,
+        questions: editingQuestions,
+        totalMarks: editingQuestions.reduce(
+          (s, q) => s + q.marksAwarded,
+          0
+        ),
+        maxTotalMarks: effectiveMaxTotal,
+      });
+
+
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       const a   = document.createElement("a");
       a.href     = url;
@@ -1133,20 +1344,45 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
         }));
       }
 
+      const db = savedResults[resultModal.student?.submissionId];
+      const submissionId =
+        resultModal?.submissionId ||
+        resultModal?.student?.submissionId ||
+        db?.submissionId;
+
+      let studentFile = resultModal.studentFile;
+      if (!studentFile && submissionId) {
+        const pdfRes = await api.get("/submission-files/pdf", {
+          params: {
+            assignmentId: selectedAssignment._id,
+            submissionId,
+          },
+          responseType: "blob",
+        });
+        studentFile = new File(
+          [pdfRes.data],
+          `${resultModal.student?.name || "student"}.pdf`,
+          { type: "application/pdf" }
+        );
+      }
+
       const pdfBytes = await annotatePdf({
-        studentFile:   resultModal.studentFile,
-        questions:     editingQuestions,
-        totalMarks:    effectiveTotal,
+        studentFile,
+        questions: editingQuestions,
+        totalMarks: editingQuestions.reduce(
+          (s, q) => s + q.marksAwarded,
+          0
+        ),
         maxTotalMarks: effectiveMaxTotal,
-        summary:       resultModal.result.summary || ""
+        summary: resultModal.result.summary || "",
       });
       const fd = new FormData();
       fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
       fd.append("assignmentId",  selectedAssignment._id);
-      fd.append("submissionId",  resultModal.student.submissionId);
+      fd.append("submissionId",  resultModal.student.submissionId || submissionId);
       fd.append("totalMarks",    effectiveTotal);
       fd.append("maxTotalMarks", effectiveMaxTotal);
-      fd.append("studentName",   resultModal.student.name || "Student");
+      fd.append("studentName",   resultModal.student.name || "Student" );
       
       if (resultModal.result?.summary) {
         await api.post("/submission-files/save-summary", {
@@ -1446,13 +1682,20 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                     )}
 
                     {msInfo && (
-                      <button 
-                        className="msv-btn-ai" 
-                        onClick={() => openGuidanceModal()} 
-                        disabled={bulkMarking}
-                      >
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {/* // <button 
+                      //   className="msv-btn-ai" 
+                      //   onClick={() => openGuidanceModal()} 
+                      //   disabled={bulkMarking}
+                      // > */}
+                          <button
+                          className="msv-btn-ai"
+                          onClick={() => openGuidanceModal(null, false)}
+                          disabled={bulkMarking || batchJob?.phase === "processing"}
+    >
                         {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
                       </button>
+                  </div>
                     )}
                  {/* Return All */}
                   {msInfo && !bulkMarking && (
@@ -1467,16 +1710,86 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                     )}
                   
                   {/* BATCH  MARKING */}
-                  {/* {msInfo && !bulkMarking && (
-                    <button
-                      className="msv-btn-ai"
-                      onClick={openGuidanceModal}
-                      disabled={returning}
-                      style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
-                    >
-                      {returning ? "Returning…" : "batch"}
-                    </button>
-                    )} */}
+                  {msInfo && BATCH_ALLOWED_IDS.includes(currentUserId()) && (
+                    // <button
+                    //     className="msv-btn-ai"
+                    //     onClick={() => {
+                    //       if (batchJob?.phase === "processing") {
+                    //         // Already running — just show status, don't resubmit
+                    //         toast.info(`Batch job in progress — job ID: ${batchJob.jobId}`);
+                    //         return;
+                    //       }
+                    //       openGuidanceModal(null, true);
+                    //     }}
+                    //     disabled={bulkMarking}
+                    //     style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                    //   >
+                    //     {batchJob?.phase === "uploading"   && <><span className="pm-spinner" /> Uploading PDFs…</>}
+                    //     {batchJob?.phase === "submitting"  && <><span className="pm-spinner" /> Submitting job…</>}
+                    //     {batchJob?.phase === "processing"  && <><span className="pm-spinner" /> Batch processing…</>}
+                    //     {batchJob?.phase === "done"        && <><FiCheck size={13} /> Batch done</>}
+                    //     {batchJob?.phase === "error"       && <><FiAlertCircle size={13} /> Batch failed — retry?</>}
+                    //     {(!batchJob || batchJob.phase === "error") && <><FiLayers size={13} /> Mark All (Batch)</>}
+                    //   </button>
+                        <button
+      className="msv-btn-ai"
+      onClick={() => {
+        if (batchJob?.phase === "processing") {
+          pollBatchJob(batchJob.jobId); // "Check now" behaviour
+        } else {
+          openGuidanceModal(null, true);
+        }
+      }}
+      disabled={bulkMarking || batchJob?.phase === "uploading" || batchJob?.phase === "submitting"}
+      style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+    >
+      {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
+      {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
+      {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
+      {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
+      {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
+    </button>
+                    )}
+                    {batchJob && batchJob.phase !== "done" && (
+  <div style={{
+    marginTop: 8, padding: "10px 14px", borderRadius: 10,
+    background: "rgba(99,102,241,0.08)",
+    border: "1px solid rgba(99,102,241,0.2)",
+    fontSize: 12, color: "rgba(255,255,255,0.6)",
+    display: "flex", alignItems: "center", gap: 10
+  }}>
+    <span className="pm-spinner" style={{ width: 12, height: 12 }} />
+    <span>
+      {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Gemini…`}
+      {batchJob.phase === "submitting" && "Submitting batch job…"}
+      {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
+    </span>
+    {/* Manual re-poll button in case user is impatient */}
+    {/* {batchJob.phase === "processing" && (
+      <button
+        onClick={() => pollBatchJob(batchJob.jobId)}
+        style={{ marginLeft: "auto", fontSize: 11, color: "#818cf8",
+                 background: "none", border: "none", cursor: "pointer" }}
+      >
+        Check now
+      </button>
+    )}  */}
+    {batchJob?.phase === "processing" && (
+  <button
+    onClick={() => {
+      console.log("Check now clicked, jobId:", batchJob.jobId);
+      pollBatchJob(batchJob.jobId);
+    }}
+    style={{
+      marginLeft: "auto", fontSize: 11, color: "#818cf8",
+      background: "none", border: "none", cursor: "pointer"
+    }}
+  >
+    Check now
+  </button>
+)}
+
+    </div> )}
                   </div>
 
 
@@ -1520,13 +1833,23 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
 
                               const db = savedResults[s.submissionId];
                               
+                              const batch     = batchJob?.results?.[s.submissionId];
+                              const batchDone = batch?.status === "done";
+                              const batchError = batch?.status === "error";
+                              const batchQueued  = batchJob?.phase === "processing" && 
+                                                  !batchDone && !batchError &&
+                                                  batchJob?.results?.[s.submissionId] === undefined &&
+                                                  // only show as queued if this student was in the batch
+                                                  batchJob?.total > 0;
+
+
                               const hasResult = !!(single?.status === "done" || db?.result);
                               const isMarking = single?.status === "marking" || markingStudentId === s.submissionId;
                               const hasError = single?.status === "error" || studentErrors[s.submissionId];
 
-                              const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId;
-                              const markingDone = bulkDone || hasResult;
-                              const markingError = bulkError || hasError || studentErrors[s.submissionId];
+                              const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId || batchQueued;
+                              const markingDone = bulkDone || hasResult || batchDone;
+                              const markingError = bulkError || hasError || batchError || studentErrors[s.submissionId];
                             
 
                               return (
@@ -1552,39 +1875,25 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                                         
                                         {msInfo && (
                                          <>
-                                          {/* <button
-                                            className={`msv-action-btn msv-action-btn--ai ${bulkDone ? "msv-action-btn--done" : bulk === "error" ? "msv-action-btn--error" : ""}`}
-                                            title="Mark with AI"
-                                            onClick={() => {
-                                              if (bulkDone) {
-                                                setResultModal({ student: s, result: bulk.result, studentFile: bulk.studentFile });
-                                                setEditingQuestions(bulk.result.questions.map(q => ({ ...q })));
-                                                setEditingMaxTotal(null);
-                                              } else {
-                                                openGuidanceModal(s);
-                                              }
-                                            }}
-                                            disabled={markingStudentId === s.submissionId || bulk === "marking"}
-                                          >
-                                            {markingStudentId === s.submissionId || bulk === "marking"
-                                              ? <span className="pm-spinner" />
-                                              : bulkDone        ? "✅ Results"
-                                              : bulk === "error" ? "❌ Retry"
-                                              : <><FiCpu size={12} /> Mark</>
-                                            }
-                                          </button> */}
                                         
                                         {/* Results button — show if any source has results */}
-                                        {(bulkDone || single?.status === "done" || db?.result) && (
+                                        {(bulkDone || batchDone ||single?.status === "done" || db?.result) && (
                                           <button
                                             className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
                                             title="View Results"
                                             onClick={() => {
-                                              const source = bulkDone ? bulk : single?.status === "done" ? single : null;
-                                              const result = source?.result ?? db?.result;
-                                              const studentFile = source?.studentFile ?? null;
+                                              const result =
+                                                batchDone ? batch.result :
+                                                bulkDone ? bulk.result :
+                                                single?.status === "done" ? single.result :
+                                                db?.result;
+                                              const studentFile =
+                                                bulkDone ? bulk.studentFile :
+                                                single?.status === "done" ? single.studentFile :
+                                                null;
                                               const originalAiResult =
-                                                source?.originalAiResult ??
+                                                (bulkDone ? bulk?.originalAiResult : null) ??
+                                                (single?.status === "done" ? single?.originalAiResult : null) ??
                                                 db?.aiOriginalResult ??
                                                 result;
                                               setResultModal({
@@ -1614,8 +1923,9 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                                             ? <span style={{ fontSize: 10, color: "#f59e0b" }}>
                                                 ⟳ Retry {bulk.attempt}/{bulk.maxAttempts}
                                               </span>
-                                            :
-                                             <span className="pm-spinner" />
+                                            : batchQueued
+                                            ? <span style={{ fontSize: 10, color: "#818cf8" }}>⚡ Batch…</span>
+                                            : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
                                             : <><FiCpu size={12} /> Mark</>
@@ -1774,14 +2084,30 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
           <div className="msv-guidance-modal" onClick={e => e.stopPropagation()}>
             <div className="msv-guidance-header">
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {/* <div style={{ fontSize: 15, fontWeight: 700 }}>
                   {guidanceModal.bulk ? "🤖 Mark All Students" : `🤖 Mark — ${guidanceModal.student?.name}`}
+                </div> */}
+
+                <div style={{ fontSize: 15, fontWeight: 700 }}>
+                  {guidanceModal.batch  ? "⚡ Mark All Students (Batch)"  :
+                  guidanceModal.bulk   ? "🤖 Mark All Students"          :
+                                          `🤖 Mark — ${guidanceModal.student?.name}`}
                 </div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+
+                {/* <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
                   {guidanceModal.bulk
                     ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                     : "AI will mark against the uploaded mark scheme"}
-                </div>
+                </div> */}
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+  {guidanceModal.batch
+    ? `Submits all ${students.filter(s => s.submissionId).length} students to Gemini batch API — ~50% cheaper`
+    : guidanceModal.bulk
+    ? `Marking ${students.filter(s => s.submissionId).length} students sequentially`
+    : "AI will mark against the uploaded mark scheme"}
+</div>
+              
+              
               </div>
               <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
             </div>
@@ -1996,6 +2322,33 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                 <FiCpu size={14} />
                   {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
                 </button>
+
+                {guidanceModal.batch && (
+                  <button
+                    className="ma-send-btn"
+                    onClick={() => handleGuidanceConfirm()}
+                    disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                    style={{
+                      flex: 1, justifyContent: "center",
+                      opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
+                      background: "rgba(99,102,241,0.15)",
+                      borderColor: "rgba(99,102,241,0.4)"
+                    }}
+                  >
+                    <FiLayers size={14} />
+                    ⚡ Submit Batch Job
+                  </button>
+                )}
+
+                {/* <button
+                  className="ma-send-btn"
+                  onClick={() => {
+                    handleGuidanceConfirm();
+                  }}
+                >
+                <FiCpu size={14} />
+                  {guidanceModal.batch ? "Start Batch Mark" : "Start Batch Mark"}
+                </button> */}
                 
                 <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
               </div>
@@ -2380,16 +2733,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
                       </div>
 
                       {annotatedPreviewUrl ? (
-                        // <iframe
-                        //   src={annotatedPreviewUrl}
-                        //   style={{
-                        //     flex: 1,
-                        //     border: "none",
-                        //     borderRadius: 8,
-                        //     background: "#111"
-                        //   }}
-                        //   title="Annotated PDF"
-                        // />
+
                         <div
                           style={{
                             flex: 1,

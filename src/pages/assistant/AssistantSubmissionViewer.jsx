@@ -408,8 +408,9 @@ const openErrorViewer = (title, error) => {
         responseType: "blob"
       });
 
-const blob = new Blob([res.data], { type: "application/pdf" });
-const url = URL.createObjectURL(blob);
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+
       const a = document.createElement("a");
       a.href = url;
       a.download = `${student.name || "submission"}.pdf`;
@@ -988,11 +989,49 @@ const url = URL.createObjectURL(blob);
         maxGrade == null ||
         resultModal?.result?.totalMarks == null;
 
+      // const pdfBytes = await annotatePdf({
+      //   studentFile: resultModal.studentFile,
+      //   questions: editingQuestions,
+      //   totalMarks: isUngraded ? "Ungraded" : total,
+      //   maxTotalMarks: isUngraded ? "" : maxGrade,
+      // });
+      const db = savedResults[students.submissionId];
+    
+      const submissionId =
+        resultModal?.submissionId ||
+        resultModal?.student?.submissionId ||
+        db?.submissionId;
+
+
+      // const pdfBytes = await annotatePdf({
+      //   studentFile:   resultModal.studentFile,
+      //   questions:     editingQuestions,
+      //   totalMarks:    effectiveTotal,
+      //   maxTotalMarks: effectiveMaxTotal,
+      //   summary:       resultModal.result.summary || ""
+      // });
+
+      const pdfRes = await api.get("/submission-files/pdf", {
+        params: {
+          assignmentId,
+          submissionId: submissionId
+        },
+        responseType: "blob"
+      });
+      const studentFile = new File(
+        [pdfRes.data],
+        "student.pdf",
+        { type: "application/pdf" }
+      );
+
       const pdfBytes = await annotatePdf({
-        studentFile: resultModal.studentFile,
+        studentFile,
         questions: editingQuestions,
-        totalMarks: isUngraded ? "Ungraded" : total,
-        maxTotalMarks: isUngraded ? "" : maxGrade,
+        totalMarks: editingQuestions.reduce(
+          (s, q) => s + q.marksAwarded,
+          0
+        ),
+        maxTotalMarks: effectiveMaxTotal,
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes]));
@@ -1044,20 +1083,58 @@ const url = URL.createObjectURL(blob);
       }
 
       const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+          const db = savedResults[students.submissionId];
+    
+      const submissionId =
+        resultModal?.submissionId ||
+        resultModal?.student?.submissionId ||
+        db?.submissionId;
+
+
+      // const pdfBytes = await annotatePdf({
+      //   studentFile:   resultModal.studentFile,
+      //   questions:     editingQuestions,
+      //   totalMarks:    effectiveTotal,
+      //   maxTotalMarks: effectiveMaxTotal,
+      //   summary:       resultModal.result.summary || ""
+      // });
+
+      const pdfRes = await api.get("/submission-files/pdf", {
+        params: {
+          assignmentId,
+          submissionId: submissionId
+        },
+        responseType: "blob"
+      });
+      const studentFile = new File(
+        [pdfRes.data],
+        "student.pdf",
+        { type: "application/pdf" }
+      );
 
       const pdfBytes = await annotatePdf({
-        studentFile: resultModal.studentFile,
+        studentFile,
         questions: editingQuestions,
-        totalMarks: total,
-        maxTotalMarks: maxGrade,
-        summary:       resultModal.result.summary || ""
+        totalMarks: editingQuestions.reduce(
+          (s, q) => s + q.marksAwarded,
+          0
+        ),
+        maxTotalMarks: effectiveMaxTotal,
       });
+
+      // const pdfBytes = await annotatePdf({
+      //   studentFile: resultModal.studentFile,
+      //   questions: editingQuestions,
+      //   totalMarks: total,
+      //   maxTotalMarks: maxGrade,
+      //   summary:       resultModal.result.summary || ""
+      // });
 
 
       const fd = new FormData();
       fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
       fd.append("assignmentId",  assignmentId);
-      fd.append("submissionId",  resultModal.student.submissionId);
+      fd.append("submissionId",  resultModal.student.submissionId || submissionId);
       fd.append("totalMarks",    effectiveTotal);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
