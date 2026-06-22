@@ -68,7 +68,7 @@ import AssistantStudents from "./pages/assistant/AssistantStudents";
 import AssistantReports from "./pages/assistant/AssistantReports";
 
 import TeacherDashboard from "./pages/teacher/TeacherDashboard"
-
+import ViewCoursework from "./components/CourseManagment/ViewCoursework";
 
 function App() {
   return (
@@ -150,6 +150,7 @@ function App() {
             <TeacherDashboard />
           </RoleProtectedRoute>}
         />
+
         
         <Route path="/teacher/courses" element={
           <RoleProtectedRoute allowedRole={["teacher"]}>
@@ -161,6 +162,10 @@ function App() {
             <CourseWork />
           </RoleProtectedRoute>}
         />
+
+        <Route path="/teacher/view-coursework/:courseId" element=
+        {<RoleProtectedRoute allowedRole={["teacher"]}> 
+        <ViewCoursework /> </RoleProtectedRoute>} />
 
 
         {/* Assistant dashboard route */}
@@ -279,6 +284,10 @@ function App() {
             <SubmissionActions />
           </RoleProtectedRoute>}
         />
+        <Route path="/manager/view-coursework/:courseId" element=
+        {<RoleProtectedRoute allowedRole={["manager"]}> 
+        <ViewCoursework /> </RoleProtectedRoute>} />
+
 
 
         {/* Quality Team dashboard route */}
@@ -322,7 +331,7 @@ function App() {
 
 
           <Route path="/director/coursework/:courseId" element={ <CourseWork />}/>
-
+<Route path="/director/view-coursework/:courseId" element={<ViewCoursework />} />
         </Route>
 
 

@@ -125,6 +125,22 @@ export default function CoursesList() {
                     }>
                     Create Coursework
                   </button>
+                   
+                   <button
+                    className="pm-mark-btn"
+                    onClick={() =>
+                      navigate(
+                        role === "manager"
+                          ? `/manager/view-coursework/${course.googleCourseId || course.id}`
+                          : role === "admin"
+                          ? `/director/view-coursework/${course.googleCourseId || course.id}`
+                          : `/teacher/view-coursework/${course.googleCourseId || course.id}`,
+                        { state: { courseName: course.name } }
+                      )
+                    }
+                  >
+                    📋 View Coursework
+                  </button> 
 
               </div>
             ))}

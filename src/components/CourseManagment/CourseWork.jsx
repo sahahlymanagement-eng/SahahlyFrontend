@@ -114,7 +114,6 @@ export default function Coursework() {
             {state?.courseName && (
               <div className="pm-powered-by">{state.courseName}</div>
             )}
-            
 
             <button className="pm-back" onClick={() => navigate(-1)}>
               ← Back
