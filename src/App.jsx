@@ -28,7 +28,8 @@ import ResetPassword from "./pages/ResetPassword";
 import AssistantAssignments from "./pages/assistant/AssistantAssignments";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerDelegations from "./pages/manager/ManagerDelegations";
-import TeacherManager from "./pages/director/TeacherManager";
+// import TeacherManager from "./pages/director/TeacherManager";
+import TeacherManager from "./pages/director/TeacherCreation";
 import ClassroomTeacherManager from "./pages/ClassroomTeacherManager";
 import QualityTeamDashboard from "./pages/quality team/QualityTeamDashboard";
 import QualityManagerDashboard from "./pages/quality manager/QualityManagerDashboard";
@@ -54,14 +55,20 @@ import QBBrowse from "./pages/questionbank/QBBrowse";
 import QBClassify from "./pages/questionbank/QBClassify";
 import ExamPositionMapper from "./pages/admin/ExamPositionMapper";
 
-import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
-import CoursesList from "./pages/manager/CourseManagment/CourseList";
-import CourseWork from "./pages/manager/CourseManagment/CourseWork";
-import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
+// import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
+// import CoursesList from "./pages/manager/CourseManagment/CourseList";
+// import CourseWork from "./pages/manager/CourseManagment/CourseWork";
+// import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
+import GoogleClassroom from "./components/CourseManagment/Courses"
+import CoursesList from "./components/CourseManagment/CourseList";
+import CourseWork from "./components/CourseManagment/CourseWork";
+import SubmissionActions from "./components/CourseManagment/SubmissionActions";
 import AssistantSubmissionViewer from "./pages/assistant/AssistantSubmissionViewer";
 import AssistantStudents from "./pages/assistant/AssistantStudents";
-
 import AssistantReports from "./pages/assistant/AssistantReports";
+
+import TeacherDashboard from "./pages/teacher/TeacherDashboard"
+
 
 function App() {
   return (
@@ -137,6 +144,24 @@ function App() {
 
         {/* Exam Position Mapper — admin-only tool */}
         {/* <Route path="/admin/exam-position-mapper" element={<ExamPositionMapper />} /> */}
+
+        <Route path="/teacher/dashboard" element={
+          <RoleProtectedRoute allowedRole="teacher">
+            <TeacherDashboard />
+          </RoleProtectedRoute>}
+        />
+        
+        <Route path="/teacher/courses" element={
+          <RoleProtectedRoute allowedRole={["teacher"]}>
+            <CoursesList />
+          </RoleProtectedRoute>}
+        />
+        <Route path="/teacher/coursework/:courseId" element={
+          <RoleProtectedRoute allowedRole={["teacher"]}>
+            <CourseWork />
+          </RoleProtectedRoute>}
+        />
+
 
         {/* Assistant dashboard route */}
         <Route path="/assistant/dashboard" element={
@@ -229,19 +254,21 @@ function App() {
         />
 
         <Route path="/manager/google-classroom" element={
-          <RoleProtectedRoute allowedRole="manager">
+          <RoleProtectedRoute allowedRole={["manager"]}>
             <GoogleClassroom />
           </RoleProtectedRoute>}
         />
 
         <Route path="/manager/courses" element={
-          <RoleProtectedRoute allowedRole="manager">
+          <RoleProtectedRoute allowedRole={["manager"]}>
             <CoursesList />
           </RoleProtectedRoute>}
         />
 
+        
+        
         <Route path="/manager/coursework/:courseId" element={
-          <RoleProtectedRoute allowedRole="manager">
+          <RoleProtectedRoute allowedRole={["manager", "teacher"]}>
             <CourseWork />
           </RoleProtectedRoute>}
         />
@@ -276,7 +303,7 @@ function App() {
               <DirectorLayout/>
             </RoleProtectedRoute>
           }
-        >
+         >
 
           <Route path="dashboard" element={<DirectorDashboard/>}/>
           <Route path="people" element={<DirectorPeople/>}/>
@@ -289,8 +316,12 @@ function App() {
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />
           
-          
+          <Route path="/director/google-classroom" element={<GoogleClassroom />}/>
 
+          <Route path="/director/courses" element={<CoursesList />}/>
+
+
+          <Route path="/director/coursework/:courseId" element={ <CourseWork />}/>
 
         </Route>
 
