@@ -23,7 +23,11 @@ import {
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
-import { parseGeminiModelsResponse } from "../../utils/markingCost";
+import {
+  geminiModelLabel,
+  parseGeminiModelsResponse,
+  pickValidGeminiModel,
+} from "../../utils/markingCost";
 import "./ManagerSubmissionViewer.css";
 
 const CHECKLIST_CONFIG = [
@@ -304,7 +308,11 @@ useEffect(() => {
       .then(r => setSavedPrompts(r.data || []))
       .catch(() => {});
     api.get("/marking/gemini-models")
-      .then(r => setGeminiModels(parseGeminiModelsResponse(r.data).models))
+      .then((r) => {
+        const { models } = parseGeminiModelsResponse(r.data);
+        setGeminiModels(models);
+        setGeminiModel((prev) => pickValidGeminiModel(models, prev));
+      })
       .catch(() => {});
   }, [user]);
 
@@ -497,6 +505,9 @@ useEffect(() => {
     }));
 
     try {
+      const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
+      if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
+
       const [studentPdfRes, msPdfRes] = await Promise.all([
         api.get("/submission-files/pdf", {
           params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
@@ -526,7 +537,7 @@ useEffect(() => {
       });
 
       if (provider !== "claude") {
-        fd.append("geminiModel", geminiModel);
+        fd.append("geminiModel", selectedModel);
         const memory = await ensureAssignmentMemory(api, {
           assignmentId: selectedAssignment._id,
           studentFile,
@@ -535,7 +546,7 @@ useEffect(() => {
           guidance: guidanceValue,
           totalGrade: selectedAssignment.maxPoints,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-          geminiModel: geminiModel,
+          geminiModel: selectedModel,
         });
         fd.append("assignmentMemoryId", memory.memoryId);
       } else {
@@ -653,6 +664,8 @@ useEffect(() => {
 
     const guidanceValue = guidanceForForm(guidanceText);
     let assignmentMemoryId = null;
+    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
+    if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
     if (provider !== "claude") {
       try {
@@ -691,7 +704,7 @@ useEffect(() => {
           guidance: guidanceValue,
           totalGrade: selectedAssignment.maxPoints,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-          geminiModel: geminiModel,
+          geminiModel: selectedModel,
         });
 
         assignmentMemoryId = memory.memoryId;
@@ -800,7 +813,7 @@ useEffect(() => {
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
         if (provider !== "claude") {
-          fd.append("geminiModel", geminiModel);
+          fd.append("geminiModel", selectedModel);
           if (assignmentMemoryId) {
             fd.append("assignmentMemoryId", assignmentMemoryId);
           } else if (msFile) {
@@ -963,7 +976,14 @@ const checkForActiveJob = async () => {
     );
     console.log("checkForActiveJob response:", data);
     if (data.active) {
-      const { jobId, studentOrder, submittedAt, assignmentMemoryId } = data.active;
+      const {
+        jobId,
+        studentOrder,
+        submittedAt,
+        assignmentMemoryId,
+        geminiModel: jobModel,
+      } = data.active;
+      const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
       console.log("restoring batch job:", jobId);
       setBatchJob({
         phase:       "processing",
@@ -974,8 +994,13 @@ const checkForActiveJob = async () => {
         results:     {},
         mode:        "normal",
         assignmentMemoryId: assignmentMemoryId || null,
+        geminiModel: restoredModel,
       });
-      pollBatchJob(jobId, { assignmentMemoryId, mode: "normal" });
+      pollBatchJob(jobId, {
+        assignmentMemoryId,
+        mode: "normal",
+        geminiModel: restoredModel,
+      });
     }
   } catch (err) {
     console.error("checkForActiveJob:", err.message);
@@ -1099,9 +1124,10 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
           null,
       };
       const saveMode = jobMeta.mode || "normal";
+      const modelForResult = jobMeta.geminiModel || geminiModel;
       for (const { student, result, success, error, tokenUsage } of data.results) {
         const enrichedResult = success
-          ? buildBatchMarkingResult(result, tokenUsage, geminiModel, memoryMeta)
+          ? buildBatchMarkingResult(result, tokenUsage, modelForResult, memoryMeta)
           : null;
         const originalAiResult = enrichedResult
           ? JSON.parse(JSON.stringify(enrichedResult))
@@ -1158,10 +1184,18 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
 
 
 // ── Submit batch — memory setup + upload + submit, then hand off to pollBatchJob
-const runBatchMark = async (guidanceText, mode = "normal") => {
+const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null) => {
   if (!BATCH_ALLOWED_IDS.includes(currentUserId())) {
     toast.error("You are not allowed to do batch marking. ");
     return;
+  }
+
+  const selectedModel = pickValidGeminiModel(
+    geminiModels,
+    modelOverride || geminiModel
+  );
+  if (selectedModel !== geminiModel) {
+    setGeminiModel(selectedModel);
   }
 
   let eligible;
@@ -1229,7 +1263,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
       guidance: guidanceValue,
       totalGrade: selectedAssignment.maxPoints,
       classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-      geminiModel: geminiModel,
+      geminiModel: selectedModel,
     });
 
     assignmentMemoryId = memory.memoryId;
@@ -1250,6 +1284,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
     results: {},
     mode,
     assignmentMemoryId,
+    geminiModel: selectedModel,
   });
 
   // Step 1 — upload student PDFs (mark scheme skipped when using memory)
@@ -1299,7 +1334,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
       succeeded,
       markingMode:   mode,
       guidance:      guidanceValue,
-      geminiModel:   geminiModel,
+      geminiModel:   selectedModel,
       subjectId:     selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
       personId:      currentUserId(),
@@ -1320,7 +1355,7 @@ const runBatchMark = async (guidanceText, mode = "normal") => {
   setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
 
   // Step 3 — hand off to standalone poller
-  pollBatchJob(jobId, { assignmentMemoryId, mode });
+  pollBatchJob(jobId, { assignmentMemoryId, mode, geminiModel: selectedModel });
 };
 
 
@@ -1339,6 +1374,7 @@ useEffect(() => {
     pollBatchJob(batchJob.jobId, {
       assignmentMemoryId: batchJob.assignmentMemoryId,
       mode: batchJob.mode,
+      geminiModel: batchJob.geminiModel,
     });
   }
 }, []); // only on mount
@@ -1359,7 +1395,7 @@ useEffect(() => {
       runBulkMark(g, mode, provider);
     } else if (guidanceModal.batch) {
       setGuidanceModal(null);
-      runBatchMark(g, mode);
+      runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel));
     } else {
       setGuidanceModal(null);
       runMarkStudent(guidanceModal.student, g, mode, provider);
@@ -1815,28 +1851,31 @@ useEffect(() => {
                     </button>
                     )}
                   
-                  {/* BATCH  MARKING */}
+                  {/* BATCH MARKING */}
                   {msInfo && BATCH_ALLOWED_IDS.includes(currentUserId()) && (
-                    // <button
-                    //     className="msv-btn-ai"
-                    //     onClick={() => {
-                    //       if (batchJob?.phase === "processing") {
-                    //         // Already running — just show status, don't resubmit
-                    //         toast.info(`Batch job in progress — job ID: ${batchJob.jobId}`);
-                    //         return;
-                    //       }
-                    //       openGuidanceModal(null, true);
-                    //     }}
-                    //     disabled={bulkMarking}
-                    //     style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
-                    //   >
-                    //     {batchJob?.phase === "uploading"   && <><span className="pm-spinner" /> Uploading PDFs…</>}
-                    //     {batchJob?.phase === "submitting"  && <><span className="pm-spinner" /> Submitting job…</>}
-                    //     {batchJob?.phase === "processing"  && <><span className="pm-spinner" /> Batch processing…</>}
-                    //     {batchJob?.phase === "done"        && <><FiCheck size={13} /> Batch done</>}
-                    //     {batchJob?.phase === "error"       && <><FiAlertCircle size={13} /> Batch failed — retry?</>}
-                    //     {(!batchJob || batchJob.phase === "error") && <><FiLayers size={13} /> Mark All (Batch)</>}
-                    //   </button>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
+                      <select
+                        className="msv-gemini-select"
+                        value={pickValidGeminiModel(geminiModels, geminiModel)}
+                        onChange={(e) => setGeminiModel(e.target.value)}
+                        disabled={
+                          bulkMarking ||
+                          batchJob?.phase === "uploading" ||
+                          batchJob?.phase === "submitting" ||
+                          batchJob?.phase === "processing"
+                        }
+                        title="Gemini model for batch marking"
+                        style={{ minWidth: 210, maxWidth: 280 }}
+                      >
+                        {(geminiModels.length
+                          ? geminiModels
+                          : [{ id: geminiModel, label: geminiModel }]
+                        ).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
                         <button
       className="msv-btn-ai"
       onClick={() => {
@@ -1844,6 +1883,7 @@ useEffect(() => {
           pollBatchJob(batchJob.jobId, {
             assignmentMemoryId: batchJob.assignmentMemoryId,
             mode: batchJob.mode,
+            geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
           }); // "Check now" behaviour
         } else {
           openGuidanceModal(null, true);
@@ -1858,6 +1898,7 @@ useEffect(() => {
       {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
       {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
     </button>
+                    </div>
                     )}
                     {batchJob && batchJob.phase !== "done" && (
   <div style={{
@@ -1890,6 +1931,7 @@ useEffect(() => {
       pollBatchJob(batchJob.jobId, {
         assignmentMemoryId: batchJob.assignmentMemoryId,
         mode: batchJob.mode,
+        geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
       });
     }}
     style={{
@@ -2247,14 +2289,14 @@ useEffect(() => {
                 </div>
               </div>
 
-              {/* Gemini model (bulk + single mark) */}
+              {/* Gemini model (bulk, batch, and single mark) */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
                   Gemini Model
                 </label>
                 <select
                   className="msv-gemini-select"
-                  value={geminiModel}
+                  value={pickValidGeminiModel(geminiModels, geminiModel)}
                   onChange={e => setGeminiModel(e.target.value)}
                 >
                   {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
@@ -2262,7 +2304,9 @@ useEffect(() => {
                   ))}
                 </select>
                 <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                  Used when you start marking with Gemini. Flash-Lite models are cheaper and faster.
+                  {guidanceModal.batch
+                    ? "Used for assignment memory build and the Gemini batch job (~50% cheaper than sequential marking)."
+                    : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
                 </p>
               </div>
 
@@ -2404,24 +2448,28 @@ useEffect(() => {
                   Save Prompt
               </button>
 
-              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <button
-                  className="ma-send-btn"
-                  onClick={() => handleGuidanceConfirm("gemini")}
-                  disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
-                  style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1 }}
-                >
-                  <FiCpu size={14} />
-                  {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
-                </button>
+              <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+                {!guidanceModal.batch && (
+                  <>
+                    <button
+                      className="ma-send-btn"
+                      onClick={() => handleGuidanceConfirm("gemini")}
+                      disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                      style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1 }}
+                    >
+                      <FiCpu size={14} />
+                      {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                    </button>
 
-                <button
-                  className="ma-send-btn"
-                  onClick={() => handleGuidanceConfirm("claude")}
-                >
-                <FiCpu size={14} />
-                  {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
-                </button>
+                    <button
+                      className="ma-send-btn"
+                      onClick={() => handleGuidanceConfirm("claude")}
+                    >
+                      <FiCpu size={14} />
+                      {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
+                    </button>
+                  </>
+                )}
 
                 {guidanceModal.batch && (
                   <button
@@ -2436,7 +2484,7 @@ useEffect(() => {
                     }}
                   >
                     <FiLayers size={14} />
-                    ⚡ Submit Batch Job
+                    Submit Batch — {geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))}
                   </button>
                 )}
 

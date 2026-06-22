@@ -46,6 +46,23 @@ export function parseGeminiModelsResponse(data) {
   };
 }
 
+/** Keep dropdown value aligned with backend-allowed model ids (prevents 400 on submit). */
+export function pickValidGeminiModel(models, current) {
+  const fallback = DEFAULT_GEMINI_MODEL;
+  if (!Array.isArray(models) || !models.length) {
+    return (current && String(current).trim()) || fallback;
+  }
+  const ids = models.map((m) => m.id);
+  if (current && ids.includes(current)) return current;
+  if (ids.includes(fallback)) return fallback;
+  return ids[0];
+}
+
+export function geminiModelLabel(models, modelId) {
+  const match = models?.find((m) => m.id === modelId);
+  return match?.label || modelId || DEFAULT_GEMINI_MODEL;
+}
+
 function cachedInputPer1M(meta) {
   return meta.inputPer1M * CACHED_INPUT_RATE_FACTOR;
 }
