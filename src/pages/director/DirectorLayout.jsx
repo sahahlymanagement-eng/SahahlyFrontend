@@ -12,7 +12,8 @@ import {
   FiLogOut,
   FiLayers,
   FiBarChart2,
-  FiChevronRight
+  FiChevronRight,
+  FiBookOpen
 } from "react-icons/fi";
 
 export default function DirectorLayout() {
@@ -70,10 +71,15 @@ export default function DirectorLayout() {
       path: "/director/manage-classroom-teachers"
     },
     {
-      name: "Google Accounts",
+      name: "Google Accountsss",
       icon: <FiBarChart2 />, 
       path: "/director/google-accounts"
-    }
+    },
+    {
+      name: "Course Management",
+       icon: <FiBookOpen />,
+      path:  "/director/google-classroom"
+    },
   ];
 
   return (
