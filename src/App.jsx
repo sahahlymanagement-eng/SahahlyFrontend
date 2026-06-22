@@ -68,7 +68,7 @@ import AssistantStudents from "./pages/assistant/AssistantStudents";
 import AssistantReports from "./pages/assistant/AssistantReports";
 
 import TeacherDashboard from "./pages/teacher/TeacherDashboard"
-import ViewCoursework from "./components/CourseManagment/ViewCoursework";
+import ViewCoursework from "./components/CourseManagment/ViewCourseWork";
 
 function App() {
   return (
