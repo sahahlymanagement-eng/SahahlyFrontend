@@ -1,0 +1,69 @@
+.teacher-layout {
+  display: flex;
+  min-height: 100vh;
+  background: #04091f;
+}
+
+.teacher-content {
+  flex: 1;
+  padding: 40px;
+  color: white;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(37,99,235,0.12),
+      transparent 35%
+    ),
+    #04091f;
+}
+
+.teacher-content h1 {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #f8fafc;
+}
+
+.teacher-content p {
+  font-size: 1rem;
+  color: #94a3b8;
+
+
+}.welcome-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 800px;
+}
+
+.welcome-card h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.welcome-card p {
+  font-size: 15px;
+  color: #94a3b8;
+  line-height: 1.6;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.quick-tip {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  margin-top: 20px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: rgba(37,99,235,0.12);
+  border: 1px solid rgba(37,99,235,0.2);
+  color: #cbd5e1;
+  font-size: 15px;
+}
+.teacher-name {
+  color: #fff;
+  font-weight: 800;
+  font-family: 'Outfit', sans-serif;
+}

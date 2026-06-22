@@ -39,6 +39,7 @@ export default function Login() {
       toast.success("Login successful");
 
       const routes = {
+        teacher : "/teacher/dashboard",
         assistant: "/assistant/dashboard",
         manager: "/manager/dashboard",
         "quality team": "/quality-team/dashboard",
