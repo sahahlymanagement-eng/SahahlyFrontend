@@ -12,7 +12,14 @@ export default function RoleProtectedRoute({ children, allowedRole }) {
   const roleName =
     user?.roleId?.name?.toLowerCase() || "";
 
-  if (roleName !== allowedRole.toLowerCase()) {
+  // if (roleName !== allowedRole.toLowerCase()) {
+  //   return <Navigate to="/login" replace />;
+  // }
+  const allowedRoles = Array.isArray(allowedRole)
+    ? allowedRole.map(role => role.toLowerCase())
+    : [allowedRole?.toLowerCase()];
+
+  if (!allowedRoles.includes(roleName)) {
     return <Navigate to="/login" replace />;
   }
 
