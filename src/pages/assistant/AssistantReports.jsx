@@ -6,6 +6,7 @@ import "../manager/ManagerAssignments.css";
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import { parseAttendanceNamesFromFile } from "../../utils/attendanceExcel";
 
 import {
   FiSend,
@@ -28,6 +29,11 @@ export default function AssistantReports() {
   
   // const [summaryMap, setSummaryMap] = useState({});
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
+
+  const [includeAttendance, setIncludeAttendance] = useState(false);
+  const [attendanceNames, setAttendanceNames] = useState([]);
+  const [attendanceFileName, setAttendanceFileName] = useState("");
+  const [parsingAttendance, setParsingAttendance] = useState(false);
   // const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
   // const [classroomId, setClassroomId] = useState(null);
 
@@ -193,6 +199,49 @@ const selectAll = () => {
     });
   };
 
+  /* ATTENDANCE */
+  const handleAttendanceToggle = (checked) => {
+    setIncludeAttendance(checked);
+    if (!checked) {
+      setAttendanceNames([]);
+      setAttendanceFileName("");
+    }
+  };
+
+  const handleAttendanceFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setParsingAttendance(true);
+    try {
+      const names = await parseAttendanceNamesFromFile(file);
+      if (!names.length) {
+        toast.warn("No student names found in that file");
+        setAttendanceNames([]);
+        setAttendanceFileName("");
+        return;
+      }
+      setAttendanceNames(names);
+      setAttendanceFileName(file.name);
+      toast.success(`Loaded ${names.length} name(s) from attendance file`);
+    } catch (err) {
+      toast.error(err?.message || "Failed to read attendance file");
+      setAttendanceNames([]);
+      setAttendanceFileName("");
+    } finally {
+      setParsingAttendance(false);
+    }
+  };
+
+  const buildAttendancePayload = () => {
+    if (!includeAttendance || !attendanceNames.length) return undefined;
+    return {
+      enabled: true,
+      attendedNames: attendanceNames,
+    };
+  };
+
   /* BUILD PAYLOAD */
   const buildReportsPayload = (activeSummaryMap = summaryMap, activeStudents = students) => {
     const studentByKey = Object.fromEntries(
@@ -232,13 +281,17 @@ const selectAll = () => {
       return;
     }
 
+    if (includeAttendance && !attendanceNames.length) {
+      toast.warn("Upload an attendance Excel file first");
+      return;
+    }
+
     let freshSummaryMap = summaryMap;
     let freshStudents = students;
     try {
       const fresh = await api.get(`/assignment-submissions/${assignmentId}/students`);
       freshSummaryMap = fresh.data.summaryMap || summaryMap;
       freshStudents = fresh.data.students || students;
-      setSummaryMap(freshSummaryMap);
       setStudents(freshStudents);
     } catch {
       // use cached summaries if refresh fails
@@ -250,7 +303,8 @@ const selectAll = () => {
     try {
       const res = await api.post("/manager-assignments/send-report", {
         reports,
-        classroomId
+        classroomId,
+        attendance: buildAttendancePayload(),
       });
       const summary = res.data.summary || [];
       const succeeded = summary.filter((r) => r.status === "fulfilled").length;
@@ -410,6 +464,36 @@ await api.post(
             )}
           </div>
         </header>
+
+        <div className="ma-attendance-bar">
+          <label className="ma-attendance-check">
+            <input
+              type="checkbox"
+              checked={includeAttendance}
+              onChange={(e) => handleAttendanceToggle(e.target.checked)}
+            />
+            <span>Attendance</span>
+          </label>
+          {includeAttendance && (
+            <div className="ma-attendance-upload">
+              <label className="ma-attendance-file-btn">
+                {parsingAttendance ? "Reading file…" : "Upload Excel"}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleAttendanceFile}
+                  disabled={parsingAttendance}
+                  hidden
+                />
+              </label>
+              {attendanceFileName && (
+                <span className="ma-attendance-meta">
+                  {attendanceFileName} · {attendanceNames.length} name(s)
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* TABLE */}
         <div className="ma-content">
