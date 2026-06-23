@@ -1,37 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api/api";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 export default function AssignmentStudentsStatus() {
   const { assignmentId } = useParams();
 
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [maxGrade, setMaxGrade] = useState(null);
+  const { data: students, page, totalPages, loading, fetchPage, extra } =
+    usePagination(
+      `/assignment-submissions/${assignmentId}/students`,
+      {},
+      10,
+      "students",
+      !!assignmentId
+    );
 
-  useEffect(() => {
-    loadStudents();
-  }, [assignmentId]);
-
-  const loadStudents = async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const res = await api.get(
-        `/assignment-submissions/${assignmentId}/students`
-      );
-
-      setStudents(Array.isArray(res.data.students) ? res.data.students : []);
-      setMaxGrade(res.data.maxGrade ?? null);    } catch (err) {
-      console.error("Failed to load student submissions", err);
-      setError("Failed to load student submissions");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const maxGrade = extra.maxGrade ?? null;
 
   const renderStatus = (state, isLate, isOnTime) => {
     if (state === "TURNED_IN") {
@@ -110,6 +97,8 @@ export default function AssignmentStudentsStatus() {
           </tbody>
         </table>
       )}
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
     </div>
   );
 }

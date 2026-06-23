@@ -196,6 +196,72 @@
 .ma-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
 
 /* LAYOUT GRID */
+.msv-collapsible-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 150px);
+}
+
+.msv-section-header-expanded {
+  margin-bottom: 12px;
+}
+
+.msv-section-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #04091f;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.18s ease;
+}
+
+.msv-section-collapsed:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.msv-section-collapsed-chevron {
+  font-size: 11px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.msv-section-collapsed-text {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msv-section-change {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #60a5fa;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.msv-section-change:hover {
+  text-decoration: underline;
+}
+
+.msv-right-panel-full {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+}
+
 .ma-layout {
   display: grid;
   grid-template-columns: 280px 320px 1fr;

@@ -91,12 +91,12 @@ export default function QualityTeamDashboard() {
   };
 
   const loadClassrooms = async () => {
-    const res = await api.get("/classrooms");
+    const res = await api.get("/classrooms", { params: { page: 1, limit: 5000 } });
 
     const teacherMap = {};
     const nameMap = {};
 
-    res.data.forEach((c) => {
+    (res.data.data || []).forEach((c) => {
       nameMap[c._id] = c.name;
       teacherMap[c._id] = c.teacherId?.name || "Not Assigned";
     });

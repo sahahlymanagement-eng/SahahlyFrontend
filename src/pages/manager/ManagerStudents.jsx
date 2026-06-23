@@ -13,24 +13,21 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
 import ManagerSidebar from "../../components/ManagerSidebar";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 export default function ManagerStudents() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [classrooms, setClassrooms] = useState([]);
   const [selectedClassroom, setSelectedClassroom] = useState(null);
-  const [students, setStudents] = useState([]);
-  const [loadingStudents, setLoadingStudents] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [classroomSearch, setClassroomSearch] = useState("");
-  const PAGE_SIZE = 12;
 
   /* AUTH */
   useEffect(() => {
@@ -45,21 +42,45 @@ export default function ManagerStudents() {
     setUser(parsed);
   }, [navigate]);
 
-  /* LOAD CLASSROOMS */
-  useEffect(() => {
-    if (!user?.id) return;
-    api.get(`/students/my-classrooms?personId=${user.id}`)
-      .then(res => setClassrooms(res.data || []))
-      .catch(() => toast.error("Failed to load classrooms"));
-  }, [user?.id]);
+  const classroomParams = useMemo(() => ({
+    personId: user?.id,
+    search: classroomSearch,
+  }), [user?.id, classroomSearch]);
+
+  const {
+    data: classrooms,
+    page: classroomPage,
+    totalPages: classroomTotalPages,
+    fetchPage: fetchClassroomPage,
+  } = usePagination("/students/my-classrooms", classroomParams, 20, "data", !!user?.id);
+
+  const studentParams = useMemo(() => ({
+    search,
+    sortKey,
+    sortDir,
+  }), [search, sortKey, sortDir]);
+
+  const {
+    data: students,
+    page,
+    totalPages,
+    total,
+    loading: loadingStudents,
+    fetchPage,
+    setData: setStudents,
+  } = usePagination(
+    selectedClassroom ? `/students/classroom/${selectedClassroom._id}` : "/students/classroom/_",
+    studentParams,
+    12,
+    "data",
+    !!selectedClassroom?._id
+  );
 
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
-    setStudents([]);
     setEditingId(null);
     setSearch("");
-    setPage(1);
     setSyncing(true);
     try {
       await api.post(`/students/sync/${classroom._id}`);
@@ -68,56 +89,19 @@ export default function ManagerStudents() {
     } finally {
       setSyncing(false);
     }
-    setLoadingStudents(true);
-    try {
-      const res = await api.get(`/students/classroom/${classroom._id}`);
-      setStudents(res.data || []);
-    } catch {
-      toast.error("Failed to load students");
-    } finally {
-      setLoadingStudents(false);
-    }
+  };
+
+  const expandClassroomSection = () => {
+    setSelectedClassroom(null);
+    setEditingId(null);
+    setSearch("");
   };
 
   /* SORT */
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("asc"); }
-    setPage(1);
   };
-  
-  const filteredClassrooms = useMemo(() => {
-    const q = classroomSearch.toLowerCase();
-
-    return classrooms.filter((c) =>
-        !q ||
-        (c.name || "").toLowerCase().includes(q) ||
-        (c.section || "").toLowerCase().includes(q)
-    );
-    }, [classrooms, classroomSearch]);
-
-
-
-  /* FILTER + SORT + PAGINATE */
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return students
-      .filter(s =>
-        !q ||
-        (s.name || "").toLowerCase().includes(q) ||
-        (s.email || "").toLowerCase().includes(q) ||
-        (s.phone || "").toLowerCase().includes(q) ||
-        (s.parentName || "").toLowerCase().includes(q)
-      )
-      .sort((a, b) => {
-        const av = (a[sortKey] || "").toLowerCase();
-        const bv = (b[sortKey] || "").toLowerCase();
-        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      });
-  }, [students, search, sortKey, sortDir]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   /* EDIT */
   const startEdit = (student) => {
@@ -139,7 +123,8 @@ export default function ManagerStudents() {
         parentPhone: editForm.parentPhone?.replace(/\D/g, ""),
         };
 
-        const res = await api.put(`/students/${studentId}`, payload);      setStudents(prev => prev.map(s => s._id === studentId ? res.data : s));
+        const res = await api.put(`/students/${studentId}`, payload);
+      setStudents(prev => prev.map(s => s._id === studentId ? res.data : s));
       setEditingId(null);
       toast.success("Student updated");
     } catch {
@@ -194,17 +179,18 @@ export default function ManagerStudents() {
             <div className="ms-topbar-right">
               <div className="ms-total-pill">
                 <FiUsers size={13} />
-                <span>{students.length} students</span>
+                <span>{total} students</span>
               </div>
             </div>
           </header>
 
           <div className="ms-content">
-            <div className="ms-layout">
+            <div className="ms-layout msv-collapsible-layout">
 
-                {/* LEFT PANEL */}
+                {/* CLASSROOM */}
+                {!selectedClassroom ? (
                 <div className="ms-left-panel">
-                <p className="ms-section-label">Select Classroom</p>
+                <p className="ms-section-label msv-section-header-expanded">▼ Select Classroom</p>
 
                 <div className="ms-classroom-search-wrap">
                     <FiSearch className="ms-search-icon" size={13} />
@@ -225,7 +211,7 @@ export default function ManagerStudents() {
                     </div>
 
                     <div className="ms-classroom-grid">
-                    {filteredClassrooms.map((c) => (
+                    {classrooms.map((c) => (
                         <div
                         key={c._id}
                         className={`ms-classroom-card ${
@@ -249,22 +235,37 @@ export default function ManagerStudents() {
                         </div>
                     ))}
 
-                    {filteredClassrooms.length === 0 && (
+                    {classrooms.length === 0 && (
                         <div className="ms-empty-state">
                         <p>No classrooms found</p>
                         </div>
                     )}
                     </div>
+                    <Pagination page={classroomPage} totalPages={classroomTotalPages} onPageChange={fetchClassroomPage} />
                 </div>
-
-                {/* RIGHT PANEL */}
-                <div className="ms-right-panel">
-                {!selectedClassroom ? (
-                    <div className="ms-empty-state">
-                    <FiUsers size={40} />
-                    <p>Select a classroom to view students</p>
-                    </div>
                 ) : (
+                  <div
+                    className="msv-section-collapsed"
+                    onClick={expandClassroomSection}
+                    onKeyDown={(e) => e.key === "Enter" && expandClassroomSection()}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <span className="msv-section-collapsed-chevron">▶</span>
+                    <span className="msv-section-collapsed-text">Classroom: {selectedClassroom.name}</span>
+                    <button
+                      type="button"
+                      className="msv-section-change"
+                      onClick={(e) => { e.stopPropagation(); expandClassroomSection(); }}
+                    >
+                      [change]
+                    </button>
+                  </div>
+                )}
+
+                {/* STUDENTS */}
+                {selectedClassroom && (
+                <div className="ms-right-panel msv-right-panel-full">
                     <div className="ms-panel">
 
                     <div className="ms-panel-header">
@@ -274,7 +275,7 @@ export default function ManagerStudents() {
                             {selectedClassroom.name}
                         </h2>
                         <span className="ms-panel-count">
-                            {filtered.length} students
+                            {total} students
                         </span>
                         </div>
                     </div>
@@ -287,10 +288,7 @@ export default function ManagerStudents() {
                             className="ms-search-input"
                             placeholder="Search student..."
                             value={search}
-                            onChange={(e) => {
-                            setSearch(e.target.value);
-                            setPage(1);
-                            }}
+                            onChange={(e) => setSearch(e.target.value)}
                         />
                         </div>
                     </div>
@@ -311,9 +309,11 @@ export default function ManagerStudents() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filtered.map((s, i) => {                            
+                          {loadingStudents || syncing ? (
+                            <tr><td colSpan={7}>Loading…</td></tr>
+                          ) : students.map((s, i) => {                            
                             const isEditing = editingId === s._id;
-                            const globalIndex = (page - 1) * PAGE_SIZE + i + 1;
+                            const globalIndex = (page - 1) * 12 + i + 1;
                             return (
                               <tr key={s._id} className={`ms-row ${isEditing ? "ms-row--editing" : ""}`} style={{ animationDelay: `${i * 0.03}s` }}>
                                 <td><span className="ms-num">{globalIndex}</span></td>
@@ -397,11 +397,12 @@ export default function ManagerStudents() {
                         </tbody>
                       </table>
                     </div>
+                    <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
                     </div>
 
                     </div>
-                )}
                 </div>
+                )}
 
             </div>
             </div>

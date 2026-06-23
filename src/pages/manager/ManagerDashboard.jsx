@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -13,6 +13,9 @@ import {
   FiAlertTriangle, FiZap,FiClipboard,FiFileText
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
+
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 const ALL_STATUSES = [
   "UNASSIGNED","ASSIGNED","IN_REVIEW","RECHECK_BY_ASSISTANT",
@@ -40,7 +43,10 @@ export default function ManagerDashboard() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState(null);
-  const [assignments, setAssignments] = useState([]);
+  const [classroomIds, setClassroomIds] = useState([]);
+  const [classroomMap, setClassroomMap] = useState({});
+  const [teacherMap, setTeacherMap] = useState({});
+  const [classroomSubjectMap, setClassroomSubjectMap] = useState({});
   const [delegations, setDelegations] = useState([]);
   const [assistantsMap, setAssistantsMap] = useState({});
   const [statusCounts, setStatusCounts] = useState({});
@@ -53,7 +59,7 @@ export default function ManagerDashboard() {
   const [filterAssignment, setFilterAssignment] = useState("");
   const [filterAssistant, setFilterAssistant] = useState("");
   const [filterQuality, setFilterQuality] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [contextLoading, setContextLoading] = useState(false);
   const [submissionCounts, setSubmissionCounts] = useState({});
   const [countsLoading, setCountsLoading] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
@@ -68,76 +74,111 @@ export default function ManagerDashboard() {
     setUser(parsed);
   }, [navigate]);
 
-  useEffect(() => { if (!user?.id) return; loadDashboard(); }, [user]);
-
   const computeDashboardStatus = (a) => {
     if (a.status === "UNASSIGNED" && a.assignedAssistantId) return "ASSIGNED";
     return a.status || "UNASSIGNED";
   };
 
-  const loadDashboard = async () => {
-    try {
-      setLoading(true);
-      const classroomsRes = await api.get("/classrooms");
-      const teacherMap = {};
-      const classroomSubjectMap = {};
-      classroomsRes.data.forEach((c) => {
-        teacherMap[c._id] = c.teacherId?.name || "Not Assigned";
-        classroomSubjectMap[c._id] = typeof c.subjectId === "string" ? c.subjectId : c.subjectId?._id || null;
-      });
+  const paginationParams = useMemo(() => {
+    const base = { classroomIds: classroomIds.join(",") };
+    if (!selectedStatus) return base;
+    return {
+      ...base,
+      status: selectedStatus,
+      ...(filterClassroom ? { filterClassroom } : {}),
+      ...(filterTeacher ? { filterTeacher } : {}),
+      ...(filterAssignment ? { filterAssignment } : {}),
+      ...(filterAssistant ? { filterAssistant } : {}),
+      ...(filterQuality ? { filterQuality } : {}),
+      ...(filterDate ? { filterDate: filterDate.toISOString() } : {}),
+    };
+  }, [classroomIds, selectedStatus, filterClassroom, filterTeacher, filterAssignment, filterAssistant, filterQuality, filterDate]);
 
-      const classroomManagersRes = await api.get(`/classroom-managers?personId=${user.id}`);
-      const classroomMap = {};
-      classroomManagersRes.data.forEach((m) => { if (m.classroomId?._id) classroomMap[m.classroomId._id] = m.classroomId.name; });
-      const classroomIds = classroomManagersRes.data.map((m) => m.classroomId?._id).filter(Boolean);
+  const { data, page, totalPages, loading, fetchPage, extra } =
+    usePagination(
+      "/assignments/by-classrooms",
+      paginationParams,
+      10,
+      "data",
+      !!classroomIds.length
+    );
 
-      if (!classroomIds.length) {
-        setAssignments([]); setDelegations([]); setAssistantsMap({});
-        const e = {}; ALL_STATUSES.forEach((s) => { e[s] = 0; }); setStatusCounts(e);
-        return;
-      }
+  const assignments = useMemo(() =>
+    (data || []).map((a) => ({
+      ...a,
+      classroomName: classroomMap[a.classroomId] || "Unknown",
+      teacherName: teacherMap[a.classroomId] || "Not Assigned",
+      dashboardStatus: computeDashboardStatus(a),
+    })),
+  [data, classroomMap, teacherMap]);
 
-      const assignmentsRes = await api.get(`/assignments/by-classrooms?classroomIds=${classroomIds.join(",")}`);
-      const allAssignments = (assignmentsRes.data || []).map((a) => ({
-        ...a,
-        classroomName: classroomMap[a.classroomId] || "Unknown",
-        teacherName: teacherMap[a.classroomId] || "Not Assigned",
-        dashboardStatus: computeDashboardStatus(a),
-      }));
-      setAssignments(allAssignments);
+  useEffect(() => { if (!user?.id) return; loadClassroomContext(); }, [user]);
 
-      const assignmentIds = allAssignments.map((a) => a._id).filter(Boolean);
+  useEffect(() => {
+    if (extra.statusCounts) {
+      setStatusCounts(extra.statusCounts);
+    }
+  }, [extra]);
 
-      // ✅ Now assignmentIds exists — fire in parallel, no await
+  useEffect(() => {
+    if (!data.length) {
+      setDelegations([]);
+      return;
+    }
+    const assignmentIds = data.map((a) => a._id).filter(Boolean);
+    api.post("/assignment-delegations/by-assignments", { assignmentIds })
+      .then((delRes) => setDelegations(delRes.data || []))
+      .catch((err) => console.error("Failed to load delegations", err));
+  }, [data]);
 
-      let allDelegations = [];
-      if (assignmentIds.length) {
-        const delRes = await api.post("/assignment-delegations/by-assignments", { assignmentIds });
-        allDelegations = delRes.data || [];
-      }
-      setDelegations(allDelegations);
-
-      const counts = {}; ALL_STATUSES.forEach((s) => { counts[s] = 0; });
-      allAssignments.forEach((a) => { counts[a.dashboardStatus] = (counts[a.dashboardStatus] || 0) + 1; });
-      setStatusCounts(counts);
-
-      const uniqueSubjectIds = [...new Set(allAssignments.map((a) => classroomSubjectMap[a.classroomId]).filter(Boolean))];
-      const subjectAssistantsMap = {};
-      await Promise.all(uniqueSubjectIds.map(async (subjectId) => {
-        const res = await api.get(`/role-subject-assignments?subjectId=${subjectId}&role=assistant`);
-        subjectAssistantsMap[subjectId] = res.data || [];
-      }));
-
+  useEffect(() => {
+    if (!data.length) {
+      setAssistantsMap({});
+      return;
+    }
+    const uniqueSubjectIds = [...new Set(data.map((a) => classroomSubjectMap[a.classroomId]).filter(Boolean))];
+    Promise.all(uniqueSubjectIds.map(async (subjectId) => {
+      const res = await api.get(`/role-subject-assignments?subjectId=${subjectId}&role=assistant`);
+      return [subjectId, res.data || []];
+    })).then((entries) => {
+      const subjectAssistantsMap = Object.fromEntries(entries);
       const assistantsTemp = {};
-      allAssignments.forEach((a) => {
+      data.forEach((a) => {
         const subjectId = classroomSubjectMap[a.classroomId];
         assistantsTemp[a._id] = subjectId ? (subjectAssistantsMap[subjectId] || []) : [];
       });
       setAssistantsMap(assistantsTemp);
+    }).catch((err) => console.error("Failed to load assistants", err));
+  }, [data, classroomSubjectMap]);
+
+  const loadClassroomContext = async () => {
+    try {
+      setContextLoading(true);
+      const classroomsRes = await api.get("/classrooms", { params: { page: 1, limit: 5000 } });
+      const teachers = {};
+      const subjects = {};
+      (classroomsRes.data.data || []).forEach((c) => {
+        teachers[c._id] = c.teacherId?.name || "Not Assigned";
+        subjects[c._id] = typeof c.subjectId === "string" ? c.subjectId : c.subjectId?._id || null;
+      });
+      setTeacherMap(teachers);
+      setClassroomSubjectMap(subjects);
+
+      const classroomManagersRes = await api.get(`/classroom-managers?personId=${user.id}`, { params: { page: 1, limit: 5000 } });
+      const map = {};
+      (classroomManagersRes.data.data || []).forEach((m) => { if (m.classroomId?._id) map[m.classroomId._id] = m.classroomId.name; });
+      setClassroomMap(map);
+      const ids = (classroomManagersRes.data.data || []).map((m) => m.classroomId?._id).filter(Boolean);
+      setClassroomIds(ids);
+
+      if (!ids.length) {
+        setDelegations([]); setAssistantsMap({});
+        const e = {}; ALL_STATUSES.forEach((s) => { e[s] = 0; }); setStatusCounts(e);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load dashboard");
     } finally {
-      setLoading(false);
+      setContextLoading(false);
     }
   };
 
@@ -151,7 +192,7 @@ export default function ManagerDashboard() {
         assignmentId, personId: sel.value, role: "assistant", assignedBy: user.id, assistantDeadline: deadline,
       });
       toast.success("Assistant assigned successfully");
-      loadDashboard();
+      fetchPage(page);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to assign assistant");
     }
@@ -199,7 +240,7 @@ export default function ManagerDashboard() {
       assistantDeadline: deadlines[assignmentId] || undefined,
     });
     toast.success("Assistant changed successfully");
-    loadDashboard();
+    fetchPage(page);
   } catch (err) {
     toast.error(err.response?.data?.message || "Failed to change assistant");
   }
@@ -212,7 +253,7 @@ const removeAssistant = async (assignmentId) => {
       data: { assignmentId, assignedBy: user.id },
     });
     toast.success("Assistant removed. Task is now UNASSIGNED.");
-    loadDashboard();
+    fetchPage(page);
   } catch (err) {
     toast.error(err.response?.data?.message || "Failed to remove assistant");
   }
@@ -369,7 +410,7 @@ const toggleRow = (id) => {
 
               {/* TABLE */}
               <div className="md-table-wrap">
-                {loading ? (
+                {loading || contextLoading ? (
                   <div className="md-loading">
                     <div className="md-spinner" />
                     <span>Loading…</span>
@@ -390,21 +431,6 @@ const toggleRow = (id) => {
                     </thead>
                     <tbody>
                       {assignments
-                        .filter((a) => {
-                          if (a.dashboardStatus !== selectedStatus) return false;
-                          const related = delegations.filter((d) => d.assignmentId === a._id || d.assignmentId?._id === a._id);
-                          const assistants = related.filter((d) => d.role === "assistant").map((d) => d.personId?.name?.toLowerCase() || "");
-                          const qualityTeam = related.filter((d) => d.role === "quality team").map((d) => d.personId?.name?.toLowerCase() || "");
-                          if (filterClassroom && !a.classroomName.toLowerCase().includes(filterClassroom.toLowerCase())) return false;
-                          if (filterTeacher && !a.teacherName.toLowerCase().includes(filterTeacher.toLowerCase())) return false;
-                          if (filterAssignment && !a.title.toLowerCase().includes(filterAssignment.toLowerCase())) return false;
-                          if (filterAssistant && !assistants.some((n) => n.includes(filterAssistant.toLowerCase()))) return false;
-                          if (filterQuality && !qualityTeam.some((n) => n.includes(filterQuality.toLowerCase()))) return false;
-                          if (filterDate) {
-                            if (new Date(a.dueDate).toDateString() !== new Date(filterDate).toDateString()) return false;
-                          }
-                          return true;
-                        })
                         .map((a) => {
                           const related = delegations.filter((d) => d.assignmentId === a._id || d.assignmentId?._id === a._id);
                           const assistants = related.filter((d) => d.role === "assistant");
@@ -415,8 +441,8 @@ const toggleRow = (id) => {
                           const counts = submissionCounts[a._id];
                           const countsSpinning = counts === "loading" || counts === undefined;
                           return (
-                            <>
-                              <tr key={a._id} className="md-row">
+                             <Fragment key={a._id}>
+                              <tr className="md-row">
                                 {/* Expand toggle */}
                                 <td>
                                   <button
@@ -529,7 +555,7 @@ const toggleRow = (id) => {
 
                               {/* ── EXPANDED DETAIL PANEL ── */}
                               {isExpanded && (
-                                <tr key={`${a._id}-detail`} className="md-detail-row">
+                                <tr className="md-detail-row">
                                   <td colSpan={8} className="md-detail-cell">
                                     <div className="md-detail-panel">
                                       <div className="md-detail-grid">
@@ -585,18 +611,19 @@ const toggleRow = (id) => {
                                   </td>
                                 </tr>
                               )}
-                            </>
+                            </Fragment>
                           );
                         })}
                     </tbody>
                   </table>
 
                 )}
+                <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
               </div>
             </div>
           )}
 
-          {!selectedStatus && !loading && (
+          {!selectedStatus && !contextLoading && (
             <div className="md-empty-state">
               <FiBookOpen size={40} />
               <p>Select a status card above to view assignments</p>

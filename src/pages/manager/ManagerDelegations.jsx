@@ -3,14 +3,20 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../api/api";
 import "./ManagerDelegations.css";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 export default function ManagerDelegations() {
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
   const [classrooms, setClassrooms] = useState([]);
-  const [assignments, setAssignments] = useState([]);
-  const [delegations, setDelegations] = useState([]);
+  const [assignments, setAssignments] = useState(null);
+  const [delegations, setDelegations] = useState(null);
+  // add pagination params state
+  // const [assignmentParams, setAssignmentParams] = useState(null);
+  // const [delegationParams, setDelegationParams] = useState(null);
+
   const [assistants, setAssistants] = useState([]);
 
   const [selectedClassroom, setSelectedClassroom] = useState(null);
@@ -45,11 +51,12 @@ export default function ManagerDelegations() {
 
     const loadClassrooms = async () => {
       const res = await api.get(
-        `/classroom-managers?personId=${user.id}`
+        `/classroom-managers?personId=${user.id}`,
+        { params: { page: 1, limit: 5000 } }
       );
 
-      const list = Array.isArray(res.data)
-        ? res.data.map((m) => m.classroomId)
+      const list = Array.isArray(res.data?.data)
+        ? res.data.data.map((m) => m.classroomId)
         : [];
 
       setClassrooms(list);
@@ -61,24 +68,48 @@ export default function ManagerDelegations() {
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
     setSelectedAssignment(null);
-    setAssignments([]);
-    setDelegations([]);
+    // setAssignments([]);
+    // setDelegations([]);
+    setDelegations(null);
+    setAssignments({ classroomId: classroom._id });
 
-    const res = await api.get(
-      `/assignments?classroomId=${classroom._id}`
-    );
+    // const res = await api.get(
+    //   `/assignments?classroomId=${classroom._id}`
+    // );
+      const {
+        data: assignments,
+        page: assignPage,
+        totalPages: assignTotalPages,
+        fetchPage: fetchAssignPage
+      } = usePagination(
+        "/assignments",
+        assignments || {},
+        10,
+        "data",
+        !!assignments
+      );
 
-    setAssignments(res.data || []);
+    // setAssignments(res.data || []);
   };
 
   const selectAssignment = async (assignment) => {
     setSelectedAssignment(assignment);
+    setDelegations({ assignmentId: assignment._id });
 
-    const res = await api.get(
-      `/assignment-delegations?assignmentId=${assignment._id}`
-    );
+const {
+  data: delegations,
+  page: delegPage,
+  totalPages: delegTotalPages,
+  fetchPage: fetchDelegPage
+} = usePagination(
+  "/assignment-delegations",
+  delegations|| {},
+  10,
+  "data",
+  !!delegations
+);
 
-    setDelegations(res.data || []);
+    // setDelegations(res.data || []);
 
     const classroomRes = await api.get(
       `/classrooms/${selectedClassroom._id}`
@@ -185,6 +216,7 @@ export default function ManagerDelegations() {
                 </div>
               ))}
             </div>
+            <Pagination page={assignPage} totalPages={assignTotalPages} onPageChange={fetchAssignPage} />
           </section>
         )}
 
@@ -269,7 +301,7 @@ export default function ManagerDelegations() {
                 );
               })}
             </div>
-
+<Pagination page={delegPage} totalPages={delegTotalPages} onPageChange={fetchDelegPage} />
           </section>
         )}
 

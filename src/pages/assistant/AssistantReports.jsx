@@ -3,6 +3,10 @@ import { useParams,useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import "../manager/ManagerAssignments.css";
+
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
+
 import {
   FiSend,
   FiCheckSquare,
@@ -13,8 +17,8 @@ import {
 export default function AssistantReports() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // const [students, setStudents] = useState([]);
+  // const [loading, setLoading] = useState(false);
 
   const [reportCart, setReportCart] = useState({});
   const [sending, setSending] = useState(false);
@@ -22,34 +26,55 @@ export default function AssistantReports() {
   const [customPhone, setCustomPhone] = useState("");
   const [sendingCollective, setSendingCollective] = useState(false);
   
-  const [summaryMap, setSummaryMap] = useState({});
+  // const [summaryMap, setSummaryMap] = useState({});
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
-  const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
-  const [classroomId, setClassroomId] = useState(null);
+  // const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
+  // const [classroomId, setClassroomId] = useState(null);
 
   /* LOAD STUDENTS */
-  useEffect(() => {
-    if (!assignmentId) return;
-    fetchStudents();
-  }, [assignmentId]);
+  // useEffect(() => {
+  //   if (!assignmentId) return;
+  //   fetchStudents();
+  // }, [assignmentId]);
 
-  const fetchStudents = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get(
-        `/assignment-submissions/${assignmentId}/students`
-      );
-      setStudents(res.data.students || []);
-      setSummaryMap(res.data.summaryMap || {});
-      setAssignmentTitle(res.data.assignmentTitle || "Assignment");
-      setClassroomId(res.data.classroomId || null);
-    } catch {
-      toast.error("Failed to load students");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // const fetchStudents = async () => {
+  //   setLoading(true);
+  //   try {
+  //     const res = await api.get(
+  //       `/assignment-submissions/${assignmentId}/students`
+  //     );
+  //     setStudents(res.data.students || []);
+  //     setSummaryMap(res.data.summaryMap || {});
+  //     setAssignmentTitle(res.data.assignmentTitle || "Assignment");
+  //     setClassroomId(res.data.classroomId || null);
+  //   } catch {
+  //     toast.error("Failed to load students");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+const { data: students, page, totalPages, loading, fetchPage, extra, setData: setStudents } =
+  usePagination(
+    `/assignment-submissions/${assignmentId}/students`,
+    {},
+    10,
+    "students",
+    !!assignmentId
+  );
 
+  const summaryMap = extra.summaryMap || {};
+  const assignmentTitle = extra.assignmentTitle || "Assignment";
+  const classroomId = extra.classroomId || null;
+  
+  const [allStudents, setAllStudents] = useState([]);
+
+useEffect(() => {
+  if (!assignmentId) return;
+  api.get(`/assignment-submissions/${assignmentId}/students`, {
+    params: { page: 1, limit: 9999 } // fetch all
+  }).then(res => setAllStudents(res.data.students || []));
+}, [assignmentId]);
+  
   /* HELPERS */
   const getStudentId = (s) => s.studentId || s._id;
 
@@ -93,29 +118,50 @@ export default function AssistantReports() {
   };
 
   /* SELECT ALL */
-  const selectAll = () => {
-    const asgId = assignmentId;
+  // const selectAll = () => {
+  //   const asgId = assignmentId;
 
-    setReportCart((prev) => {
-      const next = { ...prev };
+  //   setReportCart((prev) => {
+  //     const next = { ...prev };
 
-      students.forEach((s) => {
-        const stuId = String(getStudentId(s));
+  //     students.forEach((s) => {
+  //       const stuId = String(getStudentId(s));
 
-        if (!next[stuId]) {
-          next[stuId] = {
-            studentMeta: s,
-            items: { [asgId]: buildItem(s) }
-          };
-        } else if (!next[stuId].items[asgId]) {
-          next[stuId].items[asgId] = buildItem(s);
-        }
-      });
+  //       if (!next[stuId]) {
+  //         next[stuId] = {
+  //           studentMeta: s,
+  //           items: { [asgId]: buildItem(s) }
+  //         };
+  //       } else if (!next[stuId].items[asgId]) {
+  //         next[stuId].items[asgId] = buildItem(s);
+  //       }
+  //     });
 
-      return next;
+  //     return next;
+  //   });
+  // };
+const selectAll = () => {
+  const asgId = assignmentId;
+
+  setReportCart((prev) => {
+    const next = { ...prev };
+
+    allStudents.forEach((s) => {  // changed from students → allStudents
+      const stuId = String(getStudentId(s));
+
+      if (!next[stuId]) {
+        next[stuId] = {
+          studentMeta: s,
+          items: { [asgId]: buildItem(s) }
+        };
+      } else if (!next[stuId].items[asgId]) {
+        next[stuId].items[asgId] = buildItem(s);
+      }
     });
-  };
 
+    return next;
+  });
+};
   /* CLEAR ALL */
   const clearAll = () => setReportCart({});
 
@@ -297,13 +343,13 @@ await api.post(
           <div className="ma-topbar-left">
             <h1 className="ma-topbar-title">Assignment Reports</h1>
             <span className="ma-topbar-sub">
-              {students.length} students
+              {allStudents.length} students
             </span>
           </div>
 
           <div className="ma-topbar-right">
 
-            <button className="ma-send-btn" onClick={fetchStudents}>
+            <button className="ma-send-btn" onClick={() => fetchPage(page)}>
               <FiRefreshCw /> Refresh
             </button>
             
@@ -428,7 +474,7 @@ await api.post(
                   </tbody>
                 </table>
               )}
-
+<Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
             </div>
           </div>
         </div>
