@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import logo from "../assets/images/Logo.png";
+import logo from "../assets/images/Logo-removebg-preview.png";
 import "./LandingPage.css";
 
 const AppIcon = () => (
