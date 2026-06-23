@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -8,6 +8,8 @@ import {
   FiUploadCloud, FiX, FiCalendar, FiSend,FiLayers, FiAlertCircle,FiCheck
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -44,16 +46,58 @@ export default function ManagerSubmissionViewer() {
   const msInputRef = useRef();
 
   const [user,               setUser]               = useState(null);
-  const [classrooms,         setClassrooms]         = useState([]);
   const [selectedClassroom,  setSelectedClassroom]  = useState(null);
-  const [assignments,        setAssignments]        = useState([]);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
-  const [students,           setStudents]           = useState([]);
-  const [loadingAssignments, setLoadingAssignments] = useState(false);
-  const [loadingStudents,    setLoadingStudents]    = useState(false);
   const [classroomSearch,    setClassroomSearch]    = useState("");
   const [assignmentSearch,   setAssignmentSearch]   = useState("");
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
+
+  const classroomParams = useMemo(() => ({
+    personId: user?.id,
+    search: classroomSearch,
+  }), [user?.id, classroomSearch]);
+
+  const {
+    data: classrooms,
+    page: classroomPage,
+    totalPages: classroomTotalPages,
+    fetchPage: fetchClassroomPage,
+  } = usePagination("/students/my-classrooms", classroomParams, 20, "data", !!user?.id);
+
+  const assignmentParams = useMemo(() => ({
+    search: assignmentSearch,
+  }), [assignmentSearch]);
+
+  const {
+    data: assignments,
+    page: assignmentPage,
+    totalPages: assignmentTotalPages,
+    fetchPage: fetchAssignmentPage,
+    loading: loadingAssignments,
+  } = usePagination(
+    selectedClassroom ? `/manager-assignments/classroom/${selectedClassroom._id}/assignments` : "/manager-assignments/classroom/_",
+    assignmentParams,
+    10,
+    "data",
+    !!selectedClassroom?._id
+  );
+
+  const {
+    data: students,
+    page: studentPage,
+    totalPages: studentTotalPages,
+    total: studentTotal,
+    loading: loadingStudents,
+    fetchPage: fetchStudentPage,
+    setData: setStudents,
+    extra: studentExtra,
+  } = usePagination(
+    selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
+    {},
+    10,
+    "students",
+    !!selectedAssignment?._id
+  );
 
   // Mark scheme
   const [msInfo,      setMsInfo]      = useState(null);
@@ -69,29 +113,13 @@ export default function ManagerSubmissionViewer() {
   const [markingStudentId, setMarkingStudentId] = useState(null);
   const [bulkMarking,      setBulkMarking]      = useState(false);
   const [bulkProgress,     setBulkProgress]     = useState({});
-  const [bulkErrors, setBulkErrors] = useState({});
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
 
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
-  // {
-//   phase: "uploading" | "submitting" | "processing" | "done" | "error"
-//   jobId: string | null
-//   total: number
-//   skipped: { [submissionId]: { error } }
-//   results: { [submissionId]: { status: "done"|"error", result?, error? } }
-// }
+
   const batchPollRef = useRef(null); 
-// {
-//   phase: "validating" | "submitting" | "processing" | "done" | "error"
-//   jobId: string | null
-//   total: number           -- how many valid students were submitted
-//   skipped: number         -- how many were skipped (bad PDF)
-//   results: {              -- filled in after SUCCEEDED
-//     [submissionId]: { status: "done"|"error", result?, error? }
-//   }
-// }
 
 
   // Results modal
@@ -231,6 +259,13 @@ useEffect(() => {
     setErrorViewer({ open: true, title, message });
   };
 
+  const recordStudentMarkingError = (submissionId, message, raw = null) => {
+    setStudentErrors(prev => ({
+      ...prev,
+      [submissionId]: { message, raw },
+    }));
+  };
+
     const safeParse = (value) => {
     if (typeof value !== "string") return value;
 
@@ -266,6 +301,11 @@ useEffect(() => {
       return "The requested file or resource could not be found.";
     }
 
+    const errMessage = err?.message || "";
+    if (/request failed with status code 404/i.test(errMessage)) {
+      return "The requested file or resource could not be found.";
+    }
+
     return (
       errorObj?.error?.message ||
       data?.error?.message ||
@@ -273,6 +313,20 @@ useEffect(() => {
       err?.message ||
       "An unexpected error occurred."
     );
+  };
+
+  const recordMarkingErrorsForStudents = (studentList, err, fallbackMessage = "An unexpected error occurred.") => {
+    const message = err
+      ? (extractHumanError(err) || err?.message || fallbackMessage)
+      : fallbackMessage;
+    const raw = err?.response?.data ?? null;
+    (studentList || []).forEach(s => {
+      const submissionId = s?.submissionId ?? s?.student?.submissionId;
+      if (submissionId) {
+        recordStudentMarkingError(submissionId, message, raw);
+      }
+    });
+    return message;
   };
 
   // Compute effective max total
@@ -301,9 +355,6 @@ useEffect(() => {
 
   useEffect(() => {
     if (!user?.id) return;
-    api.get(`/students/my-classrooms?personId=${user.id}`)
-      .then(r => setClassrooms(r.data || []))
-      .catch(() => toast.error("Failed to load classrooms"));
     api.get("/marking/prompts")
       .then(r => setSavedPrompts(r.data || []))
       .catch(() => {});
@@ -315,6 +366,13 @@ useEffect(() => {
       })
       .catch(() => {});
   }, [user]);
+
+  useEffect(() => {
+    if (studentExtra.assignment) {
+      const a = studentExtra.assignment;
+      setMsInfo(a.markSchemeFileId ? { fileId: a.markSchemeFileId, webLink: a.markSchemeWebLink } : null);
+    }
+  }, [studentExtra.assignment]);
 
   useEffect(() => {
     if (!promptDropdownOpen) return;
@@ -342,32 +400,30 @@ useEffect(() => {
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
     setSelectedAssignment(null);
-    setStudents([]);
-    setAssignments([]);
     setMsInfo(null);
-    setLoadingAssignments(true);
-    try {
-      const res = await api.get(`/manager-assignments/classroom/${classroom._id}/assignments`);
-      setAssignments(res.data || []);
-    } catch { toast.error("Failed to load assignments"); }
-    finally   { setLoadingAssignments(false); }
   };
 
   const selectAssignment = async (assignment) => {
     setSelectedAssignment(assignment);
-    setStudents([]);
     setMsInfo(null);
     setBulkProgress({});
-    setLoadingStudents(true);
     try {
-      const [studRes, msRes] = await Promise.all([
-        api.get(`/manager-assignments/${assignment._id}/full`),
-        api.get(`/manager-assignments/${assignment._id}/markscheme`)
-      ]);
-      setStudents(studRes.data.students || []);
+      const msRes = await api.get(`/manager-assignments/${assignment._id}/markscheme`);
       setMsInfo(msRes.data.fileId ? msRes.data : null);
-    } catch { toast.error("Failed to load students"); }
-    finally   { setLoadingStudents(false); }
+    } catch { /* markscheme optional */ }
+  };
+
+  const expandClassroomSection = () => {
+    setSelectedClassroom(null);
+    setSelectedAssignment(null);
+    setMsInfo(null);
+    setBulkProgress({});
+  };
+
+  const expandAssignmentSection = () => {
+    setSelectedAssignment(null);
+    setMsInfo(null);
+    setBulkProgress({});
   };
 
   const handleMsUpload = async (file) => {
@@ -388,57 +444,57 @@ useEffect(() => {
   };
 
 
-useEffect(() => {
-  const generatePreview = async () => {
-    if (!resultModal) return;
-    if (!selectedAssignment?._id) return;
-    const db = savedResults[students.submissionId];
-    
-    const submissionId =
-      resultModal?.submissionId ||
-      resultModal?.student?.submissionId ||
-      db?.submissionId;
+  useEffect(() => {
+    const generatePreview = async () => {
+      if (!resultModal) return;
+      if (!selectedAssignment?._id) return;
+      const db = savedResults[students.submissionId];
+      
+      const submissionId =
+        resultModal?.submissionId ||
+        resultModal?.student?.submissionId ||
+        db?.submissionId;
 
-    try {
-      const pdfRes = await api.get("/submission-files/pdf", {
-        params: {
-          assignmentId: selectedAssignment._id,
-          submissionId: submissionId
-        },
-        responseType: "blob"
-      });
+      try {
+        const pdfRes = await api.get("/submission-files/pdf", {
+          params: {
+            assignmentId: selectedAssignment._id,
+            submissionId: submissionId
+          },
+          responseType: "blob"
+        });
 
-      const studentFile = new File(
-        [pdfRes.data],
-        "student.pdf",
-        { type: "application/pdf" }
-      );
+        const studentFile = new File(
+          [pdfRes.data],
+          "student.pdf",
+          { type: "application/pdf" }
+        );
 
-      const pdfBytes = await annotatePdf({
-        studentFile,
-        questions: editingQuestions,
-        totalMarks: editingQuestions.reduce(
-          (s, q) => s + q.marksAwarded,
-          0
-        ),
-        maxTotalMarks: effectiveMaxTotal,
-      });
+        const pdfBytes = await annotatePdf({
+          studentFile,
+          questions: editingQuestions,
+          totalMarks: editingQuestions.reduce(
+            (s, q) => s + q.marksAwarded,
+            0
+          ),
+          maxTotalMarks: effectiveMaxTotal,
+        });
 
-      const blob = new Blob([pdfBytes], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
 
-      setAnnotatedPreviewUrl(url);
-    } catch (err) {
-      console.error("Failed to generate preview", err);
-    }
-  };
+        setAnnotatedPreviewUrl(url);
+      } catch (err) {
+        console.error("Failed to generate preview", err);
+      }
+    };
 
-  generatePreview();
+    generatePreview();
 
-  return () => {
-    if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
-  };
-}, [resultModal, editingQuestions, effectiveMaxTotal]);
+    return () => {
+      if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
+    };
+  }, [resultModal, editingQuestions, effectiveMaxTotal]);
 
 
   const openGuidanceModal = (student = null, isBatch = false) => {
@@ -610,13 +666,11 @@ useEffect(() => {
               ? extractHumanError(err)
               : await getApiErrorMessage(err);
       
-            setStudentErrors(prev => ({
-              ...prev,
-              [student.submissionId]: {
-                message,
-                raw: err.response?.data
-              }
-            }));
+            recordStudentMarkingError(
+              student.submissionId,
+              message,
+              err.response?.data
+            );
             setSingleProgress(prev => ({
               ...prev,
               [student.submissionId]: {
@@ -714,7 +768,12 @@ useEffect(() => {
           toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
         }
       } catch (err) {
-        toast.error(err.message || "Assignment memory preparation failed");
+        const message = recordMarkingErrorsForStudents(
+          eligible,
+          err,
+          "Assignment memory preparation failed"
+        );
+        toast.error(message);
         return;
       }
     }
@@ -785,16 +844,11 @@ useEffect(() => {
         [student.submissionId]: { status: "error" }
       }));
 
-      setBulkErrors(e => ({
-        ...e,
-        [student.submissionId]: {
-          message:
-            status === 404
-              ? "Submission file not found"
-              : "Failed to load files",
-          raw: err.response?.data
-        }
-      }));
+      recordStudentMarkingError(
+        student.submissionId,
+        status === 404 ? "Submission file not found" : "Failed to load files",
+        err.response?.data
+      );
 
       continue;
     }
@@ -931,13 +985,11 @@ while (
           }
         }));
 
-        setBulkErrors(e => ({
-          ...e,
-          [student.submissionId]: {
-            message: extractHumanError(err),
-            raw: err.response?.data
-          }
-        }));
+        recordStudentMarkingError(
+          student.submissionId,
+          extractHumanError(err),
+          err.response?.data
+        );
 
         break;
       }
@@ -951,14 +1003,10 @@ while (
         }
       }));
 
-      setBulkErrors(e => ({
-        ...e,
-        [student.submissionId]: {
-          message:
-            "Failed after maximum retries. The server may be overloaded — please try again later.",
-          raw: null
-        }
-      }));
+      recordStudentMarkingError(
+        student.submissionId,
+        "Failed after maximum retries. The server may be overloaded — please try again later."
+      );
     }
   }
 
@@ -969,122 +1017,50 @@ while (
     toast.error(await getApiErrorMessage(err));
   }
   };
-const checkForActiveJob = async () => {
-  try {
-    const { data } = await api.get(
-      `/marking/mark-batch/active/${selectedAssignment._id}`
-    );
-    console.log("checkForActiveJob response:", data);
-    if (data.active) {
-      const {
-        jobId,
-        studentOrder,
-        submittedAt,
-        assignmentMemoryId,
-        geminiModel: jobModel,
-      } = data.active;
-      const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
-      console.log("restoring batch job:", jobId);
-      setBatchJob({
-        phase:       "processing",
-        jobId,
-        total:       studentOrder?.length || 0,
-        submittedAt,
-        skipped:     {},
-        results:     {},
-        mode:        "normal",
-        assignmentMemoryId: assignmentMemoryId || null,
-        geminiModel: restoredModel,
-      });
-      pollBatchJob(jobId, {
-        assignmentMemoryId,
-        mode: "normal",
-        geminiModel: restoredModel,
-      });
+  const checkForActiveJob = async () => {
+    try {
+      const { data } = await api.get(
+        `/marking/mark-batch/active/${selectedAssignment._id}`
+      );
+      console.log("checkForActiveJob response:", data);
+      if (data.active) {
+        const {
+          jobId,
+          studentOrder,
+          submittedAt,
+          assignmentMemoryId,
+          geminiModel: jobModel,
+        } = data.active;
+        const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
+        console.log("restoring batch job:", jobId);
+        setBatchJob({
+          phase:       "processing",
+          jobId,
+          total:       studentOrder?.length || 0,
+          submittedAt,
+          skipped:     {},
+          results:     {},
+          mode:        "normal",
+          assignmentMemoryId: assignmentMemoryId || null,
+          geminiModel: restoredModel,
+        });
+        pollBatchJob(jobId, {
+          assignmentMemoryId,
+          mode: "normal",
+          geminiModel: restoredModel,
+        });
+      }
+    } catch (err) {
+      console.error("checkForActiveJob:", err.message);
     }
-  } catch (err) {
-    console.error("checkForActiveJob:", err.message);
-  }
-};
-useEffect(() => {
-  if (!selectedAssignment?._id) return;
-  checkForActiveJob();
-}, [selectedAssignment?._id]); // runs whenever selected assignment changes
+    }
+
+  useEffect(() => {
+    if (!selectedAssignment?._id) return;
+    checkForActiveJob();
+  }, [selectedAssignment?._id]); // runs whenever selected assignment changes
 
 
-// ── Standalone poll — can be called any time, from anywhere ──────
-// const pollBatchJob = async (jobId) => {
-//   if (batchPollRef.current) clearInterval(batchPollRef.current);
-
-//   batchPollRef.current = setInterval(async () => {
-//     try {
-//       const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
-
-//       if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
-//         setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
-//         return;
-//       }
-
-//       clearInterval(batchPollRef.current);
-//       batchPollRef.current = null;
-
-//       if (data.state === "JOB_STATE_FAILED") {
-//         setBatchJob(prev => ({ ...prev, phase: "error" }));
-//         toast.error("Batch marking job failed.");
-//         return;
-//       }
-
-//       // JOB_STATE_SUCCEEDED — fan out results
-//       const resultMap = {};
-
-//       for (const { student, result, success, error } of data.results) {
-//         resultMap[student.submissionId] = success
-//           ? { status: "done", result }
-//           : { status: "error", error };
-
-//         if (success) {
-//           setStudents(prev =>
-//             prev.map(s => s.submissionId === student.submissionId
-//               ? {
-//                   ...s,
-//                   assignedGrade:
-//                     result?.criteriaGrade?.totalMarks ??
-//                     result?.totalMarks ??
-//                     null
-//                 }
-//               : s
-//             )
-//           );
-
-//           await api.post("/submission-files/save-results", {
-//             assignmentId:  selectedAssignment._id,
-//             submissionId:  student.submissionId,
-//             studentId:     student.studentId,
-//             studentName:   student.name,
-//             mode:          batchJob?.mode || "normal",
-//             provider:      "gemini-batch",
-//             result,
-//           }).catch(e => console.error("save-results:", e.message));
-//         }
-//       }
-
-//       setBatchJob(prev => ({
-//         ...prev,
-//         phase: "done",
-//         results: { ...prev?.results, ...resultMap },
-//       }));
-
-//       const doneCount = data.results.filter(r => r.success).length;
-//       toast.success(`Batch complete — ${doneCount} students marked.`);
-
-//     } catch (err) {
-//       clearInterval(batchPollRef.current);
-//       batchPollRef.current = null;
-//       setBatchJob(prev => ({ ...prev, phase: "error" }));
-//       toast.error(`Polling failed: ${extractHumanError(err)}`);
-//     }
-//   }, 15_000);
-// };
 
 const pollBatchJob = async (jobId, jobMeta = {}) => {
   // Clear any existing poll first
@@ -1110,8 +1086,10 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
       batchPollRef.current = null;
 
       if (data.state === "JOB_STATE_FAILED") {
+        const message = "Batch marking job failed.";
+        recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
         setBatchJob(prev => ({ ...prev, phase: "error" }));
-        toast.error("Batch marking job failed.");
+        toast.error(message);
         return;
       }
 
@@ -1135,6 +1113,14 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
         resultMap[student.submissionId] = success
           ? { status: "done", result: enrichedResult, originalAiResult }
           : { status: "error", error };
+
+        if (!success) {
+          const message =
+            typeof error === "string"
+              ? error
+              : error?.message || "Batch marking failed";
+          recordStudentMarkingError(student.submissionId, message, error);
+        }
 
         if (success) {
           setStudents(prev =>
@@ -1273,7 +1259,12 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
       toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
     }
   } catch (err) {
-    toast.error(err.message || "Assignment memory preparation failed");
+    const message = recordMarkingErrorsForStudents(
+      eligible,
+      err,
+      "Assignment memory preparation failed"
+    );
+    toast.error(message);
     return;
   }
 
@@ -1285,6 +1276,11 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     mode,
     assignmentMemoryId,
     geminiModel: selectedModel,
+    batchStudents: eligible.map(s => ({
+      submissionId: s.submissionId,
+      studentId: s.studentId,
+      name: s.name,
+    })),
   });
 
   // Step 1 — upload student PDFs (mark scheme skipped when using memory)
@@ -1301,7 +1297,12 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     });
     ({ msUri, succeeded, failed } = res.data);
   } catch (err) {
-    toast.error(`Upload failed: ${extractHumanError(err)}`);
+    const message = recordMarkingErrorsForStudents(
+      eligible,
+      err,
+      "Upload failed"
+    );
+    toast.error(`Upload failed: ${message}`);
     setBatchJob(prev => ({ ...prev, phase: "error" }));
     return;
   }
@@ -1312,12 +1313,17 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     toast.warning(`${failed.length} student(s) could not be uploaded`);
     failed.forEach(({ student, error }) => {
       skipped[student.submissionId] = { error };
+      const message =
+        typeof error === "string" ? error : error?.message || "Upload failed";
+      recordStudentMarkingError(student.submissionId, message, error);
     });
     setBatchJob(prev => ({ ...prev, skipped }));
   }
 
   if (!succeeded?.length) {
-    toast.error("No valid submissions to mark.");
+    const message = "No valid submissions to mark.";
+    recordMarkingErrorsForStudents(eligible, null, message);
+    toast.error(message);
     setBatchJob(prev => ({ ...prev, phase: "error" }));
     return;
   }
@@ -1347,15 +1353,30 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     jobId = err.response.data.jobId;
     toast.info("Resuming existing batch job...");
     }else {
-    toast.error(`Batch submission failed: ${extractHumanError(err)}`);
+    const message = recordMarkingErrorsForStudents(
+      succeeded.map(r => r.student),
+      err,
+      "Batch submission failed"
+    );
+    toast.error(`Batch submission failed: ${message}`);
     setBatchJob(prev => ({ ...prev, phase: "error" }));
     return;
   }}
 
-  setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
+  setBatchJob(prev => ({
+    ...prev,
+    phase: "processing",
+    jobId,
+    batchStudents: succeeded.map(r => r.student),
+  }));
 
   // Step 3 — hand off to standalone poller
-  pollBatchJob(jobId, { assignmentMemoryId, mode, geminiModel: selectedModel });
+  pollBatchJob(jobId, {
+    assignmentMemoryId,
+    mode,
+    geminiModel: selectedModel ,
+    batchStudents: succeeded.map(r => r.student),
+  });
 };
 
 
@@ -1601,13 +1622,9 @@ useEffect(() => {
     }).catch(() => toast.error("Failed to download PDF"));
   };
 
-  const filteredClassrooms  = classrooms.filter(c =>
-    `${c.name} ${c.section || ""}`.toLowerCase().includes(classroomSearch.toLowerCase())
-  );
-  const filteredAssignments = assignments.filter(a =>
-    a.title.toLowerCase().includes(assignmentSearch.toLowerCase())
-  );
-    const formatError = (err) => {
+  const filteredClassrooms  = classrooms;
+  const filteredAssignments = assignments;
+  const formatError = (err) => {
     if (!err) return "Unknown error";
 
     if (typeof err === "string") {
@@ -1746,54 +1763,91 @@ useEffect(() => {
         </header>
 
         <div className="ma-content">
-          <div className="ma-layout">
+          <div className="ma-layout msv-collapsible-layout">
 
             {/* ── CLASSROOMS ── */}
-            <div className="ma-column">
-              <p className="ma-section-label">Classrooms</p>
-              <input className="ma-search-input" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
-              <div className="ma-scroll-list">
-                {filteredClassrooms.map(c => (
-                  <div key={c._id} className={`ma-classroom-card ${selectedClassroom?._id === c._id ? "ma-classroom-card--active" : ""}`} onClick={() => selectClassroom(c)}>
-                    <div className="ma-classroom-icon"><FiUsers size={15} /></div>
-                    <div className="ma-classroom-info">
-                      <span className="ma-classroom-name">{c.name}</span>
-                      {c.section && <span className="ma-classroom-section">{c.section}</span>}
+            {!selectedClassroom ? (
+              <div className="ma-column">
+                <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
+                <input className="ma-search-input" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
+                <div className="ma-scroll-list">
+                  {filteredClassrooms.map(c => (
+                    <div key={c._id} className={`ma-classroom-card ${selectedClassroom?._id === c._id ? "ma-classroom-card--active" : ""}`} onClick={() => selectClassroom(c)}>
+                      <div className="ma-classroom-icon"><FiUsers size={15} /></div>
+                      <div className="ma-classroom-info">
+                        <span className="ma-classroom-name">{c.name}</span>
+                        {c.section && <span className="ma-classroom-section">{c.section}</span>}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <Pagination page={classroomPage} totalPages={classroomTotalPages} onPageChange={fetchClassroomPage} />
               </div>
-            </div>
+            ) : (
+              <div
+                className="msv-section-collapsed"
+                onClick={expandClassroomSection}
+                onKeyDown={(e) => e.key === "Enter" && expandClassroomSection()}
+                role="button"
+                tabIndex={0}
+              >
+                <span className="msv-section-collapsed-chevron">▶</span>
+                <span className="msv-section-collapsed-text">Classroom: {selectedClassroom.name}</span>
+                <button
+                  type="button"
+                  className="msv-section-change"
+                  onClick={(e) => { e.stopPropagation(); expandClassroomSection(); }}
+                >
+                  [change]
+                </button>
+              </div>
+            )}
 
             {/* ── ASSIGNMENTS ── */}
-            <div className="ma-column">
-              <p className="ma-section-label">Assignments</p>
-              <input className="ma-search-input" placeholder="Search assignments..." value={assignmentSearch} onChange={e => setAssignmentSearch(e.target.value)} disabled={!selectedClassroom} />
-              <div className="ma-scroll-list">
-                {!selectedClassroom ? (
-                  <p className="ma-empty-msg">Select classroom first</p>
-                ) : loadingAssignments ? (
-                  <p className="ma-loading-msg">Loading...</p>
-                ) : filteredAssignments.map(a => (
-                  <div key={a._id} className={`ma-assignment-card ${selectedAssignment?._id === a._id ? "ma-assignment-card--active" : ""}`} onClick={() => selectAssignment(a)}>
-                    <div className="ma-assignment-icon"><FiClipboard size={14} /></div>
-                    <div className="ma-assignment-info">
-                      <span className="ma-assignment-title">{a.title}</span>
-                      {a.dueDate && <span className="ma-assignment-due"><FiCalendar size={10} />{new Date(a.dueDate).toLocaleDateString()}</span>}
-                    </div>
+            {selectedClassroom && (
+              !selectedAssignment ? (
+                <div className="ma-column">
+                  <p className="ma-section-label msv-section-header-expanded">▼ Select Assignment</p>
+                  <input className="ma-search-input" placeholder="Search assignments..." value={assignmentSearch} onChange={e => setAssignmentSearch(e.target.value)} />
+                  <div className="ma-scroll-list">
+                    {loadingAssignments ? (
+                      <p className="ma-loading-msg">Loading...</p>
+                    ) : filteredAssignments.map(a => (
+                      <div key={a._id} className={`ma-assignment-card ${selectedAssignment?._id === a._id ? "ma-assignment-card--active" : ""}`} onClick={() => selectAssignment(a)}>
+                        <div className="ma-assignment-icon"><FiClipboard size={14} /></div>
+                        <div className="ma-assignment-info">
+                          <span className="ma-assignment-title">{a.title}</span>
+                          {a.dueDate && <span className="ma-assignment-due"><FiCalendar size={10} />{new Date(a.dueDate).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── STUDENTS ── */}
-            <div className="ma-right-panel">
-              {!selectedAssignment ? (
-                <div className="ma-empty-state">
-                  <FiClipboard size={40} />
-                  <p>Select assignment to view students</p>
+                  <Pagination page={assignmentPage} totalPages={assignmentTotalPages} onPageChange={fetchAssignmentPage} />
                 </div>
               ) : (
+                <div
+                  className="msv-section-collapsed"
+                  onClick={expandAssignmentSection}
+                  onKeyDown={(e) => e.key === "Enter" && expandAssignmentSection()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="msv-section-collapsed-chevron">▶</span>
+                  <span className="msv-section-collapsed-text">Assignment: {selectedAssignment.title}</span>
+                  <button
+                    type="button"
+                    className="msv-section-change"
+                    onClick={(e) => { e.stopPropagation(); expandAssignmentSection(); }}
+                  >
+                    [change]
+                  </button>
+                </div>
+              )
+            )}
+
+            {/* ── STUDENTS / SUBMISSIONS ── */}
+            {selectedAssignment && (
+            <div className="ma-right-panel msv-right-panel-full">
                 <div className="ma-panel">
                   <div className="msv-ms-bar">
                     <div className="msv-ms-info">
@@ -1952,7 +2006,7 @@ useEffect(() => {
                     <div className="ma-panel-title-wrap">
                       <div className="ma-panel-dot" />
                       <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
-                      <span className="ma-panel-count">{students.length} students</span>
+                      <span className="ma-panel-count">{studentTotal} students</span>
                     </div>
                   </div>
 
@@ -2030,6 +2084,21 @@ useEffect(() => {
                                       <div className="msv-actions">
                                         <button className="msv-action-btn" title="View PDF" onClick={() => openPdf(s)}><FiEye size={13} /></button>
                                         <button className="msv-action-btn" title="Download PDF" onClick={() => downloadPdf(s)}><FiDownload size={13} /></button>
+
+                                        {studentErrors[s.submissionId] && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--view"
+                                            title="View Error"
+                                            onClick={() =>
+                                              openErrorViewer(
+                                                `Marking Failed - ${s.name}`,
+                                                studentErrors[s.submissionId].message
+                                              )
+                                            }
+                                          >
+                                            View Error
+                                          </button>
+                                        )}
                                         
                                         {msInfo && (
                                          <>
@@ -2095,32 +2164,6 @@ useEffect(() => {
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
 
-                                        {studentErrors[s.submissionId] && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--view"
-                                            title="View Error"
-                                            onClick={() =>
-                                              openErrorViewer(
-                                                `Marking Failed - ${s.name}`,
-                                                studentErrors[s.submissionId].message
-                                              )
-                                            }
-                                          >
-                                            View Error
-                                          </button>
-                                        )}
-                                        {bulkError && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--view"
-                                            title="View Error"
-                                            onClick={() =>
-                                              openErrorViewer(`Marking Failed - ${s.name}`, bulkErrors[s.submissionId].message)
-                                            }
-                                          >
-                                            View Error
-                                          </button>
-                                        )}
-
                                         {inlineMarkResult?.tokenUsage && (
                                           <TokenUsageStats result={inlineMarkResult} compact />
                                         )}
@@ -2170,9 +2213,12 @@ useEffect(() => {
                       </div>
                     </div>
                   )}
+                  {!loadingStudents && students.length > 0 && (
+                    <Pagination page={studentPage} totalPages={studentTotalPages} onPageChange={fetchStudentPage} />
+                  )}
                 </div>
-              )}
             </div>
+            )}
           </div>
         </div>
       </main>
@@ -2881,4 +2927,4 @@ useEffect(() => {
       )}
     </div>
   );
-}
+};

@@ -1,34 +1,38 @@
 import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorClassroomManagers.css";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 export default function DirectorManagers() {
-  const [classrooms, setClassrooms] = useState([]);
+  const { data: classrooms, page, totalPages, fetchPage: fetchClassroomsPage } =
+    usePagination("/classrooms", {}, 10);
   const [people, setPeople] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [selectedManagers, setSelectedManagers] = useState({});
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadSupportData(); }, []);
 
-  const loadData = async () => {
-    const [classroomsRes, peopleRes, assignmentsRes] = await Promise.all([
-      api.get("/classrooms"),
-      api.get("/people"),
-      api.get("/classroom-managers"),
+  const loadSupportData = async () => {
+    const [peopleRes, assignmentsRes] = await Promise.all([
+      api.get("/people", { params: { page: 1, limit: 5000 } }),
+      api.get("/classroom-managers", { params: { page: 1, limit: 5000 } }),
     ]);
 
-    const rooms = classroomsRes.data || [];
-    const persons = peopleRes.data || [];
-    const assigns = assignmentsRes.data || [];
+    const persons = peopleRes.data.data || [];
+    const assigns = assignmentsRes.data.data || [];
 
-    setClassrooms(rooms);
     setPeople(persons);
     setAssignments(assigns);
 
     const map = {};
     assigns.forEach((a) => { map[a.classroomId?._id] = a.personId?._id; });
     setSelectedManagers(map);
+  };
+
+  const reload = async () => {
+    await Promise.all([fetchClassroomsPage(page), loadSupportData()]);
   };
 
   const managers = people.filter(
@@ -45,7 +49,7 @@ export default function DirectorManagers() {
     try {
       setLoading(true);
       await api.post("/classroom-managers", { personId, classroomId });
-      await loadData();
+      await reload();
     } catch {
       alert("Assignment failed");
     } finally {
@@ -59,7 +63,7 @@ export default function DirectorManagers() {
     try {
       setLoading(true);
       await api.put("/classroom-managers", { personId, classroomId });
-      await loadData();
+      await reload();
     } catch {
       alert("Change failed");
     } finally {
@@ -71,7 +75,7 @@ export default function DirectorManagers() {
     try {
       setLoading(true);
       await api.delete("/classroom-managers", { data: { classroomId } });
-      await loadData();
+      await reload();
     } catch {
       alert("Remove failed");
     } finally {
@@ -159,6 +163,8 @@ export default function DirectorManagers() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={fetchClassroomsPage} />
 
       {loading && <div className="dm-loading">Processing...</div>}
     </div>

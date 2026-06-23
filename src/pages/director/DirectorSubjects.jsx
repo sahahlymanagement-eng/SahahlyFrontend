@@ -45,11 +45,11 @@ export default function DirectorSubjects() {
     try {
       const [subjectsRes, classroomsRes] = await Promise.all([
         api.get("/subjects"),
-        api.get("/classrooms")
+        api.get("/classrooms", { params: { page: 1, limit: 5000 } })
       ]);
 
       const subs = (subjectsRes.data || []).filter((s) => s.isActive !== false);
-      const rooms = classroomsRes.data || [];
+      const rooms = classroomsRes.data.data || [];
 
       setSubjects(subs);
       setClassrooms(rooms);

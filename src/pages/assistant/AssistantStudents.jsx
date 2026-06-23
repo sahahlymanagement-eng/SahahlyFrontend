@@ -8,31 +8,41 @@ import { FiEdit2, FiCheck, FiX, FiRefreshCw, FiUsers } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 
 import "../manager/ManagerStudents.css";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 export default function AssistantStudents() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();   
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // const [students, setStudents] = useState([]);
+  // const [loading, setLoading] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  useEffect(() => {
-    if (!assignmentId) return;
-    fetchStudents();
-  }, [assignmentId]);
+  // useEffect(() => {
+  //   if (!assignmentId) return;
+  //   fetchStudents();
+  // }, [assignmentId]);
 
-const fetchStudents = async () => 
-  { setLoading(true); 
-    try { 
-      const res = await api.get( `/assignment-submissions/${assignmentId}/students` ); 
-      setStudents(res.data.students || []); 
-    } 
-    catch { 
-      toast.error("Failed to load students"); 
-    } finally { setLoading(false); } };
-  /* EDIT */
+// const fetchStudents = async () => 
+//   { setLoading(true); 
+//     try { 
+//       const res = await api.get( `/assignment-submissions/${assignmentId}/students` ); 
+//       setStudents(res.data.students || []); 
+//     } 
+//     catch { 
+//       toast.error("Failed to load students"); 
+//     } finally { setLoading(false); } };
+ const { data: students, page, totalPages, loading, fetchPage, setData: setStudents } =
+  usePagination(
+    `/assignment-submissions/${assignmentId}/students`,
+    {},
+    10,
+    "students",
+    !!assignmentId
+  );
+/* EDIT */
   const startEdit = (s) => {
     setEditingId(s.studentId);
     setEditForm({
@@ -97,7 +107,7 @@ setStudents((prev) =>
                 ← Back
               </button>
             
-            <button className="ma-send-btn" onClick={fetchStudents}>
+            <button className="ma-send-btn" onClick={() => fetchPage(page)}>
               <FiRefreshCw /> Refresh
             </button>
 
@@ -136,7 +146,7 @@ setStudents((prev) =>
                       return (
                         <tr key={s.studentId} className="ms-row">
 
-                          <td>{i + 1}</td>
+                          <td>{(page - 1) * 10 + i + 1}</td>
 
                           {isEditing ? (
                             <>
@@ -259,8 +269,9 @@ setStudents((prev) =>
                   </tbody>
 
                 </table>
+                
               )}
-
+<Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
             </div>
           </div>
         </div>
