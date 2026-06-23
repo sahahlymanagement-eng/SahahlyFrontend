@@ -15,10 +15,12 @@ import {
   assertPdfBlob,
   buildFinalMarkingResult,
   buildBatchMarkingResult,
+  buildNoSubmissionMarkingResult,
   currentUserId,
   getApiErrorMessage,
   guidanceForForm,
   hasTeacherEdits,
+  isStudentSubmitted,
   normalizeGuidance,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
@@ -690,13 +692,16 @@ useEffect(() => {
     );
 
     const eligible = students.filter(
-      s => s.submissionId && backendEligible.has(s.submissionId)
+      s =>
+        s.submissionId &&
+        backendEligible.has(s.submissionId) &&
+        isStudentSubmitted(s.state)
     );
     
     if (!eligible.length) {
-      const withSubmissions = students.filter((s) => s.submissionId);
-      if (!withSubmissions.length) {
-        return toast.warn("No students with submissions");
+      const submitted = students.filter((s) => isStudentSubmitted(s.state));
+      if (!submitted.length) {
+        return toast.warn("No students have submitted this assignment yet");
       }
       return toast.warn("All submitted students are already marked for this assignment");
     }
@@ -753,6 +758,50 @@ useEffect(() => {
         );
       } catch (err) {
       const status = err?.response?.status;
+      const loadMessage = await getApiErrorMessage(err);
+      const noPdf =
+        status === 404 ||
+        /no pdf|no attachment/i.test(loadMessage);
+
+      if (noPdf && isStudentSubmitted(student.state)) {
+        const zeroResult = buildNoSubmissionMarkingResult({
+          markingMode: mode,
+          maxTotalMarks: selectedAssignment.maxPoints,
+        });
+        try {
+          await api.post("/submission-files/save-results", {
+            assignmentId: selectedAssignment._id,
+            submissionId: student.submissionId,
+            studentId: student.studentId,
+            studentName: student.name,
+            mode,
+            provider,
+            result: zeroResult,
+          });
+        } catch (saveErr) {
+          console.error("save zero result:", saveErr);
+        }
+
+        setBulkProgress(p => ({
+          ...p,
+          [student.submissionId]: {
+            status: "done",
+            result: zeroResult,
+          },
+        }));
+        setStudents(prev =>
+          prev.map(s =>
+            s.submissionId === student.submissionId
+              ? { ...s, assignedGrade: 0 }
+              : s
+          )
+        );
+        continue;
+      }
+
+      if (noPdf) {
+        continue;
+      }
 
       setBulkProgress(p => ({
         ...p,
@@ -761,7 +810,7 @@ useEffect(() => {
 
       recordStudentMarkingError(
         student.submissionId,
-        status === 404 ? "Submission file not found" : "Failed to load files",
+        loadMessage || "Failed to load files",
         err.response?.data
       );
 
@@ -1106,7 +1155,10 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     );
     const backendEligible = new Set(res.data.map((s) => s.submissionId));
     eligible = students.filter(
-      (s) => s.submissionId && backendEligible.has(s.submissionId)
+      (s) =>
+        s.submissionId &&
+        backendEligible.has(s.submissionId) &&
+        isStudentSubmitted(s.state)
     );
   } catch (err) {
     toast.error(extractHumanError(err) || "Failed to check eligible students");
@@ -1114,9 +1166,9 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   }
 
   if (!eligible.length) {
-    const withSubmissions = students.filter((s) => s.submissionId);
-    if (!withSubmissions.length) {
-      return toast.warn("No students with submissions");
+    const submitted = students.filter((s) => isStudentSubmitted(s.state));
+    if (!submitted.length) {
+      return toast.warn("No students have submitted this assignment yet");
     }
     return toast.warn("All submitted students are already marked for this assignment");
   }
@@ -1139,17 +1191,19 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   });
 
   // Step 1 — upload student PDFs + mark scheme
-  let msUri, succeeded, failed;
+  let msUri, succeeded, failed, zeroed;
   try {
     const res = await api.post("/marking/mark-batch/upload", {
       assignmentId: selectedAssignment._id,
+      markingMode: mode,
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
         name:         s.name,
+        state:        s.state,
       })),
     });
-    ({ msUri, succeeded, failed } = res.data);
+    ({ msUri, succeeded, failed, zeroed } = res.data);
   } catch (err) {
     const message = recordMarkingErrorsForStudents(
       eligible,
@@ -1167,6 +1221,29 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     return;
   }
 
+  if (zeroed?.length) {
+    const zeroedResults = {};
+    zeroed.forEach(({ student, result }) => {
+      zeroedResults[student.submissionId] = {
+        status: "done",
+        result,
+        originalAiResult: JSON.parse(JSON.stringify(result)),
+      };
+    });
+    setBatchJob(prev => ({
+      ...prev,
+      results: { ...prev.results, ...zeroedResults },
+    }));
+    setStudents(prev =>
+      prev.map(s =>
+        zeroedResults[s.submissionId]
+          ? { ...s, assignedGrade: 0 }
+          : s
+      )
+    );
+    toast.info(`${zeroed.length} student(s) with no PDF — awarded 0 marks`);
+  }
+
   // Surface upload failures immediately
   const skipped = {};
   if (failed?.length) {
@@ -1181,6 +1258,11 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   }
 
   if (!succeeded?.length) {
+    if (zeroed?.length) {
+      setBatchJob(prev => ({ ...prev, phase: "done" }));
+      toast.success(`Batch complete — ${zeroed.length} student(s) awarded 0 (no submission PDF).`);
+      return;
+    }
     const message = "No valid submissions to mark.";
     recordMarkingErrorsForStudents(eligible, null, message);
     toast.error(message);

@@ -23,10 +23,12 @@ import {
   appendMarkingContext,
   assertPdfBlob,
   buildFinalMarkingResult,
+  buildNoSubmissionMarkingResult,
   currentUserId,
   getApiErrorMessage,
   guidanceForForm,
   hasTeacherEdits,
+  isStudentSubmitted,
   normalizeGuidance,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
@@ -628,13 +630,16 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
     );
 
     const eligible = students.filter(
-      s => s.submissionId && backendEligible.has(s.submissionId)
+      s =>
+        s.submissionId &&
+        backendEligible.has(s.submissionId) &&
+        isStudentSubmitted(s.state)
     );
     
     if (!eligible.length) {
-      const withSubmissions = students.filter((s) => s.submissionId);
-      if (!withSubmissions.length) {
-        return toast.warn("No students with submissions");
+      const submitted = students.filter((s) => isStudentSubmitted(s.state));
+      if (!submitted.length) {
+        return toast.warn("No students have submitted this assignment yet");
       }
       return toast.warn("All submitted students are already marked for this assignment");
     }
@@ -691,6 +696,50 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
 
       } catch (err) {
         const status = err?.response?.status;
+        const loadMessage = await getApiErrorMessage(err);
+        const noPdf =
+          status === 404 ||
+          /no pdf|no attachment/i.test(loadMessage);
+
+        if (noPdf && isStudentSubmitted(student.state)) {
+          const zeroResult = buildNoSubmissionMarkingResult({
+            markingMode: mode,
+            maxTotalMarks: maxGrade,
+          });
+          try {
+            await api.post("/submission-files/save-results", {
+              assignmentId,
+              submissionId: student.submissionId,
+              studentId: student.studentId,
+              studentName: student.name,
+              mode,
+              provider,
+              result: zeroResult,
+            });
+          } catch (saveErr) {
+            console.error("save zero result:", saveErr);
+          }
+
+          setBulkProgress(p => ({
+            ...p,
+            [student.submissionId]: {
+              status: "done",
+              result: zeroResult,
+            },
+          }));
+          setStudents(prev =>
+            prev.map(s =>
+              s.submissionId === student.submissionId
+                ? { ...s, assignedGrade: 0 }
+                : s
+            )
+          );
+          continue;
+        }
+
+        if (noPdf) {
+          continue;
+        }
 
         setBulkProgress(p => ({
           ...p,
@@ -699,7 +748,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
 
         recordStudentMarkingError(
           student.submissionId,
-          status === 404 ? "Submission file not found" : "Failed to load files",
+          loadMessage || "Failed to load files",
           err.response?.data
         );
 

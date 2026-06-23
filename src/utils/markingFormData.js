@@ -193,6 +193,51 @@ export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
 }
 
+export function isStudentSubmitted(state) {
+  return state === "TURNED_IN" || state === "RETURNED";
+}
+
+export function buildNoSubmissionMarkingResult({
+  markingMode = "normal",
+  maxTotalMarks = null,
+} = {}) {
+  const max = maxTotalMarks != null ? Number(maxTotalMarks) : 0;
+  const summary = "Student submitted but no PDF was attached — awarded 0 marks.";
+
+  if (markingMode === "criteria") {
+    return {
+      markingMode,
+      questions: [],
+      criteriaGrade: {
+        breakdown: [],
+        totalMarks: 0,
+        maxTotalMarks: max,
+        summary,
+      },
+      totalMarks: 0,
+      maxTotalMarks: max,
+      summary,
+      noSubmission: true,
+    };
+  }
+
+  return {
+    markingMode,
+    questions: [],
+    totalMarks: 0,
+    maxTotalMarks: max,
+    summary,
+    noSubmission: true,
+    checklist: {
+      scanningClarity: false,
+      handwritingClarity: false,
+      markSchemeUnderstanding: true,
+      studentAnswerUnderstanding: false,
+      answerIsBlank: true,
+    },
+  };
+}
+
 
 
 export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel) {
