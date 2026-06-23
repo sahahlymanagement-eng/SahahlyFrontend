@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorPeople.css";
 import { toast } from "react-toastify";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 import {
   FiUsers,
@@ -20,7 +22,8 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
 export default function DirectorPeople() {
-  const [people, setPeople] = useState([]);
+  const { data: people, page, totalPages, fetchPage, setData: setPeople } =
+    usePagination("/people", {}, 10);
   const [roles, setRoles] = useState([]);
   const [subjects, setSubjects] = useState([]);
 
@@ -40,23 +43,21 @@ export default function DirectorPeople() {
   const [editPhone, setEditPhone] = useState("");
 
   useEffect(() => {
-    loadInitialData();
+    loadRolesAndSubjects();
   }, []);
 
-  const loadInitialData = async () => {
-    const [rolesRes, subjectsRes, peopleRes] = await Promise.all([
+  useEffect(() => {
+    people.forEach((p) => loadRoleSubjects(p._id));
+  }, [people]);
+
+  const loadRolesAndSubjects = async () => {
+    const [rolesRes, subjectsRes] = await Promise.all([
       api.get("/roles"),
       api.get("/subjects?active=true"),
-      api.get("/people")
     ]);
 
     setRoles(rolesRes.data || []);
     setSubjects(subjectsRes.data || []);
-
-    const list = peopleRes.data || [];
-    setPeople(list);
-
-    list.forEach((p) => loadRoleSubjects(p._id));
   };
 
   const loadRoleSubjects = async (personId) => {
@@ -111,7 +112,7 @@ export default function DirectorPeople() {
       setPhoneValue("");
 
       toast.success("Person created successfully");
-      await loadInitialData();
+      await fetchPage(1);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create person");
     } finally {
@@ -157,7 +158,7 @@ export default function DirectorPeople() {
 
       toast.success("Person updated successfully");
       closeEdit();
-      await loadInitialData();
+      await fetchPage(1);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to update person");
     } finally {
@@ -182,7 +183,7 @@ export default function DirectorPeople() {
                   setLoading(true);
                   await api.delete(`/people/${person._id}`);
                   toast.success("Person deleted successfully");
-                  await loadInitialData();
+                  await fetchPage(1);
                 } catch (err) {
                   toast.error(err.response?.data?.message || "Failed to delete person");
                 } finally {
@@ -216,7 +217,7 @@ export default function DirectorPeople() {
       setLoading(true);
       await api.patch(`/people/${person._id}/${action}`);
       toast.success(`Person ${isDisabled ? "enabled" : "disabled"} successfully`);
-      await loadInitialData();
+      await fetchPage(1);
     } catch (err) {
       toast.error(err.response?.data?.message || `Failed to ${action} person`);
     } finally {
@@ -230,7 +231,7 @@ export default function DirectorPeople() {
     try {
       setLoading(true);
       await api.patch(`/people/${personId}/assign-role`, { roleId });
-      await loadInitialData();
+      await fetchPage(1);
     } finally {
       setLoading(false);
     }
@@ -444,6 +445,8 @@ export default function DirectorPeople() {
             );
           })}
         </div>
+
+        <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
 
         {loading && <p className="loading">Processing...</p>}
       </div>

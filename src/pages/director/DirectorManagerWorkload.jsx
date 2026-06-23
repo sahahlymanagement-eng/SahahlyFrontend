@@ -30,12 +30,12 @@ try{
 setLoading(true);
 
 const [peopleRes, classroomManagersRes] = await Promise.all([
-api.get("/people"),
-api.get("/classroom-managers")
+api.get("/people", { params: { page: 1, limit: 5000 } }),
+api.get("/classroom-managers", { params: { page: 1, limit: 5000 } })
 ]);
 
-const people = peopleRes.data || [];
-const classroomManagers = classroomManagersRes.data || [];
+const people = peopleRes.data.data || [];
+const classroomManagers = classroomManagersRes.data.data || [];
 
 const managers = people.filter(p=>{
 const role = typeof p.roleId === "object" ? p.roleId?.name?.toLowerCase() : "";
@@ -68,7 +68,7 @@ classroomIds.map(id => api.get(`/assignments?classroomId=${id}`));
 const responses = await Promise.all(assignmentRequests);
 
 const allAssignments =
-responses.flatMap(r => r.data || []);
+responses.flatMap(r => r.data?.data || r.data || []);
 
 const totalAssignments = allAssignments.length;
 

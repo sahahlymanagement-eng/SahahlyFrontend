@@ -4,6 +4,10 @@ import { toast } from "react-toastify";
 import api from "../../api/api";
 import "./AssistantAssignments.css";
 
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
+
+
 import {
   FiArrowLeft,
   FiFilter,
@@ -15,8 +19,8 @@ export default function AssistantAssignments() {
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
-  const [assignments, setAssignments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // const [assignments, setAssignments] = useState([]);
+  // const [loading, setLoading] = useState(true);
 
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [classroomFilter, setClassroomFilter] = useState("ALL");
@@ -46,72 +50,67 @@ export default function AssistantAssignments() {
 
   /* HELPERS */
 
-  const getAllStudentsGraded = async (assignmentId) => {
-    try {
-      const res = await api.get(
-        `/assignment-submissions/${assignmentId}/students`
-      );
+    const params = useMemo(() => ({
+    personId: user?.id,
+    status: statusFilter,
+    classroom: classroomFilter,
+    search
+  }), [user?.id, statusFilter, classroomFilter, search]);
 
-      const students = res.data.students || [];
-
-      return (
-        students.length > 0 &&
-        students
-          .filter((s) => s.submissionId)
-          .every((s) => s.assignedGrade != null)
-      );
-    } catch (err) {
-      console.error("getAllStudentsGraded error:", err);
-      return false;
-    }
-  };
+  const { data: assignments, page, totalPages, loading, fetchPage } =
+    usePagination(
+      "/assignment-workflow/assistant/assignments", 
+      params,
+      10,
+      "data",
+      !!user?.id );
 
   /* LOAD */
 
-  const loadAssignments = async (personId) => {
-    try {
-      setLoading(true);
+  // const loadAssignments = async (personId) => {
+  //   try {
+  //     setLoading(true);
 
-      const res = await api.get(
-        "/assignment-workflow/assistant/assignments",
-        {
-          params: { personId },
-        }
-      );
+  //     const res = await api.get(
+  //       "/assignment-workflow/assistant/assignments",
+  //       {
+  //         params: { personId },
+  //       }
+  //     );
 
-      const baseAssignments = Array.isArray(res.data)
-        ? res.data
-        : [];
+  //     const baseAssignments = Array.isArray(res.data)
+  //       ? res.data
+  //       : [];
 
-      const enriched = await Promise.all(
-        baseAssignments.map(async (assignment) => {
-          const done = await getAllStudentsGraded(
-            assignment._id
-          );
+  //     const enriched = await Promise.all(
+  //       baseAssignments.map(async (assignment) => {
+  //         const done = await getAllStudentsGraded(
+  //           assignment._id
+  //         );
 
-          return {
-            ...assignment,
-            allStudentsGraded: done,
-          };
-        })
-      );
+  //         return {
+  //           ...assignment,
+  //           allStudentsGraded: done,
+  //         };
+  //       })
+  //     );
 
-      setAssignments(enriched);
-    } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-          "Failed to load assignments"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  //     setAssignments(enriched);
+  //   } catch (err) {
+  //     toast.error(
+  //       err.response?.data?.message ||
+  //         "Failed to load assignments"
+  //     );
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
-  useEffect(() => {
-    if (!user?.id) return;
+  // useEffect(() => {
+  //   if (!user?.id) return;
 
-    loadAssignments(user.id);
-  }, [user?.id]);
+  //   loadAssignments(user.id);
+  // }, [user?.id]);
 
   /* SUBMIT */
 
@@ -126,7 +125,7 @@ export default function AssistantAssignments() {
 
       toast.success("Submitted to Quality Team");
 
-      loadAssignments(user.id);
+      fetchPage(page);
     } catch (err) {
       toast.error(
         err.response?.data?.message || "Submit failed"
@@ -136,45 +135,45 @@ export default function AssistantAssignments() {
 
   /* FILTERED DATA */
 
-  const filteredAssignments = useMemo(() => {
-    return assignments.filter((assignment) => {
-      const teacherName =
-        assignment.classroomId?.teacherId?.name || "";
+  // const filteredAssignments = useMemo(() => {
+  //   return assignments.filter((assignment) => {
+  //     const teacherName =
+  //       assignment.classroomId?.teacherId?.name || "";
 
-      if (
-        statusFilter !== "ALL" &&
-        assignment.assistantStatus !== statusFilter
-      ) {
-        return false;
-      }
+  //     if (
+  //       statusFilter !== "ALL" &&
+  //       assignment.assistantStatus !== statusFilter
+  //     ) {
+  //       return false;
+  //     }
 
-      if (
-        classroomFilter !== "ALL" &&
-        assignment.classroomId?.name !== classroomFilter
-      ) {
-        return false;
-      }
+  //     if (
+  //       classroomFilter !== "ALL" &&
+  //       assignment.classroomId?.name !== classroomFilter
+  //     ) {
+  //       return false;
+  //     }
 
-      if (search) {
-        const s = search.toLowerCase();
+  //     if (search) {
+  //       const s = search.toLowerCase();
 
-        return (
-          assignment.title?.toLowerCase().includes(s) ||
-          teacherName.toLowerCase().includes(s) ||
-          assignment.classroomId?.name
-            ?.toLowerCase()
-            .includes(s)
-        );
-      }
+  //       return (
+  //         assignment.title?.toLowerCase().includes(s) ||
+  //         teacherName.toLowerCase().includes(s) ||
+  //         assignment.classroomId?.name
+  //           ?.toLowerCase()
+  //           .includes(s)
+  //       );
+  //     }
 
-      return true;
-    });
-  }, [
-    assignments,
-    statusFilter,
-    classroomFilter,
-    search,
-  ]);
+  //     return true;
+  //   });
+  // }, [
+  //   assignments,
+  //   statusFilter,
+  //   classroomFilter,
+  //   search,
+  // ]);
 
   /* UNIQUE CLASSROOMS */
 
@@ -308,7 +307,7 @@ export default function AssistantAssignments() {
               </tr>
             )}
 
-            {!loading &&
+            {/* {!loading &&
               filteredAssignments.length === 0 && (
                 <tr>
                   <td
@@ -318,9 +317,9 @@ export default function AssistantAssignments() {
                     No assignments found
                   </td>
                 </tr>
-              )}
+              )} */}
 
-            {filteredAssignments.map(
+            {assignments.map(
               (assignment) => {
                 const teacher =
                   assignment.classroomId
@@ -431,6 +430,7 @@ export default function AssistantAssignments() {
             )}
           </tbody>
         </table>
+        <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
       </div>
     </div>
   );

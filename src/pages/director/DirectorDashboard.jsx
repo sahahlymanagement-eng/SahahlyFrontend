@@ -41,8 +41,8 @@ export default function DirectorDashboard() {
 
   const loadStats = async () => {
     try {
-      const res = await api.get("/people");
-      const people = res.data || [];
+      const res = await api.get("/people", { params: { page: 1, limit: 5000 } });
+      const people = res.data.data || [];
 
       const managers = people.filter(
         (p) => p.roleId?.name?.trim().toLowerCase() === "manager"

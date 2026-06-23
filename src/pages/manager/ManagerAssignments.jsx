@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -12,6 +12,8 @@ import {
 } from "react-icons/fi";
 
 import ManagerSidebar from "../../components/ManagerSidebar";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 
 export default function ManagerAssignments() {
@@ -19,15 +21,11 @@ export default function ManagerAssignments() {
   const [user, setUser] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const [classrooms, setClassrooms] = useState([]);
   const [selectedClassroom, setSelectedClassroom] = useState(null);
 
-  const [assignments, setAssignments] = useState([]);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
 
-  const [students, setStudents] = useState([]);
-  const [loadingStudents, setLoadingStudents] = useState(false);
-  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [summaryMap, setSummaryMap] = useState({});
 
   const [reportCart, setReportCart] = useState({});
   const [sending, setSending] = useState(false);
@@ -37,8 +35,58 @@ export default function ManagerAssignments() {
 
   const [customPhone, setCustomPhone] = useState("");
   const [selectedCountryCode, setSelectedCountryCode] = useState("20");
-  const [summaryMap, setSummaryMap] = useState({});
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
+
+  const classroomParams = useMemo(() => ({
+    personId: user?.id,
+    search: classroomSearch,
+  }), [user?.id, classroomSearch]);
+
+  const {
+    data: classrooms,
+    page: classroomPage,
+    totalPages: classroomTotalPages,
+    fetchPage: fetchClassroomPage,
+  } = usePagination("/students/my-classrooms", classroomParams, 20, "data", !!user?.id);
+
+  const assignmentParams = useMemo(() => ({
+    search: assignmentSearch,
+  }), [assignmentSearch]);
+
+  const {
+    data: assignments,
+    page: assignmentPage,
+    totalPages: assignmentTotalPages,
+    fetchPage: fetchAssignmentPage,
+    loading: loadingAssignmentsList,
+  } = usePagination(
+    selectedClassroom ? `/manager-assignments/classroom/${selectedClassroom._id}/assignments` : "/manager-assignments/classroom/_",
+    assignmentParams,
+    10,
+    "data",
+    !!selectedClassroom?._id
+  );
+
+  const {
+    data: students,
+    page: studentPage,
+    totalPages: studentTotalPages,
+    loading: loadingStudents,
+    fetchPage: fetchStudentPage,
+    extra: studentExtra,
+  } = usePagination(
+    selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
+    {},
+    10,
+    "students",
+    !!selectedAssignment?._id
+  );
+
+  useEffect(() => {
+    if (studentExtra.summaryMap) {
+      setSummaryMap(studentExtra.summaryMap);
+    }
+  }, [studentExtra]);
 
   /* AUTH */
   useEffect(() => {
@@ -53,52 +101,35 @@ export default function ManagerAssignments() {
     setUser(parsed);
   }, [navigate]);
 
-  /* LOAD CLASSROOMS */
-  useEffect(() => {
-    if (!user?.id) return;
-    api.get(`/students/my-classrooms?personId=${user.id}`)
-      .then(res => setClassrooms(res.data || []))
-      .catch(() => toast.error("Failed to load classrooms"));
-  }, [user?.id]);
-
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
     setSelectedAssignment(null);
-    setStudents([]);
-    setAssignments([]);
     setReportCart({});
-    setLoadingAssignments(true);
-    try {
-      const res = await api.get(`/manager-assignments/classroom/${classroom._id}/assignments`);
-      setAssignments(res.data || []);
-    } catch {
-      toast.error("Failed to load assignments");
-    } finally {
-      setLoadingAssignments(false);
-    }
+    setSummaryMap({});
   };
 
   /* SELECT ASSIGNMENT */
   const selectAssignment = async (assignment) => {
     if (selectedAssignment?._id === assignment._id) {
       setSelectedAssignment(null);
-      setStudents([]);
+      setSummaryMap({});
       return;
     }
     setSelectedAssignment(assignment);
-    setStudents([]);
     setSummaryMap({});
-    setLoadingStudents(true);
-    try {
-      const res = await api.get(`/manager-assignments/${assignment._id}/full`);
-      setStudents(res.data.students || []);
-      setSummaryMap(res.data.summaryMap || {});
-    } catch {
-      toast.error("Failed to load student submissions");
-    } finally {
-      setLoadingStudents(false);
-    }
+  };
+
+  const expandClassroomSection = () => {
+    setSelectedClassroom(null);
+    setSelectedAssignment(null);
+    setReportCart({});
+    setSummaryMap({});
+  };
+
+  const expandAssignmentSection = () => {
+    setSelectedAssignment(null);
+    setSummaryMap({});
   };
 
   /* CART */
@@ -192,11 +223,12 @@ export default function ManagerAssignments() {
     let freshSummaryMap = summaryMap;
     let freshStudents = students;
     try {
-      const fresh = await api.get(`/manager-assignments/${selectedAssignment._id}/full`);
+      const fresh = await api.get(`/manager-assignments/${selectedAssignment._id}/full`, {
+        params: { page: 1, limit: 5000 },
+      });
       freshSummaryMap = fresh.data.summaryMap || summaryMap;
       freshStudents = fresh.data.students || students;
       setSummaryMap(freshSummaryMap);
-      setStudents(freshStudents);
     } catch {
       // use cached summaries if refresh fails
     }
@@ -259,15 +291,9 @@ export default function ManagerAssignments() {
     return <span className="ma-badge ma-badge--gray">{student.state}</span>;
   };
 
-  const filteredClassrooms = classrooms.filter((c) =>
-    `${c.name} ${c.section || ""}`
-      .toLowerCase()
-      .includes(classroomSearch.toLowerCase())
-  );
+  const filteredClassrooms = classrooms;
 
-  const filteredAssignments = assignments.filter((a) =>
-    a.title.toLowerCase().includes(assignmentSearch.toLowerCase())
-  );
+  const filteredAssignments = assignments;
 
 
   const sendTeacherCollectiveReport = async () => {
@@ -424,10 +450,11 @@ export default function ManagerAssignments() {
         </header>
 
         <div className="ma-content">
-          <div className="ma-layout">
+          <div className="ma-layout msv-collapsible-layout">
           {/* COLUMN 1 — CLASSROOMS */}
+          {!selectedClassroom ? (
           <div className="ma-column">
-            <p className="ma-section-label">Classrooms</p>
+            <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
 
             <input
               className="ma-search-input"
@@ -459,25 +486,43 @@ export default function ManagerAssignments() {
                 </div>
               ))}
             </div>
+            <Pagination page={classroomPage} totalPages={classroomTotalPages} onPageChange={fetchClassroomPage} />
           </div>
+          ) : (
+            <div
+              className="msv-section-collapsed"
+              onClick={expandClassroomSection}
+              onKeyDown={(e) => e.key === "Enter" && expandClassroomSection()}
+              role="button"
+              tabIndex={0}
+            >
+              <span className="msv-section-collapsed-chevron">▶</span>
+              <span className="msv-section-collapsed-text">Classroom: {selectedClassroom.name}</span>
+              <button
+                type="button"
+                className="msv-section-change"
+                onClick={(e) => { e.stopPropagation(); expandClassroomSection(); }}
+              >
+                [change]
+              </button>
+            </div>
+          )}
 
           {/* COLUMN 2 — ASSIGNMENTS */}
+          {selectedClassroom && (
+            !selectedAssignment ? (
           <div className="ma-column">
-            <p className="ma-section-label">Assignments</p>
+            <p className="ma-section-label msv-section-header-expanded">▼ Select Assignment</p>
 
             <input
               className="ma-search-input"
               placeholder="Search assignments..."
               value={assignmentSearch}
               onChange={(e) => setAssignmentSearch(e.target.value)}
-              disabled={!selectedClassroom}
             />
 
             <div className="ma-scroll-list">
-              {!selectedClassroom ? (
-                <p className="ma-empty-msg">Select classroom first</p>
-              ) : (
-                filteredAssignments.map(a => (
+              {filteredAssignments.map(a => (
                   <div
                     key={a._id}
                     className={`ma-assignment-card ${
@@ -500,19 +545,34 @@ export default function ManagerAssignments() {
                       )}
                     </div>
                   </div>
-                ))
-              )}
+                ))}
             </div>
+            <Pagination page={assignmentPage} totalPages={assignmentTotalPages} onPageChange={fetchAssignmentPage} />
           </div>
+            ) : (
+              <div
+                className="msv-section-collapsed"
+                onClick={expandAssignmentSection}
+                onKeyDown={(e) => e.key === "Enter" && expandAssignmentSection()}
+                role="button"
+                tabIndex={0}
+              >
+                <span className="msv-section-collapsed-chevron">▶</span>
+                <span className="msv-section-collapsed-text">Assignment: {selectedAssignment.title}</span>
+                <button
+                  type="button"
+                  className="msv-section-change"
+                  onClick={(e) => { e.stopPropagation(); expandAssignmentSection(); }}
+                >
+                  [change]
+                </button>
+              </div>
+            )
+          )}
 
           {/* COLUMN 3 — STUDENTS */}
-          <div className="ma-right-panel">
-            {!selectedAssignment ? (
-              <div className="ma-empty-state">
-                <FiClipboard size={40} />
-                <p>Select assignment to view students</p>
-              </div>
-            ) : (
+          {selectedAssignment && (
+          <div className="ma-right-panel msv-right-panel-full">
               <div className="ma-panel">
                 <div className="ma-panel-header">
                   <div className="ma-panel-title-wrap">
@@ -638,9 +698,12 @@ export default function ManagerAssignments() {
                     </div>
                   </div>
                 )}
+                {!loadingStudents && students.length > 0 && (
+                  <Pagination page={studentPage} totalPages={studentTotalPages} onPageChange={fetchStudentPage} />
+                )}
               </div>
-            )}
           </div>
+          )}
         </div>
         </div>
 

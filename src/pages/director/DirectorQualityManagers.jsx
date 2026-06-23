@@ -1,34 +1,38 @@
 import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorQualityManagers.css";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 export default function DirectorQualityManagers() {
-  const [classrooms, setClassrooms] = useState([]);
+  const { data: classrooms, page, totalPages, fetchPage: fetchClassroomsPage } =
+    usePagination("/classrooms", {}, 10);
   const [people, setPeople] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [selectedManagers, setSelectedManagers] = useState({});
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadSupportData(); }, []);
 
-  const loadData = async () => {
-    const [classroomsRes, peopleRes, assignmentsRes] = await Promise.all([
-      api.get("/classrooms"),
-      api.get("/people"),
-      api.get("/classroom-quality-managers"),
+  const loadSupportData = async () => {
+    const [peopleRes, assignmentsRes] = await Promise.all([
+      api.get("/people", { params: { page: 1, limit: 5000 } }),
+      api.get("/classroom-quality-managers", { params: { page: 1, limit: 5000 } }),
     ]);
 
-    const rooms = classroomsRes.data || [];
-    const persons = peopleRes.data || [];
+    const persons = peopleRes.data.data || [];
     const assigns = assignmentsRes.data || [];
 
-    setClassrooms(rooms);
     setPeople(persons);
     setAssignments(assigns);
 
     const map = {};
     assigns.forEach((a) => { map[a.classroomId?._id] = a.personId?._id; });
     setSelectedManagers(map);
+  };
+
+  const reload = async () => {
+    await Promise.all([fetchClassroomsPage(page), loadSupportData()]);
   };
 
   const qualityManagers = people.filter(
@@ -44,7 +48,7 @@ export default function DirectorQualityManagers() {
     try {
       setLoading(true);
       await api.post("/classroom-quality-managers", { personId, classroomId });
-      await loadData();
+      await reload();
     } catch {
       alert("Assignment failed");
     } finally {
@@ -58,7 +62,7 @@ export default function DirectorQualityManagers() {
     try {
       setLoading(true);
       await api.put("/classroom-quality-managers", { personId, classroomId });
-      await loadData();
+      await reload();
     } catch {
       alert("Change failed");
     } finally {
@@ -70,7 +74,7 @@ export default function DirectorQualityManagers() {
     try {
       setLoading(true);
       await api.delete("/classroom-quality-managers", { data: { classroomId } });
-      await loadData();
+      await reload();
     } catch {
       alert("Remove failed");
     } finally {
@@ -84,17 +88,17 @@ export default function DirectorQualityManagers() {
   };
 
   return (
-    <div className="director-quality-page">
-      <h2 className="dq-title">Assign Quality Managers to Classrooms</h2>
+    <div className="dm-page">
+      <h2 className="dm-title">Assign Quality Managers to Classrooms</h2>
 
-      <div className="dq-table-wrapper">
-        <table className="dq-table">
+      <div className="dm-table-box">
+        <table className="dm-table">
           <thead>
             <tr>
               <th>Classroom</th>
               <th>Teacher</th>
-              <th>Current Manager</th>
-              <th>Select Manager</th>
+              <th>Current Quality Manager</th>
+              <th>Select Quality Manager</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -105,11 +109,11 @@ export default function DirectorQualityManagers() {
                 <tr key={room._id}>
                   <td>{room.name}{room.section && ` (${room.section})`}</td>
                   <td>{room.teacherName || room.teacherId?.name || "-"}</td>
-                  <td className="dq-current">{managerName(room._id)}</td>
+                  <td className="dm-current">{managerName(room._id)}</td>
 
                   <td>
                     <select
-                      className="dq-select"
+                      className="dm-select"
                       value={selectedManagers[room._id] || ""}
                       onChange={(e) =>
                         setSelectedManagers((prev) => ({
@@ -118,17 +122,17 @@ export default function DirectorQualityManagers() {
                         }))
                       }
                     >
-                      <option value="">Select Manager</option>
+                      <option value="">Select Quality Manager</option>
                       {qualityManagers.map((m) => (
                         <option key={m._id} value={m._id}>{m.name}</option>
                       ))}
                     </select>
                   </td>
 
-                  <td className="dq-actions">
+                  <td className="dm-actions">
                     {!alreadyAssigned ? (
                       <button
-                        className="dq-assign-btn"
+                        className="dm-assign"
                         onClick={() => assignManager(room._id)}
                       >
                         Assign
@@ -136,13 +140,13 @@ export default function DirectorQualityManagers() {
                     ) : (
                       <>
                         <button
-                          className="dq-change-btn"
+                          className="dm-change"
                           onClick={() => changeManager(room._id)}
                         >
                           Change
                         </button>
                         <button
-                          className="dq-remove-btn"
+                          className="dm-remove"
                           onClick={() => removeManager(room._id)}
                         >
                           Remove
@@ -157,7 +161,9 @@ export default function DirectorQualityManagers() {
         </table>
       </div>
 
-      {loading && <div className="dq-loading">Processing...</div>}
+      <Pagination page={page} totalPages={totalPages} onPageChange={fetchClassroomsPage} />
+
+      {loading && <div className="dm-loading">Processing...</div>}
     </div>
   );
 }

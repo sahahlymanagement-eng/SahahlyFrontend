@@ -43,7 +43,7 @@ export default function TeacherCreation() {
     try {
       const [rolesRes, peopleRes] = await Promise.all([
         api.get("/roles"),
-        api.get("/people"),
+        api.get("/people", { params: { page: 1, limit: 5000 } }),
       ]);
 
       const allRoles = rolesRes.data || [];
@@ -54,7 +54,7 @@ export default function TeacherCreation() {
       );
       setTeacherRoleId(teacherRole?._id || null);
 
-      const allPeople = peopleRes.data || [];
+      const allPeople = peopleRes.data.data || [];
       const teacherPeople = allPeople.filter((p) => {
         const roleId =
           typeof p.roleId === "object" ? p.roleId?._id : p.roleId;

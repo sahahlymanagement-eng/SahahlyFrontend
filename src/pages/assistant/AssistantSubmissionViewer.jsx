@@ -5,6 +5,9 @@ import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {setSummary} from "../../utils/sharedSummary";
 
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
+
 import {
   FiEye,
   FiDownload,
@@ -44,13 +47,13 @@ export default function AssignmentSubmissionViewer() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(false);
-  const [students, setStudents] = useState([]);
+  // const [loading, setLoading] = useState(false);
+  // const [students, setStudents] = useState([]);
 
-  const [dueDateTime, setDueDateTime] = useState(null);
-  const [maxGrade, setMaxGrade] = useState(null);
-  const [assignmentTitle, setAssignmentTitle] = useState("");
-  const [classroomId, setClassroomId] = useState(null);
+  // const [dueDateTime, setDueDateTime] = useState(null);
+  // const [maxGrade, setMaxGrade] = useState(null);
+  // const [assignmentTitle, setAssignmentTitle] = useState("");
+  // const [classroomId, setClassroomId] = useState(null);
 
   const [msInfo, setMsInfo] = useState(null);
   const [uploadingMs, setUploadingMs] = useState(false);
@@ -60,7 +63,6 @@ export default function AssignmentSubmissionViewer() {
   const [markingStudentId, setMarkingStudentId] = useState(null);
   const [bulkMarking, setBulkMarking] = useState(false);
   const [bulkProgress,     setBulkProgress]     = useState({});
-  const [bulkErrors, setBulkErrors] = useState({});
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
 
@@ -151,6 +153,13 @@ const openErrorViewer = (title, error) => {
 
   setErrorViewer({ open: true, title, message });
 };
+
+const recordStudentMarkingError = (submissionId, message, raw = null) => {
+  setStudentErrors(prev => ({
+    ...prev,
+    [submissionId]: { message, raw },
+  }));
+};
   const safeParse = (value) => {
     if (typeof value !== "string") return value;
 
@@ -186,6 +195,11 @@ const openErrorViewer = (title, error) => {
       return "The requested file or resource could not be found.";
     }
 
+    const errMessage = err?.message || "";
+    if (/request failed with status code 404/i.test(errMessage)) {
+      return "The requested file or resource could not be found.";
+    }
+
     return (
       errorObj?.error?.message ||
       data?.error?.message ||
@@ -194,6 +208,30 @@ const openErrorViewer = (title, error) => {
       "An unexpected error occurred."
     );
   };
+
+  const recordMarkingErrorsForStudents = (studentList, err, fallbackMessage = "An unexpected error occurred.") => {
+    const message = err
+      ? (extractHumanError(err) || err?.message || fallbackMessage)
+      : fallbackMessage;
+    const raw = err?.response?.data ?? null;
+    (studentList || []).forEach(s => {
+      const submissionId = s?.submissionId ?? s?.student?.submissionId;
+      if (submissionId) {
+        recordStudentMarkingError(submissionId, message, raw);
+      }
+    });
+    return message;
+  };
+
+    const { data: students, page, totalPages, loading, fetchPage, extra, setData: setStudents } =
+  usePagination(
+    `/assignment-submissions/${assignmentId}/students`,
+    {},
+    10,
+    "students"  // dataKey matches what backend returns
+  );
+
+  const { dueDateTime, maxGrade, assignmentTitle, classroomId } = extra;
 
 
   const effectiveMaxTotal = editingMaxTotal !== null
@@ -214,10 +252,10 @@ const openErrorViewer = (title, error) => {
     : 0;
 
 
-  useEffect(() => {
-    if (!assignmentId) return;
-    fetchStudents();
-  }, [assignmentId]);
+  // useEffect(() => {
+  //   if (!assignmentId) return;
+  //   fetchStudents();
+  // }, [assignmentId]);
 
   useEffect(() => {
     if (!promptDropdownOpen) return;
@@ -244,9 +282,8 @@ const openErrorViewer = (title, error) => {
 
   // to upload mark scheme if it exists for the assignment
   useEffect(() => {
-    api.get(`/manager-assignments/${assignmentId}/full`)
+    api.get(`/manager-assignments/${assignmentId}/full`, { params: { page: 1, limit: 1 } })
       .then(res => {
-        setStudents(res.data.students);
         setMsInfo({
           fileId: res.data.assignment.markSchemeFileId,
           webLink: res.data.assignment.markSchemeWebLink
@@ -349,22 +386,22 @@ const openErrorViewer = (title, error) => {
 //     });
 // }, [assignmentId]);
 
-  const fetchStudents = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get(`/assignment-submissions/${assignmentId}/students`);
-      setStudents(res.data.students || []);
-      setDueDateTime(res.data.dueDateTime || null);
-      setMaxGrade(res.data.maxGrade || null);
-      setAssignmentTitle(res.data.assignmentTitle || "Assignment");
-      setClassroomId(res.data.classroomId || null);
+  // const fetchStudents = async () => {
+  //   setLoading(true);
+  //   try {
+  //     const res = await api.get(`/assignment-submissions/${assignmentId}/students`);
+  //     setStudents(res.data.students || []);
+  //     setDueDateTime(res.data.dueDateTime || null);
+  //     setMaxGrade(res.data.maxGrade || null);
+  //     setAssignmentTitle(res.data.assignmentTitle || "Assignment");
+  //     setClassroomId(res.data.classroomId || null);
       
-    } catch {
-      toast.error("Failed to load students");
-    } finally {
-      setLoading(false);
-    }
-  };
+  //   } catch {
+  //     toast.error("Failed to load students");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
 
   const handleMsUpload = async (file) => {
@@ -594,13 +631,11 @@ const openErrorViewer = (title, error) => {
         ? extractHumanError(err)
         : await getApiErrorMessage(err);
 
-      setStudentErrors(prev => ({
-        ...prev,
-        [student.submissionId]: {
-          message,
-          raw: err.response?.data
-        }
-      }));
+      recordStudentMarkingError(
+        student.submissionId,
+        message,
+        err.response?.data
+      );
       setSingleProgress(prev => ({
         ...prev,
         [student.submissionId]: {
@@ -693,7 +728,12 @@ const openErrorViewer = (title, error) => {
           toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
         }
       } catch (err) {
-        toast.error(err.message || "Assignment memory preparation failed");
+        const message = recordMarkingErrorsForStudents(
+          eligible,
+          err,
+          "Assignment memory preparation failed"
+        );
+        toast.error(message);
         return;
       }
     }
@@ -766,13 +806,11 @@ const openErrorViewer = (title, error) => {
           [student.submissionId]: { status: "error" }
         }));
 
-        setBulkErrors(e => ({
-          ...e,
-          [student.submissionId]: {
-            message: status === 404 ? "Submission file not found" : "Failed to load files",
-            raw: err.response?.data
-          }
-        }));
+        recordStudentMarkingError(
+          student.submissionId,
+          status === 404 ? "Submission file not found" : "Failed to load files",
+          err.response?.data
+        );
 
         continue;
       }
@@ -924,13 +962,11 @@ const openErrorViewer = (title, error) => {
             [student.submissionId]: { status: "error" }
           }));
 
-          setBulkErrors(e => ({
-            ...e,
-            [student.submissionId]: {
-              message: extractHumanError(err),
-              raw: err.response?.data
-            }
-          }));
+          recordStudentMarkingError(
+            student.submissionId,
+            extractHumanError(err),
+            err.response?.data
+          );
 
           break;
         }
@@ -943,13 +979,10 @@ const openErrorViewer = (title, error) => {
           [student.submissionId]: { status: "error" }
         }));
 
-        setBulkErrors(e => ({
-          ...e,
-          [student.submissionId]: {
-            message: "Failed after maximum retries. The server may be overloaded — please try again later.",
-            raw: null
-          }
-        }));
+        recordStudentMarkingError(
+          student.submissionId,
+          "Failed after maximum retries. The server may be overloaded — please try again later."
+        );
       }
     }
 
@@ -1326,7 +1359,7 @@ return (
             </div>
 
               <div className="header-actions">
-                <button onClick={fetchStudents} className="ma-send-btn">
+                <button onClick={() => fetchPage(page)} className="ma-send-btn">
                   <FiRefreshCw /> Refresh
                 </button>
 
@@ -1504,6 +1537,21 @@ return (
                                     <button className="msv-action-btn" onClick={() => openPdf(s)}> <FiEye size={13} /> </button>
                                     <button className="msv-action-btn" onClick={() => downloadPdf(s)}> <FiDownload size={13} /> </button>
 
+                                    {studentErrors[s.submissionId] && (
+                                      <button
+                                        className="msv-action-btn msv-action-btn--view"
+                                        title="View Error"
+                                        onClick={() =>
+                                          openErrorViewer(
+                                            `Marking Failed - ${s.name}`,
+                                            studentErrors[s.submissionId].message
+                                          )
+                                        }
+                                      >
+                                        View Error
+                                      </button>
+                                    )}
+
                                     {msInfo && (
                                       <>
                                         
@@ -1558,32 +1606,6 @@ return (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
 
-                                        {studentErrors[s.submissionId] && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--view"
-                                            title="View Error"
-                                            onClick={() =>
-                                              openErrorViewer(
-                                                `Marking Failed - ${s.name}`,
-                                                studentErrors[s.submissionId].message
-                                              )
-                                            }
-                                          >
-                                            View Error
-                                          </button>
-                                        )}
-                                        {bulkError && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--view"
-                                            title="View Error"
-                                            onClick={() =>
-                                              openErrorViewer(`Marking Failed - ${s.name}`, bulkErrors[s.submissionId].message)
-                                            }
-                                          >
-                                            View Error
-                                          </button>
-                                        )}
-
                                         {inlineMarkResult?.tokenUsage && (
                                           <TokenUsageStats result={inlineMarkResult} compact />
                                         )}
@@ -1626,11 +1648,12 @@ return (
                               </td>
 
                             </tr>
+                            
                           );
                           })}
                         </tbody>
                       </table>
-
+<Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
                       </div>
                     </div>
                   )}

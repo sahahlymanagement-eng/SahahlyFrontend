@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "../api/api";
 import "./ClassroomTeacherManager.css";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 import {
   FiUsers,
   FiBookOpen,
@@ -12,39 +14,42 @@ import {
 } from "react-icons/fi";
 
 export default function ClassroomTeacherManager() {
-  const [classrooms, setClassrooms] = useState([]);
+  const { data: classrooms, page, totalPages, total, fetchPage } =
+    usePagination("/classrooms", {}, 10);
   const [teachers, setTeachers] = useState([]);
   const [selectedTeachers, setSelectedTeachers] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadTeachers = async () => {
     try {
-      setLoading(true);
-
-      const [classroomsRes, teachersRes] = await Promise.all([
-        api.get("/classrooms"),
-        api.get("/teachers"),
-      ]);
-
-      setClassrooms(classroomsRes.data || []);
+      const teachersRes = await api.get("/teachers");
       setTeachers(teachersRes.data || []);
-
-      const initialSelections = {};
-      (classroomsRes.data || []).forEach((c) => {
-        initialSelections[c._id] = c.teacherId?._id || "";
-      });
-      setSelectedTeachers(initialSelections);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to load data");
-    } finally {
-      setLoading(false);
+      alert(err.response?.data?.message || "Failed to load teachers");
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadTeachers();
   }, []);
+
+  useEffect(() => {
+    const initialSelections = {};
+    classrooms.forEach((c) => {
+      initialSelections[c._id] = c.teacherId?._id || "";
+    });
+    setSelectedTeachers(initialSelections);
+  }, [classrooms]);
+
+  const reload = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([fetchPage(page), loadTeachers()]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTeacherChange = (classroomId, teacherId) => {
     setSelectedTeachers((prev) => ({
@@ -66,7 +71,7 @@ export default function ClassroomTeacherManager() {
         teacherId,
       });
 
-      await loadData();
+      await reload();
       alert("Teacher assigned successfully");
     } catch (err) {
       console.error(err);
@@ -77,7 +82,7 @@ export default function ClassroomTeacherManager() {
   const removeTeacher = async (classroomId) => {
     try {
       await api.put(`/classrooms/${classroomId}/remove-teacher`);
-      await loadData();
+      await reload();
       alert("Teacher removed successfully");
     } catch (err) {
       console.error(err);
@@ -101,7 +106,7 @@ export default function ClassroomTeacherManager() {
         <div className="ctmHeaderStats">
           <div className="ctmPill">
             <FiUsers size={13} />
-            <span>{classrooms.length} classrooms</span>
+            <span>{total} classrooms</span>
           </div>
 
           <div className="ctmPill">
@@ -235,6 +240,8 @@ export default function ClassroomTeacherManager() {
           </table>
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
     </div>
   );
 }
