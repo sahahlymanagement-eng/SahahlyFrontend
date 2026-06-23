@@ -20,9 +20,7 @@ import {
   appendMarkingContext,
   assertPdfBlob,
   buildFinalMarkingResult,
-  confirmTeacherEdits,
   currentUserId,
-  ensureAssignmentMemory,
   getApiErrorMessage,
   guidanceForForm,
   hasTeacherEdits,
@@ -423,8 +421,19 @@ const openErrorViewer = (title, error) => {
   };
 
   const stopBulkMark = () => {
-  bulkStopRef.current = true;
-  setBulkMarking(false);
+    bulkStopRef.current = true;
+    setBulkMarking(false);
+    setBulkProgress((prev) => {
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        const status = next[id]?.status;
+        if (status === "pending" || status === "marking" || status === "retrying") {
+          next[id] = { status: "stopped" };
+        }
+      }
+      return next;
+    });
+    toast.info("Stopping bulk marking…");
   };
 
   const openGuidanceModal = (student = null) => {
@@ -436,45 +445,6 @@ const openErrorViewer = (title, error) => {
 
   const getOriginalQuestions = (modal) =>
     modal?.originalAiResult?.questions || modal?.result?.questions || [];
-
-  const handleConfirmEdits = async () => {
-    if (!resultModal) return;
-    const originalQuestions = getOriginalQuestions(resultModal);
-    if (!hasTeacherEdits(originalQuestions, editingQuestions)) {
-      toast.info("No edits to save");
-      return;
-    }
-
-    try {
-      const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
-      const data = await confirmTeacherEdits(api, {
-        assignmentId,
-        submissionId: resultModal.student.submissionId,
-        studentId: resultModal.student.studentId,
-        studentName: resultModal.student.name,
-        mode: resultModal.result.markingMode || markingModeModal,
-        provider: markingProvider,
-        originalQuestions,
-        finalQuestions: editingQuestions,
-        finalResult,
-      });
-
-      setResultModal((prev) => ({
-        ...prev,
-        result: finalResult,
-        originalAiResult: JSON.parse(JSON.stringify(finalResult)),
-      }));
-
-      const count = data.addedReviewer || data.addedSamples || 0;
-      toast.success(
-        count
-          ? `Edits saved — ${count} correction(s) added to assignment memory`
-          : "Edits saved"
-      );
-    } catch (err) {
-      toast.error(await getApiErrorMessage(err));
-    }
-  };
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", markingProvider) => {
     setMarkingStudentId(student.submissionId);
@@ -522,20 +492,8 @@ const openErrorViewer = (title, error) => {
 
       if (markingProvider !== "claude") {
         fd.append("geminiModel", geminiModel);
-        const memory = await ensureAssignmentMemory(api, {
-          assignmentId,
-          studentFile,
-          msFile,
-          markingMode: mode,
-          guidance: guidanceValue,
-          totalGrade: maxGrade,
-          classroomId,
-          geminiModel: geminiModel,
-        });
-        fd.append("assignmentMemoryId", memory.memoryId);
-      } else {
-        fd.append("markSchemePdf", msFile);
       }
+      fd.append("markSchemePdf", msFile);
 
       const endpoint =
       markingProvider === "claude"
@@ -647,56 +605,6 @@ const openErrorViewer = (title, error) => {
     }
 
     const guidanceValue = guidanceForForm(guidanceText);
-    let assignmentMemoryId = null;
-
-    if (provider !== "claude") {
-      try {
-        toast.info("Preparing assignment correction memory…");
-        const firstStudent = eligible[0];
-        const [studentPdfRes, msPdfRes] = await Promise.all([
-          api.get("/submission-files/pdf", {
-            params: { assignmentId, submissionId: firstStudent.submissionId },
-            responseType: "blob",
-          }),
-          api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-            responseType: "blob",
-          }),
-        ]);
-
-        await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
-        await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-        const gateStudentFile = new File(
-          [studentPdfRes.data],
-          `${firstStudent.name || "student"}.pdf`,
-          { type: "application/pdf" }
-        );
-        const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
-          type: "application/pdf",
-        });
-
-        const memory = await ensureAssignmentMemory(api, {
-          assignmentId,
-          studentFile: gateStudentFile,
-          msFile: gateMsFile,
-          markingMode: mode,
-          guidance: guidanceValue,
-          totalGrade: maxGrade,
-          classroomId,
-          geminiModel: geminiModel,
-        });
-
-        assignmentMemoryId = memory.memoryId;
-        if (memory.reused) {
-          toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
-        } else {
-          toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
-        }
-      } catch (err) {
-        toast.error(err.message || "Assignment memory preparation failed");
-        return;
-      }
-    }
 
     bulkStopRef.current = false;
     setBulkMarking(true);
@@ -722,41 +630,29 @@ const openErrorViewer = (title, error) => {
       let msFile;
 
       try {
-        const fetches = [
+        const [studentPdfRes, msPdfRes] = await Promise.all([
           api.get("/submission-files/pdf", {
             params: { assignmentId, submissionId: student.submissionId },
             responseType: "blob"
           }),
-        ];
-
-        if (provider === "claude" || !assignmentMemoryId) {
-          fetches.push(
-            api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-              responseType: "blob"
-            })
-          );
-        }
-
-        const responses = await Promise.all(fetches);
-        const studentPdfRes = responses[0];
+          api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
+            responseType: "blob"
+          })
+        ]);
 
         await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+        await assertPdfBlob(msPdfRes.data, "Mark scheme");
 
         studentFile = new File(
           [studentPdfRes.data],
           `${student.name || "student"}.pdf`,
           { type: "application/pdf" }
         );
-
-        if (provider === "claude" || !assignmentMemoryId) {
-          const msPdfRes = responses[1];
-          await assertPdfBlob(msPdfRes.data, "Mark scheme");
-          msFile = new File(
-            [msPdfRes.data],
-            "markscheme.pdf",
-            { type: "application/pdf" }
-          );
-        }
+        msFile = new File(
+          [msPdfRes.data],
+          "markscheme.pdf",
+          { type: "application/pdf" }
+        );
 
       } catch (err) {
         const status = err?.response?.status;
@@ -794,14 +690,8 @@ const openErrorViewer = (title, error) => {
       });
       if (provider !== "claude") {
         fd.append("geminiModel", geminiModel);
-        if (assignmentMemoryId) {
-          fd.append("assignmentMemoryId", assignmentMemoryId);
-        } else if (msFile) {
-          fd.append("markSchemePdf", msFile);
-        }
-      } else if (msFile) {
-        fd.append("markSchemePdf", msFile);
       }
+      fd.append("markSchemePdf", msFile);
 
       // -----------------------------
       // 3. AI RETRY LOOP
@@ -954,7 +844,11 @@ const openErrorViewer = (title, error) => {
     }
 
     setBulkMarking(false);
-    toast.success("Bulk marking complete");
+    if (bulkStopRef.current) {
+      toast.info("Bulk marking stopped");
+    } else {
+      toast.success("Bulk marking complete");
+    }
   } catch (err) {
     setBulkMarking(false);
     toast.error(await getApiErrorMessage(err));
@@ -1066,16 +960,14 @@ const openErrorViewer = (title, error) => {
       const originalQuestions = getOriginalQuestions(resultModal);
       if (hasTeacherEdits(originalQuestions, editingQuestions)) {
         const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
-        await confirmTeacherEdits(api, {
+        await api.post("/submission-files/save-results", {
           assignmentId,
           submissionId: resultModal.student.submissionId,
           studentId: resultModal.student.studentId,
           studentName: resultModal.student.name,
           mode: resultModal.result.markingMode || markingModeModal,
           provider: markingProvider,
-          originalQuestions,
-          finalQuestions: editingQuestions,
-          finalResult,
+          result: finalResult,
         });
         setResultModal((prev) => ({
           ...prev,
@@ -1395,6 +1287,20 @@ return (
                   {/* {bulkMarking ? "Marking all…" : bulkLocked ? "Mark All (Locked)":"Mark All Students"} */}
                 {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
                 
+                </button>
+              )}
+              {msInfo && bulkMarking && (
+                <button
+                  className="msv-btn-ai"
+                  onClick={stopBulkMark}
+                  style={{
+                    marginLeft: 10,
+                    background: "rgba(239,68,68,0.15)",
+                    borderColor: "rgba(239,68,68,0.4)",
+                    color: "#f87171",
+                  }}
+                >
+                  <FiX size={13} /> Stop
                 </button>
               )}
 
@@ -2111,23 +2017,6 @@ return (
                                 );
                               })()}
                             </div>
-          
-                            {/* Confirm edits notice for normal mode */}
-                            {hasTeacherEdits(
-                              getOriginalQuestions(resultModal),
-                              editingQuestions
-                            ) && (
-                              <div style={{ padding: "10px 16px", marginBottom: 16, borderRadius: 10, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                                <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — confirm to save to assignment memory</span>
-                                <button
-                                  className="ma-send-btn"
-                                  style={{ fontSize: 12, padding: "6px 14px", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b" }}
-                                  onClick={handleConfirmEdits}
-                                >
-                                  ✅ Confirm Edits
-                                </button>
-                              </div>
-                            )}
                           </>
                         )}
           

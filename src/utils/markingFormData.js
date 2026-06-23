@@ -195,171 +195,24 @@ export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
 
 
-/** Phase 1 — validate mark scheme once and build/reuse assignment correction memory. */
-
-export async function ensureAssignmentMemory(
-
-  api,
-
-  {
-
-    assignmentId,
-
-    studentFile,
-
-    msFile,
-
-    markingMode = "normal",
-
-    guidance = null,
-
-    totalGrade = null,
-
-    classroomId = null,
-
-    geminiModel = null,
-
-  } = {}
-
-) {
-
-  const fd = new FormData();
-
-  fd.append("studentPdf", studentFile);
-
-  fd.append("markSchemePdf", msFile);
-
-  fd.append("markingMode", markingMode);
-
-  if (guidance) fd.append("guidance", guidance);
-
-  if (totalGrade != null && totalGrade !== "") fd.append("totalGrade", String(totalGrade));
-
-  appendMarkingContext(fd, {
-
-    personId: currentUserId(),
-
-    assignmentId,
-
-    classroomId,
-
-  });
-
-  if (geminiModel) fd.append("geminiModel", geminiModel);
-
-  try {
-
-    const res = await api.post("/marking/ensure-assignment-memory", fd, {
-
-      headers: { "Content-Type": "multipart/form-data" },
-
-      timeout: 600000,
-
-    });
-
-    return res.data;
-
-  } catch (err) {
-
-    throw new Error(await getApiErrorMessage(err));
-
-  }
-
-}
-
-
-
-/** Phase 2 — persist teacher edits and append corrections to assignment memory. */
-
-export async function confirmTeacherEdits(
-
-  api,
-
-  {
-
-    assignmentId,
-
-    submissionId,
-
-    studentId,
-
-    studentName,
-
-    mode,
-
-    provider,
-
-    originalQuestions,
-
-    finalQuestions,
-
-    finalResult,
-
-  } = {}
-
-) {
-
-  const res = await api.post("/marking/record-correction", {
-
-    assignmentId,
-
-    submissionId,
-
-    studentId,
-
-    studentName,
-
-    mode,
-
-    provider,
-
-    originalQuestions,
-
-    finalQuestions,
-
-    finalResult,
-
-  });
-
-  return res.data;
-
-}
-
-/** Merge batch API marking JSON with per-student token usage for UI + save-results. */
-export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, memoryMeta = {}) {
-  const usedMemory = Boolean(memoryMeta.assignmentMemoryId);
+export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel) {
   const result = {
     ...parsed,
     provider: "gemini-batch",
     geminiModel: geminiModel || null,
     tokenUsage: tokenUsage || null,
-    assignmentMemoryId: memoryMeta.assignmentMemoryId || null,
-    usedAssignmentMemory: usedMemory,
-    pdfCompression: usedMemory
-      ? {
-          applied: false,
-          method: "assignment-memory",
-          student: {
-            applied: false,
-            reason: "Batch + assignment memory — student PDF only (mark scheme in memory)",
-          },
-          markScheme: {
-            applied: false,
-            reason: "Mark scheme stored in assignment correction memory",
-          },
-        }
-      : {
-          applied: false,
-          method: "gemini-batch",
-          student: {
-            applied: false,
-            reason: "Batch API — student PDF uploaded directly to Gemini",
-          },
-          markScheme: {
-            applied: false,
-            reason: "Batch API — mark scheme shared via Gemini file URI",
-          },
-        },
+    pdfCompression: {
+      applied: false,
+      method: "gemini-batch",
+      student: {
+        applied: false,
+        reason: "Batch API — student PDF uploaded directly to Gemini",
+      },
+      markScheme: {
+        applied: false,
+        reason: "Batch API — mark scheme shared via Gemini file URI",
+      },
+    },
   };
 
   if (tokenUsage && geminiModel) {

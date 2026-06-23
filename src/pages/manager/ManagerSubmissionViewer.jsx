@@ -13,9 +13,6 @@ import {
   assertPdfBlob,
   buildFinalMarkingResult,
   buildBatchMarkingResult,
-  confirmTeacherEdits,
-  currentUserId,
-  ensureAssignmentMemory,
   getApiErrorMessage,
   guidanceForForm,
   hasTeacherEdits,
@@ -75,6 +72,7 @@ export default function ManagerSubmissionViewer() {
 
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
+  const batchStopRef = useRef(false);
   // {
 //   phase: "uploading" | "submitting" | "processing" | "done" | "error"
 //   jobId: string | null
@@ -455,45 +453,44 @@ useEffect(() => {
   const getOriginalQuestions = (modal) =>
     modal?.originalAiResult?.questions || modal?.result?.questions || [];
 
-  const handleConfirmEdits = async () => {
-    if (!resultModal) return;
-    const originalQuestions = getOriginalQuestions(resultModal);
-    if (!hasTeacherEdits(originalQuestions, editingQuestions)) {
-      toast.info("No edits to save");
+  const stopBulkMark = () => {
+    bulkStopRef.current = true;
+    setBulkMarking(false);
+    setBulkProgress((prev) => {
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        const status = next[id]?.status;
+        if (status === "pending" || status === "marking" || status === "retrying") {
+          next[id] = { status: "stopped" };
+        }
+      }
+      return next;
+    });
+    toast.info("Stopping bulk marking…");
+  };
+
+  const stopBatchMark = async () => {
+    batchStopRef.current = true;
+    if (batchPollRef.current) {
+      clearInterval(batchPollRef.current);
+      batchPollRef.current = null;
+    }
+
+    const jobId = batchJob?.jobId;
+    setBatchJob(null);
+
+    if (jobId) {
+      try {
+        await api.delete(`/marking/mark-batch/cancel/${jobId}`);
+        toast.info("Batch marking cancelled");
+      } catch (err) {
+        toast.warning(extractHumanError(err) || "Batch stop requested — server cancel failed");
+      }
       return;
     }
 
-    try {
-      const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
-      const data = await confirmTeacherEdits(api, {
-        assignmentId: selectedAssignment._id,
-        submissionId: resultModal.student.submissionId,
-        studentId: resultModal.student.studentId,
-        studentName: resultModal.student.name,
-        mode: resultModal.result.markingMode || markingModeModal,
-        provider: markingProvider,
-        originalQuestions,
-        finalQuestions: editingQuestions,
-        finalResult,
-      });
-
-      setResultModal((prev) => ({
-        ...prev,
-        result: finalResult,
-        originalAiResult: JSON.parse(JSON.stringify(finalResult)),
-      }));
-
-      const count = data.addedReviewer || data.addedSamples || 0;
-      toast.success(
-        count
-          ? `Edits saved — ${count} correction(s) added to assignment memory`
-          : "Edits saved"
-      );
-    } catch (err) {
-      toast.error(await getApiErrorMessage(err));
-    }
+    toast.info("Batch marking stopped");
   };
-
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", provider = markingProvider) => {
     setMarkingStudentId(student.submissionId);
@@ -538,20 +535,8 @@ useEffect(() => {
 
       if (provider !== "claude") {
         fd.append("geminiModel", selectedModel);
-        const memory = await ensureAssignmentMemory(api, {
-          assignmentId: selectedAssignment._id,
-          studentFile,
-          msFile,
-          markingMode: mode,
-          guidance: guidanceValue,
-          totalGrade: selectedAssignment.maxPoints,
-          classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-          geminiModel: selectedModel,
-        });
-        fd.append("assignmentMemoryId", memory.memoryId);
-      } else {
-        fd.append("markSchemePdf", msFile);
       }
+      fd.append("markSchemePdf", msFile);
 
       const endpoint =
       provider === "claude"
@@ -663,61 +648,8 @@ useEffect(() => {
     }
 
     const guidanceValue = guidanceForForm(guidanceText);
-    let assignmentMemoryId = null;
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
-
-    if (provider !== "claude") {
-      try {
-        toast.info("Preparing assignment correction memory…");
-        const firstStudent = eligible[0];
-        const [studentPdfRes, msPdfRes] = await Promise.all([
-          api.get("/submission-files/pdf", {
-            params: {
-              assignmentId: selectedAssignment._id,
-              submissionId: firstStudent.submissionId,
-            },
-            responseType: "blob",
-          }),
-          api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-            responseType: "blob",
-          }),
-        ]);
-
-        await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
-        await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-        const gateStudentFile = new File(
-          [studentPdfRes.data],
-          `${firstStudent.name || "student"}.pdf`,
-          { type: "application/pdf" }
-        );
-        const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
-          type: "application/pdf",
-        });
-
-        const memory = await ensureAssignmentMemory(api, {
-          assignmentId: selectedAssignment._id,
-          studentFile: gateStudentFile,
-          msFile: gateMsFile,
-          markingMode: mode,
-          guidance: guidanceValue,
-          totalGrade: selectedAssignment.maxPoints,
-          classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-          geminiModel: selectedModel,
-        });
-
-        assignmentMemoryId = memory.memoryId;
-        if (memory.reused) {
-          toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
-        } else {
-          toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
-        }
-      } catch (err) {
-        toast.error(err.message || "Assignment memory preparation failed");
-        return;
-      }
-    }
 
     bulkStopRef.current = false;
     setBulkMarking(true);
@@ -742,41 +674,29 @@ useEffect(() => {
       let msFile;
 
       try {
-        const fetches = [
+        const [studentPdfRes, msPdfRes] = await Promise.all([
           api.get("/submission-files/pdf", {
             params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
             responseType: "blob"
           }),
-        ];
-
-        if (provider === "claude" || !assignmentMemoryId) {
-          fetches.push(
-            api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-              responseType: "blob"
-            })
-          );
-        }
-
-        const responses = await Promise.all(fetches);
-        const studentPdfRes = responses[0];
+          api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
+            responseType: "blob"
+          }),
+        ]);
 
         await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+        await assertPdfBlob(msPdfRes.data, "Mark scheme");
 
         studentFile = new File(
           [studentPdfRes.data],
           `${student.name || "student"}.pdf`,
           { type: "application/pdf" }
         );
-
-        if (provider === "claude" || !assignmentMemoryId) {
-          const msPdfRes = responses[1];
-          await assertPdfBlob(msPdfRes.data, "Mark scheme");
-          msFile = new File(
-            [msPdfRes.data],
-            "markscheme.pdf",
-            { type: "application/pdf" }
-          );
-        }
+        msFile = new File(
+          [msPdfRes.data],
+          "markscheme.pdf",
+          { type: "application/pdf" }
+        );
       } catch (err) {
       const status = err?.response?.status;
 
@@ -814,12 +734,8 @@ useEffect(() => {
         });
         if (provider !== "claude") {
           fd.append("geminiModel", selectedModel);
-          if (assignmentMemoryId) {
-            fd.append("assignmentMemoryId", assignmentMemoryId);
-          } else if (msFile) {
-            fd.append("markSchemePdf", msFile);
-          }
-        } else if (msFile) {
+        }
+        if (msFile) {
           fd.append("markSchemePdf", msFile);
         }
 
@@ -963,7 +879,11 @@ while (
   }
 
   setBulkMarking(false);
-  toast.success("Bulk marking complete");
+  if (bulkStopRef.current) {
+    toast.info("Bulk marking stopped");
+  } else {
+    toast.success("Bulk marking complete");
+  }
   } catch (err) {
     setBulkMarking(false);
     toast.error(await getApiErrorMessage(err));
@@ -980,7 +900,6 @@ const checkForActiveJob = async () => {
         jobId,
         studentOrder,
         submittedAt,
-        assignmentMemoryId,
         geminiModel: jobModel,
       } = data.active;
       const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
@@ -993,11 +912,9 @@ const checkForActiveJob = async () => {
         skipped:     {},
         results:     {},
         mode:        "normal",
-        assignmentMemoryId: assignmentMemoryId || null,
         geminiModel: restoredModel,
       });
       pollBatchJob(jobId, {
-        assignmentMemoryId,
         mode: "normal",
         geminiModel: restoredModel,
       });
@@ -1087,6 +1004,8 @@ useEffect(() => {
 // };
 
 const pollBatchJob = async (jobId, jobMeta = {}) => {
+  if (batchStopRef.current) return;
+
   // Clear any existing poll first
   if (batchPollRef.current) {
     clearInterval(batchPollRef.current);
@@ -1096,6 +1015,7 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
   console.log("Starting poll for jobId:", jobId);
 
   const doPoll = async () => {
+    if (batchStopRef.current) return;
     console.log("Polling:", jobId);
     try {
       const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
@@ -1117,17 +1037,11 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
 
       // SUCCEEDED
       const resultMap = {};
-      const memoryMeta = {
-        assignmentMemoryId:
-          jobMeta.assignmentMemoryId ??
-          data.assignmentMemoryId ??
-          null,
-      };
       const saveMode = jobMeta.mode || "normal";
       const modelForResult = jobMeta.geminiModel || geminiModel;
       for (const { student, result, success, error, tokenUsage } of data.results) {
         const enrichedResult = success
-          ? buildBatchMarkingResult(result, tokenUsage, modelForResult, memoryMeta)
+          ? buildBatchMarkingResult(result, tokenUsage, modelForResult)
           : null;
         const originalAiResult = enrichedResult
           ? JSON.parse(JSON.stringify(enrichedResult))
@@ -1183,7 +1097,7 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
 };
 
 
-// ── Submit batch — memory setup + upload + submit, then hand off to pollBatchJob
+// ── Submit batch — upload + submit, then hand off to pollBatchJob
 const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null) => {
   if (!BATCH_ALLOWED_IDS.includes(currentUserId())) {
     toast.error("You are not allowed to do batch marking. ");
@@ -1225,57 +1139,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
-  let assignmentMemoryId = null;
-
-  try {
-    toast.info("Preparing assignment correction memory…");
-    const firstStudent = eligible[0];
-    const [studentPdfRes, msPdfRes] = await Promise.all([
-      api.get("/submission-files/pdf", {
-        params: {
-          assignmentId: selectedAssignment._id,
-          submissionId: firstStudent.submissionId,
-        },
-        responseType: "blob",
-      }),
-      api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-        responseType: "blob",
-      }),
-    ]);
-
-    await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
-    await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-    const gateStudentFile = new File(
-      [studentPdfRes.data],
-      `${firstStudent.name || "student"}.pdf`,
-      { type: "application/pdf" }
-    );
-    const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
-      type: "application/pdf",
-    });
-
-    const memory = await ensureAssignmentMemory(api, {
-      assignmentId: selectedAssignment._id,
-      studentFile: gateStudentFile,
-      msFile: gateMsFile,
-      markingMode: mode,
-      guidance: guidanceValue,
-      totalGrade: selectedAssignment.maxPoints,
-      classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-      geminiModel: selectedModel,
-    });
-
-    assignmentMemoryId = memory.memoryId;
-    if (memory.reused) {
-      toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
-    } else {
-      toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
-    }
-  } catch (err) {
-    toast.error(err.message || "Assignment memory preparation failed");
-    return;
-  }
+  batchStopRef.current = false;
 
   setBatchJob({
     phase: "uploading",
@@ -1283,16 +1147,14 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     skipped: {},
     results: {},
     mode,
-    assignmentMemoryId,
     geminiModel: selectedModel,
   });
 
-  // Step 1 — upload student PDFs (mark scheme skipped when using memory)
+  // Step 1 — upload student PDFs + mark scheme
   let msUri, succeeded, failed;
   try {
     const res = await api.post("/marking/mark-batch/upload", {
       assignmentId: selectedAssignment._id,
-      assignmentMemoryId,
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
@@ -1303,6 +1165,12 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   } catch (err) {
     toast.error(`Upload failed: ${extractHumanError(err)}`);
     setBatchJob(prev => ({ ...prev, phase: "error" }));
+    return;
+  }
+
+  if (batchStopRef.current) {
+    setBatchJob(null);
+    toast.info("Batch marking stopped");
     return;
   }
 
@@ -1325,11 +1193,16 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   // Step 2 — submit job
   setBatchJob(prev => ({ ...prev, phase: "submitting" }));
 
+  if (batchStopRef.current) {
+    setBatchJob(null);
+    toast.info("Batch marking stopped");
+    return;
+  }
+
   let jobId;
   try {
     const res = await api.post("/marking/mark-batch/submit", {
       assignmentId:  selectedAssignment._id,
-      assignmentMemoryId,
       msUri,
       succeeded,
       markingMode:   mode,
@@ -1355,7 +1228,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
 
   // Step 3 — hand off to standalone poller
-  pollBatchJob(jobId, { assignmentMemoryId, mode, geminiModel: selectedModel });
+  pollBatchJob(jobId, { mode, geminiModel: selectedModel });
 };
 
 
@@ -1372,9 +1245,8 @@ useEffect(() => {
 useEffect(() => {
   if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
     pollBatchJob(batchJob.jobId, {
-      assignmentMemoryId: batchJob.assignmentMemoryId,
       mode: batchJob.mode,
-      geminiModel: batchJob.geminiModel,
+      geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
     });
   }
 }, []); // only on mount
@@ -1468,16 +1340,14 @@ useEffect(() => {
       const originalQuestions = getOriginalQuestions(resultModal);
       if (hasTeacherEdits(originalQuestions, editingQuestions)) {
         const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
-        await confirmTeacherEdits(api, {
+        await api.post("/submission-files/save-results", {
           assignmentId: selectedAssignment._id,
           submissionId: resultModal.student.submissionId,
           studentId: resultModal.student.studentId,
           studentName: resultModal.student.name,
           mode: resultModal.result.markingMode || markingModeModal,
           provider: markingProvider,
-          originalQuestions,
-          finalQuestions: editingQuestions,
-          finalResult,
+          result: finalResult,
         });
         setResultModal((prev) => ({
           ...prev,
@@ -1837,6 +1707,19 @@ useEffect(() => {
     >
                         {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
                       </button>
+                      {bulkMarking && (
+                        <button
+                          className="msv-btn-ai"
+                          onClick={stopBulkMark}
+                          style={{
+                            background: "rgba(239,68,68,0.15)",
+                            borderColor: "rgba(239,68,68,0.4)",
+                            color: "#f87171",
+                          }}
+                        >
+                          <FiX size={13} /> Stop
+                        </button>
+                      )}
                   </div>
                     )}
                  {/* Return All */}
@@ -1881,7 +1764,6 @@ useEffect(() => {
       onClick={() => {
         if (batchJob?.phase === "processing") {
           pollBatchJob(batchJob.jobId, {
-            assignmentMemoryId: batchJob.assignmentMemoryId,
             mode: batchJob.mode,
             geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
           }); // "Check now" behaviour
@@ -1929,7 +1811,6 @@ useEffect(() => {
     onClick={() => {
       console.log("Check now clicked, jobId:", batchJob.jobId);
       pollBatchJob(batchJob.jobId, {
-        assignmentMemoryId: batchJob.assignmentMemoryId,
         mode: batchJob.mode,
         geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
       });
@@ -1942,6 +1823,25 @@ useEffect(() => {
     Check now
   </button>
 )}
+    {(batchJob?.phase === "uploading" ||
+      batchJob?.phase === "submitting" ||
+      batchJob?.phase === "processing") && (
+      <button
+        onClick={stopBatchMark}
+        style={{
+          marginLeft: batchJob?.phase === "processing" ? 8 : "auto",
+          fontSize: 11,
+          color: "#f87171",
+          background: "rgba(239,68,68,0.12)",
+          border: "1px solid rgba(239,68,68,0.35)",
+          borderRadius: 6,
+          padding: "4px 10px",
+          cursor: "pointer",
+        }}
+      >
+        <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
+      </button>
+    )}
 
     </div> )}
                   </div>
@@ -2305,7 +2205,7 @@ useEffect(() => {
                 </select>
                 <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                   {guidanceModal.batch
-                    ? "Used for assignment memory build and the Gemini batch job (~50% cheaper than sequential marking)."
+                    ? "Used for the Gemini batch job (~50% cheaper than sequential marking)."
                     : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
                 </p>
               </div>
@@ -2730,22 +2630,6 @@ useEffect(() => {
                     })()}
                   </div>
 
-                  {/* Confirm edits notice for normal mode */}
-                  {hasTeacherEdits(
-                    getOriginalQuestions(resultModal),
-                    editingQuestions
-                  ) && (
-                    <div style={{ padding: "10px 16px", marginBottom: 16, borderRadius: 10, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ You have edited grades — confirm to save to assignment memory</span>
-                      <button
-                        className="ma-send-btn"
-                        style={{ fontSize: 12, padding: "6px 14px", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#f59e0b" }}
-                        onClick={handleConfirmEdits}
-                      >
-                        ✅ Confirm Edits
-                      </button>
-                    </div>
-                  )}
                 </>
               )}
 
