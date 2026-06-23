@@ -21,6 +21,7 @@ import QualityTeamAssignmentsTest from "./pages/QualityTeamAssignmentsTest";
 import QualityChecklistItemsTest from "./pages/QualityChecklistItemsTest";
 import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
 import Login from "./pages/Login";
+import LandingPage from "./pages/LandingPage";
 import ForgotPassword from "./pages/ForgotPassword";
 import SetupPassword from "./pages/SetupPassword";
 import AssistantDashboard from "./pages/assistant/Dashboard";
@@ -84,7 +85,7 @@ function App() {
         />
       <Routes>
         
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/googleConnectTest" element={<GoogleConnectTest />} />
 
         <Route path="/assignment-test" element={<AssignmentFetchTest />} />
