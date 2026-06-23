@@ -43,7 +43,7 @@ export default function LandingPage() {
               <AppIcon />
             </div>
             <div className="landing-card-body">
-              <h2 className="landing-card-title">Sahahly App</h2>
+              <h2 className="landing-card-title">Sahahly Operations</h2>
               <p className="landing-card-desc">
                 Access the academic workflow platform — manage assignments, marking, quality review, and more.
               </p>
@@ -65,7 +65,7 @@ export default function LandingPage() {
             <div className="landing-card-body">
               <h2 className="landing-card-title">CMS Portal</h2>
               <p className="landing-card-desc">
-                Access the content management system to manage courses, materials, and institutional content.
+                Access the content management system to manage courses, materials, and educational content.
               </p>
             </div>
             <a href="https://cms.sahahly.com" className="landing-btn landing-btn--secondary">
