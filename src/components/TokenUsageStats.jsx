@@ -1,4 +1,4 @@
-import { formatBatchPricingNote, formatCostEgp, formatCostUsd, resolveMarkingCost } from "../utils/markingCost";
+import { formatBatchPricingNote, formatPriorityPricingNote, formatCostEgp, formatCostUsd, resolveMarkingCost } from "../utils/markingCost";
 
 function tokenLines(tokenUsage) {
   const cached = Number(tokenUsage.cachedContentTokens) || 0;
@@ -31,6 +31,10 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
 
   const cost = resolveMarkingCost(result);
   const batchNote = formatBatchPricingNote(cost);
+  const priorityNote = formatPriorityPricingNote(cost);
+  const downgraded =
+    result?.requestedServiceTier === "priority" &&
+    result?.servedServiceTier === "standard";
   const lines = tokenLines(tokenUsage);
 
   if (compact) {
@@ -50,6 +54,14 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
             {batchNote ? (
               <span style={{ marginLeft: 6, color: "rgba(129,140,248,0.85)" }}>({batchNote})</span>
             ) : null}
+            {priorityNote ? (
+              <span style={{ marginLeft: 6, color: "rgba(251,191,36,0.9)" }}>({priorityNote})</span>
+            ) : null}
+          </div>
+        )}
+        {downgraded && (
+          <div style={{ marginTop: 4, color: "rgba(251,191,36,0.85)" }}>
+            ⚡ Priority unavailable — ran at standard speed.
           </div>
         )}
       </div>
@@ -95,6 +107,14 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
           {batchNote ? (
             <div style={{ color: "rgba(129,140,248,0.85)" }}>{batchNote}</div>
           ) : null}
+          {priorityNote ? (
+            <div style={{ color: "rgba(251,191,36,0.9)" }}>{priorityNote}</div>
+          ) : null}
+        </div>
+      )}
+      {downgraded && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "rgba(251,191,36,0.85)" }}>
+          ⚡ Priority unavailable — ran at standard speed.
         </div>
       )}
     </div>
