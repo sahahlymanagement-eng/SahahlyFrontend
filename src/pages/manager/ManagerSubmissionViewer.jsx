@@ -174,26 +174,10 @@ useEffect(() => {
 
       setSavedResults(map);
 
-      // sync into UI progress state (same idea as assistant)
       setSingleProgress(prev => ({
         ...prev,
         ...map
       }));
-
-      // optional: also sync student list grades (manager usually needs this)
-      setStudents(prev =>
-        prev.map(s =>
-          map[s.submissionId]
-            ? {
-                ...s,
-                assignedGrade:
-                  map[s.submissionId]?.totalMarks ??
-                  map[s.submissionId]?.result?.totalMarks ??
-                  null
-              }
-            : s
-        )
-      );
 
     } catch (err) {
       console.error("Failed to load saved results", err);
@@ -204,6 +188,24 @@ useEffect(() => {
     fetchSavedResults();
   }
 }, [selectedAssignment?._id]);
+
+useEffect(() => {
+  if (!students.length || !Object.keys(savedResults).length) return;
+  let changed = false;
+  const updated = students.map(s => {
+    const sr = savedResults[s.submissionId];
+    if (!sr) return s;
+    const newGrade =
+      sr.totalMarks ??
+      sr.result?.criteriaGrade?.totalMarks ??
+      sr.result?.totalMarks ??
+      null;
+    if (s.assignedGrade === newGrade) return s;
+    changed = true;
+    return { ...s, assignedGrade: newGrade };
+  });
+  if (changed) setStudents(updated);
+}, [savedResults, students]);
 
 
   const openErrorViewer = (title, error) => {
@@ -642,7 +644,16 @@ useEffect(() => {
             provider,
             result: res.data
           });
-        
+          setSavedResults(prev => ({
+            ...prev,
+            [student.submissionId]: {
+              status: "done",
+              result: res.data,
+              aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+              totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+            }
+          }));
+
           setStudents(prev =>
         prev.map(s =>
           s.submissionId === student.submissionId
@@ -656,7 +667,7 @@ useEffect(() => {
             : s
         )
       );
-      
+
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
       setEditingMaxTotal(null);
     } catch (err) {
@@ -760,6 +771,15 @@ useEffect(() => {
         provider: "gemini-priority",
         result: res.data
       });
+      setSavedResults(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: res.data,
+          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+        }
+      }));
 
       setStudents(prev =>
         prev.map(s =>
@@ -1025,6 +1045,15 @@ while (
           provider,
           result: res.data
         });
+        setSavedResults(prev => ({
+          ...prev,
+          [student.submissionId]: {
+            status: "done",
+            result: res.data,
+            aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+            totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+          }
+        }));
 
         success = true;
 
@@ -1237,6 +1266,15 @@ const pollBatchJob = async (jobId, jobMeta = {}) => {
             provider:     "gemini-batch",
             result:         enrichedResult,
           }).catch(e => console.error("save-results:", e.message));
+          setSavedResults(prev => ({
+            ...prev,
+            [student.submissionId]: {
+              status: "done",
+              result: enrichedResult,
+              aiOriginalResult: originalAiResult,
+              totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
+            }
+          }));
         }
       }
 
@@ -1563,6 +1601,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         provider:     "gemini-priority",
         result:       enrichedResult,
       }).catch((e) => console.error("save-results:", e.message));
+      setSavedResults(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: enrichedResult,
+          aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
+          totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
+        }
+      }));
     }
 
     // Failures

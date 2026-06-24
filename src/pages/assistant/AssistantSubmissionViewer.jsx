@@ -331,6 +331,24 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
   fetchSavedResults();
 }, [assignmentId]);
 
+useEffect(() => {
+  if (!students.length || !Object.keys(savedResults).length) return;
+  let changed = false;
+  const updated = students.map(s => {
+    const sr = savedResults[s.submissionId];
+    if (!sr) return s;
+    const newGrade =
+      sr.totalMarks ??
+      sr.result?.criteriaGrade?.totalMarks ??
+      sr.result?.totalMarks ??
+      null;
+    if (s.assignedGrade === newGrade) return s;
+    changed = true;
+    return { ...s, assignedGrade: newGrade };
+  });
+  if (changed) setStudents(updated);
+}, [savedResults, students]);
+
   useEffect(() => {
     const generatePreview = async () => {
       if (!resultModal) return;
@@ -581,6 +599,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
           provider: markingProvider,
           result: res.data
         });
+      setSavedResults(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: res.data,
+          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+        }
+      }));
 
       setStudents(prev =>
         prev.map(s =>
@@ -699,6 +726,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
         provider: "gemini-priority",
         result: res.data
       });
+      setSavedResults(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: res.data,
+          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+        }
+      }));
 
       setStudents(prev =>
         prev.map(s =>
@@ -840,6 +876,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
           provider:     "gemini-priority",
           result:       enrichedResult,
         }).catch((e) => console.error("save-results:", e.message));
+        setSavedResults(prev => ({
+          ...prev,
+          [student.submissionId]: {
+            status: "done",
+            result: enrichedResult,
+            aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
+            totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
+          }
+        }));
       }
 
       for (const { student, error } of (data.failed || [])) {
@@ -1122,6 +1167,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
             provider,
             result: res.data
           });
+          setSavedResults(prev => ({
+            ...prev,
+            [student.submissionId]: {
+              status: "done",
+              result: res.data,
+              aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+              totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+            }
+          }));
 
           success = true;
 
