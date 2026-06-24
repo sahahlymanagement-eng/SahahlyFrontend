@@ -273,3 +273,28 @@ export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel) {
   return result;
 }
 
+export function buildPriorityMarkingResult(parsed, tokenUsage, geminiModel, servedServiceTier) {
+  // Premium only applies when Gemini actually served the request at priority tier.
+  const servedPriority = servedServiceTier === "priority";
+  const result = {
+    ...parsed,
+    provider: "gemini-priority",
+    geminiModel: geminiModel || null,
+    tokenUsage: tokenUsage || null,
+    requestedServiceTier: "priority",
+    servedServiceTier: servedServiceTier || null,
+  };
+
+  if (tokenUsage && geminiModel) {
+    const cost = estimateMarkingCost(geminiModel, tokenUsage, { priority: servedPriority });
+    if (cost) {
+      result.estimatedCost = cost;
+      result.estimatedCostUsd = cost.usd;
+      result.estimatedCostEgp = cost.egp;
+      if (servedPriority) result.priorityPricing = true;
+    }
+  }
+
+  return result;
+}
+

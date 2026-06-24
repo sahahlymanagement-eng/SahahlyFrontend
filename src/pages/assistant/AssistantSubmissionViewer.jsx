@@ -23,6 +23,7 @@ import {
   appendMarkingContext,
   assertPdfBlob,
   buildFinalMarkingResult,
+  buildPriorityMarkingResult,
   buildNoSubmissionMarkingResult,
   currentUserId,
   getApiErrorMessage,
@@ -33,7 +34,7 @@ import {
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
-import { parseGeminiModelsResponse } from "../../utils/markingCost";
+import { parseGeminiModelsResponse, PRIORITY_RATE_FACTOR } from "../../utils/markingCost";
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -65,6 +66,10 @@ export default function AssignmentSubmissionViewer() {
   const [bulkProgress,     setBulkProgress]     = useState({});
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
+
+  // Priority (synchronous, no polling)
+  const PRIORITY_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
+  const [priorityBulkRunning, setPriorityBulkRunning] = useState(false);
 
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
@@ -326,6 +331,24 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
   fetchSavedResults();
 }, [assignmentId]);
 
+useEffect(() => {
+  if (!students.length || !Object.keys(savedResults).length) return;
+  let changed = false;
+  const updated = students.map(s => {
+    const sr = savedResults[s.submissionId];
+    if (!sr) return s;
+    const newGrade =
+      sr.totalMarks ??
+      sr.result?.criteriaGrade?.totalMarks ??
+      sr.result?.totalMarks ??
+      null;
+    if (s.assignedGrade === newGrade) return s;
+    changed = true;
+    return { ...s, assignedGrade: newGrade };
+  });
+  if (changed) setStudents(updated);
+}, [savedResults, students]);
+
   useEffect(() => {
     const generatePreview = async () => {
       if (!resultModal) return;
@@ -475,8 +498,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
     toast.info("Stopping bulk marking…");
   };
 
-  const openGuidanceModal = (student = null) => {
-    setGuidanceModal(student ? { student } : { bulk: true });
+  const openGuidanceModal = (student = null, intent = false) => {
+    // intent: "priority" (single) | "priorityBulk" | falsy (normal single/bulk)
+    let modal;
+    if (intent === "priority") modal = { priority: true, student };
+    else if (intent === "priorityBulk") modal = { priorityBulk: true };
+    else if (student) modal = { student };
+    else modal = { bulk: true };
+
+    setGuidanceModal(modal);
     setGuidance("");
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
@@ -569,6 +599,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
           provider: markingProvider,
           result: res.data
         });
+      setSavedResults(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: res.data,
+          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+        }
+      }));
 
       setStudents(prev =>
         prev.map(s =>
@@ -612,6 +651,302 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
       toast.error(await getApiErrorMessage(err));
     } finally {
       setMarkingStudentId(null);
+    }
+  };
+
+  const runMarkStudentPriority = async (student, guidanceText, mode = "normal") => {
+    setMarkingStudentId(student.submissionId);
+    setSingleProgress(prev => ({
+      ...prev,
+      [student.submissionId]: { status: "marking" }
+    }));
+
+    try {
+      const [studentPdfRes, msPdfRes] = await Promise.all([
+        api.get("/submission-files/pdf", {
+          params: { assignmentId, submissionId: student.submissionId },
+          responseType: "blob"
+        }),
+        api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
+          responseType: "blob"
+        })
+      ]);
+
+      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+      await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+      const studentFile = new File(
+        [studentPdfRes.data],
+        `${student.name || "student"}.pdf`,
+        { type: "application/pdf" }
+      );
+      const msFile = new File(
+        [msPdfRes.data],
+        "markscheme.pdf",
+        { type: "application/pdf" }
+      );
+
+      const fd = new FormData();
+      fd.append("studentPdf", studentFile);
+      if (maxGrade) fd.append("totalGrade", maxGrade);
+      fd.append("markingMode", mode);
+      const guidanceValue = guidanceForForm(guidanceText);
+      if (guidanceValue) fd.append("guidance", guidanceValue);
+      appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
+      fd.append("geminiModel", geminiModel);
+      fd.append("markSchemePdf", msFile);
+
+      const res = await api.post("/marking/mark-priority", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 600000
+      });
+
+      setResultModal({
+        student,
+        result: res.data,
+        originalAiResult: JSON.parse(JSON.stringify(res.data)),
+        studentFile,
+        submissionId: student.submissionId
+      });
+      setSingleProgress(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: res.data,
+          studentFile,
+          submissionId: student.submissionId
+        }
+      }));
+      await api.post("/submission-files/save-results", {
+        assignmentId,
+        submissionId: student.submissionId,
+        studentId: student.studentId,
+        studentName: student.name,
+        mode,
+        provider: "gemini-priority",
+        result: res.data
+      });
+      setSavedResults(prev => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: res.data,
+          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+        }
+      }));
+
+      setStudents(prev =>
+        prev.map(s =>
+          s.submissionId === student.submissionId
+            ? {
+                ...s,
+                assignedGrade:
+                  res.data?.criteriaGrade?.totalMarks ??
+                  res.data?.totalMarks ??
+                  null
+              }
+            : s
+        )
+      );
+
+      if (res.data?.servedServiceTier === "standard") {
+        toast.info("Priority unavailable — ran at standard speed.");
+      }
+
+      setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
+    } catch (err) {
+      const message = extractHumanError
+        ? extractHumanError(err)
+        : await getApiErrorMessage(err);
+
+      recordStudentMarkingError(
+        student.submissionId,
+        message,
+        err.response?.data
+      );
+      setSingleProgress(prev => ({
+        ...prev,
+        [student.submissionId]: { status: "error" }
+      }));
+
+      openErrorViewer(`Priority Marking Failed - ${student.name}`, message);
+      toast.error(message);
+    } finally {
+      setMarkingStudentId(null);
+    }
+  };
+
+  const runPriorityBulk = async (guidanceText, mode = "normal") => {
+    if (!PRIORITY_ALLOWED_IDS.includes(currentUserId())) {
+      toast.error("You are not allowed to do priority marking.");
+      return;
+    }
+
+    let eligible;
+    try {
+      const res = await api.post("/submission-files/eligible-for-bulk-marking", {
+        assignmentId,
+        submissions: students,
+      });
+      const backendEligible = new Set(res.data.map((s) => s.submissionId));
+      eligible = students.filter(
+        (s) =>
+          s.submissionId &&
+          backendEligible.has(s.submissionId) &&
+          isStudentSubmitted(s.state)
+      );
+    } catch (err) {
+      toast.error(extractHumanError(err) || "Failed to check eligible students");
+      return;
+    }
+
+    if (!eligible.length) {
+      const submitted = students.filter((s) => isStudentSubmitted(s.state));
+      if (!submitted.length) {
+        return toast.warn("No students have submitted this assignment yet");
+      }
+      return toast.warn("All submitted students are already marked for this assignment");
+    }
+
+    const guidanceValue = guidanceForForm(guidanceText);
+
+    const progress = {};
+    eligible.forEach((s) => { progress[s.submissionId] = { status: "marking" }; });
+    setBulkProgress((prev) => ({ ...prev, ...progress }));
+    setPriorityBulkRunning(true);
+
+    try {
+      const { data } = await api.post("/marking/mark-priority/bulk", {
+        assignmentId,
+        students: eligible.map((s) => ({
+          submissionId: s.submissionId,
+          studentId:    s.studentId,
+          name:         s.name,
+          state:        s.state,
+        })),
+        markingMode: mode,
+        guidance:    guidanceValue,
+        geminiModel,
+        ...(extra?.subjectId && { subjectId: extra.subjectId }),
+        ...(maxGrade && { totalGrade: maxGrade }),
+        personId:    currentUserId(),
+        classroomId,
+      });
+
+      let downgradedCount = 0;
+
+      for (const { student, result, tokenUsage, servedServiceTier } of (data.results || [])) {
+        const enrichedResult = buildPriorityMarkingResult(
+          result,
+          tokenUsage,
+          geminiModel,
+          servedServiceTier
+        );
+        if (servedServiceTier === "standard") downgradedCount++;
+
+        setBulkProgress((p) => ({
+          ...p,
+          [student.submissionId]: {
+            status: "done",
+            result: enrichedResult,
+            originalAiResult: JSON.parse(JSON.stringify(enrichedResult)),
+          },
+        }));
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.submissionId === student.submissionId
+              ? {
+                  ...s,
+                  assignedGrade:
+                    result?.criteriaGrade?.totalMarks ??
+                    result?.totalMarks ??
+                    null,
+                }
+              : s
+          )
+        );
+
+        await api.post("/submission-files/save-results", {
+          assignmentId,
+          submissionId: student.submissionId,
+          studentId:    student.studentId,
+          studentName:  student.name,
+          mode,
+          provider:     "gemini-priority",
+          result:       enrichedResult,
+        }).catch((e) => console.error("save-results:", e.message));
+        setSavedResults(prev => ({
+          ...prev,
+          [student.submissionId]: {
+            status: "done",
+            result: enrichedResult,
+            aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
+            totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
+          }
+        }));
+      }
+
+      for (const { student, error } of (data.failed || [])) {
+        const message =
+          typeof error === "string" ? error : error?.message || "Priority marking failed";
+        setBulkProgress((p) => ({
+          ...p,
+          [student.submissionId]: { status: "error" },
+        }));
+        recordStudentMarkingError(student.submissionId, message, error);
+      }
+
+      for (const { student, result } of (data.zeroed || [])) {
+        setBulkProgress((p) => ({
+          ...p,
+          [student.submissionId]: {
+            status: "done",
+            result,
+            originalAiResult: JSON.parse(JSON.stringify(result)),
+          },
+        }));
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.submissionId === student.submissionId ? { ...s, assignedGrade: 0 } : s
+          )
+        );
+      }
+
+      for (const { student } of (data.skipped || [])) {
+        setBulkProgress((p) => {
+          const next = { ...p };
+          if (next[student.submissionId]?.status === "marking") {
+            delete next[student.submissionId];
+          }
+          return next;
+        });
+      }
+
+      const ok = (data.results || []).length;
+      const zeroed = (data.zeroed || []).length;
+      const failed = (data.failed || []).length;
+      toast.success(
+        `Priority complete — ${ok} marked` +
+        (zeroed ? `, ${zeroed} zeroed` : "") +
+        (failed ? `, ${failed} failed` : "")
+      );
+      if (downgradedCount) {
+        toast.info(`${downgradedCount} student(s) ran at standard speed (priority unavailable).`);
+      }
+    } catch (err) {
+      const message = recordMarkingErrorsForStudents(
+        eligible,
+        err,
+        "Priority marking failed"
+      );
+      eligible.forEach((s) =>
+        setBulkProgress((p) => ({ ...p, [s.submissionId]: { status: "error" } }))
+      );
+      openErrorViewer("Priority Marking Failed", message);
+      toast.error(message);
+    } finally {
+      setPriorityBulkRunning(false);
     }
   };
 
@@ -832,6 +1167,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
             provider,
             result: res.data
           });
+          setSavedResults(prev => ({
+            ...prev,
+            [student.submissionId]: {
+              status: "done",
+              result: res.data,
+              aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
+              totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+            }
+          }));
 
           success = true;
 
@@ -943,6 +1287,12 @@ const recordStudentMarkingError = (submissionId, message, raw = null) => {
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
       runBulkMark(g, mode, provider);
+    } else if (guidanceModal.priorityBulk) {
+      setGuidanceModal(null);
+      runPriorityBulk(g, mode);
+    } else if (guidanceModal.priority) {
+      setGuidanceModal(null);
+      runMarkStudentPriority(guidanceModal.student, g, mode);
     } else {
       setGuidanceModal(null);
       runMarkStudent(guidanceModal.student, g, mode, provider);
@@ -1381,6 +1731,21 @@ return (
                 </button>
               )}
 
+              {/* Mark All (Priority) */}
+              {msInfo && PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
+                <button
+                  className="msv-btn-ai"
+                  onClick={() => openGuidanceModal(null, "priorityBulk")}
+                  disabled={bulkMarking || priorityBulkRunning}
+                  title="Mark whole class on Gemini priority tier (fastest, premium)"
+                  style={{ marginLeft: 10, background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
+                >
+                  {priorityBulkRunning
+                    ? <><span className="pm-spinner" /> Priority marking…</>
+                    : <><FiSend size={13} /> Mark All (Priority)</>}
+                </button>
+                )}
+
               {/* Return All */}
               {msInfo && !bulkMarking && (
                 <button
@@ -1552,6 +1917,19 @@ return (
                                           }
                                         </button>
 
+                                        {/* Priority single mark */}
+                                        {PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--ai"
+                                            title="Mark on Gemini priority tier (fastest, premium)"
+                                            onClick={() => openGuidanceModal(s, "priority")}
+                                            disabled={markingLoading || priorityBulkRunning}
+                                            style={{ borderColor: "rgba(251,191,36,0.4)" }}
+                                          >
+                                            <FiSend size={12} /> Mark (Priority)
+                                          </button>
+                                        )}
+
                                           {/* {bulkRetrying && (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
@@ -1670,10 +2048,17 @@ return (
                       <div className="msv-guidance-header">
                         <div>
                           <div style={{ fontSize: 15, fontWeight: 700 }}>
-                            {guidanceModal.bulk ? "🤖 Mark All Students" : `🤖 Mark — ${guidanceModal.student?.name}`}
+                            {guidanceModal.priorityBulk ? "🚀 Mark All Students (Priority)" :
+                             guidanceModal.priority     ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}` :
+                             guidanceModal.bulk         ? "🤖 Mark All Students" :
+                                                          `🤖 Mark — ${guidanceModal.student?.name}`}
                           </div>
                           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                            {guidanceModal.bulk
+                            {guidanceModal.priorityBulk
+                              ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              : guidanceModal.priority
+                              ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              : guidanceModal.bulk
                               ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                               : "AI will mark against the uploaded mark scheme"}
                           </div>
@@ -1866,25 +2251,45 @@ return (
                             Save Prompt
                           </button>
 
-                        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                          <button
-                            className="ma-send-btn"
-                            onClick={() => handleGuidanceConfirm("gemini")}
-                            disabled={markingModeModal === "criteria" && !guidance.trim()}
-                            style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}
-                          >
-                          
-                            <FiCpu size={14} />
-                            {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
-                          </button>
-                        
-                          <button
-                            className="ma-send-btn"
-                            onClick={() => handleGuidanceConfirm("claude")}
-                          >
-                          <FiCpu size={14} />
-                            {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
-                          </button>
+                        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+                          {!guidanceModal.priority && !guidanceModal.priorityBulk && (
+                            <>
+                              <button
+                                className="ma-send-btn"
+                                onClick={() => handleGuidanceConfirm("gemini")}
+                                disabled={markingModeModal === "criteria" && !guidance.trim()}
+                                style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}
+                              >
+                                <FiCpu size={14} />
+                                {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                              </button>
+
+                              <button
+                                className="ma-send-btn"
+                                onClick={() => handleGuidanceConfirm("claude")}
+                              >
+                                <FiCpu size={14} />
+                                {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
+                              </button>
+                            </>
+                          )}
+
+                          {(guidanceModal.priority || guidanceModal.priorityBulk) && (
+                            <button
+                              className="ma-send-btn"
+                              onClick={() => handleGuidanceConfirm("gemini")}
+                              disabled={markingModeModal === "criteria" && !guidance.trim()}
+                              style={{
+                                flex: 1, justifyContent: "center",
+                                opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1,
+                                background: "rgba(251,191,36,0.15)",
+                                borderColor: "rgba(251,191,36,0.4)"
+                              }}
+                            >
+                              <FiSend size={14} />
+                              {guidanceModal.priorityBulk ? "Start Priority Marking (All)" : "Start Priority Marking"}
+                            </button>
+                          )}
 
                           <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
                         </div>
