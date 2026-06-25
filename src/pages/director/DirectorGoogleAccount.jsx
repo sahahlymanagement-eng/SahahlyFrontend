@@ -8,6 +8,7 @@ export default function DirectorGoogleAccountsPage() {
   const [classrooms, setClassrooms] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
 
   const loadAccounts = async () => {
     try {
@@ -19,22 +20,30 @@ export default function DirectorGoogleAccountsPage() {
   };
 
   const fetchClassrooms = async (account) => {
+    if (fetching) return;
+
     try {
-      setLoading(true);
+      setFetching(true);
       setSelectedAccount(account);
       setClassrooms([]);
 
-      await api.post(
+      const res = await api.post(
         `/director/google-accounts/${account._id}/classrooms`
       );
 
-      alert("Classrooms fetched from Google");
-      loadClassrooms(account);
+      setClassrooms(Array.isArray(res.data?.data) ? res.data.data : []);
+
+      const excluded = res.data?.excludedCorrupt ?? 0;
+      alert(
+        excluded > 0
+          ? `Loaded ${res.data?.count ?? 0} classrooms (${excluded} corrupt record(s) excluded)`
+          : `Loaded ${res.data?.count ?? 0} classrooms from database`
+      );
     } catch (err) {
       console.error("Failed to fetch classrooms", err);
       alert("Failed to fetch classrooms");
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
   };
 
@@ -112,8 +121,9 @@ export default function DirectorGoogleAccountsPage() {
               <div className="directorGoogleActions">
                 <button
                   onClick={() => fetchClassrooms(acc)}
+                  disabled={fetching}
                 >
-                  <FiRefreshCw /> Fetch Classrooms
+                  <FiRefreshCw /> {fetching ? "Loading..." : "Load Classrooms"}
                 </button>
 
                 <button
