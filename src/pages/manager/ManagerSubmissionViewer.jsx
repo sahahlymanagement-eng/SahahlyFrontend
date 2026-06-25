@@ -1606,33 +1606,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
 
   const guidanceValue = guidanceForForm(guidanceText);
 
-  try {
-    toast.info("Validating mark scheme and sample submission…");
-    const firstStudent = eligible[0];
-    const [studentPdfRes, msPdfRes] = await Promise.all([
-      api.get("/submission-files/pdf", {
-        params: {
-          assignmentId: selectedAssignment._id,
-          submissionId: firstStudent.submissionId,
-        },
-        responseType: "blob",
-      }),
-      api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-        responseType: "blob",
-      }),
-    ]);
-
-    await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
-    await assertPdfBlob(msPdfRes.data, "Mark scheme");
-  } catch (err) {
-    const message = recordMarkingErrorsForStudents(
-      eligible,
-      err,
-      "Mark scheme validation failed"
-    );
-    toast.error(message);
-    return;
-  }
 
   batchStopRef.current = false;
 

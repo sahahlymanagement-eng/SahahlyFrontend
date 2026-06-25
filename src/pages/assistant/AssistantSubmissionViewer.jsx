@@ -1438,33 +1438,6 @@ useEffect(() => {
 
     const guidanceValue = guidanceForForm(guidanceText);
 
-    try {
-      toast.info("Validating mark scheme and sample submission…");
-      const firstStudent = eligible[0];
-      const [studentPdfRes, msPdfRes] = await Promise.all([
-        api.get("/submission-files/pdf", {
-          params: {
-            assignmentId,
-            submissionId: firstStudent.submissionId,
-          },
-          responseType: "blob",
-        }),
-        api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-          responseType: "blob",
-        }),
-      ]);
-
-      await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
-      await assertPdfBlob(msPdfRes.data, "Mark scheme");
-    } catch (err) {
-      const message = recordMarkingErrorsForStudents(
-        eligible,
-        err,
-        "Mark scheme validation failed"
-      );
-      toast.error(message);
-      return;
-    }
 
     setBatchJob({
       phase: "uploading",
