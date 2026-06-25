@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { useParams,useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import "../manager/ManagerAssignments.css";
+import "../manager/ManagerSubmissionViewer.css";
+import { PhoneInput } from "react-international-phone";
+import "react-international-phone/style.css";
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
@@ -18,16 +21,13 @@ import {
 export default function AssistantReports() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
-  // const [students, setStudents] = useState([]);
-  // const [loading, setLoading] = useState(false);
 
   const [reportCart, setReportCart] = useState({});
   const [sending, setSending] = useState(false);
 
   const [customPhone, setCustomPhone] = useState("");
   const [sendingCollective, setSendingCollective] = useState(false);
-  
-  // const [summaryMap, setSummaryMap] = useState({});
+
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
 
   const [includeAttendance, setIncludeAttendance] = useState(false);
@@ -37,51 +37,28 @@ export default function AssistantReports() {
   // const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
   // const [classroomId, setClassroomId] = useState(null);
 
-  /* LOAD STUDENTS */
-  // useEffect(() => {
-  //   if (!assignmentId) return;
-  //   fetchStudents();
-  // }, [assignmentId]);
-
-  // const fetchStudents = async () => {
-  //   setLoading(true);
-  //   try {
-  //     const res = await api.get(
-  //       `/assignment-submissions/${assignmentId}/students`
-  //     );
-  //     setStudents(res.data.students || []);
-  //     setSummaryMap(res.data.summaryMap || {});
-  //     setAssignmentTitle(res.data.assignmentTitle || "Assignment");
-  //     setClassroomId(res.data.classroomId || null);
-  //   } catch {
-  //     toast.error("Failed to load students");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-const { data: students, page, totalPages, loading, fetchPage, extra, setData: setStudents } =
-  usePagination(
-    `/assignment-submissions/${assignmentId}/students`,
-    {},
-    10,
-    "students",
-    !!assignmentId
-  );
+  const { data: students, page, totalPages, loading, fetchPage, extra, setData: setStudents } =
+    usePagination(
+      `/assignment-submissions/${assignmentId}/students`,
+      {},
+      10,
+      "students",
+      !!assignmentId
+    );
 
   const summaryMap = extra.summaryMap || {};
   const assignmentTitle = extra.assignmentTitle || "Assignment";
   const classroomId = extra.classroomId || null;
-  
+
   const [allStudents, setAllStudents] = useState([]);
 
-useEffect(() => {
-  if (!assignmentId) return;
-  api.get(`/assignment-submissions/${assignmentId}/students`, {
-    params: { page: 1, limit: 9999 } // fetch all
-  }).then(res => setAllStudents(res.data.students || []));
-}, [assignmentId]);
-  
-  /* HELPERS */
+  useEffect(() => {
+    if (!assignmentId) return;
+    api.get(`/assignment-submissions/${assignmentId}/students`, {
+      params: { page: 1, limit: 9999 }
+    }).then(res => setAllStudents(res.data.students || []));
+  }, [assignmentId]);
+
   const getStudentId = (s) => s.studentId || s._id;
 
   const buildItem = (student) => ({
@@ -96,7 +73,6 @@ useEffect(() => {
     comment: student.summary || summaryMap[student.submissionId] || ""
   });
 
-  /* TOGGLE SINGLE STUDENT */
   const toggleStudent = (student) => {
     const stuId = String(getStudentId(student));
     const asgId = assignmentId;
@@ -123,61 +99,36 @@ useEffect(() => {
     });
   };
 
-  /* SELECT ALL */
-  // const selectAll = () => {
-  //   const asgId = assignmentId;
+  const selectAll = () => {
+    const asgId = assignmentId;
 
-  //   setReportCart((prev) => {
-  //     const next = { ...prev };
+    setReportCart((prev) => {
+      const next = { ...prev };
 
-  //     students.forEach((s) => {
-  //       const stuId = String(getStudentId(s));
+      allStudents.forEach((s) => {
+        const stuId = String(getStudentId(s));
 
-  //       if (!next[stuId]) {
-  //         next[stuId] = {
-  //           studentMeta: s,
-  //           items: { [asgId]: buildItem(s) }
-  //         };
-  //       } else if (!next[stuId].items[asgId]) {
-  //         next[stuId].items[asgId] = buildItem(s);
-  //       }
-  //     });
+        if (!next[stuId]) {
+          next[stuId] = {
+            studentMeta: s,
+            items: { [asgId]: buildItem(s) }
+          };
+        } else if (!next[stuId].items[asgId]) {
+          next[stuId].items[asgId] = buildItem(s);
+        }
+      });
 
-  //     return next;
-  //   });
-  // };
-const selectAll = () => {
-  const asgId = assignmentId;
-
-  setReportCart((prev) => {
-    const next = { ...prev };
-
-    allStudents.forEach((s) => {  // changed from students → allStudents
-      const stuId = String(getStudentId(s));
-
-      if (!next[stuId]) {
-        next[stuId] = {
-          studentMeta: s,
-          items: { [asgId]: buildItem(s) }
-        };
-      } else if (!next[stuId].items[asgId]) {
-        next[stuId].items[asgId] = buildItem(s);
-      }
+      return next;
     });
+  };
 
-    return next;
-  });
-};
-  /* CLEAR ALL */
   const clearAll = () => setReportCart({});
 
-  /* CHECK SELECTED */
   const isSelected = (student) => {
     const stuId = String(getStudentId(student));
     return !!reportCart?.[stuId]?.items?.[assignmentId];
   };
 
-  /* COMMENT */
   const setComment = (studentId, comment) => {
     setReportCart((prev) => {
       const entry = prev[studentId];
@@ -269,7 +220,6 @@ const selectAll = () => {
     }));
   };
 
-  /* SEND NORMAL REPORT */
   const sendReport = async () => {
     if (!Object.keys(reportCart).length) {
       toast.warn("No students selected");
@@ -318,7 +268,6 @@ const selectAll = () => {
     }
   };
 
-  /* TEACHER COLLECTIVE */
   const sendTeacherCollectiveReport = async () => {
     const reports = buildReportsPayload();
 
@@ -329,13 +278,13 @@ const selectAll = () => {
 
     setSendingCollective(true);
     try {
-await api.post(
-  `/assignment-submissions/${assignmentId}/students/reports`,
-  {
-    type: "teacher",
-    reports
-  }
-);
+      await api.post(
+        `/assignment-submissions/${assignmentId}/students/reports`,
+        {
+          type: "teacher",
+          reports
+        }
+      );
 
       toast.success("Teacher collective report sent");
       setReportCart({});
@@ -346,7 +295,6 @@ await api.post(
     }
   };
 
-  /* CUSTOM COLLECTIVE */
   const sendCustomCollectiveReport = async () => {
     const reports = buildReportsPayload();
 
@@ -363,14 +311,14 @@ await api.post(
     setSendingCollective(true);
 
     try {
-await api.post(
-  `/assignment-submissions/${assignmentId}/students/reports`,
-  {
-    type: "custom",
-    phone: customPhone,
-    reports
-  }
-);
+      await api.post(
+        `/assignment-submissions/${assignmentId}/students/reports`,
+        {
+          type: "custom",
+          phone: customPhone,
+          reports
+        }
+      );
 
       toast.success("Custom report sent");
     } catch {
@@ -387,35 +335,37 @@ await api.post(
     0
   );
 
-  /* UI */
+  const isSending = sending || sendingCollective;
+
+  const statusBadge = (student) => {
+    if (student.state === "TURNED_IN" || student.state === "RETURNED") {
+      if (student.isLate) return <span className="ma-badge ma-badge--orange">Late</span>;
+      if (student.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
+      return <span className="ma-badge ma-badge--green">Submitted</span>;
+    }
+    if (student.state === "NEW" || student.state === "CREATED")
+      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
+    return <span className="ma-badge ma-badge--gray">{student.state}</span>;
+  };
+
   return (
     <div className="ma-root">
       <main className="ma-main">
 
-        {/* TOPBAR */}
         <header className="ma-topbar">
           <div className="ma-topbar-left">
-            <h1 className="ma-topbar-title">Assignment Reports</h1>
-            <span className="ma-topbar-sub">
-              {allStudents.length} students
-            </span>
+            <h1 className="ma-topbar-title">Assignments</h1>
+            <span className="ma-topbar-sub">{assignmentTitle}</span>
           </div>
 
           <div className="ma-topbar-right">
-
             <button className="ma-send-btn" onClick={() => fetchPage(page)}>
-              <FiRefreshCw /> Refresh
-            </button>
-            
-            <button className="pm-back" onClick={() => navigate(-1)}>
-              ← Back</button>
-
-            <button className="ma-send-btn" onClick={selectAll}>
-              Select All
+              <FiRefreshCw size={13} />
+              Refresh
             </button>
 
-            <button className="ma-send-btn" onClick={clearAll}>
-              Clear All
+            <button className="msv-cancel-btn" onClick={() => navigate(-1)}>
+              Back
             </button>
 
             {cartCount > 0 && (
@@ -423,15 +373,11 @@ await api.post(
                 <div className="ma-cart-pill">
                   <FiCheckSquare size={13} />
                   <span>
-                    {cartCount} students · {totalItems} items
+                    {cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} item{totalItems !== 1 ? "s" : ""}
                   </span>
                 </div>
 
-                <button
-                  className="ma-send-btn"
-                  onClick={sendReport}
-                  disabled={sending}
-                >
+                <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
                   <FiSend size={13} />
                   {sending ? "Sending…" : "Send Report"}
                 </button>
@@ -439,26 +385,38 @@ await api.post(
                 <button
                   className="ma-send-btn"
                   onClick={sendTeacherCollectiveReport}
-                  disabled={sending || sendingCollective}
+                  disabled={isSending}
                 >
-                  Teacher Report
+                  <FiSend size={13} />
+                  {sendingCollective ? "Sending…" : "Send Teacher Collective Report"}
                 </button>
 
-                <input
-                  className="ma-search-input"
-                  placeholder="Custom phone"
-                  value={customPhone}
-                  onChange={(e) =>
-                    setCustomPhone(e.target.value.replace(/\D/g, ""))
-                  }
-                />
+                <div style={{ minWidth: "260px" }}>
+                  <PhoneInput
+                    defaultCountry="eg"
+                    value={`+${customPhone}`}
+                    onChange={(value) =>
+                      setCustomPhone(value.replace(/\D/g, ""))
+                    }
+                    className="tm-phone-input"
+                    countrySelectorStyleProps={{
+                      dropdownStyleProps: {
+                        style: {
+                          maxHeight: "350px",
+                          zIndex: 9999
+                        }
+                      }
+                    }}
+                  />
+                </div>
 
                 <button
                   className="ma-send-btn"
                   onClick={sendCustomCollectiveReport}
-                  disabled={sending || sendingCollective}
+                  disabled={isSending}
                 >
-                  Custom Report
+                  <FiSend size={13} />
+                  {sendingCollective ? "Sending…" : "Send Custom Collective Report"}
                 </button>
               </>
             )}
@@ -497,101 +455,246 @@ await api.post(
 
         {/* TABLE */}
         <div className="ma-content">
-          <div className="ma-table-wrap">
-            <div className="ma-table-scroll">
+          <div className="ma-right-panel msv-right-panel-full">
+            <div className="ma-panel">
+              <div className="ma-panel-header">
+                <div className="ma-panel-title-wrap">
+                  <div className="ma-panel-dot" />
+                  <h2 className="ma-panel-title">{assignmentTitle}</h2>
+                  <span className="ma-panel-count">{students.length} students</span>
+                </div>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    className="ma-send-btn"
+                    onClick={selectAll}
+                    disabled={allStudents.length === 0}
+                  >
+                    Select All
+                  </button>
 
-              {loading ? (
-                <p className="ma-empty-msg">Loading students...</p>
-              ) : (
-                <table className="ma-table">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Grade</th>
-                      <th>Comment</th>
-                    </tr>
-                  </thead>
+                  <button
+                    className="ma-send-btn"
+                    onClick={clearAll}
+                    disabled={cartCount === 0}
+                  >
+                    Clear All
+                  </button>
+                </div>
+                {cartCount > 0 && (
+                  <span className="ma-panel-hint">
+                    <FiCheckSquare size={12} /> {cartCount} selected for report
+                  </span>
+                )}
+              </div>
 
-                  <tbody>
-                    {students.map((s) => {
-                      const stuId = String(getStudentId(s));
-                      const asgId = assignmentId;
-                      const selected = isSelected(s);
+              {loading && <p className="ma-loading-msg">Loading students…</p>}
 
-                      return (
-                        <tr
-                          key={stuId}
-                          className={selected ? "ma-row--selected" : ""}
-                          onClick={() => toggleStudent(s)}
-                        >
-                          <td>{selected ? "✓" : ""}</td>
-
-                          <td style={{ color: "white" }}>{s.name}</td>
-                          <td style={{ color: "white" }}>{s.email}</td>
-                          <td style={{ color: "white" }}>{s.state}</td>
-                          <td style={{ color: "white" }}>{s.assignedGrade ?? "-"}</td>
-                          <td onClick={(e) => e.stopPropagation()}>
-                            {summaryMap[s.submissionId] && (
-                              <button
-                                className="msv-action-btn msv-action-btn--view"
-                                title="View Summary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSummaryViewer({
-                                    open: true,
-                                    title: `Summary - ${s.name}`,
-                                    message: summaryMap[s.submissionId]
-                                  });
-                                }}
-                              >
-                                View Summary
-                              </button>
-                            )}
-                          </td>
-
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {!loading && students.length === 0 && (
+                <p className="ma-empty-msg">No students found.</p>
               )}
-<Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
+
+              {!loading && students.length > 0 && (
+                <div className="ma-table-wrap">
+                  <div className="ma-table-scroll">
+                    <table className="ma-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 44 }}></th>
+                          <th>Name</th>
+                          <th>Email</th>
+                          <th>Status</th>
+                          <th>Submitted At</th>
+                          <th>Grade</th>
+                          <th>Comment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students.map((s, i) => {
+                          const stuId = String(getStudentId(s));
+                          const asgId = assignmentId;
+                          const selected = isSelected(s);
+
+                          return (
+                            <tr
+                              key={stuId}
+                              className={`ma-row ${selected ? "ma-row--selected" : ""}`}
+                              style={{ animationDelay: `${i * 0.025}s` }}
+                              onClick={() => toggleStudent(s)}
+                            >
+                              <td>
+                                <div className={`ma-check ${selected ? "ma-check--on" : ""}`}>
+                                  {selected && "✓"}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="ma-avatar-cell">
+                                  <div className="ma-avatar">
+                                    {(s.name || s.email || "?").charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="ma-cell-name">
+                                    {s.name || <span className="ma-cell-empty">—</span>}
+                                  </span>
+                                </div>
+                              </td>
+                              <td><span className="ma-cell-muted">{s.email || "—"}</span></td>
+                              <td>{statusBadge(s)}</td>
+                              <td>
+                                <span className="ma-cell-muted">
+                                  {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
+                                </span>
+                              </td>
+                              <td>
+                                {s.assignedGrade != null
+                                  ? <span className="ma-grade-pill">{s.assignedGrade}</span>
+                                  : <span className="ma-cell-empty">—</span>}
+                              </td>
+                              <td onClick={(e) => e.stopPropagation()}>
+                                {selected ? (
+                                  <div className="ma-comment-wrap">
+                                    <FiMessageSquare size={12} className="ma-comment-icon" />
+                                    <input
+                                      className="ma-comment-input"
+                                      placeholder="Add comment…"
+                                      value={reportCart[stuId]?.items[asgId]?.comment || ""}
+                                      onChange={(e) => setComment(stuId, e.target.value)}
+                                    />
+                                  </div>
+                                ) : (s.summary || summaryMap[s.submissionId]) ? (
+                                  <button
+                                    className="msv-action-btn msv-action-btn--view"
+                                    title="View Summary"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSummaryViewer({
+                                        open: true,
+                                        title: `Summary – ${s.name}`,
+                                        message: s.summary || summaryMap[s.submissionId]
+                                      });
+                                    }}
+                                  >
+                                    View Summary
+                                  </button>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {!loading && students.length > 0 && (
+                <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
+              )}
             </div>
           </div>
         </div>
-{summaryViewer.open && (
-  <div
-    style={{
-      position: "fixed", inset: 0, zIndex: 1000,
-      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "center", justifyContent: "center"
-    }}
-    onClick={() => setSummaryViewer({ open: false, title: "", message: "" })}
-  >
-    <div
-      style={{
-        background: "#1e1e2e", borderRadius: 14, padding: 24,
-        width: "min(520px, 90vw)", border: "1px solid rgba(139,92,246,0.3)",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <span style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{summaryViewer.title}</span>
-        <button
-          onClick={() => setSummaryViewer({ open: false, title: "", message: "" })}
-          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 18 }}
-        >✕</button>
-      </div>
-      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.7, margin: 0 }}>
-        {summaryViewer.message}
-      </p>
-    </div>
-  </div>
-)}
+
+        {cartCount > 0 && (
+          <div className="ma-cart-bar">
+            <div className="ma-cart-bar-left">
+              <span className="ma-cart-label">📋 Report Ready</span>
+              <span className="ma-cart-stats">
+                {cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} assignment{totalItems !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="ma-cart-students">
+              {Object.values(reportCart).map((entry) => (
+                <div key={getStudentId(entry.studentMeta)} className="ma-cart-chip">
+                  <div className="ma-cart-chip-avatar">
+                    {entry.studentMeta.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="ma-cart-chip-info">
+                    <strong>{entry.studentMeta.name}</strong>
+                    <span>{Object.values(entry.items).map((i) => i.assignmentTitle).join(", ")}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
+              <FiSend size={14} />
+              {sending ? "Sending…" : `Send to ${cartCount} Student${cartCount !== 1 ? "s" : ""}`}
+            </button>
+          </div>
+        )}
+
+        {summaryViewer.open && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
+              background: "rgba(0,0,0,0.6)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+            onClick={() =>
+              setSummaryViewer({ open: false, title: "", message: "" })
+            }
+          >
+            <div
+              style={{
+                background: "#1e1e2e",
+                borderRadius: 14,
+                padding: 24,
+                width: "min(520px, 90vw)",
+                border: "1px solid rgba(139,92,246,0.3)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 16
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color: "#fff",
+                    fontSize: 15
+                  }}
+                >
+                  {summaryViewer.title}
+                </span>
+
+                <button
+                  onClick={() =>
+                    setSummaryViewer({ open: false, title: "", message: "" })
+                  }
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(255,255,255,0.5)",
+                    cursor: "pointer",
+                    fontSize: 18
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "rgba(255,255,255,0.75)",
+                  lineHeight: 1.7,
+                  margin: 0
+                }}
+              >
+                {summaryViewer.message}
+              </p>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );
