@@ -24,7 +24,6 @@ import {
   appendMarkingContext,
   assertPdfBlob,
   buildFinalMarkingResult,
-  buildPriorityMarkingResult,
   buildNoSubmissionMarkingResult,
   buildBatchMarkingResult,
   currentUserId,
@@ -38,7 +37,6 @@ import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import {
   geminiModelLabel,
-  PRIORITY_RATE_FACTOR,
   parseGeminiModelsResponse,
   pickValidGeminiModel,
 } from "../../utils/markingCost";
@@ -81,12 +79,9 @@ export default function AssignmentSubmissionViewer() {
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
 
-  // Priority (synchronous, no polling)
-  const PRIORITY_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
-  const [priorityBulkRunning, setPriorityBulkRunning] = useState(false);
-
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
+  const batchStopRef = useRef(false);
   const batchPollRef = useRef(null); 
   
   const [guidanceModal,      setGuidanceModal]      = useState(null);
@@ -497,14 +492,29 @@ useEffect(() => {
     toast.info("Stopping bulk marking…");
   };
 
+  const stopBatchMark = async () => {
+    batchStopRef.current = true;
+    if (batchPollRef.current) {
+      clearInterval(batchPollRef.current);
+      batchPollRef.current = null;
+    }
 
-  const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
+    const jobId = batchJob?.jobId;
+    setBatchJob(null);
+
+    if (jobId) {
+      try {
+        await api.delete(`/marking/mark-batch/cancel/${jobId}`);
+        toast.info("Batch marking cancelled");
+      } catch (err) {
+        toast.warning(extractHumanError(err) || "Batch stop requested — server cancel failed");
+      }
+    }
+  };
+
+  const openGuidanceModal = (student = null, isBatch = false) => {
     setGuidanceModal(
-      intent === "priority"
-        ? { priority: true, student }
-        : intent === "priorityBulk"
-        ? { priorityBulk: true }
-        : isBatch
+      isBatch
         ? { batch: true }
         : student
         ? { student }
@@ -655,303 +665,6 @@ useEffect(() => {
       toast.error(await getApiErrorMessage(err));
     } finally {
       setMarkingStudentId(null);
-    }
-  };
-
-  const runMarkStudentPriority = async (student, guidanceText, mode = "normal") => {
-    setMarkingStudentId(student.submissionId);
-    setSingleProgress(prev => ({
-      ...prev,
-      [student.submissionId]: { status: "marking" }
-    }));
-
-    try {
-      const [studentPdfRes, msPdfRes] = await Promise.all([
-        api.get("/submission-files/pdf", {
-          params: { assignmentId, submissionId: student.submissionId },
-          responseType: "blob"
-        }),
-        api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-          responseType: "blob"
-        })
-      ]);
-
-      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-      await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-      const studentFile = new File(
-        [studentPdfRes.data],
-        `${student.name || "student"}.pdf`,
-        { type: "application/pdf" }
-      );
-      const msFile = new File(
-        [msPdfRes.data],
-        "markscheme.pdf",
-        { type: "application/pdf" }
-      );
-
-      const fd = new FormData();
-      fd.append("studentPdf", studentFile);
-      if (maxGrade) fd.append("totalGrade", maxGrade);
-      fd.append("markingMode", mode);
-      const guidanceValue = guidanceForForm(guidanceText);
-      if (guidanceValue) fd.append("guidance", guidanceValue);
-      appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
-      fd.append("geminiModel", geminiModel);
-      fd.append("markSchemePdf", msFile);
-
-      const res = await api.post("/marking/mark-priority", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-        timeout: 600000
-      });
-
-      setResultModal({
-        student,
-        result: res.data,
-        originalAiResult: JSON.parse(JSON.stringify(res.data)),
-        studentFile,
-        submissionId: student.submissionId
-      });
-      setSingleProgress(prev => ({
-        ...prev,
-        [student.submissionId]: {
-          status: "done",
-          result: res.data,
-          studentFile,
-          submissionId: student.submissionId
-        }
-      }));
-      await api.post("/submission-files/save-results", {
-        assignmentId,
-        submissionId: student.submissionId,
-        studentId: student.studentId,
-        studentName: student.name,
-        mode,
-        provider: "gemini-priority",
-        result: res.data
-      });
-      setSavedResults(prev => ({
-        ...prev,
-        [student.submissionId]: {
-          status: "done",
-          result: res.data,
-          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
-          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
-        }
-      }));
-
-      setStudents(prev =>
-        prev.map(s =>
-          s.submissionId === student.submissionId
-            ? {
-                ...s,
-                assignedGrade:
-                  res.data?.criteriaGrade?.totalMarks ??
-                  res.data?.totalMarks ??
-                  null
-              }
-            : s
-        )
-      );
-
-      if (res.data?.servedServiceTier === "standard") {
-        toast.info("Priority unavailable — ran at standard speed.");
-      }
-
-      setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
-    } catch (err) {
-      const message = extractHumanError
-        ? extractHumanError(err)
-        : await getApiErrorMessage(err);
-
-      recordStudentMarkingError(
-        student.submissionId,
-        message,
-        err.response?.data,
-        `Priority Marking Failed - ${student.name}`
-      );
-      setSingleProgress(prev => ({
-        ...prev,
-        [student.submissionId]: { status: "error" }
-      }));
-
-      openErrorViewer(`Priority Marking Failed - ${student.name}`, message);
-      toast.error(message);
-    } finally {
-      setMarkingStudentId(null);
-    }
-  };
-
-  const runPriorityBulk = async (guidanceText, mode = "normal") => {
-    if (!PRIORITY_ALLOWED_IDS.includes(currentUserId())) {
-      toast.error("You are not allowed to do priority marking.");
-      return;
-    }
-
-    let eligible;
-    try {
-      const res = await api.post("/submission-files/eligible-for-bulk-marking", {
-        assignmentId,
-        submissions: students,
-      });
-      const backendEligible = new Set(res.data.map((s) => s.submissionId));
-      eligible = students.filter(
-        (s) =>
-          s.submissionId &&
-          backendEligible.has(s.submissionId) &&
-          isStudentSubmitted(s.state)
-      );
-    } catch (err) {
-      toast.error(extractHumanError(err) || "Failed to check eligible students");
-      return;
-    }
-
-    if (!eligible.length) {
-      const submitted = students.filter((s) => isStudentSubmitted(s.state));
-      if (!submitted.length) {
-        return toast.warn("No students have submitted this assignment yet");
-      }
-      return toast.warn("All submitted students are already marked for this assignment");
-    }
-
-    const guidanceValue = guidanceForForm(guidanceText);
-
-    const progress = {};
-    eligible.forEach((s) => { progress[s.submissionId] = { status: "marking" }; });
-    setBulkProgress((prev) => ({ ...prev, ...progress }));
-    setPriorityBulkRunning(true);
-
-    try {
-      const { data } = await api.post("/marking/mark-priority/bulk", {
-        assignmentId,
-        students: eligible.map((s) => ({
-          submissionId: s.submissionId,
-          studentId:    s.studentId,
-          name:         s.name,
-          state:        s.state,
-        })),
-        markingMode: mode,
-        guidance:    guidanceValue,
-        geminiModel,
-        ...(extra?.subjectId && { subjectId: extra.subjectId }),
-        ...(maxGrade && { totalGrade: maxGrade }),
-        personId:    currentUserId(),
-        classroomId,
-      });
-
-      let downgradedCount = 0;
-
-      for (const { student, result, tokenUsage, servedServiceTier } of (data.results || [])) {
-        const enrichedResult = buildPriorityMarkingResult(
-          result,
-          tokenUsage,
-          geminiModel,
-          servedServiceTier
-        );
-        if (servedServiceTier === "standard") downgradedCount++;
-
-        setBulkProgress((p) => ({
-          ...p,
-          [student.submissionId]: {
-            status: "done",
-            result: enrichedResult,
-            originalAiResult: JSON.parse(JSON.stringify(enrichedResult)),
-          },
-        }));
-        setStudents((prev) =>
-          prev.map((s) =>
-            s.submissionId === student.submissionId
-              ? {
-                  ...s,
-                  assignedGrade:
-                    result?.criteriaGrade?.totalMarks ??
-                    result?.totalMarks ??
-                    null,
-                }
-              : s
-          )
-        );
-
-        await api.post("/submission-files/save-results", {
-          assignmentId,
-          submissionId: student.submissionId,
-          studentId:    student.studentId,
-          studentName:  student.name,
-          mode,
-          provider:     "gemini-priority",
-          result:       enrichedResult,
-        }).catch((e) => console.error("save-results:", e.message));
-        setSavedResults(prev => ({
-          ...prev,
-          [student.submissionId]: {
-            status: "done",
-            result: enrichedResult,
-            aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
-            totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
-          }
-        }));
-      }
-
-      for (const { student, error } of (data.failed || [])) {
-        const message =
-          typeof error === "string" ? error : error?.message || "Priority marking failed";
-        setBulkProgress((p) => ({
-          ...p,
-          [student.submissionId]: { status: "error" },
-        }));
-        recordStudentMarkingError(student.submissionId, message, error);
-      }
-
-      for (const { student, result } of (data.zeroed || [])) {
-        setBulkProgress((p) => ({
-          ...p,
-          [student.submissionId]: {
-            status: "done",
-            result,
-            originalAiResult: JSON.parse(JSON.stringify(result)),
-          },
-        }));
-        setStudents((prev) =>
-          prev.map((s) =>
-            s.submissionId === student.submissionId ? { ...s, assignedGrade: 0 } : s
-          )
-        );
-      }
-
-      for (const { student } of (data.skipped || [])) {
-        setBulkProgress((p) => {
-          const next = { ...p };
-          if (next[student.submissionId]?.status === "marking") {
-            delete next[student.submissionId];
-          }
-          return next;
-        });
-      }
-
-      const ok = (data.results || []).length;
-      const zeroed = (data.zeroed || []).length;
-      const failed = (data.failed || []).length;
-      toast.success(
-        `Priority complete — ${ok} marked` +
-        (zeroed ? `, ${zeroed} zeroed` : "") +
-        (failed ? `, ${failed} failed` : "")
-      );
-      if (downgradedCount) {
-        toast.info(`${downgradedCount} student(s) ran at standard speed (priority unavailable).`);
-      }
-    } catch (err) {
-      const message = recordMarkingErrorsForStudents(
-        eligible,
-        err,
-        "Priority marking failed"
-      );
-      eligible.forEach((s) =>
-        setBulkProgress((p) => ({ ...p, [s.submissionId]: { status: "error" } }))
-      );
-      openErrorViewer("Priority Marking Failed", message);
-      toast.error(message);
-    } finally {
-      setPriorityBulkRunning(false);
     }
   };
 
@@ -1298,12 +1011,14 @@ useEffect(() => {
   }, [assignmentId]);
 
   const pollBatchJob = async (jobId, jobMeta = {}) => {
+    if (batchStopRef.current) return;
     if (batchPollRef.current) {
       clearInterval(batchPollRef.current);
       batchPollRef.current = null;
     }
 
     const doPoll = async () => {
+      if (batchStopRef.current) return;
       try {
         const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
 
@@ -1438,6 +1153,7 @@ useEffect(() => {
 
     const guidanceValue = guidanceForForm(guidanceText);
 
+    batchStopRef.current = false;
 
     setBatchJob({
       phase: "uploading",
@@ -1475,6 +1191,12 @@ useEffect(() => {
       return;
     }
 
+    if (batchStopRef.current) {
+      setBatchJob(null);
+      toast.info("Batch marking stopped");
+      return;
+    }
+
     const skipped = {};
     if (failed?.length) {
       toast.warning(`${failed.length} student(s) could not be uploaded`);
@@ -1492,6 +1214,12 @@ useEffect(() => {
       recordMarkingErrorsForStudents(eligible, null, message);
       toast.error(message);
       setBatchJob(prev => ({ ...prev, phase: "error" }));
+      return;
+    }
+
+    if (batchStopRef.current) {
+      setBatchJob(null);
+      toast.info("Batch marking stopped");
       return;
     }
 
@@ -1589,12 +1317,6 @@ useEffect(() => {
     if (guidanceModal.bulk) {
       setGuidanceModal(null);
       runBulkMark(g, mode, provider);
-    } else if (guidanceModal.priorityBulk) {
-      setGuidanceModal(null);
-      runPriorityBulk(g, mode);
-    } else if (guidanceModal.priority) {
-      setGuidanceModal(null);
-      runMarkStudentPriority(guidanceModal.student, g, mode);
     } else if (guidanceModal.batch) {
       setGuidanceModal(null);
       runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel));
@@ -1829,7 +1551,6 @@ useEffect(() => {
           throw new Error("Missing bulk data");
         }
 
-        // Priority bulk results have no local studentFile — fetch it on demand
         let studentFile = bulk.studentFile;
         if (!studentFile) {
           const pdfRes = await api.get("/submission-files/pdf", {
@@ -2134,21 +1855,6 @@ return (
                 </button>
               )}
 
-              {/* Mark All (Priority) */}
-              {msInfo && PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
-                <button
-                  className="msv-btn-ai"
-                  onClick={() => openGuidanceModal(null, "priorityBulk")}
-                  disabled={bulkMarking || priorityBulkRunning}
-                  title="Mark whole class on Gemini priority tier (fastest, premium)"
-                  style={{ marginLeft: 10, background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
-                >
-                  {priorityBulkRunning
-                    ? <><span className="pm-spinner" /> Priority marking…</>
-                    : <><FiSend size={13} /> Mark All (Priority)</>}
-                </button>
-                )}
-
               {/* Return All */}
               {msInfo && !bulkMarking && (
                 <button
@@ -2240,6 +1946,25 @@ return (
                       }}
                     >
                       Check now
+                    </button>
+                  )}
+                  {(batchJob?.phase === "uploading" ||
+                    batchJob?.phase === "submitting" ||
+                    batchJob?.phase === "processing") && (
+                    <button
+                      onClick={stopBatchMark}
+                      style={{
+                        marginLeft: batchJob?.phase === "processing" ? 8 : "auto",
+                        fontSize: 11,
+                        color: "#f87171",
+                        background: "rgba(239,68,68,0.12)",
+                        border: "1px solid rgba(239,68,68,0.35)",
+                        borderRadius: 6,
+                        padding: "4px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
                     </button>
                   )}
                 </div>
@@ -2422,19 +2147,6 @@ return (
                                           }
                                         </button>
 
-                                        {/* Priority single mark */}
-                                        {PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--ai"
-                                            title="Mark on Gemini priority tier (fastest, premium)"
-                                            onClick={() => openGuidanceModal(s, "priority")}
-                                            disabled={markingLoading || priorityBulkRunning}
-                                            style={{ borderColor: "rgba(251,191,36,0.4)" }}
-                                          >
-                                            <FiSend size={12} /> Mark (Priority)
-                                          </button>
-                                        )}
-
                                           {/* {bulkRetrying && (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
@@ -2553,18 +2265,12 @@ return (
                       <div className="msv-guidance-header">
                         
                           <div style={{ fontSize: 15, fontWeight: 700 }}>
-                            {guidanceModal.priorityBulk ? "🚀 Mark All Students (Priority)" :
-                            guidanceModal.priority     ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}` :
-                            guidanceModal.batch        ? "⚡ Mark All Students (Batch)"  :
-                            guidanceModal.bulk         ? "🤖 Mark All Students"           :
-                                                          `🤖 Mark — ${guidanceModal.student?.name}`}
+                            {guidanceModal.batch ? "⚡ Mark All Students (Batch)"  :
+                            guidanceModal.bulk  ? "🤖 Mark All Students"           :
+                                                  `🤖 Mark — ${guidanceModal.student?.name}`}
                           </div>
                           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                            {guidanceModal.priorityBulk
-                              ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
-                              : guidanceModal.priority
-                              ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
-                              : guidanceModal.batch
+                            {guidanceModal.batch
                               ? `Submits all eligible students in this assignment to Gemini batch API (~50% cheaper) — ${studentTotal} students in class`
                               : guidanceModal.bulk
                               ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
@@ -2617,8 +2323,6 @@ return (
                           <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                             {guidanceModal.batch
                               ? "Used for the Gemini batch job (~50% cheaper than sequential marking)."
-                              : guidanceModal.priority || guidanceModal.priorityBulk
-                              ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
                               : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
                           </p>
                         </div>
@@ -2765,8 +2469,8 @@ return (
 
                           <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
 
-                            {/* Gemini + Claude buttons — shown for normal/bulk/single, hidden for priority/batch */}
-                            {!guidanceModal.priority && !guidanceModal.priorityBulk && !guidanceModal.batch && (
+                            {/* Gemini + Claude buttons — shown for normal/bulk/single, hidden for batch */}
+                            {!guidanceModal.batch && (
                               <>
                                 <button className="ma-send-btn"
                                   onClick={() => handleGuidanceConfirm("gemini")}
@@ -2780,19 +2484,6 @@ return (
                                   {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
                                 </button>
                               </>
-                            )}
-
-                            {/* Priority button */}
-                            {(guidanceModal.priority || guidanceModal.priorityBulk) && (
-                              <button className="ma-send-btn"
-                                onClick={() => handleGuidanceConfirm("gemini")}
-                                disabled={markingModeModal === "criteria" && !guidance.trim()}
-                                style={{ flex: 1, justifyContent: "center",
-                                  opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1,
-                                  background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}>
-                                <FiSend size={14} />
-                                {guidanceModal.priorityBulk ? "Start Priority Marking (All)" : "Start Priority Marking"}
-                              </button>
                             )}
 
                             {/* Batch button */}
