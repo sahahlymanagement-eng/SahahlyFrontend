@@ -22,7 +22,7 @@ export default function ClassroomTeacherManager() {
 
   const loadTeachers = async () => {
     try {
-      const teachersRes = await api.get("/teachers");
+      const teachersRes = await api.get("/people/teachers");
       setTeachers(teachersRes.data || []);
     } catch (err) {
       console.error(err);
