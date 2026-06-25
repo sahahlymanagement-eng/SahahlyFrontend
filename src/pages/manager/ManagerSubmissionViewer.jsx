@@ -1483,17 +1483,11 @@ useEffect(() => {
 
         // SUCCEEDED
         const resultMap = {};
-        const memoryMeta = {
-          assignmentMemoryId:
-            jobMeta.assignmentMemoryId ??
-            data.assignmentMemoryId ??
-            null,
-        };
         const saveMode = jobMeta.mode || "normal";
         const modelForResult = jobMeta.geminiModel || geminiModel;
         for (const { student, result, success, error, tokenUsage } of data.results) {
           const enrichedResult = success
-            ? buildBatchMarkingResult(result, tokenUsage, modelForResult, memoryMeta)
+            ? buildBatchMarkingResult(result, tokenUsage, modelForResult)
             : null;
           const originalAiResult = enrichedResult
             ? JSON.parse(JSON.stringify(enrichedResult))
@@ -1612,10 +1606,8 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
 
   const guidanceValue = guidanceForForm(guidanceText);
 
-  // 00b30c1: build assignment memory before uploading
-  let assignmentMemoryId = null;
   try {
-    toast.info("Preparing assignment correction memory…");
+    toast.info("Validating mark scheme and sample submission…");
     const firstStudent = eligible[0];
     const [studentPdfRes, msPdfRes] = await Promise.all([
       api.get("/submission-files/pdf", {
@@ -1632,38 +1624,11 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
 
     await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
     await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-    const gateStudentFile = new File(
-      [studentPdfRes.data],
-      `${firstStudent.name || "student"}.pdf`,
-      { type: "application/pdf" }
-    );
-    const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
-      type: "application/pdf",
-    });
-
-    const memory = await ensureAssignmentMemory(api, {
-      assignmentId: selectedAssignment._id,
-      studentFile: gateStudentFile,
-      msFile: gateMsFile,
-      markingMode: mode,
-      guidance: guidanceValue,
-      totalGrade: selectedAssignment.maxPoints,
-      classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-      geminiModel: selectedModel,
-    });
-
-    assignmentMemoryId = memory.memoryId;
-    if (memory.reused) {
-      toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
-    } else {
-      toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
-    }
   } catch (err) {
     const message = recordMarkingErrorsForStudents(
       eligible,
       err,
-      "Assignment memory preparation failed"
+      "Mark scheme validation failed"
     );
     toast.error(message);
     return;
@@ -1677,7 +1642,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     skipped: {},
     results: {},
     mode,
-    assignmentMemoryId,
     geminiModel: selectedModel,
     batchStudents: eligible.map(s => ({
       submissionId: s.submissionId,
@@ -1691,7 +1655,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   try {
     const res = await api.post("/marking/mark-batch/upload", {
       assignmentId: selectedAssignment._id,
-      assignmentMemoryId,
       markingMode: mode,          // HEAD: included for zeroed detection
       students: eligible.map(s => ({
         submissionId: s.submissionId,
@@ -1837,7 +1800,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
 
   // Step 3 — hand off to standalone poller
   pollBatchJob(jobId, {
-    assignmentMemoryId,
     mode,
     geminiModel: selectedModel,
     batchStudents: succeeded.map(r => r.student),
@@ -2041,7 +2003,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   useEffect(() => {
     if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
       pollBatchJob(batchJob.jobId, {
-        assignmentMemoryId: batchJob.assignmentMemoryId,
         mode: batchJob.mode,
         geminiModel: batchJob.geminiModel,
         batchStudents: batchJob.batchStudents,
