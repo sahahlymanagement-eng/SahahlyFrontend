@@ -3,6 +3,7 @@ export const MARKING_GEMINI_PRICING = [
   { id: "gemini-3.1-flash-lite", inputPer1M: 0.25, outputPer1M: 1.5 },
   { id: "gemini-2.5-flash-lite", inputPer1M: 0.1, outputPer1M: 0.4 },
   { id: "gemini-3-flash-preview", inputPer1M: 0.5, outputPer1M: 3.0 },
+  { id: "gemini-3.5-flash", inputPer1M: 1.5, outputPer1M: 9.0, cachedInputPer1M: 0.15 },
 ];
 
 export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
@@ -73,7 +74,9 @@ export function geminiModelLabel(models, modelId) {
 }
 
 function cachedInputPer1M(meta) {
-  return meta.inputPer1M * CACHED_INPUT_RATE_FACTOR;
+  return meta.cachedInputPer1M != null
+    ? meta.cachedInputPer1M
+    : meta.inputPer1M * CACHED_INPUT_RATE_FACTOR;
 }
 
 export function estimateMarkingCost(modelId, tokenUsage, options = {}) {
