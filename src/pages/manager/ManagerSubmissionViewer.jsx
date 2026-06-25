@@ -267,10 +267,10 @@ useEffect(() => {
     setErrorViewer({ open: true, title, message });
   };
 
-  const recordStudentMarkingError = (submissionId, message, raw = null) => {
+  const recordStudentMarkingError = (submissionId, message, raw = null, title = null) => {
     setStudentErrors(prev => ({
       ...prev,
-      [submissionId]: { message, raw },
+      [submissionId]: { message, raw, title },
     }));
   };
 
@@ -287,14 +287,18 @@ useEffect(() => {
   };
 
   const extractHumanError = (err) => {
-    console.log("RAW ERROR:", err?.response?.data);
-    console.log("MESSAGE TYPE:", typeof err?.response?.data?.message);
     const data = err?.response?.data;
 
-    // 1. Normalize data.message
-    const parsedMessage = safeParse(data?.message);
+    // Blob response (responseType:"blob" on PDF fetches) — cannot parse synchronously
+    if (data instanceof Blob) {
+      const status = err?.response?.status;
+      if (status === 404) return "The requested file or resource could not be found.";
+      if (status === 401) return "You are not authorized. Please login again or check credentials.";
+      if (status === 403) return "Access denied. You do not have permission.";
+      return err?.message || "File request failed.";
+    }
 
-    // 2. If message itself contains error object, prefer it
+    const parsedMessage = safeParse(data?.message);
     const errorObj =
       parsedMessage?.error ? parsedMessage : data?.error ? data : parsedMessage;
 
@@ -305,6 +309,15 @@ useEffect(() => {
       return "The AI marking service is currently experiencing high demand. Please try again in a few minutes.";
     }
 
+    // Surface the backend's specific message BEFORE falling back to the generic 404 string
+    const specificMessage =
+      errorObj?.error?.message ||
+      data?.error?.message ||
+      (typeof parsedMessage === "string" ? parsedMessage : null) ||
+      parsedMessage?.message;
+
+    if (specificMessage) return specificMessage;
+
     if (err?.response?.status === 404) {
       return "The requested file or resource could not be found.";
     }
@@ -314,13 +327,7 @@ useEffect(() => {
       return "The requested file or resource could not be found.";
     }
 
-    return (
-      errorObj?.error?.message ||
-      data?.error?.message ||
-      parsedMessage?.message ||
-      err?.message ||
-      "An unexpected error occurred."
-    );
+    return err?.message || "An unexpected error occurred.";
   };
 
   const recordMarkingErrorsForStudents = (studentList, err, fallbackMessage = "An unexpected error occurred.") => {
@@ -809,7 +816,8 @@ useEffect(() => {
       recordStudentMarkingError(
         student.submissionId,
         message,
-        err.response?.data
+        err.response?.data,
+        `Priority Marking Failed - ${student.name}`
       );
       setSingleProgress(prev => ({
         ...prev,
@@ -1964,7 +1972,7 @@ useEffect(() => {
   const returnAllToStudents = async () => {
     const doneStudents = students.filter(s => {
       const bulk = bulkProgress[s.submissionId];
-      return bulk?.status === "done" && bulk?.result && bulk?.studentFile && !bulk?.returned;
+      return bulk?.status === "done" && bulk?.result && !bulk?.returned;
     });
 
     if (!doneStudents.length) {
@@ -1978,9 +1986,26 @@ useEffect(() => {
       for (const student of doneStudents) {
         const bulk = bulkProgress[student.submissionId];
 
-        if (!bulk?.result || !bulk?.studentFile) {
+        if (!bulk?.result) {
           toast.error(`Missing data for ${student.name}. Stopping return process.`);
           throw new Error("Missing bulk data");
+        }
+
+        // Priority bulk results have no local studentFile — fetch it on demand
+        let studentFile = bulk.studentFile;
+        if (!studentFile) {
+          const pdfRes = await api.get("/submission-files/pdf", {
+            params: {
+              assignmentId: selectedAssignment._id,
+              submissionId: student.submissionId,
+            },
+            responseType: "blob",
+          });
+          studentFile = new File(
+            [pdfRes.data],
+            `${student.name || "student"}.pdf`,
+            { type: "application/pdf" }
+          );
         }
 
         const editingQs = bulk.result.questions || [];
@@ -1993,14 +2018,13 @@ useEffect(() => {
         const max =
           bulk.result?.criteriaGrade?.maxTotalMarks ??
           bulk.result?.maxTotalMarks ??
-          // maxGrade ??
           selectedAssignment?.maxPoints ??
           0;
 
         let pdfBytes;
         try {
           pdfBytes = await annotatePdf({
-            studentFile: bulk.studentFile,
+            studentFile,
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
@@ -2008,7 +2032,7 @@ useEffect(() => {
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
           toast.error(`Failed to generate PDF for ${student.name}. Stopping process.`);
-          throw err; // ⛔ stops ALL remaining students
+          throw err;
         }
 
         const fd = new FormData();
@@ -2027,7 +2051,7 @@ useEffect(() => {
         } catch (err) {
           console.error("Return failed for:", student.name, err);
           toast.error(`Return failed for ${student.name}. Stopping process.`);
-          throw err; // ⛔ STOP EVERYTHING
+          throw err;
         }
 
         setBulkProgress(p => ({
@@ -2438,7 +2462,7 @@ useEffect(() => {
                                             title="View Error"
                                             onClick={() =>
                                               openErrorViewer(
-                                                `Marking Failed - ${s.name}`,
+                                                studentErrors[s.submissionId].title || `Marking Failed - ${s.name}`,
                                                 studentErrors[s.submissionId].message
                                               )
                                             }
