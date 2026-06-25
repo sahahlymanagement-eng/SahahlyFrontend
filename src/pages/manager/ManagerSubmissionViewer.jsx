@@ -2721,28 +2721,28 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         ))}
                       </select>
                         <button
-      className="msv-btn-ai"
-      onClick={() => {
-        if (batchJob?.phase === "processing") {
-          toast.info("Checking status…");
-          pollBatchJob(batchJob.jobId, {
-            mode: batchJob.mode,
-            geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
-            batchStudents: batchJob.batchStudents,
-          }); // "Check now" behaviour
-        } else {
-          openGuidanceModal(null, true);
-        }
-      }}
-      disabled={bulkMarking || batchJob?.phase === "uploading" || batchJob?.phase === "submitting"}
-      style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
-    >
-      {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
-      {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
-      {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
-      {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-      {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
-    </button>
+                          className="msv-btn-ai"
+                          onClick={() => {
+                            if (batchJob?.phase === "processing") {
+                              toast.info("Checking status…");
+                              pollBatchJob(batchJob.jobId, {
+                                mode: batchJob.mode,
+                                geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+                                batchStudents: batchJob.batchStudents,
+                              }); // "Check now" behaviour
+                            } else {
+                              openGuidanceModal(null, true);
+                            }
+                          }}
+                          disabled={bulkMarking || batchJob?.phase === "uploading" || batchJob?.phase === "submitting"}
+                          style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                        >
+                          {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
+                          {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
+                          {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
+                          {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
+                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
+                        </button>
                     </div>
                     )}
 
@@ -2750,7 +2750,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {msInfo && PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
                     <button
                       className="msv-btn-ai"
-                      onClick={() => openGuidanceModal(null, "priorityBulk")}
+                      onClick={() => openGuidanceModal(null, false,"priorityBulk")}
                       disabled={bulkMarking || priorityBulkRunning || batchJob?.phase === "processing"}
                       title="Mark whole class on Gemini priority tier (fastest, premium)"
                       style={{ marginLeft: 10, background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
@@ -2761,19 +2761,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </button>
                     )}
                     {batchJob && batchJob.phase !== "done" && (
-  <div style={{
-    marginTop: 8, padding: "10px 14px", borderRadius: 10,
-    background: "rgba(99,102,241,0.08)",
-    border: "1px solid rgba(99,102,241,0.2)",
-    fontSize: 12, color: "rgba(255,255,255,0.6)",
-    display: "flex", alignItems: "center", gap: 10
-  }}>
-    <span className="pm-spinner" style={{ width: 12, height: 12 }} />
-    <span>
-      {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Gemini…`}
-      {batchJob.phase === "submitting" && "Submitting batch job…"}
-      {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
-    </span>
+                      <div style={{
+                        marginTop: 8, padding: "10px 14px", borderRadius: 10,
+                        background: "rgba(99,102,241,0.08)",
+                        border: "1px solid rgba(99,102,241,0.2)",
+                        fontSize: 12, color: "rgba(255,255,255,0.6)",
+                        display: "flex", alignItems: "center", gap: 10
+                      }}>
+                        <span className="pm-spinner" style={{ width: 12, height: 12 }} />
+                        <span>
+                          {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Gemini…`}
+                          {batchJob.phase === "submitting" && "Submitting batch job…"}
+                          {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
+                        </span>
     {/* Manual re-poll button in case user is impatient */}
     {/* {batchJob.phase === "processing" && (
       <button
@@ -2784,46 +2784,46 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         Check now
       </button>
     )}  */}
-    {batchJob?.phase === "processing" && (
-  <button
-    onClick={() => {
-      console.log("Check now clicked, jobId:", batchJob.jobId);
-      pollBatchJob(batchJob.jobId, {
-        mode: batchJob.mode,
-        geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
-        batchStudents: batchJob.batchStudents,
-      });
-    }}
-    style={{
-      marginLeft: "auto", fontSize: 11, color: "#818cf8",
-      background: "none", border: "none", cursor: "pointer"
-    }}
-  >
-    Check now
-  </button>
-)}
-    {(batchJob?.phase === "uploading" ||
-      batchJob?.phase === "submitting" ||
-      batchJob?.phase === "processing") && (
-      <button
-        onClick={stopBatchMark}
-        style={{
-          marginLeft: batchJob?.phase === "processing" ? 8 : "auto",
-          fontSize: 11,
-          color: "#f87171",
-          background: "rgba(239,68,68,0.12)",
-          border: "1px solid rgba(239,68,68,0.35)",
-          borderRadius: 6,
-          padding: "4px 10px",
-          cursor: "pointer",
-        }}
-      >
-        <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
-      </button>
-    )}
+                            {batchJob?.phase === "processing" && (
+                              <button
+                                onClick={() => {
+                                  console.log("Check now clicked, jobId:", batchJob.jobId);
+                                  pollBatchJob(batchJob.jobId, {
+                                    mode: batchJob.mode,
+                                    geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+                                    batchStudents: batchJob.batchStudents,
+                                  });
+                                }}
+                                style={{
+                                  marginLeft: "auto", fontSize: 11, color: "#818cf8",
+                                  background: "none", border: "none", cursor: "pointer"
+                                }}
+                              >
+                                Check now
+                              </button>
+                            )}
+                                {(batchJob?.phase === "uploading" ||
+                                  batchJob?.phase === "submitting" ||
+                                  batchJob?.phase === "processing") && (
+                                  <button
+                                    onClick={stopBatchMark}
+                                    style={{
+                                      marginLeft: batchJob?.phase === "processing" ? 8 : "auto",
+                                      fontSize: 11,
+                                      color: "#f87171",
+                                      background: "rgba(239,68,68,0.12)",
+                                      border: "1px solid rgba(239,68,68,0.35)",
+                                      borderRadius: 6,
+                                      padding: "4px 10px",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
+                                  </button>
+                                )}
 
-    </div> )}
-                  </div>
+                                </div> )}
+                                          </div>
 
 
 
