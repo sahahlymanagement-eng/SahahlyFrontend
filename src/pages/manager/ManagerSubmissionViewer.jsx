@@ -32,6 +32,12 @@ import {
   pickValidGeminiModel,
   PRIORITY_RATE_FACTOR,
 } from "../../utils/markingCost";
+import { fetchAllPaginated } from "../../utils/fetchAllStudents";
+import {
+  MARKING_MAX_ATTEMPTS,
+  MARKING_MAX_RETRIES_MESSAGE,
+  runWithMarkingRetries,
+} from "../../utils/markingRetries";
 import "./ManagerSubmissionViewer.css";
 
 const CHECKLIST_CONFIG = [
@@ -43,7 +49,7 @@ const CHECKLIST_CONFIG = [
 ];
 
 export default function ManagerSubmissionViewer() {
-  const BATCH_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
+  // const BATCH_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const PRIORITY_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const navigate   = useNavigate();
   const msInputRef = useRef();
@@ -144,6 +150,11 @@ export default function ManagerSubmissionViewer() {
   const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
 
+  const [aiReviewProgress, setAiReviewProgress] = useState({});
+  const [aiReviewModal, setAiReviewModal] = useState(null);
+  const [aiReviewPdfUrl, setAiReviewPdfUrl] = useState(null);
+  const [aiReviewSaving, setAiReviewSaving] = useState(false);
+
   // const [cachedMsFile, setCachedMsFile] = useState(null);
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
 
@@ -168,7 +179,9 @@ useEffect(() => {
           result: r.result,
           aiOriginalResult: r.aiOriginalResult || r.result,
           studentFile: r.studentFileMeta,
-          totalMarks: r.totalMarks
+          totalMarks: r.totalMarks,
+          provider: r.provider,
+          mode: r.mode,
         };
       });
 
@@ -226,31 +239,6 @@ useEffect(() => {
       } else if (data?.message) {
         // Standard backend message
         message = data.message;
-      } else {
-        // Translate common HTTP status codes
-        switch (status) {
-          case 400:
-            message = "Bad request. Please check your input.";
-            break;
-          case 401:
-            message = "You are not authorized. Please login again or check credentials.";
-            break;
-          case 403:
-            message = "Access denied. You do not have permission.";
-            break;
-          case 404:
-            message =
-              "The requested resource was not found. Check the API endpoint or route you are calling.";
-            break;
-          case 500:
-          case 502:
-          case 503:
-            message =
-              "Server error. The service may be temporarily unavailable. Please try again later.";
-            break;
-          default:
-            message = `Unexpected error (HTTP ${status}).`;
-        }
       }
     } else if (error?.message) {
       // Generic JS error
@@ -348,18 +336,18 @@ useEffect(() => {
   const effectiveMaxTotal = editingMaxTotal !== null
     ? editingMaxTotal
     : resultModal
-      ? (resultModal.result.markingMode === "criteria"
-          ? (resultModal.result.criteriaGrade?.maxTotalMarks || 10)
-          : resultModal.result.maxTotalMarks)
-      : 0;
+    ? (resultModal.result.markingMode === "criteria"
+    ? (resultModal.result.criteriaGrade?.maxTotalMarks || 10)
+    : resultModal.result.maxTotalMarks)
+    : 0;
 
   // Replace effectiveTotal computed value with:
   const effectiveTotal = resultModal
     ? (editingTotal !== null
-        ? editingTotal
-        : resultModal.result.markingMode === "criteria"
-          ? (resultModal.result.criteriaGrade?.totalMarks || 0)
-          : editingQuestions.reduce((s, q) => s + q.marksAwarded, 0))
+    ? editingTotal
+    : resultModal.result.markingMode === "criteria"
+    ? (resultModal.result.criteriaGrade?.totalMarks || 0)
+    : editingQuestions.reduce((s, q) => s + q.marksAwarded, 0))
     : 0;
 
   useEffect(() => {
@@ -512,17 +500,19 @@ useEffect(() => {
   }, [resultModal, editingQuestions, effectiveMaxTotal]);
 
 
-  const openGuidanceModal = (student = null, intent = false) => {
-    // `intent` keeps backward-compat: false/true map to single/batch; or pass
-    // a string: "batch" | "priority" | "priorityBulk".
-    let modal;
-    if (intent === "priority") modal = { priority: true, student };
-    else if (intent === "priorityBulk") modal = { priorityBulk: true };
-    else if (intent === true || intent === "batch") modal = { batch: true };
-    else if (student) modal = { student };
-    else modal = { bulk: true };
+  const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
+    setGuidanceModal(
+      intent === "priority"
+        ? { priority: true, student }
+        : intent === "priorityBulk"
+        ? { priorityBulk: true }
+        : isBatch
+        ? { batch: true }
+        : student
+        ? { student }
+        : { bulk: true }
+    );
 
-    setGuidanceModal(modal);
     setGuidance("");
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
@@ -564,6 +554,279 @@ useEffect(() => {
       } catch (err) {
         toast.warning(extractHumanError(err) || "Batch stop requested — server cancel failed");
       }
+  }
+}
+  const providerDisplayLabel = (provider) => {
+    if (provider === "claude") return "Claude";
+    return "Gemini";
+  };
+
+  const resolveStudentMarkingContext = (student, rowCtx = {}) => {
+    const {
+      batch,
+      batchDone,
+      bulk,
+      bulkDone,
+      single,
+      db,
+    } = rowCtx;
+
+    if (batchDone && batch?.result) {
+      return {
+        result: batch.result,
+        provider: "gemini",
+        mode: batch.result?.markingMode || "normal",
+      };
+    }
+    if (bulkDone && bulk?.result) {
+      return {
+        result: bulk.result,
+        provider: markingProvider,
+        mode: bulk.result?.markingMode || "normal",
+      };
+    }
+    if (single?.status === "done" && single?.result) {
+      return {
+        result: single.result,
+        provider: markingProvider,
+        mode: single.result?.markingMode || "normal",
+      };
+    }
+    if (db?.result) {
+      return {
+        result: db.result,
+        provider: db.provider || "gemini",
+        mode: db.mode || db.result?.markingMode || "normal",
+      };
+    }
+    return null;
+  };
+
+  const hasSavedMarkingResult = (rowCtx) => !!resolveStudentMarkingContext(null, rowCtx);
+
+  const findFlaggedReviewQuestions = (existingQuestions, qwenQuestions) => {
+    const existing = existingQuestions || [];
+    const qwen = qwenQuestions || [];
+    const existingMap = new Map(existing.map((q) => [String(q.questionNumber), q]));
+    const qwenMap = new Map(qwen.map((q) => [String(q.questionNumber), q]));
+    const allNumbers = new Set([...existingMap.keys(), ...qwenMap.keys()]);
+    const flagged = [];
+
+    for (const questionNumber of allNumbers) {
+      const existingQ = existingMap.get(questionNumber);
+      const qwenQ = qwenMap.get(questionNumber);
+      const existingMarks = existingQ ? Number(existingQ.marksAwarded) : null;
+      const qwenMarks = qwenQ ? Number(qwenQ.marksAwarded) : null;
+
+      if (existingMarks === qwenMarks) continue;
+
+      flagged.push({
+        questionNumber,
+        existingMarks,
+        qwenMarks,
+        maxMarks: existingQ?.maxMarks ?? qwenQ?.maxMarks ?? 0,
+        existingQuestion: existingQ,
+        qwenQuestion: qwenQ,
+        resolvedMarks: existingQ ? Number(existingQ.marksAwarded) : (qwenQ ? Number(qwenQ.marksAwarded) : 0),
+        resolution: null,
+        manualInput: "",
+      });
+    }
+
+    return flagged;
+  };
+
+  const runAiReview = async (student, rowCtx) => {
+    const ctx = resolveStudentMarkingContext(student, rowCtx);
+    if (!ctx?.result) {
+      toast.warn("No marking result found for this student");
+      return;
+    }
+
+    const submissionId = student.submissionId;
+    setAiReviewProgress((prev) => ({ ...prev, [submissionId]: "reviewing" }));
+
+    try {
+      const [studentPdfRes, msPdfRes] = await Promise.all([
+        api.get("/submission-files/pdf", {
+          params: { assignmentId: selectedAssignment._id, submissionId },
+          responseType: "blob",
+        }),
+        api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
+          responseType: "blob",
+        }),
+      ]);
+
+      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+      await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+      const studentFile = new File(
+        [studentPdfRes.data],
+        `${student.name || "student"}.pdf`,
+        { type: "application/pdf" }
+      );
+      const msFile = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
+
+      const fd = new FormData();
+      fd.append("studentPdf", studentFile);
+      fd.append("markSchemePdf", msFile);
+      fd.append("assignmentId", selectedAssignment._id);
+      fd.append("submissionId", submissionId);
+      if (selectedAssignment.maxPoints) {
+        fd.append("totalGrade", selectedAssignment.maxPoints);
+      }
+
+      const res = await api.post("/ai-review/review", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 600000,
+      });
+
+      const flagged = findFlaggedReviewQuestions(
+        ctx.result.questions,
+        res.data.questions
+      );
+
+      if (!flagged.length) {
+        toast.success("AI Review complete — no discrepancies found");
+        return;
+      }
+
+      const pdfUrl = URL.createObjectURL(
+        new Blob([studentPdfRes.data], { type: "application/pdf" })
+      );
+
+      setAiReviewModal({
+        student,
+        existingResult: ctx.result,
+        qwenResult: res.data,
+        flagged,
+        provider: ctx.provider,
+        mode: ctx.mode,
+        pdfUrl,
+      });
+      setAiReviewPdfUrl(pdfUrl);
+    } catch (err) {
+      toast.error(await getApiErrorMessage(err));
+    } finally {
+      setAiReviewProgress((prev) => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+    }
+  };
+
+  const closeAiReviewModal = () => {
+    if (aiReviewModal?.pdfUrl) URL.revokeObjectURL(aiReviewModal.pdfUrl);
+    setAiReviewModal(null);
+    setAiReviewPdfUrl(null);
+  };
+
+  const resolveFlaggedQuestion = (questionNumber, resolution, marks) => {
+    setAiReviewModal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        flagged: prev.flagged.map((item) =>
+          item.questionNumber === questionNumber
+            ? { ...item, resolution, resolvedMarks: marks }
+            : item
+        ),
+      };
+    });
+  };
+
+  const saveAiReviewResolutions = async () => {
+    if (!aiReviewModal) return;
+
+    const unresolved = aiReviewModal.flagged.filter((f) => f.resolution == null);
+    if (unresolved.length) {
+      toast.warn("Please resolve all flagged questions before saving");
+      return;
+    }
+
+    setAiReviewSaving(true);
+    try {
+      const resolvedMap = new Map(
+        aiReviewModal.flagged.map((f) => [String(f.questionNumber), f.resolvedMarks])
+      );
+
+      const updatedQuestions = (aiReviewModal.existingResult.questions || []).map((q) => {
+        const key = String(q.questionNumber);
+        if (!resolvedMap.has(key)) return { ...q };
+        return { ...q, marksAwarded: resolvedMap.get(key) };
+      });
+
+      for (const f of aiReviewModal.flagged) {
+        if (!aiReviewModal.existingResult.questions?.some(
+          (q) => String(q.questionNumber) === String(f.questionNumber)
+        ) && f.qwenQuestion) {
+          updatedQuestions.push({
+            ...f.qwenQuestion,
+            marksAwarded: f.resolvedMarks,
+          });
+        }
+      }
+
+      const finalResult = buildFinalMarkingResult(aiReviewModal.existingResult, updatedQuestions);
+      const submissionId = aiReviewModal.student.submissionId;
+
+      const saveProvider = ["gemini", "claude"].includes(aiReviewModal.provider)
+        ? aiReviewModal.provider
+        : "gemini";
+
+      await api.post("/submission-files/save-results", {
+        assignmentId: selectedAssignment._id,
+        submissionId,
+        studentId: aiReviewModal.student.studentId,
+        studentName: aiReviewModal.student.name,
+        mode: aiReviewModal.mode,
+        provider: saveProvider,
+        result: finalResult,
+      });
+
+      const savedEntry = {
+        status: "done",
+        result: finalResult,
+        aiOriginalResult: aiReviewModal.existingResult,
+        provider: aiReviewModal.provider,
+        mode: aiReviewModal.mode,
+        totalMarks:
+          finalResult?.criteriaGrade?.totalMarks ??
+          finalResult?.totalMarks ??
+          null,
+      };
+
+      setSavedResults((prev) => ({ ...prev, [submissionId]: savedEntry }));
+      setSingleProgress((prev) => ({ ...prev, [submissionId]: savedEntry }));
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.submissionId === submissionId
+            ? {
+                ...s,
+                assignedGrade:
+                  finalResult?.criteriaGrade?.totalMarks ??
+                  finalResult?.totalMarks ??
+                  null,
+              }
+            : s
+        )
+      );
+
+      toast.success("Review resolutions saved");
+      closeAiReviewModal();
+    } catch (err) {
+      toast.error(await getApiErrorMessage(err));
+    } finally {
+      setAiReviewSaving(false);
+    }
+  };
+
+  const handleConfirmEdits = async () => {
+    if (!resultModal) return;
+    const originalQuestions = getOriginalQuestions(resultModal);
+    if (!hasTeacherEdits(originalQuestions, editingQuestions)) {
+      toast.info("No edits to save");
       return;
     }
 
@@ -839,11 +1102,19 @@ useEffect(() => {
 
   const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
     try {
+    toast.info("Loading all students for this assignment…");
+    const allStudents = await fetchAllPaginated(
+      api,
+      `/manager-assignments/${selectedAssignment._id}/full`,
+      {},
+      "students"
+    );
+
     const res = await api.post(
       "/submission-files/eligible-for-bulk-marking",
       {
         assignmentId: selectedAssignment._id,
-        submissions: students
+        submissions: allStudents
       }
     );
 
@@ -851,17 +1122,14 @@ useEffect(() => {
       res.data.map(s => s.submissionId)
     );
 
-    const eligible = students.filter(
-      s =>
-        s.submissionId &&
-        backendEligible.has(s.submissionId) &&
-        isStudentSubmitted(s.state)
+    const eligible = allStudents.filter(
+      s => s.submissionId && backendEligible.has(s.submissionId)
     );
     
     if (!eligible.length) {
-      const submitted = students.filter((s) => isStudentSubmitted(s.state));
-      if (!submitted.length) {
-        return toast.warn("No students have submitted this assignment yet");
+      const withSubmissions = allStudents.filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        return toast.warn("No students with submissions");
       }
       return toast.warn("All submitted students are already marked for this assignment");
     }
@@ -877,6 +1145,9 @@ useEffect(() => {
     eligible.forEach(s => { progress[s.submissionId] = { status: "pending" }});
     setBulkProgress({ ...progress });
 
+    let doneCount = 0;
+    let errorCount = 0;
+
     for (const student of eligible) {
       if (bulkStopRef.current) break;
 
@@ -885,7 +1156,7 @@ useEffect(() => {
         [student.submissionId]:{
           status: "marking",
           attempt: 0,
-          maxAttempts: 20
+          maxAttempts: MARKING_MAX_ATTEMPTS
         }
       }));
 
@@ -974,6 +1245,7 @@ useEffect(() => {
         err.response?.data
       );
 
+      errorCount++;
       continue;
     }
 
@@ -997,146 +1269,125 @@ useEffect(() => {
           fd.append("markSchemePdf", msFile);
         }
 
-        let attempt = 0;
-        const maxAttempts = 20;
-        let success = false;
-
-while (
-      !success &&
-      !bulkStopRef.current &&
-      attempt < maxAttempts
-    ) {
-      attempt++;
-
-      try {
         const endpoint =
           provider === "claude"
             ? "/markingClaude/mark-claude"
             : "/marking/mark";
 
-        const res = await api.post(endpoint, fd, {
-          headers: {
-            "Content-Type": "multipart/form-data"
+        const markResult = await runWithMarkingRetries({
+          shouldStop: () => bulkStopRef.current,
+          onAttemptStart: (attempt, maxAttempts) => {
+            setBulkProgress(p => ({
+              ...p,
+              [student.submissionId]: { status: "marking", attempt, maxAttempts },
+            }));
           },
-          timeout: 600000
+          onRetry: (attempt, maxAttempts, delay) => {
+            setBulkProgress(p => ({
+              ...p,
+              [student.submissionId]: {
+                status: "retrying",
+                attempt,
+                maxAttempts,
+                delaySeconds: Math.round(delay / 1000),
+              },
+            }));
+          },
+          execute: async () => {
+            const res = await api.post(endpoint, fd, {
+              headers: { "Content-Type": "multipart/form-data" },
+              timeout: 600000,
+            });
+            return res.data;
+          },
         });
 
-        setBulkProgress(p => ({
-          ...p,
-          [student.submissionId]: {
-            status: "done",
-            result: res.data,
-            studentFile
-          }
-        }));
+        if (markResult.stopped) break;
 
-        setStudents(prev =>
-          prev.map(s =>
-            s.submissionId === student.submissionId
-              ? {
-                  ...s,
-                  assignedGrade:
-                    res.data?.criteriaGrade?.totalMarks ??
-                    res.data?.totalMarks ??
-                    null
-                }
-              : s
-          )
-        );
+        if (markResult.success) {
+          const resultData = markResult.result;
+          doneCount++;
 
-        await api.post("/submission-files/save-results", {
-          assignmentId: selectedAssignment._id,
-          submissionId: student.submissionId,
-          studentId: student.studentId,
-          studentName: student.name,
-          mode,
-          provider,
-          result: res.data
-        });
+          setBulkProgress(p => ({
+            ...p,
+            [student.submissionId]: {
+              status: "done",
+              result: resultData,
+              studentFile,
+            },
+          }));
+
+          setStudents(prev =>
+            prev.map(s =>
+              s.submissionId === student.submissionId
+                ? {
+                    ...s,
+                    assignedGrade:
+                      resultData?.criteriaGrade?.totalMarks ??
+                      resultData?.totalMarks ??
+                      null,
+                  }
+                : s
+            )
+          );
+
+          await api.post("/submission-files/save-results", {
+            assignmentId: selectedAssignment._id,
+            submissionId: student.submissionId,
+            studentId: student.studentId,
+            studentName: student.name,
+            mode,
+            provider,
+            result: resultData,
+          });
+                  // HEAD: setSavedResults dropped by 00b30c1, restored here
         setSavedResults(prev => ({
           ...prev,
           [student.submissionId]: {
             status: "done",
-            result: res.data,
-            aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
-            totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+            result: resultData,
+            aiOriginalResult: JSON.parse(JSON.stringify(resultData)),
+            totalMarks: resultData?.criteriaGrade?.totalMarks ?? resultData?.totalMarks ?? null,
           }
         }));
-
-        success = true;
-
-      } catch (err) {
-        const data = err?.response?.data;
-        const parsedMessage = safeParse(data?.message);
-
-        const httpStatus = err?.response?.status;
-        const innerCode =
-          parsedMessage?.error?.code ||
-          data?.error?.code ||
-          parsedMessage?.error?.status;
-
-        const retryable =
-          httpStatus === 503 ||
-          innerCode === 503 ||
-          !httpStatus;
-
-        if (retryable) {
-          const delay = 2000;
+        } else {
+          errorCount++;
+          const err = markResult.error;
+          const message = markResult.exhausted
+            ? MARKING_MAX_RETRIES_MESSAGE
+            : extractHumanError(err);
 
           setBulkProgress(p => ({
             ...p,
-            [student.submissionId]: {
-              status: "retrying",
-              attempt,
-              maxAttempts,
-              delaySeconds: Math.round(delay / 1000)
-            }
+            [student.submissionId]: { status: "error" },
           }));
 
-          await new Promise(r => setTimeout(r, delay));
-
-          setBulkProgress(p => ({
-            ...p,
-            [student.submissionId]: {
-              status: "marking",
-              attempt,
-              maxAttempts
-            }
-          }));
-
-          continue;
+          recordStudentMarkingError(
+            student.submissionId,
+            message,
+            err?.response?.data
+          );
         }
+  }
 
-        setBulkProgress(p => ({
-          ...p,
-          [student.submissionId]: {
-            status: "error"
-          }
-        }));
-
-        recordStudentMarkingError(
-          student.submissionId,
-          extractHumanError(err),
-          err.response?.data
-        );
-
-        break;
+  if (bulkStopRef.current) {
+    setBulkProgress(p => {
+      const next = { ...p };
+      for (const s of eligible) {
+        const st = next[s.submissionId]?.status;
+        if (st === "pending" || st === "marking" || st === "retrying") {
+          next[s.submissionId] = { status: "cancelled" };
+        }
       }
-    }
-
-    if (!success && !bulkStopRef.current) {
-      setBulkProgress(p => ({
-        ...p,
-        [student.submissionId]: {
-          status: "error"
-        }
-      }));
-
-      recordStudentMarkingError(
-        student.submissionId,
-        "Failed after maximum retries. The server may be overloaded — please try again later."
-      );
-    }
+      return next;
+    });
+    toast.info(`Bulk marking stopped — ${doneCount} marked, ${errorCount} failed`);
+  } else if (errorCount === 0) {
+    toast.success(`Bulk marking complete — ${doneCount} student${doneCount === 1 ? "" : "s"} marked`);
+  } else if (doneCount > 0) {
+    toast.warning(`Bulk marking finished — ${doneCount} marked, ${errorCount} failed`);
+  } else {
+    toast.error(`Bulk marking failed — ${errorCount} student${errorCount === 1 ? "" : "s"} could not be marked`);
   }
 
   setBulkMarking(false);
@@ -1145,11 +1396,13 @@ while (
   } else {
     toast.success("Bulk marking complete");
   }
+  fetchStudentPage(studentPage);
   } catch (err) {
     setBulkMarking(false);
     toast.error(await getApiErrorMessage(err));
   }
   };
+
   const checkForActiveJob = async () => {
     try {
       const { data } = await api.get(
@@ -1194,145 +1447,151 @@ while (
 
 
 
-const pollBatchJob = async (jobId, jobMeta = {}) => {
-  if (batchStopRef.current) return;
-
-  // Clear any existing poll first
-  if (batchPollRef.current) {
-    clearInterval(batchPollRef.current);
-    batchPollRef.current = null;
-  }
-
-  console.log("Starting poll for jobId:", jobId);
-
-  const doPoll = async () => {
+  const pollBatchJob = async (jobId, jobMeta = {}) => {
     if (batchStopRef.current) return;
-    console.log("Polling:", jobId);
-    try {
-      const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
-      console.log("Poll response state:", data.state);
-
-      if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
-        setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
-        return;
-      }
-
+    // Clear any existing poll first
+    if (batchPollRef.current) {
       clearInterval(batchPollRef.current);
       batchPollRef.current = null;
-
-      if (data.state === "JOB_STATE_FAILED") {
-        const message = "Batch marking job failed.";
-        recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
-        setBatchJob(prev => ({ ...prev, phase: "error" }));
-        toast.error(message);
-        return;
-      }
-
-      // SUCCEEDED
-      const resultMap = {};
-      const saveMode = jobMeta.mode || "normal";
-      const modelForResult = jobMeta.geminiModel || geminiModel;
-      for (const { student, result, success, error, tokenUsage } of data.results) {
-        const enrichedResult = success
-          ? buildBatchMarkingResult(result, tokenUsage, modelForResult)
-          : null;
-        const originalAiResult = enrichedResult
-          ? JSON.parse(JSON.stringify(enrichedResult))
-          : null;
-        resultMap[student.submissionId] = success
-          ? { status: "done", result: enrichedResult, originalAiResult }
-          : { status: "error", error };
-
-        if (!success) {
-          const message =
-            typeof error === "string"
-              ? error
-              : error?.message || "Batch marking failed";
-          recordStudentMarkingError(student.submissionId, message, error);
-        }
-
-        if (success) {
-          setStudents(prev =>
-            prev.map(s => s.submissionId === student.submissionId
-              ? {
-                  ...s,
-                  assignedGrade:
-                    result?.criteriaGrade?.totalMarks ??
-                    result?.totalMarks ??
-                    null
-                }
-              : s
-            )
-          );
-
-          await api.post("/submission-files/save-results", {
-            assignmentId: selectedAssignment._id,
-            submissionId: student.submissionId,
-            studentId:    student.studentId,
-            studentName:  student.name,
-            mode:         saveMode,
-            provider:     "gemini-batch",
-            result:         enrichedResult,
-          }).catch(e => console.error("save-results:", e.message));
-          setSavedResults(prev => ({
-            ...prev,
-            [student.submissionId]: {
-              status: "done",
-              result: enrichedResult,
-              aiOriginalResult: originalAiResult,
-              totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
-            }
-          }));
-        }
-      }
-
-      setBatchJob(prev => ({
-        ...prev,
-        phase: "done",
-        results: { ...prev?.results, ...resultMap },
-      }));
-      toast.success(`Batch complete — ${data.results.filter(r => r.success).length} students marked.`);
-
-    } catch (err) {
-      console.error("Poll error:", err);
-      clearInterval(batchPollRef.current);
-      batchPollRef.current = null;
-      setBatchJob(prev => ({ ...prev, phase: "error" }));
-      toast.error(`Polling failed: ${extractHumanError(err)}`);
     }
+
+    console.log("Starting poll for jobId:", jobId);
+
+    const doPoll = async () => {
+      if (batchStopRef.current) return;
+      console.log("Polling:", jobId);
+      try {
+        const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
+        console.log("Poll response state:", data.state);
+
+        if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+          setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
+          toast.info("Still processing, check back soon…");
+          return;
+        }
+
+        clearInterval(batchPollRef.current);
+        batchPollRef.current = null;
+
+        if (data.state === "JOB_STATE_FAILED") {
+          const message = "Batch marking job failed.";
+          recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
+          setBatchJob(prev => ({ ...prev, phase: "error" }));
+          toast.error(message);
+          return;
+        }
+
+        // SUCCEEDED
+        const resultMap = {};
+        const memoryMeta = {
+          assignmentMemoryId:
+            jobMeta.assignmentMemoryId ??
+            data.assignmentMemoryId ??
+            null,
+        };
+        const saveMode = jobMeta.mode || "normal";
+        const modelForResult = jobMeta.geminiModel || geminiModel;
+        for (const { student, result, success, error, tokenUsage } of data.results) {
+          const enrichedResult = success
+            ? buildBatchMarkingResult(result, tokenUsage, modelForResult, memoryMeta)
+            : null;
+          const originalAiResult = enrichedResult
+            ? JSON.parse(JSON.stringify(enrichedResult))
+            : null;
+          resultMap[student.submissionId] = success
+            ? { status: "done", result: enrichedResult, originalAiResult }
+            : { status: "error", error };
+
+          if (!success) {
+            const message =
+              typeof error === "string"
+                ? error
+                : error?.message || "Batch marking failed";
+            recordStudentMarkingError(student.submissionId, message, error);
+          }
+
+          if (success) {
+            setStudents(prev =>
+              prev.map(s => s.submissionId === student.submissionId
+                ? {
+                    ...s,
+                    assignedGrade:
+                      result?.criteriaGrade?.totalMarks ??
+                      result?.totalMarks ??
+                      null
+                  }
+                : s
+              )
+            );
+
+            await api.post("/submission-files/save-results", {
+              assignmentId: selectedAssignment._id,
+              submissionId: student.submissionId,
+              studentId:    student.studentId,
+              studentName:  student.name,
+              mode:         saveMode,
+              provider:     "gemini-batch",
+              result:         enrichedResult,
+            }).catch(e => console.error("save-results:", e.message));
+          }
+        }
+
+        setBatchJob(prev => ({
+          ...prev,
+          phase: "done",
+          results: { ...prev?.results, ...resultMap },
+        }));
+        toast.success(`Batch complete — ${data.results.filter(r => r.success).length} students marked.`);
+        fetchStudentPage(studentPage);
+
+      } catch (err) {
+        console.error("Poll error:", err);
+        clearInterval(batchPollRef.current);
+        batchPollRef.current = null;
+        setBatchJob(prev => ({ ...prev, phase: "error" }));
+        toast.error(`Polling failed: ${extractHumanError(err)}`);
+      }
+    };
+
+    doPoll();
+    batchPollRef.current = setInterval(doPoll, 15_000);
   };
 
-  doPoll();
-  batchPollRef.current = setInterval(doPoll, 15_000);
-};
 
-
-// ── Submit batch — upload + submit, then hand off to pollBatchJob
+// ── Submit batch — memory setup + upload + submit, then hand off to pollBatchJob
 const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null) => {
-  if (!BATCH_ALLOWED_IDS.includes(currentUserId())) {
-    toast.error("You are not allowed to do batch marking. ");
-    return;
-  }
-
   const selectedModel = pickValidGeminiModel(
     geminiModels,
     modelOverride || geminiModel
   );
+
+  // 00b30c1: sync model state if it changed
   if (selectedModel !== geminiModel) {
     setGeminiModel(selectedModel);
   }
 
+  // 00b30c1: fetch ALL students across pages, not just current page
   let eligible;
+  let allStudents;
   try {
+    toast.info("Loading all students for this assignment…");
+    allStudents = await fetchAllPaginated(
+      api,
+      `/manager-assignments/${selectedAssignment._id}/full`,
+      {},
+      "students"
+    );
+
     const res = await api.post(
       "/submission-files/eligible-for-bulk-marking",
       {
         assignmentId: selectedAssignment._id,
-        submissions: students,
+        submissions: allStudents,
       }
     );
     const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    eligible = students.filter(
+    // HEAD: also gate on isStudentSubmitted
+    eligible = allStudents.filter(
       (s) =>
         s.submissionId &&
         backendEligible.has(s.submissionId) &&
@@ -1344,14 +1603,72 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   }
 
   if (!eligible.length) {
-    const submitted = students.filter((s) => isStudentSubmitted(s.state));
-    if (!submitted.length) {
+    const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
+    if (!withSubmissions.length) {
       return toast.warn("No students have submitted this assignment yet");
     }
     return toast.warn("All submitted students are already marked for this assignment");
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
+
+  // 00b30c1: build assignment memory before uploading
+  let assignmentMemoryId = null;
+  try {
+    toast.info("Preparing assignment correction memory…");
+    const firstStudent = eligible[0];
+    const [studentPdfRes, msPdfRes] = await Promise.all([
+      api.get("/submission-files/pdf", {
+        params: {
+          assignmentId: selectedAssignment._id,
+          submissionId: firstStudent.submissionId,
+        },
+        responseType: "blob",
+      }),
+      api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
+        responseType: "blob",
+      }),
+    ]);
+
+    await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
+    await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+    const gateStudentFile = new File(
+      [studentPdfRes.data],
+      `${firstStudent.name || "student"}.pdf`,
+      { type: "application/pdf" }
+    );
+    const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
+      type: "application/pdf",
+    });
+
+    const memory = await ensureAssignmentMemory(api, {
+      assignmentId: selectedAssignment._id,
+      studentFile: gateStudentFile,
+      msFile: gateMsFile,
+      markingMode: mode,
+      guidance: guidanceValue,
+      totalGrade: selectedAssignment.maxPoints,
+      classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+      geminiModel: selectedModel,
+    });
+
+    assignmentMemoryId = memory.memoryId;
+    if (memory.reused) {
+      toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
+    } else {
+      toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
+    }
+  } catch (err) {
+    const message = recordMarkingErrorsForStudents(
+      eligible,
+      err,
+      "Assignment memory preparation failed"
+    );
+    toast.error(message);
+    return;
+  }
+
   batchStopRef.current = false;
 
   setBatchJob({
@@ -1360,6 +1677,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     skipped: {},
     results: {},
     mode,
+    assignmentMemoryId,
     geminiModel: selectedModel,
     batchStudents: eligible.map(s => ({
       submissionId: s.submissionId,
@@ -1373,12 +1691,13 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   try {
     const res = await api.post("/marking/mark-batch/upload", {
       assignmentId: selectedAssignment._id,
-      markingMode: mode,
+      assignmentMemoryId,
+      markingMode: mode,          // HEAD: included for zeroed detection
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
         name:         s.name,
-        state:        s.state,
+        state:        s.state,   // HEAD: included for zeroed detection
       })),
     });
     ({ msUri, succeeded, failed, zeroed } = res.data);
@@ -1399,6 +1718,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     return;
   }
 
+  // HEAD: handle zeroed students (no PDF → 0 marks)
   if (zeroed?.length) {
     const zeroedResults = {};
     zeroed.forEach(({ student, result }) => {
@@ -1448,45 +1768,65 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     return;
   }
 
-  // Step 2 — submit job
-  setBatchJob(prev => ({ ...prev, phase: "submitting" }));
-
   if (batchStopRef.current) {
     setBatchJob(null);
     toast.info("Batch marking stopped");
     return;
   }
 
-  let jobId;
-  try {
-    const res = await api.post("/marking/mark-batch/submit", {
-      assignmentId:  selectedAssignment._id,
-      msUri,
-      succeeded,
-      markingMode:   mode,
-      guidance:      guidanceValue,
-      geminiModel:   selectedModel,
-      subjectId:     selectedAssignment.subjectId,
-      ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
-      personId:      currentUserId(),
-      classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
-    });
-    jobId = res.data.jobId;
-  } catch (err) {
-    if (err.response?.status === 409) {
-    // Job already running — just resume polling it
-    jobId = err.response.data.jobId;
-    toast.info("Resuming existing batch job...");
-    }else {
-    const message = recordMarkingErrorsForStudents(
-      succeeded.map(r => r.student),
-      err,
-      "Batch submission failed"
-    );
+  // Step 2 — submit job (with overload retries)
+  setBatchJob(prev => ({ ...prev, phase: "submitting" }));
+
+  const submitPayload = {
+    assignmentId:  selectedAssignment._id,
+    msUri,
+    succeeded,
+    markingMode:   mode,
+    guidance:      guidanceValue,
+    geminiModel:   selectedModel,
+    subjectId:     selectedAssignment.subjectId,
+    ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
+    personId:      currentUserId(),
+    classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
+  };
+
+  const submitResult = await runWithMarkingRetries({
+    execute: async () => {
+      try {
+        const res = await api.post("/marking/mark-batch/submit", submitPayload);
+        return { jobId: res.data.jobId, resumed: false };
+      } catch (err) {
+        if (err.response?.status === 409) {
+          return { jobId: err.response.data.jobId, resumed: true };
+        }
+        throw err;
+      }
+    },
+    onRetry: (attempt, maxAttempts, delay) => {
+      toast.info(
+        `Batch submit busy — retry ${attempt}/${maxAttempts} in ${Math.round(delay / 1000)}s…`
+      );
+    },
+  });
+
+  if (!submitResult.success) {
+    const err = submitResult.error;
+    const message = submitResult.exhausted
+      ? MARKING_MAX_RETRIES_MESSAGE
+      : recordMarkingErrorsForStudents(
+          succeeded.map((r) => r.student),
+          err,
+          "Batch submission failed"
+        );
     toast.error(`Batch submission failed: ${message}`);
-    setBatchJob(prev => ({ ...prev, phase: "error" }));
+    setBatchJob((prev) => ({ ...prev, phase: "error" }));
     return;
-  }}
+  }
+
+  const { jobId, resumed } = submitResult.result;
+  if (resumed) {
+    toast.info("Resuming existing batch job...");
+  }
 
   setBatchJob(prev => ({
     ...prev,
@@ -1497,6 +1837,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
 
   // Step 3 — hand off to standalone poller
   pollBatchJob(jobId, {
+    assignmentMemoryId,
     mode,
     geminiModel: selectedModel,
     batchStudents: succeeded.map(r => r.student),
@@ -1688,23 +2029,25 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
 
 // Clean up interval on unmount
-useEffect(() => {
-  return () => {
-    if (batchPollRef.current) clearInterval(batchPollRef.current);
-  };
-}, []);
+  useEffect(() => {
+    return () => {
+      if (batchPollRef.current) clearInterval(batchPollRef.current);
+    };
+  }, []);
 
 
 // Resume polling if page was already in "processing" state
 // (e.g. user navigated away and came back — if you persist batchJob to localStorage)
-useEffect(() => {
-  if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
-    pollBatchJob(batchJob.jobId, {
-      mode: batchJob.mode,
-      geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
-    });
-  }
-}, []); // only on mount
+  useEffect(() => {
+    if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
+      pollBatchJob(batchJob.jobId, {
+        assignmentMemoryId: batchJob.assignmentMemoryId,
+        mode: batchJob.mode,
+        geminiModel: batchJob.geminiModel,
+        batchStudents: batchJob.batchStudents,
+      });
+    }
+  }, []); // only on mount
 
 
 
@@ -1825,7 +2168,7 @@ useEffect(() => {
 
       let studentFile = resultModal.studentFile;
       if (!studentFile && submissionId) {
-        const pdfRes = await api.get("/submission-files/pdf", {
+      const pdfRes = await api.get("/submission-files/pdf", {
           params: {
             assignmentId: selectedAssignment._id,
             submissionId,
@@ -1880,10 +2223,11 @@ useEffect(() => {
     try {
       setReturning(true);
 
-      const saveRequests = Object.entries(bulkProgress)
+      const bulkSaveRequests = Object.entries(bulkProgress)
         .filter(([_, bulk]) =>
           bulk?.status === "done" &&
-          bulk?.result?.summary
+          bulk?.result?.summary &&
+          !bulk?.returned
         )
         .map(([submissionId, bulk]) =>
           api.post("/submission-files/save-summary", {
@@ -1893,7 +2237,21 @@ useEffect(() => {
           })
         );
 
-      await Promise.all(saveRequests);
+      const batchSaveRequests = Object.entries(batchJob?.results || {})
+        .filter(([_, batch]) =>
+          batch?.status === "done" &&
+          batch?.result?.summary &&
+          !batch?.returned
+        )
+        .map(([submissionId, batch]) =>
+          api.post("/submission-files/save-summary", {
+            assignmentId: selectedAssignment._id,
+            submissionId,
+            summary: batch.result.summary,
+          })
+        );
+
+      await Promise.all([...bulkSaveRequests, ...batchSaveRequests]);
 
       await returnAllToStudents();
     } finally {
@@ -1969,21 +2327,55 @@ useEffect(() => {
   };
 
 
+  const resolveBatchStudentForReturn = (submissionId) => {
+    const fromPage = students.find(s => s.submissionId === submissionId);
+    if (fromPage) return fromPage;
+    const fromBatch = batchJob?.batchStudents?.find(s => s.submissionId === submissionId);
+    if (fromBatch) return fromBatch;
+    return { submissionId, name: "Student" };
+  };
+
   const returnAllToStudents = async () => {
-    const doneStudents = students.filter(s => {
+    const bulkQueue = students.filter(s => {
       const bulk = bulkProgress[s.submissionId];
       return bulk?.status === "done" && bulk?.result && !bulk?.returned;
     });
 
-    if (!doneStudents.length) {
+    const bulkSubmissionIds = new Set(bulkQueue.map(s => s.submissionId));
+    const batchQueue = Object.entries(batchJob?.results || {})
+      .filter(([submissionId, batch]) =>
+        !bulkSubmissionIds.has(submissionId) &&
+        batch?.status === "done" &&
+        batch?.result &&
+        !batch?.returned
+      )
+      .map(([submissionId, batch]) => ({
+        student: resolveBatchStudentForReturn(submissionId),
+        batch,
+        submissionId,
+      }));
+
+    if (!bulkQueue.length && !batchQueue.length) {
       toast.warn("No new graded students to return");
       return;
     }
 
     setReturning(true);
 
+    const computeReturnMarks = (result, editingQs) => ({
+      total:
+        result?.criteriaGrade?.totalMarks ??
+        result?.totalMarks ??
+        editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0),
+      max:
+        result?.criteriaGrade?.maxTotalMarks ??
+        result?.maxTotalMarks ??
+        selectedAssignment?.maxPoints ??
+        0,
+    });
+
     try {
-      for (const student of doneStudents) {
+      for (const student of bulkQueue) {
         const bulk = bulkProgress[student.submissionId];
 
         if (!bulk?.result) {
@@ -2009,17 +2401,7 @@ useEffect(() => {
         }
 
         const editingQs = bulk.result.questions || [];
-
-        const total =
-          bulk.result?.criteriaGrade?.totalMarks ??
-          bulk.result?.totalMarks ??
-          editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0);
-
-        const max =
-          bulk.result?.criteriaGrade?.maxTotalMarks ??
-          bulk.result?.maxTotalMarks ??
-          selectedAssignment?.maxPoints ??
-          0;
+        const { total, max } = computeReturnMarks(bulk.result, editingQs);
 
         let pdfBytes;
         try {
@@ -2060,6 +2442,70 @@ useEffect(() => {
         }));
       }
 
+      for (const { student, batch, submissionId } of batchQueue) {
+        if (!batch?.result) {
+          toast.error(`Missing data for ${student.name || submissionId}. Stopping return process.`);
+          throw new Error("Missing batch data");
+        }
+
+        const editingQs = batch.result.questions || [];
+        const { total, max } = computeReturnMarks(batch.result, editingQs);
+
+        let pdfBytes;
+        try {
+          const pdfRes = await api.get("/submission-files/pdf", {
+            params: {
+              assignmentId: selectedAssignment._id,
+              submissionId,
+            },
+            responseType: "blob",
+          });
+          const studentFile = new File(
+            [pdfRes.data],
+            `${student.name || "student"}.pdf`,
+            { type: "application/pdf" }
+          );
+          pdfBytes = await annotatePdf({
+            studentFile,
+            questions: editingQs,
+            totalMarks: total,
+            maxTotalMarks: max,
+            summary: batch.result.summary || "",
+          });
+        } catch (err) {
+          console.error("PDF annotation failed for:", student.name, err);
+          toast.error(`Failed to generate PDF for ${student.name || submissionId}. Stopping process.`);
+          throw err;
+        }
+
+        const fd = new FormData();
+        fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+        fd.append("assignmentId", selectedAssignment._id);
+        fd.append("submissionId", submissionId);
+        fd.append("totalMarks", total);
+        fd.append("maxTotalMarks", max);
+        fd.append("studentName", student.name || "Student");
+
+        try {
+          await api.post("/submission-files/return-marked", fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 120000
+          });
+        } catch (err) {
+          console.error("Return failed for:", student.name, err);
+          toast.error(`Return failed for ${student.name || submissionId}. Stopping process.`);
+          throw err;
+        }
+
+        setBatchJob(prev => ({
+          ...prev,
+          results: {
+            ...prev?.results,
+            [submissionId]: { ...batch, returned: true },
+          },
+        }));
+      }
+
       toast.success("All graded papers returned");
     } finally {
       setReturning(false);
@@ -2069,6 +2515,11 @@ useEffect(() => {
   if (!user) return null;
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
+
+  const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+  const max   = effectiveMaxTotal;
+  const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+  const color = getScoreColor(total, max);
 
   return (
     <div className="ma-root">
@@ -2245,7 +2696,7 @@ useEffect(() => {
                     )}
                   
                   {/* BATCH MARKING */}
-                  {msInfo && BATCH_ALLOWED_IDS.includes(currentUserId()) && (
+                  {msInfo && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
                       <select
                         className="msv-gemini-select"
@@ -2273,9 +2724,11 @@ useEffect(() => {
       className="msv-btn-ai"
       onClick={() => {
         if (batchJob?.phase === "processing") {
+          toast.info("Checking status…");
           pollBatchJob(batchJob.jobId, {
             mode: batchJob.mode,
             geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+            batchStudents: batchJob.batchStudents,
           }); // "Check now" behaviour
         } else {
           openGuidanceModal(null, true);
@@ -2338,6 +2791,7 @@ useEffect(() => {
       pollBatchJob(batchJob.jobId, {
         mode: batchJob.mode,
         geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+        batchStudents: batchJob.batchStudents,
       });
     }}
     style={{
@@ -2433,6 +2887,17 @@ useEffect(() => {
                                 (batchDone && batch?.result) ||
                                 (bulkDone && bulk?.result) ||
                                 (db?.result?.tokenUsage ? db.result : null);
+
+                              const rowMarkingCtx = {
+                                batch,
+                                batchDone,
+                                bulk,
+                                bulkDone,
+                                single,
+                                db,
+                              };
+                              const showAiReview = hasSavedMarkingResult(rowMarkingCtx);
+                              const aiReviewing = aiReviewProgress[s.submissionId] === "reviewing";
                             
 
                               return (
@@ -2530,7 +2995,6 @@ useEffect(() => {
                                             : <><FiCpu size={12} /> Mark</>
                                           }
                                         </button>
-
                                         {/* Priority single mark */}
                                         {PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
                                           <button
@@ -2540,7 +3004,25 @@ useEffect(() => {
                                             disabled={markingLoading || priorityBulkRunning}
                                             style={{ borderColor: "rgba(251,191,36,0.4)" }}
                                           >
+
                                             <FiSend size={12} /> Mark (Priority)
+                                            </button>
+                                            )}
+                                        {showAiReview && (
+                                          <button
+                                            className="msv-action-btn"
+                                            title="AI Review"
+                                            onClick={() => runAiReview(s, rowMarkingCtx)}
+                                            disabled={aiReviewing || markingLoading}
+                                            style={{
+                                              background: aiReviewing
+                                                ? "rgba(234, 179, 8, 0.1)"
+                                                : "rgba(234, 179, 8, 0.2)",
+                                              borderColor: "rgba(234, 179, 8, 0.55)",
+                                              color: "#eab308",
+                                            }}
+                                          >
+                                            {aiReviewing ? "Reviewing…" : "AI Review"}
                                           </button>
                                         )}
 
@@ -2660,44 +3142,32 @@ useEffect(() => {
                     )}
 
       {/* ── GUIDANCE MODAL ── */}
-      {guidanceModal && (
-        <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
-          <div className="msv-guidance-modal" onClick={e => e.stopPropagation()}>
-            <div className="msv-guidance-header">
-              <div>
-                {/* <div style={{ fontSize: 15, fontWeight: 700 }}>
-                  {guidanceModal.bulk ? "🤖 Mark All Students" : `🤖 Mark — ${guidanceModal.student?.name}`}
-                </div> */}
-
-                <div style={{ fontSize: 15, fontWeight: 700 }}>
-                  {guidanceModal.batch        ? "⚡ Mark All Students (Batch)"  :
-                  guidanceModal.priorityBulk  ? "🚀 Mark All Students (Priority)" :
-                  guidanceModal.priority      ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}` :
-                  guidanceModal.bulk          ? "🤖 Mark All Students"          :
-                                                `🤖 Mark — ${guidanceModal.student?.name}`}
-                </div>
-
-                {/* <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-                  {guidanceModal.bulk
-                    ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
-                    : "AI will mark against the uploaded mark scheme"}
-                </div> */}
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
-  {guidanceModal.batch
-    ? `Submits all ${students.filter(s => s.submissionId).length} students to Gemini batch API — ~50% cheaper`
-    : guidanceModal.priorityBulk
-    ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
-    : guidanceModal.priority
-    ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
-    : guidanceModal.bulk
-    ? `Marking ${students.filter(s => s.submissionId).length} students sequentially`
-    : "AI will mark against the uploaded mark scheme"}
-</div>
-              
-              
-              </div>
-              <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
-            </div>
+                {guidanceModal && (
+                  <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
+                    <div className="msv-guidance-modal" onClick={e => e.stopPropagation()}>
+                      <div className="msv-guidance-header">
+                        
+                          <div style={{ fontSize: 15, fontWeight: 700 }}>
+                            {guidanceModal.priorityBulk ? "🚀 Mark All Students (Priority)" :
+                            guidanceModal.priority     ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}` :
+                            guidanceModal.batch        ? "⚡ Mark All Students (Batch)"  :
+                            guidanceModal.bulk         ? "🤖 Mark All Students"           :
+                                                          `🤖 Mark — ${guidanceModal.student?.name}`}
+                          </div>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+                            {guidanceModal.priorityBulk
+                              ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              : guidanceModal.priority
+                              ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              : guidanceModal.batch
+                              ? `Submits all eligible students in this assignment to Gemini batch API (~50% cheaper) — ${studentTotal} students in class`
+                              : guidanceModal.bulk
+                              ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
+                              : "AI will mark against the uploaded mark scheme"}
+                          </div>
+                        
+                        <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
+                      </div>
 
             <div style={{ padding: "20px 24px" }}>
               {/* Mode selector */}
@@ -2980,17 +3450,19 @@ useEffect(() => {
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <input
+                    readOnly
                     type="number"
                     min={0}
                     max={effectiveMaxTotal}
-                    value={editingTotal !== null ? editingTotal : effectiveTotal}
-                    onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
+                    value={total}
+                    // onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
                       border: `1px solid ${getScoreColor(effectiveTotal, effectiveMaxTotal)}`,
                       background: `${getScoreColor(effectiveTotal, effectiveMaxTotal)}15`,
                       color: getScoreColor(effectiveTotal, effectiveMaxTotal),
-                      fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none"
+                      fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
+                      cursor:"not-allowed"
                     }}
                   />
                   <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>/</span>
@@ -3314,6 +3786,254 @@ useEffect(() => {
                       )}
                     </div> 
                 </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── AI REVIEW COMPARISON MODAL ── */}
+      {aiReviewModal && (
+        <div className="msv-overlay" style={{ zIndex: 1100 }}>
+          <div
+            className="msv-results-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "96vw",
+              maxWidth: "96vw",
+              height: "92vh",
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div className="msv-modal-header">
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>
+                  AI Review — {aiReviewModal.student.name}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 4 }}>
+                  {aiReviewModal.flagged.length} question{aiReviewModal.flagged.length !== 1 ? "s" : ""} with grade discrepancies
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="msv-modal-body"
+              style={{
+                display: "flex",
+                gap: 20,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  flex: "0 0 50%",
+                  overflowY: "auto",
+                  height: "100%",
+                  paddingRight: 8,
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {aiReviewModal.flagged.map((item) => {
+                    const color = getScoreColor(item.resolvedMarks, item.maxMarks);
+                    return (
+                      <div key={item.questionNumber} className="msv-q-card">
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700 }}>Q{item.questionNumber}</span>
+                          {item.resolution == null && (
+                            <span style={{ fontSize: 11, color: "#f59e0b" }}>Unresolved</span>
+                          )}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+                              {providerDisplayLabel(aiReviewModal.provider)}
+                            </div>
+                            <span style={{ fontWeight: 700, fontSize: 15 }}>
+                              {item.existingMarks ?? "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+                              AI Review
+                            </div>
+                            <span style={{ fontWeight: 700, fontSize: 15, color: "#eab308" }}>
+                              {item.qwenMarks ?? "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+                              Resolved
+                            </div>
+                            <span style={{ fontWeight: 700, fontSize: 15, color }}>
+                              {item.resolvedMarks}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                          <button
+                            className="ma-send-btn"
+                            style={{
+                              fontSize: 12,
+                              padding: "6px 12px",
+                              opacity: item.resolution === "keep" ? 1 : 0.65,
+                              borderColor: item.resolution === "keep" ? "#399cf2" : undefined,
+                            }}
+                            onClick={() =>
+                              resolveFlaggedQuestion(
+                                item.questionNumber,
+                                "keep",
+                                item.existingMarks ?? 0
+                              )
+                            }
+                          >
+                            Keep original
+                          </button>
+                          <button
+                            className="ma-send-btn"
+                            style={{
+                              fontSize: 12,
+                              padding: "6px 12px",
+                              background: "rgba(234, 179, 8, 0.15)",
+                              borderColor: "rgba(234, 179, 8, 0.4)",
+                              color: "#eab308",
+                              opacity: item.resolution === "qwen" ? 1 : 0.65,
+                            }}
+                            onClick={() =>
+                              resolveFlaggedQuestion(
+                                item.questionNumber,
+                                "qwen",
+                                item.qwenMarks ?? 0
+                              )
+                            }
+                          >
+                            Use AI Review
+                          </button>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <input
+                            type="number"
+                            min={0}
+                            max={item.maxMarks || undefined}
+                            value={item.manualInput}
+                            onChange={(e) =>
+                              setAiReviewModal((prev) => ({
+                                ...prev,
+                                flagged: prev.flagged.map((f) =>
+                                  f.questionNumber === item.questionNumber
+                                    ? { ...f, manualInput: e.target.value }
+                                    : f
+                                ),
+                              }))
+                            }
+                            placeholder="Custom grade"
+                            style={{
+                              width: 90,
+                              padding: "6px 8px",
+                              borderRadius: 6,
+                              border: `1px solid ${color}`,
+                              background: `${color}15`,
+                              color,
+                              fontWeight: 700,
+                              fontSize: 13,
+                              textAlign: "center",
+                              outline: "none",
+                            }}
+                          />
+                          <button
+                            className="ma-send-btn"
+                            style={{
+                              fontSize: 12,
+                              padding: "6px 12px",
+                              opacity: item.resolution === "manual" ? 1 : 0.65,
+                            }}
+                            onClick={() => {
+                              const val = Number(item.manualInput);
+                              if (Number.isNaN(val)) {
+                                toast.warn("Enter a valid grade");
+                                return;
+                              }
+                              const clamped = Math.min(
+                                item.maxMarks || val,
+                                Math.max(0, val)
+                              );
+                              resolveFlaggedQuestion(item.questionNumber, "manual", clamped);
+                            }}
+                          >
+                            Set grade
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: "0 0 50%",
+                  height: "100%",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    marginBottom: 10,
+                    color: "rgba(255,255,255,0.6)",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Student Submission PDF
+                </div>
+                {aiReviewPdfUrl ? (
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    <iframe
+                      src={aiReviewPdfUrl}
+                      title="Student submission PDF"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        borderRadius: 8,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                    Loading PDF…
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "14px 20px",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                className="ma-send-btn"
+                onClick={saveAiReviewResolutions}
+                disabled={aiReviewSaving}
+              >
+                {aiReviewSaving ? "Saving…" : "Save & Close"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -2298,6 +2298,7 @@ return (
                   {batchJob?.phase === "processing" && (
                     <button
                       onClick={() => {
+                        toast.info("Checking status…"); 
                         pollBatchJob(batchJob.jobId, {
                           assignmentMemoryId: batchJob.assignmentMemoryId,
                           mode: batchJob.mode,
