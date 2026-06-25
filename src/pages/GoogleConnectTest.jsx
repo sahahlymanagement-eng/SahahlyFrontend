@@ -5,7 +5,7 @@ export default function GoogleConnectTest() {
   const [accounts, setAccounts] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
 
   // Load connected Google accounts
   const loadAccounts = async () => {
@@ -17,23 +17,32 @@ export default function GoogleConnectTest() {
     }
   };
 
-  // Fetch classrooms from Google and store in DB
+  // Load classrooms from DB (read-only; corrupt records excluded)
   const fetchClassrooms = async (account) => {
+    if (fetching) return;
+
     try {
-      setLoading(true);
+      setFetching(true);
       setSelectedAccount(account);
       setClassrooms([]);
 
-      await api.post(
+      const res = await api.post(
         `/director/google-accounts/${account._id}/classrooms`
       );
 
-      alert("Classrooms fetched from Google");
+      setClassrooms(Array.isArray(res.data?.data) ? res.data.data : []);
+
+      const excluded = res.data?.excludedCorrupt ?? 0;
+      alert(
+        excluded > 0
+          ? `Loaded ${res.data?.count ?? 0} classrooms (${excluded} corrupt record(s) excluded)`
+          : `Loaded ${res.data?.count ?? 0} classrooms`
+      );
     } catch (err) {
       console.error("Failed to fetch classrooms", err);
       alert("Failed to fetch classrooms — check backend logs");
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
   };
 
@@ -79,8 +88,11 @@ export default function GoogleConnectTest() {
             <strong>{acc.email}</strong>
             <br />
 
-            <button onClick={() => fetchClassrooms(acc)}>
-              Fetch Classrooms
+            <button
+              onClick={() => fetchClassrooms(acc)}
+              disabled={fetching}
+            >
+              {fetching ? "Fetching..." : "Fetch Classrooms"}
             </button>
 
             <button
@@ -99,9 +111,9 @@ export default function GoogleConnectTest() {
         <>
           <h3>Classrooms for {selectedAccount.email}</h3>
 
-          {loading && <p>Loading…</p>}
+          {fetching && <p>Loading…</p>}
 
-          {!loading && classrooms.length === 0 && (
+          {!fetching && classrooms.length === 0 && (
             <p>No classrooms found.</p>
           )}
 

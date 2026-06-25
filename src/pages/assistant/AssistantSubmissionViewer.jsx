@@ -15,7 +15,8 @@ import {
   FiUsers,
   FiCpu,
   FiSend,
-  FiX
+  FiX,
+  FiLayers,
 } from "react-icons/fi";
 
 import "../manager/ManagerSubmissionViewer.css";
@@ -25,6 +26,7 @@ import {
   buildFinalMarkingResult,
   buildPriorityMarkingResult,
   buildNoSubmissionMarkingResult,
+  buildBatchMarkingResult,
   currentUserId,
   getApiErrorMessage,
   guidanceForForm,
@@ -34,7 +36,18 @@ import {
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
-import { parseGeminiModelsResponse, PRIORITY_RATE_FACTOR } from "../../utils/markingCost";
+import {
+  geminiModelLabel,
+  PRIORITY_RATE_FACTOR,
+  parseGeminiModelsResponse,
+  pickValidGeminiModel,
+} from "../../utils/markingCost";
+import { fetchAllPaginated } from "../../utils/fetchAllStudents";
+import {
+  MARKING_MAX_ATTEMPTS,
+  MARKING_MAX_RETRIES_MESSAGE,
+  runWithMarkingRetries,
+} from "../../utils/markingRetries";
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
@@ -57,6 +70,7 @@ export default function AssignmentSubmissionViewer() {
   // const [classroomId, setClassroomId] = useState(null);
 
   const [msInfo, setMsInfo] = useState(null);
+  const [subjectId, setSubjectId] = useState(null);
   const [uploadingMs, setUploadingMs] = useState(false);
 
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
@@ -71,6 +85,10 @@ export default function AssignmentSubmissionViewer() {
   const PRIORITY_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const [priorityBulkRunning, setPriorityBulkRunning] = useState(false);
 
+  const [batchProgress, setBatchProgress] = useState(null);
+  const [batchJob, setBatchJob] = useState(null);
+  const batchPollRef = useRef(null); 
+  
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
   const [savedPrompts,       setSavedPrompts]       = useState([]);
@@ -235,7 +253,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     return message;
   };
 
-    const { data: students, page, totalPages, loading, fetchPage, extra, setData: setStudents } =
+    const { data: students, page, totalPages, total: studentTotal, loading, fetchPage, extra, setData: setStudents } =
   usePagination(
     `/assignment-submissions/${assignmentId}/students`,
     {},
@@ -300,6 +318,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           fileId: res.data.assignment.markSchemeFileId,
           webLink: res.data.assignment.markSchemeWebLink
         });
+        setSubjectId(res.data.assignment.subjectId || null);
       });
   }, [assignmentId]);
 
@@ -407,33 +426,6 @@ useEffect(() => {
 
 
 
-//fetch the locked mark all 
-//   useEffect(() => {
-//     if (!assignmentId) return;
-//   api.get(`/manager-assignments/${assignmentId}/bulk-lock`)
-//     .then(res => {
-//       setBulkLocked(res.data.locked);
-//     });
-// }, [assignmentId]);
-
-  // const fetchStudents = async () => {
-  //   setLoading(true);
-  //   try {
-  //     const res = await api.get(`/assignment-submissions/${assignmentId}/students`);
-  //     setStudents(res.data.students || []);
-  //     setDueDateTime(res.data.dueDateTime || null);
-  //     setMaxGrade(res.data.maxGrade || null);
-  //     setAssignmentTitle(res.data.assignmentTitle || "Assignment");
-  //     setClassroomId(res.data.classroomId || null);
-      
-  //   } catch {
-  //     toast.error("Failed to load students");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-
   const handleMsUpload = async (file) => {
     if (!file) return;
     setUploadingMs(true);
@@ -505,15 +497,20 @@ useEffect(() => {
     toast.info("Stopping bulk marking…");
   };
 
-  const openGuidanceModal = (student = null, intent = false) => {
-    // intent: "priority" (single) | "priorityBulk" | falsy (normal single/bulk)
-    let modal;
-    if (intent === "priority") modal = { priority: true, student };
-    else if (intent === "priorityBulk") modal = { priorityBulk: true };
-    else if (student) modal = { student };
-    else modal = { bulk: true };
 
-    setGuidanceModal(modal);
+  const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
+    setGuidanceModal(
+      intent === "priority"
+        ? { priority: true, student }
+        : intent === "priorityBulk"
+        ? { priorityBulk: true }
+        : isBatch
+        ? { batch: true }
+        : student
+        ? { student }
+        : { bulk: true }
+    );
+
     setGuidance("");
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
@@ -960,11 +957,19 @@ useEffect(() => {
 
   const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
     try {
+    toast.info("Loading all students for this assignment…");
+    const allStudents = await fetchAllPaginated(
+      api,
+      `/assignment-submissions/${assignmentId}/students`,
+      {},
+      "students"
+    );
+
     const res = await api.post(
       "/submission-files/eligible-for-bulk-marking",
       {
         assignmentId,
-        submissions: students
+        submissions: allStudents
       }
     );
 
@@ -972,17 +977,14 @@ useEffect(() => {
       res.data.map(s => s.submissionId)
     );
 
-    const eligible = students.filter(
-      s =>
-        s.submissionId &&
-        backendEligible.has(s.submissionId) &&
-        isStudentSubmitted(s.state)
+    const eligible = allStudents.filter(
+      s => s.submissionId && backendEligible.has(s.submissionId)
     );
     
     if (!eligible.length) {
-      const submitted = students.filter((s) => isStudentSubmitted(s.state));
-      if (!submitted.length) {
-        return toast.warn("No students have submitted this assignment yet");
+      const withSubmissions = allStudents.filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        return toast.warn("No students with submissions");
       }
       return toast.warn("All submitted students are already marked for this assignment");
     }
@@ -998,12 +1000,15 @@ useEffect(() => {
     });
     setBulkProgress({ ...progress });
 
+    let doneCount = 0;
+    let errorCount = 0;
+
     for (const student of eligible) {
       if (bulkStopRef.current) break;
 
       setBulkProgress(p => ({
         ...p,
-        [student.submissionId]: { status: "marking", attempt: 0, maxAttempts: 20 }
+        [student.submissionId]: { status: "marking", attempt: 0, maxAttempts: MARKING_MAX_ATTEMPTS }
       }));
 
       // -----------------------------
@@ -1095,6 +1100,7 @@ useEffect(() => {
           err.response?.data
         );
 
+        errorCount++;
         continue;
       }
 
@@ -1118,62 +1124,34 @@ useEffect(() => {
       }
       fd.append("markSchemePdf", msFile);
 
-      // -----------------------------
-      // 3. AI RETRY LOOP
-      // -----------------------------
-      let attempt = 0;
-      const maxAttempts = 20;
-      let success = false;
+      const endpoint =
+        provider === "claude"
+          ? "/markingClaude/mark-claude"
+          : "/marking/mark";
 
-      while (!success && !bulkStopRef.current && attempt < maxAttempts) {
-        attempt++;
-
-        let data = null;
-        let parsedMessage = null;
-
-        try {
-          const endpoint =
-            provider === "claude"
-              ? "/markingClaude/mark-claude"
-              : "/marking/mark";
-
-          const res = await api.post(endpoint, fd, {
-            headers: { "Content-Type": "multipart/form-data" },
-            timeout: 600000
-          });
-
-          // SUCCESS
+      const markResult = await runWithMarkingRetries({
+        shouldStop: () => bulkStopRef.current,
+        onAttemptStart: (attempt, maxAttempts) => {
+          setBulkProgress(p => ({
+            ...p,
+            [student.submissionId]: { status: "marking", attempt, maxAttempts },
+          }));
+        },
+        onRetry: (attempt, maxAttempts, delay) => {
           setBulkProgress(p => ({
             ...p,
             [student.submissionId]: {
-              status: "done",
-              result: res.data,
-              studentFile
-            }
+              status: "retrying",
+              attempt,
+              maxAttempts,
+              delaySeconds: Math.round(delay / 1000),
+            },
           }));
-
-          setStudents(prev =>
-            prev.map(s =>
-              s.submissionId === student.submissionId
-                ? {
-                    ...s,
-                    assignedGrade:
-                      res.data?.criteriaGrade?.totalMarks ??
-                      res.data?.totalMarks ??
-                      null
-                  }
-                : s
-            )
-          );
-
-          await api.post("/submission-files/save-results", {
-            assignmentId,
-            submissionId: student.submissionId,
-            studentId: student.studentId,
-            studentName: student.name,
-            mode,
-            provider,
-            result: res.data
+        },
+        execute: async () => {
+          const res = await api.post(endpoint, fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 600000,
           });
           setSavedResults(prev => ({
             ...prev,
@@ -1184,92 +1162,86 @@ useEffect(() => {
               totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
             }
           }));
+          return res.data;
+        },
+      });
 
-          success = true;
+      if (markResult.stopped) break;
 
-        } catch (err) {
-          data = err?.response?.data;
-          parsedMessage = safeParse(data?.message);
+      if (markResult.success) {
+        const resultData = markResult.result;
+        doneCount++;
 
-          const httpStatus = err?.response?.status;
-          const innerCode =
-            parsedMessage?.error?.code ||
-            data?.error?.code ||
-            parsedMessage?.error?.status;
-
-          const retryable =
-            // httpStatus === 500 ||
-            httpStatus === 503 ||
-            innerCode === 503 ||
-            // innerCode === "UNAVAILABLE" ||
-            // parsedMessage?.error?.status === "UNAVAILABLE" ||
-            // err.code === "ECONNABORTED" ||
-            // err.code === "ERR_NETWORK" ||
-            // err.code === "ERR_FAILED" ||
-            // err.message === "fetch failed" ||
-            // err.message === "Network Error" ||
-            !httpStatus;
-
-          if (retryable) {
-            // const delay = Math.min(5000 * Math.pow(2, attempt - 1), 60000);
-            const delay = 2000;
-            console.warn(
-              `Retry ${student.name} attempt ${attempt}/${maxAttempts}, waiting ${delay / 1000}s`
-            );
-
-            setBulkProgress(p => ({
-              ...p,
-              [student.submissionId]: {
-                status: "retrying",
-                attempt,
-                maxAttempts,
-                delaySeconds: Math.round(delay / 1000)
-              }
-            }));
-
-            await new Promise(r => setTimeout(r, delay));
-
-            // set back to marking after delay
-            setBulkProgress(p => ({
-              ...p,
-              [student.submissionId]: {
-                status: "marking",
-                attempt,
-                maxAttempts
-              }
-            }));
-
-            continue;
-          }
-
-          // FINAL FAIL (non-retryable)
-          setBulkProgress(p => ({
-            ...p,
-            [student.submissionId]: { status: "error" }
-          }));
-
-          recordStudentMarkingError(
-            student.submissionId,
-            extractHumanError(err),
-            err.response?.data
-          );
-
-          break;
-        }
-      }
-
-      // Hit max attempts without success
-      if (!success && !bulkStopRef.current) {
         setBulkProgress(p => ({
           ...p,
-          [student.submissionId]: { status: "error" }
+          [student.submissionId]: {
+            status: "done",
+            result: resultData,
+            studentFile,
+          },
+        }));
+
+        setStudents(prev =>
+          prev.map(s =>
+            s.submissionId === student.submissionId
+              ? {
+                  ...s,
+                  assignedGrade:
+                    resultData?.criteriaGrade?.totalMarks ??
+                    resultData?.totalMarks ??
+                    null,
+                }
+              : s
+          )
+        );
+
+        await api.post("/submission-files/save-results", {
+          assignmentId,
+          submissionId: student.submissionId,
+          studentId: student.studentId,
+          studentName: student.name,
+          mode,
+          provider,
+          result: resultData,
+        });
+      } else {
+        errorCount++;
+        const err = markResult.error;
+        const message = markResult.exhausted
+          ? MARKING_MAX_RETRIES_MESSAGE
+          : extractHumanError(err);
+
+        setBulkProgress(p => ({
+          ...p,
+          [student.submissionId]: { status: "error" },
         }));
 
         recordStudentMarkingError(
           student.submissionId,
-          "Failed after maximum retries. The server may be overloaded — please try again later."
+          message,
+          err?.response?.data
         );
       }
+    }
+
+    if (bulkStopRef.current) {
+      setBulkProgress(p => {
+        const next = { ...p };
+        for (const s of eligible) {
+          const st = next[s.submissionId]?.status;
+          if (st === "pending" || st === "marking" || st === "retrying") {
+            next[s.submissionId] = { status: "cancelled" };
+          }
+        }
+        return next;
+      });
+      toast.info(`Bulk marking stopped — ${doneCount} marked, ${errorCount} failed`);
+    } else if (errorCount === 0) {
+      toast.success(`Bulk marking complete — ${doneCount} student${doneCount === 1 ? "" : "s"} marked`);
+    } else if (doneCount > 0) {
+      toast.warning(`Bulk marking finished — ${doneCount} marked, ${errorCount} failed`);
+    } else {
+      toast.error(`Bulk marking failed — ${errorCount} student${errorCount === 1 ? "" : "s"} could not be marked`);
     }
 
     setBulkMarking(false);
@@ -1278,11 +1250,402 @@ useEffect(() => {
     } else {
       toast.success("Bulk marking complete");
     }
+    fetchPage(page);
   } catch (err) {
     setBulkMarking(false);
     toast.error(await getApiErrorMessage(err));
   }
   };
+
+  const checkForActiveJob = async () => {
+    try {
+      const { data } = await api.get(
+        `/marking/mark-batch/active/${assignmentId}`
+      );
+      if (data.active) {
+        const {
+          jobId,
+          studentOrder,
+          submittedAt,
+          assignmentMemoryId,
+          geminiModel: jobModel,
+        } = data.active;
+        const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
+        setBatchJob({
+          phase: "processing",
+          jobId,
+          total: studentOrder?.length || 0,
+          submittedAt,
+          skipped: {},
+          results: {},
+          mode: "normal",
+          assignmentMemoryId: assignmentMemoryId || null,
+          geminiModel: restoredModel,
+          batchStudents: studentOrder || [],
+        });
+        pollBatchJob(jobId, {
+          assignmentMemoryId,
+          mode: "normal",
+          geminiModel: restoredModel,
+          batchStudents: studentOrder || [],
+        });
+      }
+    } catch (err) {
+      console.error("checkForActiveJob:", err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    checkForActiveJob();
+  }, [assignmentId]);
+
+  const pollBatchJob = async (jobId, jobMeta = {}) => {
+    if (batchPollRef.current) {
+      clearInterval(batchPollRef.current);
+      batchPollRef.current = null;
+    }
+
+    const doPoll = async () => {
+      try {
+        const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
+
+        if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+          toast.info("Still processing, check back soon…");
+          setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
+          return;
+        }
+
+        clearInterval(batchPollRef.current);
+        batchPollRef.current = null;
+
+        if (data.state === "JOB_STATE_FAILED") {
+          const message = "Batch marking job failed.";
+          recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
+          setBatchJob(prev => ({ ...prev, phase: "error" }));
+          toast.error(message);
+          return;
+        }
+
+        const resultMap = {};
+        const memoryMeta = {
+          assignmentMemoryId:
+            jobMeta.assignmentMemoryId ??
+            data.assignmentMemoryId ??
+            null,
+        };
+        const saveMode = jobMeta.mode || "normal";
+        const modelForResult = jobMeta.geminiModel || geminiModel;
+        for (const { student, result, success, error, tokenUsage } of data.results) {
+          const enrichedResult = success
+            ? buildBatchMarkingResult(result, tokenUsage, modelForResult, memoryMeta)
+            : null;
+          const originalAiResult = enrichedResult
+            ? JSON.parse(JSON.stringify(enrichedResult))
+            : null;
+          resultMap[student.submissionId] = success
+            ? { status: "done", result: enrichedResult, originalAiResult }
+            : { status: "error", error };
+
+          if (!success) {
+            const message =
+              typeof error === "string"
+                ? error
+                : error?.message || "Batch marking failed";
+            recordStudentMarkingError(student.submissionId, message, error);
+          }
+
+          if (success) {
+            setStudents(prev =>
+              prev.map(s => s.submissionId === student.submissionId
+                ? {
+                    ...s,
+                    assignedGrade:
+                      result?.criteriaGrade?.totalMarks ??
+                      result?.totalMarks ??
+                      null
+                  }
+                : s
+              )
+            );
+
+            await api.post("/submission-files/save-results", {
+              assignmentId,
+              submissionId: student.submissionId,
+              studentId: student.studentId,
+              studentName: student.name,
+              mode: saveMode,
+              provider: "gemini-batch",
+              result: enrichedResult,
+            }).catch(e => console.error("save-results:", e.message));
+          }
+        }
+
+        setBatchJob(prev => ({
+          ...prev,
+          phase: "done",
+          results: { ...prev?.results, ...resultMap },
+        }));
+        toast.success(`Batch complete — ${data.results.filter(r => r.success).length} students marked.`);
+        fetchPage(page);
+      } catch (err) {
+        console.error("Poll error:", err);
+        clearInterval(batchPollRef.current);
+        batchPollRef.current = null;
+        setBatchJob(prev => ({ ...prev, phase: "error" }));
+        toast.error(`Polling failed: ${extractHumanError(err)}`);
+      }
+    };
+
+    doPoll();
+    batchPollRef.current = setInterval(doPoll, 15_000);
+  };
+
+  const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null) => {
+    const selectedModel = pickValidGeminiModel(
+      geminiModels,
+      modelOverride || geminiModel
+    );
+    if (selectedModel !== geminiModel) {
+      setGeminiModel(selectedModel);
+    }
+
+    let eligible;
+    let allStudents;
+    try {
+      toast.info("Loading all students for this assignment…");
+      allStudents = await fetchAllPaginated(
+        api,
+        `/assignment-submissions/${assignmentId}/students`,
+        {},
+        "students"
+      );
+
+      const res = await api.post(
+        "/submission-files/eligible-for-bulk-marking",
+        {
+          assignmentId,
+          submissions: allStudents,
+        }
+      );
+      const backendEligible = new Set(res.data.map((s) => s.submissionId));
+      eligible = allStudents.filter(
+        (s) => s.submissionId && backendEligible.has(s.submissionId)
+      );
+    } catch (err) {
+      toast.error(extractHumanError(err) || "Failed to check eligible students");
+      return;
+    }
+
+    if (!eligible.length) {
+      const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        return toast.warn("No students with submissions");
+      }
+      return toast.warn("All submitted students are already marked for this assignment");
+    }
+
+    const guidanceValue = guidanceForForm(guidanceText);
+    let assignmentMemoryId = null;
+
+    try {
+      toast.info("Preparing assignment correction memory…");
+      const firstStudent = eligible[0];
+      const [studentPdfRes, msPdfRes] = await Promise.all([
+        api.get("/submission-files/pdf", {
+          params: {
+            assignmentId,
+            submissionId: firstStudent.submissionId,
+          },
+          responseType: "blob",
+        }),
+        api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
+          responseType: "blob",
+        }),
+      ]);
+
+      await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
+      await assertPdfBlob(msPdfRes.data, "Mark scheme");
+
+      const gateStudentFile = new File(
+        [studentPdfRes.data],
+        `${firstStudent.name || "student"}.pdf`,
+        { type: "application/pdf" }
+      );
+      const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
+        type: "application/pdf",
+      });
+
+      const memory = await ensureAssignmentMemory(api, {
+        assignmentId,
+        studentFile: gateStudentFile,
+        msFile: gateMsFile,
+        markingMode: mode,
+        guidance: guidanceValue,
+        totalGrade: maxGrade,
+        classroomId,
+        geminiModel: selectedModel,
+      });
+
+      assignmentMemoryId = memory.memoryId;
+      if (memory.reused) {
+        toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
+      } else {
+        toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
+      }
+    } catch (err) {
+      const message = recordMarkingErrorsForStudents(
+        eligible,
+        err,
+        "Assignment memory preparation failed"
+      );
+      toast.error(message);
+      return;
+    }
+
+    setBatchJob({
+      phase: "uploading",
+      total: eligible.length,
+      skipped: {},
+      results: {},
+      mode,
+      assignmentMemoryId,
+      geminiModel: selectedModel,
+      batchStudents: eligible.map(s => ({
+        submissionId: s.submissionId,
+        studentId: s.studentId,
+        name: s.name,
+      })),
+    });
+
+    let msUri, succeeded, failed;
+    try {
+      const res = await api.post("/marking/mark-batch/upload", {
+        assignmentId,
+        assignmentMemoryId,
+        students: eligible.map(s => ({
+          submissionId: s.submissionId,
+          studentId: s.studentId,
+          name: s.name,
+        })),
+      });
+      ({ msUri, succeeded, failed } = res.data);
+    } catch (err) {
+      const message = recordMarkingErrorsForStudents(
+        eligible,
+        err,
+        "Upload failed"
+      );
+      toast.error(`Upload failed: ${message}`);
+      setBatchJob(prev => ({ ...prev, phase: "error" }));
+      return;
+    }
+
+    const skipped = {};
+    if (failed?.length) {
+      toast.warning(`${failed.length} student(s) could not be uploaded`);
+      failed.forEach(({ student, error }) => {
+        skipped[student.submissionId] = { error };
+        const message =
+          typeof error === "string" ? error : error?.message || "Upload failed";
+        recordStudentMarkingError(student.submissionId, message, error);
+      });
+      setBatchJob(prev => ({ ...prev, skipped }));
+    }
+
+    if (!succeeded?.length) {
+      const message = "No valid submissions to mark.";
+      recordMarkingErrorsForStudents(eligible, null, message);
+      toast.error(message);
+      setBatchJob(prev => ({ ...prev, phase: "error" }));
+      return;
+    }
+
+    setBatchJob(prev => ({ ...prev, phase: "submitting" }));
+
+    const submitPayload = {
+      assignmentId,
+      assignmentMemoryId,
+      msUri,
+      succeeded,
+      markingMode: mode,
+      guidance: guidanceValue,
+      geminiModel: selectedModel,
+      subjectId,
+      ...(maxGrade && { totalGrade: maxGrade }),
+      personId: currentUserId(),
+      classroomId,
+    };
+
+    const submitResult = await runWithMarkingRetries({
+      execute: async () => {
+        try {
+          const res = await api.post("/marking/mark-batch/submit", submitPayload);
+          return { jobId: res.data.jobId, resumed: false };
+        } catch (err) {
+          if (err.response?.status === 409) {
+            return { jobId: err.response.data.jobId, resumed: true };
+          }
+          throw err;
+        }
+      },
+      onRetry: (attempt, maxAttempts, delay) => {
+        toast.info(
+          `Batch submit busy — retry ${attempt}/${maxAttempts} in ${Math.round(delay / 1000)}s…`
+        );
+      },
+    });
+
+    if (!submitResult.success) {
+      const err = submitResult.error;
+      const message = submitResult.exhausted
+        ? MARKING_MAX_RETRIES_MESSAGE
+        : recordMarkingErrorsForStudents(
+            succeeded.map((r) => r.student),
+            err,
+            "Batch submission failed"
+          );
+      toast.error(`Batch submission failed: ${message}`);
+      setBatchJob((prev) => ({ ...prev, phase: "error" }));
+      return;
+    }
+
+    const { jobId, resumed } = submitResult.result;
+    if (resumed) {
+      toast.info("Resuming existing batch job...");
+    }
+
+    setBatchJob(prev => ({
+      ...prev,
+      phase: "processing",
+      jobId,
+      batchStudents: succeeded.map(r => r.student),
+    }));
+
+    pollBatchJob(jobId, {
+      assignmentMemoryId,
+      mode,
+      geminiModel: selectedModel,
+      batchStudents: succeeded.map(r => r.student),
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (batchPollRef.current) clearInterval(batchPollRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
+      pollBatchJob(batchJob.jobId, {
+        assignmentMemoryId: batchJob.assignmentMemoryId,
+        mode: batchJob.mode,
+        geminiModel: batchJob.geminiModel,
+        batchStudents: batchJob.batchStudents,
+      });
+    }
+  }, []);
 
   const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
@@ -1301,6 +1664,9 @@ useEffect(() => {
     } else if (guidanceModal.priority) {
       setGuidanceModal(null);
       runMarkStudentPriority(guidanceModal.student, g, mode);
+    } else if (guidanceModal.batch) {
+      setGuidanceModal(null);
+      runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel));
     } else {
       setGuidanceModal(null);
       runMarkStudent(guidanceModal.student, g, mode, provider);
@@ -1412,21 +1778,13 @@ useEffect(() => {
       }
 
       const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-          const db = savedResults[students.submissionId];
+      const db = savedResults[students.submissionId];
     
       const submissionId =
         resultModal?.submissionId ||
         resultModal?.student?.submissionId ||
         db?.submissionId;
 
-
-      // const pdfBytes = await annotatePdf({
-      //   studentFile:   resultModal.studentFile,
-      //   questions:     editingQuestions,
-      //   totalMarks:    effectiveTotal,
-      //   maxTotalMarks: effectiveMaxTotal,
-      //   summary:       resultModal.result.summary || ""
-      // });
 
       const pdfRes = await api.get("/submission-files/pdf", {
         params: {
@@ -1449,16 +1807,8 @@ useEffect(() => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
+        summary: resultModal.result.summary || "",
       });
-
-      // const pdfBytes = await annotatePdf({
-      //   studentFile: resultModal.studentFile,
-      //   questions: editingQuestions,
-      //   totalMarks: total,
-      //   maxTotalMarks: maxGrade,
-      //   summary:       resultModal.result.summary || ""
-      // });
-
 
       const fd = new FormData();
       fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
@@ -1492,21 +1842,55 @@ useEffect(() => {
   };
 
 
+  const resolveBatchStudentForReturn = (submissionId) => {
+    const fromPage = students.find(s => s.submissionId === submissionId);
+    if (fromPage) return fromPage;
+    const fromBatch = batchJob?.batchStudents?.find(s => s.submissionId === submissionId);
+    if (fromBatch) return fromBatch;
+    return { submissionId, name: "Student" };
+  };
+
   const returnAllToStudents = async () => {
-    const doneStudents = students.filter(s => {
+    const bulkQueue = students.filter(s => {
       const bulk = bulkProgress[s.submissionId];
       return bulk?.status === "done" && bulk?.result && !bulk?.returned;
     });
 
-    if (!doneStudents.length) {
+    const bulkSubmissionIds = new Set(bulkQueue.map(s => s.submissionId));
+    const batchQueue = Object.entries(batchJob?.results || {})
+      .filter(([submissionId, batch]) =>
+        !bulkSubmissionIds.has(submissionId) &&
+        batch?.status === "done" &&
+        batch?.result &&
+        !batch?.returned
+      )
+      .map(([submissionId, batch]) => ({
+        student: resolveBatchStudentForReturn(submissionId),
+        batch,
+        submissionId,
+      }));
+
+    if (!bulkQueue.length && !batchQueue.length) {
       toast.warn("No new graded students to return");
       return;
     }
 
     setReturning(true);
 
+    const computeReturnMarks = (result, editingQs) => ({
+      total:
+        result?.criteriaGrade?.totalMarks ??
+        result?.totalMarks ??
+        editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0),
+      max:
+        result?.criteriaGrade?.maxTotalMarks ??
+        result?.maxTotalMarks ??
+        maxGrade ??
+        0,
+    });
+
     try {
-      for (const student of doneStudents) {
+      for (const student of bulkQueue) {
         const bulk = bulkProgress[student.submissionId];
 
         if (!bulk?.result) {
@@ -1532,17 +1916,7 @@ useEffect(() => {
         }
 
         const editingQs = bulk.result.questions || [];
-
-        const total =
-          bulk.result?.criteriaGrade?.totalMarks ??
-          bulk.result?.totalMarks ??
-          editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0);
-
-        const max =
-          bulk.result?.criteriaGrade?.maxTotalMarks ??
-          bulk.result?.maxTotalMarks ??
-          maxGrade ??
-          0;
+        const { total, max } = computeReturnMarks(bulk.result, editingQs);
 
         let pdfBytes;
         try {
@@ -1574,12 +1948,73 @@ useEffect(() => {
         } catch (err) {
           console.error("Return failed for:", student.name, err);
           toast.error(`Return failed for ${student.name}. Stopping process.`);
-          throw err; // ⛔ STOP EVERYTHING
+          throw err;
         }
 
         setBulkProgress(p => ({
           ...p,
           [student.submissionId]: { ...bulk, returned: true }
+        }));
+      }
+
+      for (const { student, batch, submissionId } of batchQueue) {
+        if (!batch?.result) {
+          toast.error(`Missing data for ${student.name || submissionId}. Stopping return process.`);
+          throw new Error("Missing batch data");
+        }
+
+        const editingQs = batch.result.questions || [];
+        const { total, max } = computeReturnMarks(batch.result, editingQs);
+
+        let pdfBytes;
+        try {
+          const pdfRes = await api.get("/submission-files/pdf", {
+            params: { assignmentId, submissionId },
+            responseType: "blob",
+          });
+          const studentFile = new File(
+            [pdfRes.data],
+            `${student.name || "student"}.pdf`,
+            { type: "application/pdf" }
+          );
+          pdfBytes = await annotatePdf({
+            studentFile,
+            questions: editingQs,
+            totalMarks: total,
+            maxTotalMarks: max,
+            summary: batch.result.summary || "",
+          });
+        } catch (err) {
+          console.error("PDF annotation failed for:", student.name, err);
+          toast.error(`Failed to generate PDF for ${student.name || submissionId}. Stopping process.`);
+          throw err;
+        }
+
+        const fd = new FormData();
+        fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+        fd.append("assignmentId", assignmentId);
+        fd.append("submissionId", submissionId);
+        fd.append("totalMarks", total);
+        fd.append("maxTotalMarks", max);
+        fd.append("studentName", student.name || "Student");
+
+        try {
+          await api.post("/submission-files/return-marked", fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 120000
+          });
+        } catch (err) {
+          console.error("Return failed for:", student.name, err);
+          toast.error(`Return failed for ${student.name || submissionId}. Stopping process.`);
+          throw err;
+        }
+
+        setBatchJob(prev => ({
+          ...prev,
+          results: {
+            ...prev?.results,
+            [submissionId]: { ...batch, returned: true },
+          },
         }));
       }
 
@@ -1627,10 +2062,11 @@ useEffect(() => {
     try {
       setReturning(true);
 
-      const saveRequests = Object.entries(bulkProgress)
+      const bulkSaveRequests = Object.entries(bulkProgress)
         .filter(([_, bulk]) =>
           bulk?.status === "done" &&
-          bulk?.result?.summary
+          bulk?.result?.summary &&
+          !bulk?.returned
         )
         .map(([submissionId, bulk]) =>
           api.post("/submission-files/save-summary", {
@@ -1640,7 +2076,21 @@ useEffect(() => {
           })
         );
 
-      await Promise.all(saveRequests);
+      const batchSaveRequests = Object.entries(batchJob?.results || {})
+        .filter(([_, batch]) =>
+          batch?.status === "done" &&
+          batch?.result?.summary &&
+          !batch?.returned
+        )
+        .map(([submissionId, batch]) =>
+          api.post("/submission-files/save-summary", {
+            assignmentId,
+            submissionId,
+            summary: batch.result.summary,
+          })
+        );
+
+      await Promise.all([...bulkSaveRequests, ...batchSaveRequests]);
 
       await returnAllToStudents();
     } finally {
@@ -1727,18 +2177,15 @@ return (
               {msInfo  && (
                 <button
                   className="msv-btn-ai"
-                  // onClick={runBulkMark}
-                  onClick={() => openGuidanceModal()}
-                  disabled={bulkMarking || bulkLocked}
+                  onClick={() => openGuidanceModal(null, false)}
+                  disabled={bulkMarking || bulkLocked || batchJob?.phase === "processing"}
                   title={bulkLocked ? "This action can only be run once per assignment" : ""}
                   style={{
                     opacity: bulkLocked ? 0.4 : 1,
                     cursor: bulkLocked ? "not-allowed" : "pointer"
                   }}
                 >
-                  {/* {bulkMarking ? "Marking all…" : bulkLocked ? "Mark All (Locked)":"Mark All Students"} */}
                 {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
-                
                 </button>
               )}
               {msInfo && bulkMarking && (
@@ -1782,6 +2229,92 @@ return (
                   {returning ? "Returning…" : "Return All"}
                 </button>
                 )}
+
+              {/* BATCH MARKING */}
+              {msInfo && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
+                  <select
+                    className="msv-gemini-select"
+                    value={pickValidGeminiModel(geminiModels, geminiModel)}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    disabled={
+                      bulkMarking ||
+                      batchJob?.phase === "uploading" ||
+                      batchJob?.phase === "submitting" ||
+                      batchJob?.phase === "processing"
+                    }
+                    title="Gemini model for batch marking"
+                    style={{ minWidth: 210, maxWidth: 280 }}
+                  >
+                    {(geminiModels.length
+                      ? geminiModels
+                      : [{ id: geminiModel, label: geminiModel }]
+                    ).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="msv-btn-ai"
+                    onClick={() => {
+                      if (batchJob?.phase === "processing") {
+                        pollBatchJob(batchJob.jobId, {
+                          assignmentMemoryId: batchJob.assignmentMemoryId,
+                          mode: batchJob.mode,
+                          geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+                          batchStudents: batchJob.batchStudents,
+                        });
+                      } else {
+                        openGuidanceModal(null, true);
+                      }
+                    }}
+                    disabled={bulkMarking || batchJob?.phase === "uploading" || batchJob?.phase === "submitting"}
+                    style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                  >
+                    {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
+                    {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
+                    {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
+                    {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
+                    {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
+                  </button>
+                </div>
+              )}
+              {batchJob && batchJob.phase !== "done" && (
+                <div style={{
+                  marginTop: 8, padding: "10px 14px", borderRadius: 10,
+                  background: "rgba(99,102,241,0.08)",
+                  border: "1px solid rgba(99,102,241,0.2)",
+                  fontSize: 12, color: "rgba(255,255,255,0.6)",
+                  display: "flex", alignItems: "center", gap: 10
+                }}>
+                  <span className="pm-spinner" style={{ width: 12, height: 12 }} />
+                  <span>
+                    {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Gemini…`}
+                    {batchJob.phase === "submitting" && "Submitting batch job…"}
+                    {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
+                  </span>
+                  {batchJob?.phase === "processing" && (
+                    <button
+                      onClick={() => {
+                        toast.info("Checking status…"); 
+                        pollBatchJob(batchJob.jobId, {
+                          assignmentMemoryId: batchJob.assignmentMemoryId,
+                          mode: batchJob.mode,
+                          geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+                          batchStudents: batchJob.batchStudents,
+                        });
+                      }}
+                      style={{
+                        marginLeft: "auto", fontSize: 11, color: "#818cf8",
+                        background: "none", border: "none", cursor: "pointer"
+                      }}
+                    >
+                      Check now
+                    </button>
+                  )}
+                </div>
+              )}
                
             </div>
 
@@ -1815,15 +2348,24 @@ return (
                             // const singleError = single?.status === "error";
 
                             const db = savedResults[s.submissionId];
+
+                            const batch     = batchJob?.results?.[s.submissionId];
+                            const batchDone = batch?.status === "done";
+                            const batchError = batch?.status === "error";
+                            const batchQueued  = batchJob?.phase === "processing" &&
+                                                  !batchDone && !batchError &&
+                                                  batchJob?.results?.[s.submissionId] === undefined &&
+                                                  batchJob?.total > 0;
                             
                             const hasResult = !!(single?.status === "done" || db?.result);
                             const isMarking = single?.status === "marking" || markingStudentId === s.submissionId;
                             const hasError = single?.status === "error" || studentErrors[s.submissionId];
 
-                            const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId;
-                            const markingDone = bulkDone || hasResult;
-                            const markingError = bulkError || hasError || studentErrors[s.submissionId];
+                            const markingLoading = isMarking || bulkMarking || bulkRetrying || markingStudentId === s.submissionId || batchQueued;
+                            const markingDone = bulkDone || hasResult || batchDone;
+                            const markingError = bulkError || hasError || batchError || studentErrors[s.submissionId];
                             const inlineMarkResult =
+                              (batchDone && batch?.result) ||
                               (bulkDone && bulk?.result) ||
                               (db?.result?.tokenUsage ? db.result : null);
                           
@@ -1896,16 +2438,24 @@ return (
                                       <>
                                         
                                         {/* Results button — show if any source has results */}
-                                        {(bulkDone || single?.status === "done" || db?.result) && (
+                                        {(bulkDone || batchDone || single?.status === "done" || db?.result) && (
                                           <button
                                             className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
                                             title="View Results"
                                             onClick={() => {
-                                              const source = bulkDone ? bulk : single?.status === "done" ? single : null;
-                                              const result = source?.result ?? db?.result;
-                                              const studentFile = source?.studentFile ?? null;
+                                              const result =
+                                                batchDone ? batch.result :
+                                                bulkDone ? bulk.result :
+                                                single?.status === "done" ? single.result :
+                                                db?.result;
+                                              const studentFile =
+                                                bulkDone ? bulk.studentFile :
+                                                single?.status === "done" ? single.studentFile :
+                                                null;
                                               const originalAiResult =
-                                                source?.originalAiResult ??
+                                                (batchDone ? batch?.originalAiResult : null) ??
+                                                (bulkDone ? bulk?.originalAiResult : null) ??
+                                                (single?.status === "done" ? single?.originalAiResult : null) ??
                                                 db?.aiOriginalResult ??
                                                 result;
                                               setResultModal({
@@ -1934,8 +2484,9 @@ return (
                                             ? <span style={{ fontSize: 10, color: "#f59e0b" }}>
                                                 ⟳ Retry {bulk.attempt}/{bulk.maxAttempts}
                                               </span>
-                                            :
-                                             <span className="pm-spinner" />
+                                            : batchQueued
+                                            ? <span style={{ fontSize: 10, color: "#818cf8" }}>⚡ Batch…</span>
+                                            : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
                                             : <><FiCpu size={12} /> Mark</>
@@ -2071,11 +2622,12 @@ return (
                   <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
                     <div className="msv-guidance-modal" onClick={e => e.stopPropagation()}>
                       <div className="msv-guidance-header">
-                        <div>
+                        
                           <div style={{ fontSize: 15, fontWeight: 700 }}>
                             {guidanceModal.priorityBulk ? "🚀 Mark All Students (Priority)" :
-                             guidanceModal.priority     ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}` :
-                             guidanceModal.bulk         ? "🤖 Mark All Students" :
+                            guidanceModal.priority     ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}` :
+                            guidanceModal.batch        ? "⚡ Mark All Students (Batch)"  :
+                            guidanceModal.bulk         ? "🤖 Mark All Students"           :
                                                           `🤖 Mark — ${guidanceModal.student?.name}`}
                           </div>
                           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
@@ -2083,11 +2635,13 @@ return (
                               ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
                               : guidanceModal.priority
                               ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              : guidanceModal.batch
+                              ? `Submits all eligible students in this assignment to Gemini batch API (~50% cheaper) — ${studentTotal} students in class`
                               : guidanceModal.bulk
                               ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                               : "AI will mark against the uploaded mark scheme"}
                           </div>
-                        </div>
+                        
                         <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
                       </div>
 
@@ -2117,22 +2671,31 @@ return (
                           </div>
                         </div>
 
-                        {/* Gemini model (bulk + single mark) */}
+                        {/* Gemini model (bulk, batch, and single mark) */}
                         <div style={{ marginBottom: 16 }}>
                           <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
                             Gemini Model
                           </label>
                           <select
                             className="msv-gemini-select"
-                            value={geminiModel}
+                            value={pickValidGeminiModel(geminiModels, geminiModel)}
                             onChange={e => setGeminiModel(e.target.value)}
                           >
                             {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
                               <option key={m.id} value={m.id}>{m.label}</option>
                             ))}
                           </select>
+                          {/* <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                            {guidanceModal.batch
+                              ? "Used for assignment memory build and the Gemini batch job (~50% cheaper than sequential marking)."
+                              : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
+                          </p> */}
                           <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                            Used when you start marking with Gemini. Flash-Lite models are cheaper and faster.
+                            {guidanceModal.batch
+                              ? "Used for assignment memory build and the Gemini batch job (~50% cheaper than sequential marking)."
+                              : guidanceModal.priority || guidanceModal.priorityBulk
+                              ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
                           </p>
                         </div>
 
@@ -2276,48 +2839,53 @@ return (
                             Save Prompt
                           </button>
 
-                        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                          {!guidanceModal.priority && !guidanceModal.priorityBulk && (
-                            <>
-                              <button
-                                className="ma-send-btn"
+                          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+
+                            {/* Gemini + Claude buttons — shown for normal/bulk/single, hidden for priority/batch */}
+                            {!guidanceModal.priority && !guidanceModal.priorityBulk && !guidanceModal.batch && (
+                              <>
+                                <button className="ma-send-btn"
+                                  onClick={() => handleGuidanceConfirm("gemini")}
+                                  disabled={markingModeModal === "criteria" && !guidance.trim()}
+                                  style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}>
+                                  <FiCpu size={14} />
+                                  {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                                </button>
+                                <button className="ma-send-btn" onClick={() => handleGuidanceConfirm("claude")}>
+                                  <FiCpu size={14} />
+                                  {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
+                                </button>
+                              </>
+                            )}
+
+                            {/* Priority button */}
+                            {(guidanceModal.priority || guidanceModal.priorityBulk) && (
+                              <button className="ma-send-btn"
                                 onClick={() => handleGuidanceConfirm("gemini")}
                                 disabled={markingModeModal === "criteria" && !guidance.trim()}
-                                style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}
-                              >
-                                <FiCpu size={14} />
-                                {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                                style={{ flex: 1, justifyContent: "center",
+                                  opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1,
+                                  background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}>
+                                <FiSend size={14} />
+                                {guidanceModal.priorityBulk ? "Start Priority Marking (All)" : "Start Priority Marking"}
                               </button>
+                            )}
 
-                              <button
-                                className="ma-send-btn"
-                                onClick={() => handleGuidanceConfirm("claude")}
-                              >
-                                <FiCpu size={14} />
-                                {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
+                            {/* Batch button */}
+                            {guidanceModal.batch && (
+                              <button className="ma-send-btn"
+                                onClick={() => handleGuidanceConfirm()}
+                                disabled={markingModeModal === "criteria" && !guidance.trim()}
+                                style={{ flex: 1, justifyContent: "center",
+                                  opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1,
+                                  background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}>
+                                <FiLayers size={14} />
+                                {`Submit Batch — ${geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))}`}
                               </button>
-                            </>
-                          )}
+                            )}
 
-                          {(guidanceModal.priority || guidanceModal.priorityBulk) && (
-                            <button
-                              className="ma-send-btn"
-                              onClick={() => handleGuidanceConfirm("gemini")}
-                              disabled={markingModeModal === "criteria" && !guidance.trim()}
-                              style={{
-                                flex: 1, justifyContent: "center",
-                                opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1,
-                                background: "rgba(251,191,36,0.15)",
-                                borderColor: "rgba(251,191,36,0.4)"
-                              }}
-                            >
-                              <FiSend size={14} />
-                              {guidanceModal.priorityBulk ? "Start Priority Marking (All)" : "Start Priority Marking"}
-                            </button>
-                          )}
-
-                          <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
-                        </div>
+                            <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
+                          </div>
                       </div>
                     </div>
                   </div>
