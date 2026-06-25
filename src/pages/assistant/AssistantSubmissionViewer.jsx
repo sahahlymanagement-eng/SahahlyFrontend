@@ -27,7 +27,6 @@ import {
   buildPriorityMarkingResult,
   buildNoSubmissionMarkingResult,
   buildBatchMarkingResult,
-  confirmTeacherEdits,
   currentUserId,
   getApiErrorMessage,
   guidanceForForm,
