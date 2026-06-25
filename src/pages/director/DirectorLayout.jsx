@@ -71,7 +71,7 @@ export default function DirectorLayout() {
       path: "/director/manage-classroom-teachers"
     },
     {
-      name: "Google Accountsss",
+      name: "Google Accounts",
       icon: <FiBarChart2 />, 
       path: "/director/google-accounts"
     },
