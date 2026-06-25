@@ -1267,7 +1267,6 @@ useEffect(() => {
           jobId,
           studentOrder,
           submittedAt,
-          assignmentMemoryId,
           geminiModel: jobModel,
         } = data.active;
         const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
@@ -1279,12 +1278,10 @@ useEffect(() => {
           skipped: {},
           results: {},
           mode: "normal",
-          assignmentMemoryId: assignmentMemoryId || null,
           geminiModel: restoredModel,
           batchStudents: studentOrder || [],
         });
         pollBatchJob(jobId, {
-          assignmentMemoryId,
           mode: "normal",
           geminiModel: restoredModel,
           batchStudents: studentOrder || [],
@@ -1328,17 +1325,11 @@ useEffect(() => {
         }
 
         const resultMap = {};
-        const memoryMeta = {
-          assignmentMemoryId:
-            jobMeta.assignmentMemoryId ??
-            data.assignmentMemoryId ??
-            null,
-        };
         const saveMode = jobMeta.mode || "normal";
         const modelForResult = jobMeta.geminiModel || geminiModel;
         for (const { student, result, success, error, tokenUsage } of data.results) {
           const enrichedResult = success
-            ? buildBatchMarkingResult(result, tokenUsage, modelForResult, memoryMeta)
+            ? buildBatchMarkingResult(result, tokenUsage, modelForResult)
             : null;
           const originalAiResult = enrichedResult
             ? JSON.parse(JSON.stringify(enrichedResult))
@@ -1446,10 +1437,9 @@ useEffect(() => {
     }
 
     const guidanceValue = guidanceForForm(guidanceText);
-    let assignmentMemoryId = null;
 
     try {
-      toast.info("Preparing assignment correction memory…");
+      toast.info("Validating mark scheme and sample submission…");
       const firstStudent = eligible[0];
       const [studentPdfRes, msPdfRes] = await Promise.all([
         api.get("/submission-files/pdf", {
@@ -1466,38 +1456,11 @@ useEffect(() => {
 
       await assertPdfBlob(studentPdfRes.data, `${firstStudent.name || "Student"} submission`);
       await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-      const gateStudentFile = new File(
-        [studentPdfRes.data],
-        `${firstStudent.name || "student"}.pdf`,
-        { type: "application/pdf" }
-      );
-      const gateMsFile = new File([msPdfRes.data], "markscheme.pdf", {
-        type: "application/pdf",
-      });
-
-      const memory = await ensureAssignmentMemory(api, {
-        assignmentId,
-        studentFile: gateStudentFile,
-        msFile: gateMsFile,
-        markingMode: mode,
-        guidance: guidanceValue,
-        totalGrade: maxGrade,
-        classroomId,
-        geminiModel: selectedModel,
-      });
-
-      assignmentMemoryId = memory.memoryId;
-      if (memory.reused) {
-        toast.success(`Reusing assignment memory (${memory.questionCount} questions)`);
-      } else {
-        toast.success(`Assignment memory built — ${memory.questionCount} questions indexed`);
-      }
     } catch (err) {
       const message = recordMarkingErrorsForStudents(
         eligible,
         err,
-        "Assignment memory preparation failed"
+        "Mark scheme validation failed"
       );
       toast.error(message);
       return;
@@ -1509,7 +1472,6 @@ useEffect(() => {
       skipped: {},
       results: {},
       mode,
-      assignmentMemoryId,
       geminiModel: selectedModel,
       batchStudents: eligible.map(s => ({
         submissionId: s.submissionId,
@@ -1522,7 +1484,6 @@ useEffect(() => {
     try {
       const res = await api.post("/marking/mark-batch/upload", {
         assignmentId,
-        assignmentMemoryId,
         students: eligible.map(s => ({
           submissionId: s.submissionId,
           studentId: s.studentId,
@@ -1565,7 +1526,6 @@ useEffect(() => {
 
     const submitPayload = {
       assignmentId,
-      assignmentMemoryId,
       msUri,
       succeeded,
       markingMode: mode,
@@ -1623,7 +1583,6 @@ useEffect(() => {
     }));
 
     pollBatchJob(jobId, {
-      assignmentMemoryId,
       mode,
       geminiModel: selectedModel,
       batchStudents: succeeded.map(r => r.student),
@@ -1639,7 +1598,6 @@ useEffect(() => {
   useEffect(() => {
     if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
       pollBatchJob(batchJob.jobId, {
-        assignmentMemoryId: batchJob.assignmentMemoryId,
         mode: batchJob.mode,
         geminiModel: batchJob.geminiModel,
         batchStudents: batchJob.batchStudents,
@@ -2260,7 +2218,6 @@ return (
                     onClick={() => {
                       if (batchJob?.phase === "processing") {
                         pollBatchJob(batchJob.jobId, {
-                          assignmentMemoryId: batchJob.assignmentMemoryId,
                           mode: batchJob.mode,
                           geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                           batchStudents: batchJob.batchStudents,
@@ -2299,7 +2256,6 @@ return (
                       onClick={() => {
                         toast.info("Checking status…"); 
                         pollBatchJob(batchJob.jobId, {
-                          assignmentMemoryId: batchJob.assignmentMemoryId,
                           mode: batchJob.mode,
                           geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                           batchStudents: batchJob.batchStudents,
@@ -2685,14 +2641,9 @@ return (
                               <option key={m.id} value={m.id}>{m.label}</option>
                             ))}
                           </select>
-                          {/* <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-                            {guidanceModal.batch
-                              ? "Used for assignment memory build and the Gemini batch job (~50% cheaper than sequential marking)."
-                              : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
-                          </p> */}
                           <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                             {guidanceModal.batch
-                              ? "Used for assignment memory build and the Gemini batch job (~50% cheaper than sequential marking)."
+                              ? "Used for the Gemini batch job (~50% cheaper than sequential marking)."
                               : guidanceModal.priority || guidanceModal.priorityBulk
                               ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
                               : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
