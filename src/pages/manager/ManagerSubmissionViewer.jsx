@@ -2934,7 +2934,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           <button
                                             className="msv-action-btn msv-action-btn--ai"
                                             title="Mark on Gemini priority tier (fastest, premium)"
-                                            onClick={() => openGuidanceModal(s, "priority")}
+                                            onClick={() => openGuidanceModal(s,false, "priority")}
                                             disabled={markingLoading || priorityBulkRunning}
                                             style={{ borderColor: "rgba(251,191,36,0.4)" }}
                                           >
