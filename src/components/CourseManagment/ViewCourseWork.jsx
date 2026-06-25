@@ -67,7 +67,7 @@ export default function ViewCoursework() {
   const handleDeleteAssignment = async (dbAssignment, googleCourseWorkId, title) => {
     const label = title || dbAssignment.title || "this assignment";
     const confirmed = window.confirm(
-      `Delete "${label}" from Sahahly?\n\nThis removes delegations, marking results, and related data from our database. Google Classroom coursework is not affected, but it will be hidden from this list.`
+      `Delete "${label}" from Sahahly?\n\nThis removes delegations, marking results, and related data.`
     );
     if (!confirmed) return;
 
@@ -80,7 +80,7 @@ export default function ViewCoursework() {
           prev.includes(googleCourseWorkId) ? prev : [...prev, googleCourseWorkId]
         );
       }
-      toast.success("Assignment deleted from Sahahly");
+      toast.success("Assignment deleted ");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to delete assignment");
     } finally {
