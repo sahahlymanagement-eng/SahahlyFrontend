@@ -127,6 +127,7 @@ export default function ManagerSubmissionViewer() {
 
   // Priority (synchronous, no polling)
   const [priorityBulkRunning, setPriorityBulkRunning] = useState(false);
+  const priorityStopRef = useRef(false);
 
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
@@ -556,6 +557,23 @@ useEffect(() => {
       }
   }
 }
+
+  const stopPriorityBulk = () => {
+    priorityStopRef.current = true;
+    setPriorityBulkRunning(false);
+    setBulkProgress((prev) => {
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        const status = next[id]?.status;
+        if (status === "pending" || status === "marking" || status === "retrying") {
+          next[id] = { status: "stopped" };
+        }
+      }
+      return next;
+    });
+    toast.info("Stopping priority marking…");
+  };
+
   const providerDisplayLabel = (provider) => {
     if (provider === "claude") return "Claude";
     return "Gemini";
@@ -1821,6 +1839,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   // Mark eligible rows as pending so the per-row UI shows progress.
   const progress = {};
   eligible.forEach((s) => { progress[s.submissionId] = { status: "marking" }; });
+  priorityStopRef.current = false;
   setBulkProgress((prev) => ({ ...prev, ...progress }));
   setPriorityBulkRunning(true);
 
@@ -1841,6 +1860,21 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       personId:    currentUserId(),
       classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
     });
+
+    if (priorityStopRef.current) {
+      setBulkProgress((p) => {
+        const next = { ...p };
+        for (const s of eligible) {
+          const st = next[s.submissionId]?.status;
+          if (st === "pending" || st === "marking" || st === "retrying" || st === "stopped") {
+            next[s.submissionId] = { status: "cancelled" };
+          }
+        }
+        return next;
+      });
+      toast.info("Priority marking stopped");
+      return;
+    }
 
     let downgradedCount = 0;
 
@@ -1947,6 +1981,20 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       toast.info(`${downgradedCount} student(s) ran at standard speed (priority unavailable).`);
     }
   } catch (err) {
+    if (priorityStopRef.current) {
+      setBulkProgress((p) => {
+        const next = { ...p };
+        for (const s of eligible) {
+          const st = next[s.submissionId]?.status;
+          if (st === "pending" || st === "marking" || st === "retrying" || st === "stopped") {
+            next[s.submissionId] = { status: "cancelled" };
+          }
+        }
+        return next;
+      });
+      toast.info("Priority marking stopped");
+      return;
+    }
     const message = recordMarkingErrorsForStudents(
       eligible,
       err,
@@ -2682,17 +2730,32 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                   {/* PRIORITY MARKING (whole class, synchronous) */}
                   {msInfo && PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
-                    <button
-                      className="msv-btn-ai"
-                      onClick={() => openGuidanceModal(null, false,"priorityBulk")}
-                      disabled={bulkMarking || priorityBulkRunning || batchJob?.phase === "processing"}
-                      title="Mark whole class on Gemini priority tier (fastest, premium)"
-                      style={{ marginLeft: 10, background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
-                    >
-                      {priorityBulkRunning
-                        ? <><span className="pm-spinner" /> Priority marking…</>
-                        : <><FiSend size={13} /> Mark All (Priority)</>}
-                    </button>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
+                      <button
+                        className="msv-btn-ai"
+                        onClick={() => openGuidanceModal(null, false,"priorityBulk")}
+                        disabled={bulkMarking || priorityBulkRunning || batchJob?.phase === "processing"}
+                        title="Mark whole class on Gemini priority tier (fastest, premium)"
+                        style={{ background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
+                      >
+                        {priorityBulkRunning
+                          ? <><span className="pm-spinner" /> Priority marking…</>
+                          : <><FiSend size={13} /> Mark All (Priority)</>}
+                      </button>
+                      {priorityBulkRunning && (
+                        <button
+                          className="msv-btn-ai"
+                          onClick={stopPriorityBulk}
+                          style={{
+                            background: "rgba(239,68,68,0.15)",
+                            borderColor: "rgba(239,68,68,0.4)",
+                            color: "#f87171",
+                          }}
+                        >
+                          <FiX size={13} /> Stop
+                        </button>
+                      )}
+                    </div>
                     )}
                     {batchJob && batchJob.phase !== "done" && (
                       <div style={{
