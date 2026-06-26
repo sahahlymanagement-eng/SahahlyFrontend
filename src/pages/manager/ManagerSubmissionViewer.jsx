@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -6,7 +6,7 @@ import { promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
-  FiUploadCloud, FiX, FiCalendar, FiSend,FiLayers, FiAlertCircle,FiCheck
+  FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import { usePagination } from "../../hooks/usePagination";
@@ -20,6 +20,7 @@ import {
   buildNoSubmissionMarkingResult,
   currentUserId,
   getApiErrorMessage,
+  getMarkingResultSummary,
   guidanceForForm,
   hasTeacherEdits,
   isStudentSubmitted,
@@ -62,6 +63,7 @@ export default function ManagerSubmissionViewer() {
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [classroomSearch,    setClassroomSearch]    = useState("");
   const [assignmentSearch,   setAssignmentSearch]   = useState("");
+  const [studentSearch,      setStudentSearch]      = useState("");
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
 
   const classroomParams = useMemo(() => ({
@@ -94,6 +96,10 @@ export default function ManagerSubmissionViewer() {
     !!selectedClassroom?._id
   );
 
+  const studentParams = useMemo(() => ({
+    search: studentSearch,
+  }), [studentSearch]);
+
   const {
     data: students,
     page: studentPage,
@@ -105,11 +111,13 @@ export default function ManagerSubmissionViewer() {
     extra: studentExtra,
   } = usePagination(
     selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
-    {},
+    studentParams,
     10,
     "students",
     !!selectedAssignment?._id
   );
+
+  const summaryMap = studentExtra?.summaryMap || {};
 
   // Mark scheme
   const [msInfo,      setMsInfo]      = useState(null);
@@ -153,6 +161,14 @@ export default function ManagerSubmissionViewer() {
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [deletingCorrection, setDeletingCorrection] = useState({});
+
+  const resolvePdfSummary = (submissionId, result) =>
+    getMarkingResultSummary(result, {
+      storedSummary: savedResults[submissionId]?.summary,
+      studentSummary: summaryMap[submissionId],
+    });
 
   const [aiReviewProgress, setAiReviewProgress] = useState({});
   const [aiReviewModal, setAiReviewModal] = useState(null);
@@ -168,43 +184,58 @@ export default function ManagerSubmissionViewer() {
   message: null,
 });
 
-useEffect(() => {
-  const fetchSavedResults = async () => {
-    try {
-      const res = await api.get(
-        `/submission-files/save-results/${selectedAssignment._id}`
-      );
-
-      const map = {};
-
-      res.data.data.forEach(r => {
-        map[r.submissionId] = {
-          status: "done",
-          result: r.result,
-          aiOriginalResult: r.aiOriginalResult || r.result,
-          studentFile: r.studentFileMeta,
-          totalMarks: r.totalMarks,
-          provider: r.provider,
-          mode: r.mode,
-        };
-      });
-
-      setSavedResults(map);
-
-      setSingleProgress(prev => ({
-        ...prev,
-        ...map
-      }));
-
-    } catch (err) {
-      console.error("Failed to load saved results", err);
-    }
-  };
-
-  if (selectedAssignment?._id) {
-    fetchSavedResults();
+const fetchSavedResults = useCallback(async () => {
+  if (!selectedAssignment?._id) return;
+  try {
+    const res = await api.get(`/submission-files/save-results/${selectedAssignment._id}`);
+    const map = {};
+    res.data.data.forEach(r => {
+      map[r.submissionId] = {
+        status: "done",
+        result: r.result,
+        aiOriginalResult: r.aiOriginalResult || r.result,
+        studentFile: r.studentFileMeta,
+        totalMarks: r.totalMarks,
+        provider: r.provider,
+        mode: r.mode,
+        summary: r.summary || "",
+      };
+    });
+    setSavedResults(map);
+    setSingleProgress(prev => ({ ...prev, ...map }));
+  } catch (err) {
+    console.error("Failed to load saved results", err);
   }
 }, [selectedAssignment?._id]);
+
+useEffect(() => {
+  fetchSavedResults();
+}, [fetchSavedResults]);
+
+useEffect(() => { setStudentSearch(""); }, [selectedAssignment?._id]);
+
+const refreshStudents = async () => {
+  setRefreshing(true);
+  await fetchStudentPage(studentPage);
+  await fetchSavedResults();
+  setRefreshing(false);
+};
+
+const deleteCorrection = async (student) => {
+  const { submissionId } = student;
+  setDeletingCorrection(prev => ({ ...prev, [submissionId]: true }));
+  try {
+    await api.delete(`/submission-files/save-results/${selectedAssignment._id}/${submissionId}`);
+    setSavedResults(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    setSingleProgress(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    setBulkProgress(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    toast.success("Correction deleted");
+  } catch (e) {
+    toast.error("Failed to delete correction");
+  } finally {
+    setDeletingCorrection(prev => ({ ...prev, [submissionId]: false }));
+  }
+};
 
 useEffect(() => {
   if (!students.length || !Object.keys(savedResults).length) return;
@@ -223,7 +254,6 @@ useEffect(() => {
   });
   if (changed) setStudents(updated);
 }, [savedResults, students]);
-
 
   const openErrorViewer = (title, error) => {
     let message = "";
@@ -455,12 +485,10 @@ useEffect(() => {
     const generatePreview = async () => {
       if (!resultModal) return;
       if (!selectedAssignment?._id) return;
-      const db = savedResults[students.submissionId];
-      
+
       const submissionId =
         resultModal?.submissionId ||
-        resultModal?.student?.submissionId ||
-        db?.submissionId;
+        resultModal?.student?.submissionId;
 
       try {
         const pdfRes = await api.get("/submission-files/pdf", {
@@ -485,6 +513,7 @@ useEffect(() => {
             0
           ),
           maxTotalMarks: effectiveMaxTotal,
+          summary: resolvePdfSummary(submissionId, resultModal.result),
         });
 
         const blob = new Blob([pdfBytes], { type: "application/pdf" });
@@ -501,7 +530,7 @@ useEffect(() => {
     return () => {
       if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
     };
-  }, [resultModal, editingQuestions, effectiveMaxTotal]);
+  }, [resultModal, editingQuestions, effectiveMaxTotal, savedResults, summaryMap]);
 
 
   const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
@@ -1824,13 +1853,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
   let eligible;
+  let allStudents;
   try {
+    toast.info("Loading all students for this assignment…");
+    allStudents = await fetchAllPaginated(
+      api,
+      `/manager-assignments/${selectedAssignment._id}/full`,
+      {},
+      "students"
+    );
+
     const res = await api.post("/submission-files/eligible-for-bulk-marking", {
       assignmentId: selectedAssignment._id,
-      submissions: students,
+      submissions: allStudents,
     });
     const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    eligible = students.filter(
+    eligible = allStudents.filter(
       (s) =>
         s.submissionId &&
         backendEligible.has(s.submissionId) &&
@@ -1842,7 +1880,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   }
 
   if (!eligible.length) {
-    const submitted = students.filter((s) => isStudentSubmitted(s.state));
+    const submitted = allStudents.filter((s) => isStudentSubmitted(s.state));
     if (!submitted.length) {
       return toast.warn("No students have submitted this assignment yet");
     }
@@ -2089,21 +2127,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     try {
       const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
 
-      const db = savedResults[students.submissionId];
+      const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
         resultModal?.submissionId ||
         resultModal?.student?.submissionId ||
         db?.submissionId;
-
-
-      // const pdfBytes = await annotatePdf({
-      //   studentFile:   resultModal.studentFile,
-      //   questions:     editingQuestions,
-      //   totalMarks:    effectiveTotal,
-      //   maxTotalMarks: effectiveMaxTotal,
-      //   summary:       resultModal.result.summary || ""
-      // });
 
       const pdfRes = await api.get("/submission-files/pdf", {
         params: {
@@ -2126,8 +2155,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
+        summary: resolvePdfSummary(submissionId, resultModal.result),
       });
-
 
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       const a   = document.createElement("a");
@@ -2194,7 +2223,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
-        summary: resultModal.result.summary || "",
+        summary: resolvePdfSummary(submissionId, resultModal.result),
       });
       const fd = new FormData();
       fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
@@ -2204,11 +2233,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student" );
       
-      if (resultModal.result?.summary) {
+      const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
+      if (pdfSummary) {
         await api.post("/submission-files/save-summary", {
           assignmentId: selectedAssignment._id,
           submissionId: resultModal.student.submissionId,
-          summary: resultModal.result.summary,
+          summary: pdfSummary,
         });
       }
       
@@ -2228,30 +2258,30 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       setReturning(true);
 
       const bulkSaveRequests = Object.entries(bulkProgress)
-        .filter(([_, bulk]) =>
+        .filter(([submissionId, bulk]) =>
           bulk?.status === "done" &&
-          bulk?.result?.summary &&
+          resolvePdfSummary(submissionId, bulk?.result) &&
           !bulk?.returned
         )
         .map(([submissionId, bulk]) =>
           api.post("/submission-files/save-summary", {
             assignmentId: selectedAssignment._id,
             submissionId,
-            summary: bulk.result.summary,
+            summary: resolvePdfSummary(submissionId, bulk.result),
           })
         );
 
       const batchSaveRequests = Object.entries(batchJob?.results || {})
-        .filter(([_, batch]) =>
+        .filter(([submissionId, batch]) =>
           batch?.status === "done" &&
-          batch?.result?.summary &&
+          resolvePdfSummary(submissionId, batch?.result) &&
           !batch?.returned
         )
         .map(([submissionId, batch]) =>
           api.post("/submission-files/save-summary", {
             assignmentId: selectedAssignment._id,
             submissionId,
-            summary: batch.result.summary,
+            summary: resolvePdfSummary(submissionId, batch.result),
           })
         );
 
@@ -2414,6 +2444,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
+            summary: resolvePdfSummary(student.submissionId, bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2474,7 +2505,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
-            summary: batch.result.summary || "",
+            summary: resolvePdfSummary(submissionId, batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2852,10 +2883,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                       <span className="ma-panel-count">{studentTotal} students</span>
                     </div>
+                    <div className="msv-panel-controls">
+                      <input
+                        className="msv-student-search"
+                        type="text"
+                        placeholder="Search by name…"
+                        value={studentSearch}
+                        onChange={e => setStudentSearch(e.target.value)}
+                      />
+                      <button
+                        className="msv-refresh-btn"
+                        onClick={refreshStudents}
+                        disabled={refreshing || loadingStudents}
+                      >
+                        <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
+                        {refreshing ? "Refreshing…" : "Refresh"}
+                      </button>
+                    </div>
                   </div>
 
                   {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
-                  {!loadingStudents && students.length === 0 && <p className="ma-empty-msg">No students found.</p>}
+                  {!loadingStudents && students.length === 0 && (
+                    <p className="ma-empty-msg">
+                      {studentSearch ? `No students match "${studentSearch}".` : "No students found."}
+                    </p>
+                  )}
 
                   {!loadingStudents && students.length > 0 && (
                     <div className="ma-table-wrap">
@@ -3048,6 +3100,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           {/* {bulkRetrying && (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
+
+                                        {db?.result && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--delete"
+                                            title="Delete Correction"
+                                            onClick={() => deleteCorrection(s)}
+                                            disabled={deletingCorrection[s.submissionId] || markingLoading}
+                                          >
+                                            {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
+                                          </button>
+                                        )}
 
                                         {inlineMarkResult?.tokenUsage && (
                                           <TokenUsageStats result={inlineMarkResult} compact />

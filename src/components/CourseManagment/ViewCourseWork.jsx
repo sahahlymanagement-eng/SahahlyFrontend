@@ -141,8 +141,7 @@ export default function ViewCoursework() {
     const confirmed = await confirmToast(
       `Delete "${label}" from Sahahly?\n\nThis removes delegations, marking results, and related data from our database. Google Classroom coursework is not affected, but it will be hidden from this list.`,
       { title: "Delete assignment", confirmLabel: "Delete", danger: true }
-    );
-    if (!confirmed) return;
+    );    if (!confirmed) return;
 
     setDeletingId(dbAssignment._id);
     try {
