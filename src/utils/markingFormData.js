@@ -171,6 +171,22 @@ export function hasTeacherEdits(originalQuestions, editingQuestions) {
 
 
 
+/** Resolve overall summary from live AI result and/or DB-persisted sources. */
+export function getMarkingResultSummary(result, { storedSummary, studentSummary } = {}) {
+  const fromResult =
+    (typeof result?.summary === "string" && result.summary.trim()) ||
+    (typeof result?.criteriaGrade?.summary === "string" && result.criteriaGrade.summary.trim()) ||
+    "";
+  if (fromResult) return fromResult;
+
+  const fromStored =
+    (typeof storedSummary === "string" && storedSummary.trim()) ||
+    "";
+  if (fromStored) return fromStored;
+
+  return (typeof studentSummary === "string" && studentSummary.trim()) || "";
+}
+
 export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
   const totalMarks = editingQuestions.reduce(
