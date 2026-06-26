@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
-import {setSummary} from "../../utils/sharedSummary";
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
@@ -28,6 +27,7 @@ import {
   buildBatchMarkingResult,
   currentUserId,
   getApiErrorMessage,
+  getMarkingResultSummary,
   guidanceForForm,
   hasTeacherEdits,
   isStudentSubmitted,
@@ -263,7 +263,13 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     "students"  // dataKey matches what backend returns
   );
 
-  const { dueDateTime, maxGrade, assignmentTitle, classroomId } = extra;
+  const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {} } = extra;
+
+  const resolvePdfSummary = (submissionId, result) =>
+    getMarkingResultSummary(result, {
+      storedSummary: savedResults[submissionId]?.summary,
+      studentSummary: summaryMap[submissionId],
+    });
 
 
   const effectiveMaxTotal = editingMaxTotal !== null
@@ -334,7 +340,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           result: r.result,
           aiOriginalResult: r.aiOriginalResult || r.result,
           studentFile: r.studentFileMeta,
-          totalMarks: r.totalMarks
+          totalMarks: r.totalMarks,
+          summary: r.summary || getMarkingResultSummary(r.result) || "",
         };
       });
       setSavedResults(map);
@@ -394,12 +401,9 @@ const deleteCorrection = async (student) => {
       if (!resultModal) return;
       if (!assignmentId) return;
 
-      const db = savedResults[students.submissionId];
-      
       const submissionId =
         resultModal?.submissionId ||
-        resultModal?.student?.submissionId ||
-        db?.submissionId;
+        resultModal?.student?.submissionId;
 
       try {
         const pdfRes = await api.get("/submission-files/pdf", {
@@ -416,10 +420,11 @@ const deleteCorrection = async (student) => {
           { type: "application/pdf" }
         );
         const pdfBytes = await annotatePdf({
-          studentFile, //: resultModal.studentFile || resultModal.submissionId,
+          studentFile,
           questions: editingQuestions,
           totalMarks: editingQuestions.reduce((s, q) => s + q.marksAwarded, 0),
           maxTotalMarks: effectiveMaxTotal,
+          summary: resolvePdfSummary(submissionId, resultModal.result),
         });
 
         const blob = new Blob([pdfBytes], { type: "application/pdf" });
@@ -436,7 +441,7 @@ const deleteCorrection = async (student) => {
     return () => {
       if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
     };
-  }, [resultModal]);
+  }, [resultModal, editingQuestions, effectiveMaxTotal, savedResults, summaryMap]);
 
 
 
@@ -1364,21 +1369,12 @@ const deleteCorrection = async (student) => {
       //   totalMarks: isUngraded ? "Ungraded" : total,
       //   maxTotalMarks: isUngraded ? "" : maxGrade,
       // });
-      const db = savedResults[students.submissionId];
+      const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
         resultModal?.submissionId ||
         resultModal?.student?.submissionId ||
         db?.submissionId;
-
-
-      // const pdfBytes = await annotatePdf({
-      //   studentFile:   resultModal.studentFile,
-      //   questions:     editingQuestions,
-      //   totalMarks:    effectiveTotal,
-      //   maxTotalMarks: effectiveMaxTotal,
-      //   summary:       resultModal.result.summary || ""
-      // });
 
       const pdfRes = await api.get("/submission-files/pdf", {
         params: {
@@ -1401,6 +1397,7 @@ const deleteCorrection = async (student) => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
+        summary: resolvePdfSummary(submissionId, resultModal.result),
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes]));
@@ -1479,7 +1476,7 @@ const deleteCorrection = async (student) => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
-        summary: resultModal.result.summary || "",
+        summary: resolvePdfSummary(submissionId, resultModal.result),
       });
 
       const fd = new FormData();
@@ -1490,11 +1487,12 @@ const deleteCorrection = async (student) => {
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
       
-      if (resultModal.result?.summary) {
+      const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
+      if (pdfSummary) {
         await api.post("/submission-files/save-summary", {
           assignmentId,
           submissionId: resultModal.student.submissionId,
-          summary: resultModal.result.summary,
+          summary: pdfSummary,
         });
       }
 
@@ -1596,6 +1594,7 @@ const deleteCorrection = async (student) => {
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
+            summary: resolvePdfSummary(student.submissionId, bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -1653,7 +1652,7 @@ const deleteCorrection = async (student) => {
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
-            summary: batch.result.summary || "",
+            summary: resolvePdfSummary(submissionId, batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -1734,30 +1733,30 @@ const deleteCorrection = async (student) => {
       setReturning(true);
 
       const bulkSaveRequests = Object.entries(bulkProgress)
-        .filter(([_, bulk]) =>
+        .filter(([submissionId, bulk]) =>
           bulk?.status === "done" &&
-          bulk?.result?.summary &&
+          resolvePdfSummary(submissionId, bulk?.result) &&
           !bulk?.returned
         )
         .map(([submissionId, bulk]) =>
           api.post("/submission-files/save-summary", {
             assignmentId,
             submissionId,
-            summary: bulk.result.summary,
+            summary: resolvePdfSummary(submissionId, bulk.result),
           })
         );
 
       const batchSaveRequests = Object.entries(batchJob?.results || {})
-        .filter(([_, batch]) =>
+        .filter(([submissionId, batch]) =>
           batch?.status === "done" &&
-          batch?.result?.summary &&
+          resolvePdfSummary(submissionId, batch?.result) &&
           !batch?.returned
         )
         .map(([submissionId, batch]) =>
           api.post("/submission-files/save-summary", {
             assignmentId,
             submissionId,
-            summary: batch.result.summary,
+            summary: resolvePdfSummary(submissionId, batch.result),
           })
         );
 
