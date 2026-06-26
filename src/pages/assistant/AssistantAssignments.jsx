@@ -2,18 +2,11 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../api/api";
-import "./AssistantAssignments.css";
-
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import { AssistantPageHeader } from "./AssistantUI";
 
-
-import {
-  FiArrowLeft,
-  FiFilter,
-  FiSend,
-  FiSearch,
-} from "react-icons/fi";
+import { FiSend, FiSearch } from "react-icons/fi";
 
 export default function AssistantAssignments() {
   const navigate = useNavigate();
@@ -192,95 +185,56 @@ export default function AssistantAssignments() {
   if (!user) return null;
 
   return (
-    <div className="assistantAssignPage">
-      {/* HEADER */}
+    <div className="ast-page ast-page--wide">
+      <AssistantPageHeader
+        eyebrow="Workflow"
+        title="My Assignments"
+        subtitle="Filter, open submissions, manage student data, and send reports"
+      />
 
-      <div className="assistantAssignHeader">
-        <h2>My Assignments</h2>
-
-        <button
-          className="assistantAssignBack"
-          onClick={() =>
-            navigate("/assistant/dashboard")
-          }
-        >
-          <FiArrowLeft /> Back
-        </button>
-      </div>
-
-      {/* FILTER BAR */}
-
-      <div className="assistantAssignFilters">
-        {/* STATUS FILTER */}
-
-        <div className="filterBlock">
+      <div className="ast-filters">
+        <div className="ast-filter-block">
           <label>Status</label>
-
-          <div className="customSelect">
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value)
-              }
-            >
-              <option value="ALL">
-                All Status
-              </option>
-              <option value="ASSIGNED">
-                Assigned
-              </option>
-              <option value="DONE">
-                Done
-              </option>
-            </select>
-          </div>
+          <select
+            className="ast-select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">All Status</option>
+            <option value="ASSIGNED">Assigned</option>
+            <option value="DONE">Done</option>
+          </select>
         </div>
 
-        {/* CLASSROOM FILTER */}
-
-        <div className="filterBlock">
+        <div className="ast-filter-block">
           <label>Classroom</label>
-
-          <div className="customSelect">
-            <select
-              value={classroomFilter}
-              onChange={(e) =>
-                setClassroomFilter(e.target.value)
-              }
-            >
-              <option value="ALL">
-                All Classrooms
+          <select
+            className="ast-select"
+            value={classroomFilter}
+            onChange={(e) => setClassroomFilter(e.target.value)}
+          >
+            <option value="ALL">All Classrooms</option>
+            {classrooms.map((classroom) => (
+              <option key={classroom} value={classroom}>
+                {classroom}
               </option>
-
-              {classrooms.map((classroom) => (
-                <option
-                  key={classroom}
-                  value={classroom}
-                >
-                  {classroom}
-                </option>
-              ))}
-            </select>
-          </div>
+            ))}
+          </select>
         </div>
 
-        {/* SEARCH */}
-
-        <div className="searchBox">
+        <div className="ast-search">
+          <FiSearch className="ast-search-icon" size={16} />
           <input
-            placeholder="Search assignment..."
+            placeholder="Search assignment, teacher, or classroom…"
             value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      {/* TABLE */}
-
-      <div className="assistantAssignTableWrapper">
-        <table className="assistantAssignTable">
+      <div className="ast-table-card">
+        <div className="ast-table-wrap">
+        <table className="ast-table">
           <thead>
             <tr>
               <th>Title</th>
@@ -298,11 +252,8 @@ export default function AssistantAssignments() {
           <tbody>
             {loading && (
               <tr>
-                <td
-                  colSpan="8"
-                  className="loadingRow"
-                >
-                  Loading assignments...
+                <td colSpan="9" className="ast-table-loading">
+                  Loading assignments…
                 </td>
               </tr>
             )}
@@ -357,29 +308,24 @@ export default function AssistantAssignments() {
 
                     <td>
                       <span
-                        className={`statusBadge ${
+                        className={`ast-badge ${
                           assignment.allStudentsGraded
-                            ? "status-DONE"
-                            : "status-ASSIGNED"
+                            ? "ast-badge--done"
+                            : "ast-badge--assigned"
                         }`}
                       >
-                        {assignment.allStudentsGraded
-                          ? "DONE"
-                          : "ASSIGNED"}
+                        {assignment.allStudentsGraded ? "Done" : "Assigned"}
                       </span>
                     </td>
 
                     <td>
-                      {(assignment.assistantStatus ===
-                        "ASSIGNED" ||
-                        assignment.assistantStatus ===
-                          "RECHECK_BY_ASSISTANT") && (
+                      {(assignment.assistantStatus === "ASSIGNED" ||
+                        assignment.assistantStatus === "RECHECK_BY_ASSISTANT") && (
                         <button
-                          className="submitBtn"
+                          type="button"
+                          className="ast-table-btn"
                           onClick={() =>
-                            navigate(
-                              `/assistant/assignments/${assignment._id}`
-                            )
+                            navigate(`/assistant/assignments/${assignment._id}`)
                           }
                         >
                           <FiSend />
@@ -389,12 +335,11 @@ export default function AssistantAssignments() {
                     </td>
 
                     <td>
-                      {(assignment.assistantStatus ===
-                        "ASSIGNED" ||
-                        assignment.assistantStatus ===
-                          "RECHECK_BY_ASSISTANT") && (
+                      {(assignment.assistantStatus === "ASSIGNED" ||
+                        assignment.assistantStatus === "RECHECK_BY_ASSISTANT") && (
                         <button
-                          className="submitBtn"
+                          type="button"
+                          className="ast-table-btn"
                           onClick={() =>
                             navigate(
                               `/assistant/assignments/${assignment._id}/students`
@@ -407,12 +352,11 @@ export default function AssistantAssignments() {
                       )}
                     </td>
                     <td>
-                      {(assignment.assistantStatus ===
-                        "ASSIGNED" ||
-                        assignment.assistantStatus ===
-                          "RECHECK_BY_ASSISTANT") && (
+                      {(assignment.assistantStatus === "ASSIGNED" ||
+                        assignment.assistantStatus === "RECHECK_BY_ASSISTANT") && (
                         <button
-                          className="submitBtn"
+                          type="button"
+                          className="ast-table-btn"
                           onClick={() =>
                             navigate(
                               `/assistant/assignments/${assignment._id}/students/reports`
@@ -430,6 +374,7 @@ export default function AssistantAssignments() {
             )}
           </tbody>
         </table>
+        </div>
         <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
       </div>
     </div>

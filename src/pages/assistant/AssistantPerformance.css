@@ -82,6 +82,7 @@
   margin: 0 0 14px;
   font-size: 18px;
   font-weight: 600;
+  color: #f1f5f9;
 }
 
 .assistantPerfGrid {
@@ -183,6 +184,15 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.assistantPerfTable td {
+  color: #cbd5e1;
+}
+
+.assistantPerfTable td strong {
+  color: #f1f5f9;
+  font-weight: 600;
 }
 
 .assistantPerfMuted {

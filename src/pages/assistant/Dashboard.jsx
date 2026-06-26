@@ -2,282 +2,186 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../api/api";
-import "./AssistantDashboard.css";
-
 import {
   FiRefreshCw,
-  FiLogOut,
   FiClipboard,
   FiCheckCircle,
   FiAlertTriangle,
   FiSearch,
   FiBarChart2,
-  FiClock
+  FiClock,
+  FiChevronRight,
 } from "react-icons/fi";
+import { AssistantLoading } from "./AssistantUI";
 
 const STATUSES = [
-  "ASSIGNED",
-  "IN_REVIEW",
-  "RECHECK_BY_ASSISTANT",
-  "IN_REVIEW_AFTER_RECHECK",
-  "DONE",
-  "DONE_BY_QUALITY",
-  "FAILED_DEADLINE",
+  { key: "ASSIGNED", label: "Assigned", icon: <FiClipboard />, tone: "violet" },
+  { key: "IN_REVIEW", label: "In Review", icon: <FiClock />, tone: "cyan" },
+  { key: "RECHECK_BY_ASSISTANT", label: "Recheck Required", icon: <FiAlertTriangle />, tone: "amber" },
+  { key: "IN_REVIEW_AFTER_RECHECK", label: "Review After Recheck", icon: <FiSearch />, tone: "purple" },
+  { key: "DONE", label: "Done", icon: <FiCheckCircle />, tone: "green" },
+  { key: "DONE_BY_QUALITY", label: "Done by Quality", icon: <FiCheckCircle />, tone: "emerald" },
+  { key: "FAILED_DEADLINE", label: "Failed Deadline", icon: <FiAlertTriangle />, tone: "red" },
+  { key: "TOTAL", label: "Total", icon: <FiBarChart2 />, tone: "indigo" },
 ];
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function AssistantDashboard() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [counts, setCounts] = useState(() => {
+    const base = {};
+    STATUSES.forEach((s) => (base[s.key] = 0));
+    return base;
+  });
 
-const navigate = useNavigate();
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("token");
 
-const [user,setUser] = useState(null);
-const [loading,setLoading] = useState(true);
+    if (!storedUser || !token) {
+      navigate("/login", { replace: true });
+      return;
+    }
 
-const [counts,setCounts] = useState(()=>{
-const base = {};
-STATUSES.forEach(s=>base[s]=0);
-base.TOTAL=0;
-return base;
-});
+    const parsedUser = JSON.parse(storedUser);
+    const roleName = parsedUser?.roleId?.name?.toLowerCase() || "";
 
-useEffect(()=>{
+    if (roleName !== "assistant") {
+      navigate("/login", { replace: true });
+      return;
+    }
 
-const storedUser = localStorage.getItem("user");
-const token = localStorage.getItem("token");
+    setUser(parsedUser);
+  }, [navigate]);
 
-if(!storedUser || !token){
-navigate("/login",{replace:true});
-return;
+  const loadSummary = async (personId) => {
+    try {
+      setLoading(true);
+      const res = await api.get("/assignment-workflow/assistant/summary", {
+        params: { personId },
+      });
+      const data = res.data || {};
+      const safe = {};
+      STATUSES.forEach((s) => {
+        safe[s.key] = Number(data[s.key] || 0);
+      });
+      setCounts(safe);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadSummary(user.id);
+  }, [user?.id]);
+
+  const refresh = () => {
+    if (!user?.id) return;
+    loadSummary(user.id);
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="ast-page">
+      <section className="ast-hero">
+        <div className="ast-hero-top">
+          <div>
+            <p className="ast-hero-greeting">{getGreeting()}</p>
+            <h1>
+              Welcome back, <span>{user.name?.split(" ")[0] || "Assistant"}</span>
+            </h1>
+            <p>
+              Track your assignment workload, mark submissions on time, and review your
+              performance — all from one place.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="ast-btn ast-btn--secondary"
+            onClick={refresh}
+            disabled={loading}
+          >
+            <FiRefreshCw />
+            Refresh
+          </button>
+        </div>
+      </section>
+
+      <h2 className="ast-section-title">Workload overview</h2>
+
+      {loading && counts.TOTAL === 0 ? (
+        <AssistantLoading message="Loading dashboard…" />
+      ) : (
+        <div className="ast-stats-grid">
+          {STATUSES.map((stat, i) => (
+            <StatCard
+              key={stat.key}
+              icon={stat.icon}
+              label={stat.label}
+              value={counts[stat.key]}
+              tone={stat.tone}
+              delay={i * 0.04}
+            />
+          ))}
+        </div>
+      )}
+
+      <h2 className="ast-section-title">Quick actions</h2>
+
+      <div className="ast-actions-grid">
+        <ActionCard
+          icon={<FiClipboard />}
+          title="View Assignments"
+          desc="Open your assignment list and start marking"
+          onClick={() => navigate("/assistant/assignments")}
+        />
+        <ActionCard
+          icon={<FiBarChart2 />}
+          title="Performance"
+          desc="Papers corrected, tokens used, and deadline delivery"
+          onClick={() => navigate("/assistant/performance")}
+        />
+      </div>
+    </div>
+  );
 }
 
-const parsedUser = JSON.parse(storedUser);
-const roleName = parsedUser?.roleId?.name?.toLowerCase() || "";
-
-if(roleName !== "assistant"){
-navigate("/login",{replace:true});
-return;
+function StatCard({ icon, label, value, tone, delay }) {
+  return (
+    <div
+      className={`ast-stat-card ast-stat-card--${tone}`}
+      style={{ animationDelay: `${delay}s` }}
+    >
+      <div className="ast-stat-card-top">
+        <div className="ast-stat-card-icon">{icon}</div>
+        <span>{label}</span>
+      </div>
+      <div className="ast-stat-card-value">{value}</div>
+    </div>
+  );
 }
 
-setUser(parsedUser);
-
-},[navigate]);
-
-const loadSummary = async(personId)=>{
-
-try{
-
-setLoading(true);
-
-const res = await api.get("/assignment-workflow/assistant/summary",{
-params:{personId}
-});
-
-const data = res.data || {};
-
-const safe={};
-
-STATUSES.forEach(s=>{
-safe[s] = Number(data[s] || 0);
-});
-
-safe.TOTAL = Number(data.TOTAL || 0);
-
-setCounts(safe);
-
-}
-catch(err){
-
-toast.error(err.response?.data?.message || "Failed to load dashboard");
-
-}
-finally{
-setLoading(false);
-}
-
-};
-
-useEffect(()=>{
-if(!user?.id) return;
-loadSummary(user.id);
-},[user?.id]);
-
-const logout = ()=>{
-localStorage.clear();
-navigate("/login",{replace:true});
-};
-
-const refresh = ()=>{
-if(!user?.id) return;
-loadSummary(user.id);
-};
-
-if(!user) return null;
-
-return(
-
-<div className="assistantDashPage">
-
-{/* Header */}
-
-<div className="assistantDashHeader">
-
-<div className="assistantDashHeaderLeft">
-
-<div className="assistantDashIcon">
-<FiBarChart2/>
-</div>
-
-<div>
-
-<h2>Assistant Dashboard</h2>
-
-<p>
-Welcome back, <strong>{user.name}</strong>
-</p>
-
-</div>
-
-</div>
-
-<div className="assistantDashHeaderActions">
-
-<button
-className="assistantDashBtnGhost"
-onClick={refresh}
-disabled={loading}
->
-
-<FiRefreshCw/>
-Refresh
-
-</button>
-
-<button
-className="assistantDashBtnLogout"
-onClick={logout}
->
-
-<FiLogOut/>
-Logout
-
-</button>
-
-</div>
-
-</div>
-
-
-{/* Summary Cards */}
-
-<div className="assistantDashGrid">
-
-<StatCard icon={<FiClipboard/>} label="Assigned" value={counts.ASSIGNED}/>
-<StatCard icon={<FiClock/>} label="In Review" value={counts.IN_REVIEW}/>
-<StatCard icon={<FiAlertTriangle/>} label="Recheck Required" value={counts.RECHECK_BY_ASSISTANT}/>
-<StatCard icon={<FiSearch/>} label="Review After Recheck" value={counts.IN_REVIEW_AFTER_RECHECK}/>
-<StatCard icon={<FiCheckCircle/>} label="Done" value={counts.DONE}/>
-<StatCard icon={<FiCheckCircle/>} label="Done by Quality" value={counts.DONE_BY_QUALITY}/>
-<StatCard icon={<FiAlertTriangle/>} label="Failed Deadline" value={counts.FAILED_DEADLINE}/>
-<StatCard icon={<FiBarChart2/>} label="Total" value={counts.TOTAL}/>
-
-</div>
-
-
-{/* Quick Actions */}
-
-<div className="assistantDashSectionHeader">
-
-<h3>Quick Actions</h3>
-
-</div>
-
-<div className="assistantDashActions">
-
-<ActionCard
-title="View Assignments"
-desc="Open your assignment list"
-onClick={()=>navigate("/assistant/assignments")}
-/>
-
-<ActionCard
-title="Performance"
-desc="View your delivery statistics"
-onClick={()=>navigate("/assistant/performance")}
-/>
-
-</div>
-
-
-{loading &&
-
-<div className="assistantDashLoading">
-Loading dashboard...
-</div>
-
-}
-
-</div>
-
-);
-
-}
-
-
-/* STAT CARD */
-
-function StatCard({icon,label,value}){
-
-return(
-
-<div className="assistantDashCard">
-
-<div className="assistantDashCardTop">
-
-<div className="assistantDashCardIcon">
-{icon}
-</div>
-
-<span>{label}</span>
-
-</div>
-
-<div className="assistantDashCardValue">
-
-{value}
-
-</div>
-
-</div>
-
-);
-
-}
-
-
-/* ACTION CARD */
-
-function ActionCard({title,desc,onClick}){
-
-return(
-
-<button
-className="assistantDashActionCard"
-onClick={onClick}
->
-
-<div>
-
-<h4>{title}</h4>
-
-<p>{desc}</p>
-
-</div>
-
-<span className="assistantDashArrow">
-→
-</span>
-
-</button>
-
-);
-
+function ActionCard({ icon, title, desc, onClick }) {
+  return (
+    <button type="button" className="ast-action-card" onClick={onClick}>
+      <div>
+        <div className="ast-action-card-icon">{icon}</div>
+        <h4>{title}</h4>
+        <p>{desc}</p>
+      </div>
+      <FiChevronRight className="ast-action-card-arrow" size={22} />
+    </button>
+  );
 }

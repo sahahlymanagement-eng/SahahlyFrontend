@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -68,6 +68,7 @@ import AssistantSubmissionViewer from "./pages/assistant/AssistantSubmissionView
 import AssistantStudents from "./pages/assistant/AssistantStudents";
 import AssistantReports from "./pages/assistant/AssistantReports";
 import AssistantPerformance from "./pages/assistant/AssistantPerformance";
+import AssistantLayout from "./pages/assistant/AssistantLayout";
 
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import TeacherLayout from "./pages/teacher/TeacherLayout";
@@ -161,43 +162,26 @@ function App() {
           <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
         </Route>
 
-        {/* Assistant dashboard route */}
-        <Route path="/assistant/dashboard" element={
-          <RoleProtectedRoute allowedRole="assistant">
-            <AssistantDashboard />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/assistant/performance" element={
-          <RoleProtectedRoute allowedRole="assistant">
-            <AssistantPerformance />
-          </RoleProtectedRoute>}
-        />
-
-        {/* Assistant Assignments route */}
-        <Route path="/assistant/assignments" element={
-          <RoleProtectedRoute allowedRole="assistant">
-            <AssistantAssignments />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/assistant/assignments/:assignmentId" element={
-          <RoleProtectedRoute allowedRole="assistant">
-            <AssistantSubmissionViewer />
-          </RoleProtectedRoute>
-        }/>
-
-       <Route path="/assistant/assignments/:assignmentId/students" element={
-          <RoleProtectedRoute allowedRole="assistant">
-            <AssistantStudents />
-          </RoleProtectedRoute>
-        }/>
-        
-        <Route path="/assistant/assignments/:assignmentId/students/reports" element={
-          <RoleProtectedRoute allowedRole="assistant">
-            <AssistantReports />
-          </RoleProtectedRoute>
-        }/>
+        {/* Assistant routes */}
+        <Route
+          path="/assistant"
+          element={
+            <RoleProtectedRoute allowedRole="assistant">
+              <AssistantLayout />
+            </RoleProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AssistantDashboard />} />
+          <Route path="performance" element={<AssistantPerformance />} />
+          <Route path="assignments" element={<AssistantAssignments />} />
+          <Route path="assignments/:assignmentId" element={<AssistantSubmissionViewer />} />
+          <Route path="assignments/:assignmentId/students" element={<AssistantStudents />} />
+          <Route
+            path="assignments/:assignmentId/students/reports"
+            element={<AssistantReports />}
+          />
+        </Route>
 
 
         {/* Manager dashboard route */}
