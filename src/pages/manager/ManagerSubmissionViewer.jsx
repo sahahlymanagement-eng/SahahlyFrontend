@@ -19,6 +19,7 @@ import {
   buildNoSubmissionMarkingResult,
   currentUserId,
   getApiErrorMessage,
+  getMarkingResultSummary,
   guidanceForForm,
   hasTeacherEdits,
   isStudentSubmitted,
@@ -113,6 +114,8 @@ export default function ManagerSubmissionViewer() {
     !!selectedAssignment?._id
   );
 
+  const summaryMap = studentExtra?.summaryMap || {};
+
   // Mark scheme
   const [msInfo,      setMsInfo]      = useState(null);
   const [uploadingMs, setUploadingMs] = useState(false);
@@ -158,6 +161,12 @@ export default function ManagerSubmissionViewer() {
   const [refreshing, setRefreshing] = useState(false);
   const [deletingCorrection, setDeletingCorrection] = useState({});
 
+  const resolvePdfSummary = (submissionId, result) =>
+    getMarkingResultSummary(result, {
+      storedSummary: savedResults[submissionId]?.summary,
+      studentSummary: summaryMap[submissionId],
+    });
+
   const [aiReviewProgress, setAiReviewProgress] = useState({});
   const [aiReviewModal, setAiReviewModal] = useState(null);
   const [aiReviewPdfUrl, setAiReviewPdfUrl] = useState(null);
@@ -186,6 +195,7 @@ const fetchSavedResults = useCallback(async () => {
         totalMarks: r.totalMarks,
         provider: r.provider,
         mode: r.mode,
+        summary: r.summary || "",
       };
     });
     setSavedResults(map);
@@ -472,12 +482,10 @@ useEffect(() => {
     const generatePreview = async () => {
       if (!resultModal) return;
       if (!selectedAssignment?._id) return;
-      const db = savedResults[students.submissionId];
-      
+
       const submissionId =
         resultModal?.submissionId ||
-        resultModal?.student?.submissionId ||
-        db?.submissionId;
+        resultModal?.student?.submissionId;
 
       try {
         const pdfRes = await api.get("/submission-files/pdf", {
@@ -502,6 +510,7 @@ useEffect(() => {
             0
           ),
           maxTotalMarks: effectiveMaxTotal,
+          summary: resolvePdfSummary(submissionId, resultModal.result),
         });
 
         const blob = new Blob([pdfBytes], { type: "application/pdf" });
@@ -518,7 +527,7 @@ useEffect(() => {
     return () => {
       if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
     };
-  }, [resultModal, editingQuestions, effectiveMaxTotal]);
+  }, [resultModal, editingQuestions, effectiveMaxTotal, savedResults, summaryMap]);
 
 
   const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
@@ -1829,13 +1838,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
   let eligible;
+  let allStudents;
   try {
+    toast.info("Loading all students for this assignment…");
+    allStudents = await fetchAllPaginated(
+      api,
+      `/manager-assignments/${selectedAssignment._id}/full`,
+      {},
+      "students"
+    );
+
     const res = await api.post("/submission-files/eligible-for-bulk-marking", {
       assignmentId: selectedAssignment._id,
-      submissions: students,
+      submissions: allStudents,
     });
     const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    eligible = students.filter(
+    eligible = allStudents.filter(
       (s) =>
         s.submissionId &&
         backendEligible.has(s.submissionId) &&
@@ -1847,7 +1865,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   }
 
   if (!eligible.length) {
-    const submitted = students.filter((s) => isStudentSubmitted(s.state));
+    const submitted = allStudents.filter((s) => isStudentSubmitted(s.state));
     if (!submitted.length) {
       return toast.warn("No students have submitted this assignment yet");
     }
@@ -2087,21 +2105,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     try {
       const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
 
-      const db = savedResults[students.submissionId];
+      const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
         resultModal?.submissionId ||
         resultModal?.student?.submissionId ||
         db?.submissionId;
-
-
-      // const pdfBytes = await annotatePdf({
-      //   studentFile:   resultModal.studentFile,
-      //   questions:     editingQuestions,
-      //   totalMarks:    effectiveTotal,
-      //   maxTotalMarks: effectiveMaxTotal,
-      //   summary:       resultModal.result.summary || ""
-      // });
 
       const pdfRes = await api.get("/submission-files/pdf", {
         params: {
@@ -2124,8 +2133,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
+        summary: resolvePdfSummary(submissionId, resultModal.result),
       });
-
 
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       const a   = document.createElement("a");
@@ -2192,7 +2201,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
-        summary: resultModal.result.summary || "",
+        summary: resolvePdfSummary(submissionId, resultModal.result),
       });
       const fd = new FormData();
       fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
@@ -2202,11 +2211,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student" );
       
-      if (resultModal.result?.summary) {
+      const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
+      if (pdfSummary) {
         await api.post("/submission-files/save-summary", {
           assignmentId: selectedAssignment._id,
           submissionId: resultModal.student.submissionId,
-          summary: resultModal.result.summary,
+          summary: pdfSummary,
         });
       }
       
@@ -2226,30 +2236,30 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       setReturning(true);
 
       const bulkSaveRequests = Object.entries(bulkProgress)
-        .filter(([_, bulk]) =>
+        .filter(([submissionId, bulk]) =>
           bulk?.status === "done" &&
-          bulk?.result?.summary &&
+          resolvePdfSummary(submissionId, bulk?.result) &&
           !bulk?.returned
         )
         .map(([submissionId, bulk]) =>
           api.post("/submission-files/save-summary", {
             assignmentId: selectedAssignment._id,
             submissionId,
-            summary: bulk.result.summary,
+            summary: resolvePdfSummary(submissionId, bulk.result),
           })
         );
 
       const batchSaveRequests = Object.entries(batchJob?.results || {})
-        .filter(([_, batch]) =>
+        .filter(([submissionId, batch]) =>
           batch?.status === "done" &&
-          batch?.result?.summary &&
+          resolvePdfSummary(submissionId, batch?.result) &&
           !batch?.returned
         )
         .map(([submissionId, batch]) =>
           api.post("/submission-files/save-summary", {
             assignmentId: selectedAssignment._id,
             submissionId,
-            summary: batch.result.summary,
+            summary: resolvePdfSummary(submissionId, batch.result),
           })
         );
 
@@ -2412,6 +2422,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
+            summary: resolvePdfSummary(student.submissionId, bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2472,7 +2483,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             questions: editingQs,
             totalMarks: total,
             maxTotalMarks: max,
-            summary: batch.result.summary || "",
+            summary: resolvePdfSummary(submissionId, batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
