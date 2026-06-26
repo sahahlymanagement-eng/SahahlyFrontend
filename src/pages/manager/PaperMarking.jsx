@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
+import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId } from "../../utils/markingFormData";
@@ -116,7 +117,12 @@ export default function PaperMarking() {
   };
 
   const deletePrompt = async (id) => {
-    if (!window.confirm("Delete this prompt?")) return;
+    const confirmed = await confirmToast("Delete this prompt?", {
+      title: "Delete prompt",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       await api.delete(`/marking/prompts/${id}`);
       toast.success("Deleted");
@@ -149,7 +155,7 @@ export default function PaperMarking() {
     formData.append("markingMode", markingMode);
     formData.append("geminiModel", geminiModel);
     if (selSubject) formData.append("subjectId", selSubject);
-    appendMarkingContext(formData, { personId: currentUserId() });
+    appendMarkingContext(formData);
 
     setLoading(true);
     setResult(null);
@@ -517,10 +523,14 @@ export default function PaperMarking() {
             {guidance && (
               <button
                 style={{ marginTop: 6, background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", textAlign: "left" }}
-                onClick={() => {
-                  const name = window.prompt("Save this prompt as:");
-                  if (name?.trim()) {
-                    api.post("/marking/prompts", { name: name.trim(), content: guidance })
+                onClick={async () => {
+                  const name = await promptToast("Save this prompt as:", {
+                    title: "Save prompt",
+                    placeholder: "Prompt name",
+                    confirmLabel: "Save",
+                  });
+                  if (name) {
+                    api.post("/marking/prompts", { name, content: guidance })
                       .then(() => { toast.success("Prompt saved"); loadPrompts(); })
                       .catch(err => toast.error(err.response?.data?.message || "Failed to save"));
                   }

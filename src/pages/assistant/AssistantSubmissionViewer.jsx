@@ -571,7 +571,7 @@ useEffect(() => {
       fd.append("markingMode", mode);
       const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
-      appendMarkingContext(fd, { personId: currentUserId(), assignmentId, classroomId });
+      appendMarkingContext(fd, { assignmentId, classroomId });
 
       if (markingProvider !== "claude") {
         fd.append("geminiModel", geminiModel);
@@ -828,7 +828,6 @@ useEffect(() => {
       if (maxGrade) fd.append("totalGrade", maxGrade);
 
       appendMarkingContext(fd, {
-        personId: currentUserId(),
         assignmentId,
         classroomId
       });
@@ -1234,7 +1233,6 @@ useEffect(() => {
       geminiModel: selectedModel,
       subjectId,
       ...(maxGrade && { totalGrade: maxGrade }),
-      personId: currentUserId(),
       classroomId,
     };
 

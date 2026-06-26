@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../../api/api";
 import "./DirectorGoogleAccount.css";
 import { FiMail, FiBookOpen, FiRefreshCw } from "react-icons/fi";
+import { toast } from "react-toastify";
 
 export default function DirectorGoogleAccountsPage() {
   const [accounts, setAccounts] = useState([]);
@@ -16,6 +17,7 @@ export default function DirectorGoogleAccountsPage() {
       setAccounts(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Failed to load accounts", err);
+      toast.error(err.response?.data?.message || "Failed to load Google accounts");
     }
   };
 
@@ -34,14 +36,14 @@ export default function DirectorGoogleAccountsPage() {
       setClassrooms(Array.isArray(res.data?.data) ? res.data.data : []);
 
       const excluded = res.data?.excludedCorrupt ?? 0;
-      alert(
+      toast.success(
         excluded > 0
           ? `Loaded ${res.data?.count ?? 0} classrooms (${excluded} corrupt record(s) excluded)`
           : `Loaded ${res.data?.count ?? 0} classrooms from database`
       );
     } catch (err) {
       console.error("Failed to fetch classrooms", err);
-      alert("Failed to fetch classrooms");
+      toast.error(err.response?.data?.message || "Failed to fetch classrooms");
     } finally {
       setFetching(false);
     }
@@ -59,6 +61,7 @@ export default function DirectorGoogleAccountsPage() {
       setClassrooms(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Failed to load classrooms", err);
+      toast.error(err.response?.data?.message || "Failed to load classrooms");
     } finally {
       setLoading(false);
     }

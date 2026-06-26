@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import api from "../../api/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import { FiSearch, FiX } from "react-icons/fi";
 import "./CourseManagement.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 
 export default function CoursesList() {
   const navigate = useNavigate();
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
 
   const handleToggleCourse = async (courseId, currentStatus) => {
     try {
@@ -31,6 +34,11 @@ export default function CoursesList() {
 
   const role = user?.roleId?.name?.toLowerCase();
 
+  const listParams = useMemo(() => {
+    if (role === "admin" && search) return { search };
+    return {};
+  }, [role, search]);
+
 const url =
   role === "admin"
     ? "/google-classroom/courses"
@@ -38,8 +46,28 @@ const url =
       ? "/google-classroom/courses/manager"
       : `/google-classroom/teacher-courses/${user?.id}`;
 
-const { data: courses, page, totalPages, loading, fetchPage } =
-  usePagination(url, {});
+const { data: courses, page, totalPages, total, loading, fetchPage } =
+  usePagination(url, listParams, 6);
+
+  const runSearch = () => {
+    setSearch(searchInput.trim());
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setSearch("");
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "Enter") runSearch();
+  };
+
+  const teacherLabel = (course) => {
+    const t = course.teacherId;
+    if (!t) return null;
+    if (typeof t === "object") return t.name || t.email || null;
+    return null;
+  };
 
   return (
     <div className="pm-page">
@@ -77,6 +105,34 @@ const { data: courses, page, totalPages, loading, fetchPage } =
 } */}
         </header>
 
+        {role === "admin" && (
+          <div className="cm-search-bar">
+            <input
+              className="cm-search-input"
+              type="search"
+              placeholder="Search by name, section, teacher, ID, status…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            <button type="button" className="cm-search-btn" onClick={runSearch}>
+              <FiSearch size={15} />
+              Search
+            </button>
+            {search ? (
+              <button type="button" className="cm-search-clear" onClick={clearSearch}>
+                <FiX size={15} />
+                Clear
+              </button>
+            ) : null}
+            {search ? (
+              <span className="cm-search-meta">
+                {total} result{total === 1 ? "" : "s"} for &ldquo;{search}&rdquo;
+              </span>
+            ) : null}
+          </div>
+        )}
+
         {loading ? (
           <div className="pm-loading-panel">
             <p>Loading courses...</p>
@@ -84,6 +140,13 @@ const { data: courses, page, totalPages, loading, fetchPage } =
         ) : (
           <>
             <div className="pm-questions">
+              {!courses.length && (
+                <div className="cm-search-empty">
+                  {search
+                    ? `No courses match "${search}". Try another term or clear the search.`
+                    : "No courses found."}
+                </div>
+              )}
               {courses.map((course) => (
                 <div
                   key={course.googleCourseId || course.id || course._id}
@@ -119,6 +182,12 @@ const { data: courses, page, totalPages, loading, fetchPage } =
                   <p style={{ opacity: 0.6 }}>
                     {course.section || "No section"}
                   </p>
+
+                  {role === "admin" && teacherLabel(course) && (
+                    <p style={{ opacity: 0.75, marginTop: 4 }}>
+                      Teacher: {teacherLabel(course)}
+                    </p>
+                  )}
 
             
                     <button

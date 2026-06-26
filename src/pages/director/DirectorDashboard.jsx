@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import "./DirectorDashboard.css";
 import { FiUserCheck, FiShield, FiUsers } from "react-icons/fi";
+import { toast } from "react-toastify";
 
 export default function DirectorDashboard() {
   const navigate = useNavigate();
@@ -63,6 +64,7 @@ export default function DirectorDashboard() {
       });
     } catch (err) {
       console.error("Failed loading stats", err);
+      toast.error(err.response?.data?.message || "Failed to load dashboard stats");
     }
   };
 

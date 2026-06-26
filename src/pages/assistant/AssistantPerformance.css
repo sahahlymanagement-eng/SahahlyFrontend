@@ -1,0 +1,207 @@
+.assistantPerfPage {
+  padding: 30px;
+  color: #f8fafc;
+  font-family: "Inter", sans-serif;
+  background: #000828;
+  min-height: 100vh;
+}
+
+.assistantPerfHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.assistantPerfHeaderLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.assistantPerfBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+}
+
+.assistantPerfTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assistantPerfIcon {
+  width: 46px;
+  height: 46px;
+  background: #081c44;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 22px;
+  color: #60a5fa;
+}
+
+.assistantPerfHeader h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.assistantPerfHeader p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.assistantPerfRefresh {
+  background: #081c44;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.assistantPerfSection {
+  margin-bottom: 28px;
+}
+
+.assistantPerfSection h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.assistantPerfGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.assistantPerfCard {
+  background: #081c44;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.assistantPerfCard--good {
+  border-left: 3px solid #22c55e;
+}
+
+.assistantPerfCard--warn {
+  border-left: 3px solid #f59e0b;
+}
+
+.assistantPerfCardTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+.assistantPerfCardIcon {
+  color: #60a5fa;
+  font-size: 17px;
+}
+
+.assistantPerfCardValue {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.assistantPerfCardSub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.assistantPerfTokenRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px 16px;
+  background: #081c44;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
+.assistantPerfChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.assistantPerfChip {
+  background: #081c44;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.assistantPerfTableWrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.assistantPerfTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: #081c44;
+  font-size: 14px;
+}
+
+.assistantPerfTable th,
+.assistantPerfTable td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.assistantPerfTable th {
+  color: #9ca3af;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.assistantPerfMuted {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.assistantPerfGood {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.assistantPerfWarn {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.assistantPerfEmpty,
+.assistantPerfLoading {
+  color: #9ca3af;
+  font-size: 14px;
+}

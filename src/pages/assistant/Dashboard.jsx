@@ -201,7 +201,7 @@ onClick={()=>navigate("/assistant/assignments")}
 <ActionCard
 title="Performance"
 desc="View your delivery statistics"
-onClick={()=>toast.info("Coming soon")}
+onClick={()=>navigate("/assistant/performance")}
 />
 
 </div>

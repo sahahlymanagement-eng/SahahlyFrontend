@@ -3,6 +3,7 @@ import api from "../api/api";
 import "./ClassroomTeacherManager.css";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { toast } from "react-toastify";
 import {
   FiUsers,
   FiBookOpen,
@@ -26,7 +27,7 @@ export default function ClassroomTeacherManager() {
       setTeachers(teachersRes.data || []);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to load teachers");
+      toast.error(err.response?.data?.message || "Failed to load teachers");
     }
   };
 
@@ -63,7 +64,7 @@ export default function ClassroomTeacherManager() {
       const teacherId = selectedTeachers[classroomId];
 
       if (!teacherId) {
-        alert("Please select a teacher first");
+        toast.warn("Please select a teacher first");
         return;
       }
 
@@ -72,10 +73,10 @@ export default function ClassroomTeacherManager() {
       });
 
       await reload();
-      alert("Teacher assigned successfully");
+      toast.success("Teacher assigned successfully");
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to assign teacher");
+      toast.error(err.response?.data?.message || "Failed to assign teacher");
     }
   };
 
@@ -83,10 +84,10 @@ export default function ClassroomTeacherManager() {
     try {
       await api.put(`/classrooms/${classroomId}/remove-teacher`);
       await reload();
-      alert("Teacher removed successfully");
+      toast.success("Teacher removed successfully");
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to remove teacher");
+      toast.error(err.response?.data?.message || "Failed to remove teacher");
     }
   };
 

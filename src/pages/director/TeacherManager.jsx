@@ -4,6 +4,7 @@ import api from "../../api/api";
 import "./TeacherManager.css";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
+import { toast } from "react-toastify";
 import {
   FiHome,
   FiUsers,
@@ -54,7 +55,7 @@ export default function TeacherManager() {
       setTeachers(res.data || []);
     } catch (err) {
       console.error("Failed to load teachers", err);
-      alert(err.response?.data?.message || "Failed to load teachers");
+      toast.error(err.response?.data?.message || "Failed to load teachers");
     }
   };
 
@@ -67,28 +68,69 @@ export default function TeacherManager() {
 
   const createTeacher = async () => {
     try {
-      if (!form.name || !form.phone) return;
+      if (!form.name || !form.phone) {
+        toast.warn("Name and phone are required");
+        return;
+      }
 
       await api.post("/teachers", form);
 
       setForm({ name: "", phone: "", email: "" });
       loadTeachers();
+      toast.success("Teacher created successfully");
     } catch (err) {
       console.error("Failed to create teacher", err);
-      alert(err.response?.data?.message || "Failed to create teacher");
+      toast.error(err.response?.data?.message || "Failed to create teacher");
     }
   };
 
   const deleteTeacher = async (id) => {
-    try {
-      if (!window.confirm("Delete this teacher?")) return;
-
-      await api.delete(`/teachers/${id}`);
-      loadTeachers();
-    } catch (err) {
-      console.error("Failed to delete teacher", err);
-      alert(err.response?.data?.message || "Failed to delete teacher");
-    }
+    toast(
+      ({ closeToast }) => (
+        <div>
+          <p style={{ margin: "0 0 10px" }}>Delete this teacher?</p>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={async () => {
+                closeToast();
+                try {
+                  await api.delete(`/teachers/${id}`);
+                  loadTeachers();
+                  toast.success("Teacher deleted successfully");
+                } catch (err) {
+                  console.error("Failed to delete teacher", err);
+                  toast.error(err.response?.data?.message || "Failed to delete teacher");
+                }
+              }}
+              style={{
+                background: "#e53e3e",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "6px 14px",
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={closeToast}
+              style={{
+                background: "#4a5568",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "6px 14px",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      { autoClose: false }
+    );
   };
 
   const startEdit = (teacher) => {
@@ -109,9 +151,10 @@ export default function TeacherManager() {
       setForm({ name: "", phone: "", email: "" });
 
       loadTeachers();
+      toast.success("Teacher updated successfully");
     } catch (err) {
       console.error("Failed to update teacher", err);
-      alert(err.response?.data?.message || "Failed to update teacher");
+      toast.error(err.response?.data?.message || "Failed to update teacher");
     }
   };
 

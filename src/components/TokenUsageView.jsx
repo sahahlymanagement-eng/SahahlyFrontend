@@ -580,8 +580,8 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           {!byClassroom?.classrooms?.length ? (
             <div className="tu-empty">
               No token usage recorded for this period. Usage is tracked when{" "}
-              {isDirector ? "managers and assistants" : "assistants"} run AI marking on
-              assignments.
+              {isDirector ? "managers and assistants" : "assistants"} run AI marking
+              (standard, batch, or priority) on assignments.
             </div>
           ) : (
             <div className="tu-click-list">

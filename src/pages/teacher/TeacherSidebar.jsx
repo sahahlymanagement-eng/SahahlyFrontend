@@ -1,18 +1,24 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import {
-  FiHome, FiUsers, FiClipboard, FiFileText, FiBookOpen,
-  FiZap, FiEye, FiMenu, FiX, FiChevronRight, FiLogOut, FiBarChart2
+  FiHome,
+  FiBookOpen,
+  FiMenu,
+  FiX,
+  FiChevronRight,
+  FiLogOut,
+  FiLayers,
 } from "react-icons/fi";
 import "./TeacherSidebar.css";
 
 const NAV_ITEMS = [
-  { icon: <FiBookOpen />,  label: "Course Management",   path: "/teacher/courses" },
+  { icon: <FiHome />, label: "Dashboard", path: "/teacher/dashboard" },
+  { icon: <FiBookOpen />, label: "My Courses", path: "/teacher/courses" },
 ];
 
 export default function TeacherSidebar() {
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -23,53 +29,73 @@ export default function TeacherSidebar() {
     navigate("/login", { replace: true });
   };
 
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
+
   return (
-    
-    <aside className={`msb-sidebar ${collapsed ? "msb-sidebar--collapsed" : ""}`}>
-      <div className="msb-top">
-        <div className="msb-brand">
-          {!collapsed && <span className="msb-brand-text">Teacher</span>}
-          <button className="msb-toggle" onClick={() => setCollapsed(v => !v)}>
+    <aside className={`tch-sidebar ${collapsed ? "tch-sidebar--collapsed" : ""}`}>
+      <div className="tch-sidebar-top">
+        <div className="tch-sidebar-brand">
+          {!collapsed && (
+            <div className="tch-brand-lockup">
+              <div className="tch-brand-mark">
+                <FiLayers size={16} />
+              </div>
+              <div>
+                <span className="tch-brand-name">Sahahly</span>
+                <span className="tch-brand-role">Teacher</span>
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            className="tch-sidebar-toggle"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
             {collapsed ? <FiMenu size={18} /> : <FiX size={18} />}
           </button>
         </div>
-        {!collapsed && (
-          <div className="msb-user-card">
-            <div className="msb-avatar">{user.name?.charAt(0).toUpperCase()}</div>
-            <div className="msb-user-info">
-              <span className="msb-user-name">{user.name}</span>
-              <span className="msb-user-role">Teahcer</span>
+
+        {!collapsed ? (
+          <div className="tch-user-card">
+            <div className="tch-user-avatar">{user.name?.charAt(0).toUpperCase()}</div>
+            <div className="tch-user-info">
+              <span className="tch-user-name">{user.name}</span>
+              <span className="tch-user-role">Teacher account</span>
             </div>
           </div>
-        )}
-        {collapsed && (
-          <div className="msb-avatar msb-avatar--solo">{user.name?.charAt(0).toUpperCase()}</div>
+        ) : (
+          <div className="tch-user-avatar tch-user-avatar--solo">
+            {user.name?.charAt(0).toUpperCase()}
+          </div>
         )}
       </div>
 
-      <nav className="msb-nav">
-        {NAV_ITEMS.map(item => {
-          const isActive = location.pathname === item.path ||
-                           location.pathname.startsWith(item.path + "/");
+      <nav className="tch-sidebar-nav">
+        {!collapsed && <span className="tch-nav-label">Menu</span>}
+        {NAV_ITEMS.map((item) => {
+          const active = isActive(item.path);
           return (
-            <div
+            <button
               key={item.path}
-              className={`msb-nav-item ${isActive ? "msb-nav-item--active" : ""}`}
+              type="button"
+              className={`tch-nav-item ${active ? "tch-nav-item--active" : ""}`}
               onClick={() => navigate(item.path)}
               title={collapsed ? item.label : ""}
             >
-              <span className="msb-nav-icon">{item.icon}</span>
-              {!collapsed && <span className="msb-nav-label">{item.label}</span>}
-              {!collapsed && isActive && <FiChevronRight className="msb-nav-arrow" size={14} />}
-            </div>
+              <span className="tch-nav-icon">{item.icon}</span>
+              {!collapsed && <span className="tch-nav-text">{item.label}</span>}
+              {!collapsed && active && <FiChevronRight className="tch-nav-arrow" size={14} />}
+            </button>
           );
         })}
       </nav>
 
-      <div className="msb-bottom">
-        <button className="msb-logout-btn" onClick={handleLogout}>
+      <div className="tch-sidebar-bottom">
+        <button type="button" className="tch-logout-btn" onClick={handleLogout}>
           <FiLogOut size={16} />
-          {!collapsed && <span>Logout</span>}
+          {!collapsed && <span>Sign out</span>}
         </button>
       </div>
     </aside>

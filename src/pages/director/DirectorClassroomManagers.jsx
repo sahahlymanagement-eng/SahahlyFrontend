@@ -3,6 +3,7 @@ import api from "../../api/api";
 import "./DirectorClassroomManagers.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import { toast } from "react-toastify";
 
 export default function DirectorManagers() {
   const { data: classrooms, page, totalPages, fetchPage: fetchClassroomsPage } =
@@ -15,20 +16,24 @@ export default function DirectorManagers() {
   useEffect(() => { loadSupportData(); }, []);
 
   const loadSupportData = async () => {
-    const [peopleRes, assignmentsRes] = await Promise.all([
-      api.get("/people", { params: { page: 1, limit: 5000 } }),
-      api.get("/classroom-managers", { params: { page: 1, limit: 5000 } }),
-    ]);
+    try {
+      const [peopleRes, assignmentsRes] = await Promise.all([
+        api.get("/people", { params: { page: 1, limit: 5000 } }),
+        api.get("/classroom-managers", { params: { page: 1, limit: 5000 } }),
+      ]);
 
-    const persons = peopleRes.data.data || [];
-    const assigns = assignmentsRes.data.data || [];
+      const persons = peopleRes.data.data || [];
+      const assigns = assignmentsRes.data.data || [];
 
-    setPeople(persons);
-    setAssignments(assigns);
+      setPeople(persons);
+      setAssignments(assigns);
 
-    const map = {};
-    assigns.forEach((a) => { map[a.classroomId?._id] = a.personId?._id; });
-    setSelectedManagers(map);
+      const map = {};
+      assigns.forEach((a) => { map[a.classroomId?._id] = a.personId?._id; });
+      setSelectedManagers(map);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load classroom managers");
+    }
   };
 
   const reload = async () => {
@@ -39,19 +44,22 @@ export default function DirectorManagers() {
     (p) => p.roleId?.name?.trim().toLowerCase() === "manager"
   );
 
-  // Returns true if this classroom already has an assigned manager
   const hasManager = (classroomId) =>
     assignments.some((a) => a.classroomId?._id === classroomId);
 
   const assignManager = async (classroomId) => {
     const personId = selectedManagers[classroomId];
-    if (!personId) return;
+    if (!personId) {
+      toast.warn("Please select a manager first");
+      return;
+    }
     try {
       setLoading(true);
       await api.post("/classroom-managers", { personId, classroomId });
       await reload();
-    } catch {
-      alert("Assignment failed");
+      toast.success("Manager assigned successfully");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Assignment failed");
     } finally {
       setLoading(false);
     }
@@ -59,13 +67,17 @@ export default function DirectorManagers() {
 
   const changeManager = async (classroomId) => {
     const personId = selectedManagers[classroomId];
-    if (!personId) return;
+    if (!personId) {
+      toast.warn("Please select a manager first");
+      return;
+    }
     try {
       setLoading(true);
       await api.put("/classroom-managers", { personId, classroomId });
       await reload();
-    } catch {
-      alert("Change failed");
+      toast.success("Manager updated successfully");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Change failed");
     } finally {
       setLoading(false);
     }
@@ -76,8 +88,9 @@ export default function DirectorManagers() {
       setLoading(true);
       await api.delete("/classroom-managers", { data: { classroomId } });
       await reload();
-    } catch {
-      alert("Remove failed");
+      toast.success("Manager removed successfully");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Remove failed");
     } finally {
       setLoading(false);
     }
@@ -132,7 +145,6 @@ export default function DirectorManagers() {
 
                   <td className="dm-actions">
                     {!alreadyAssigned ? (
-                      // No manager yet — only show Assign
                       <button
                         className="dm-assign"
                         onClick={() => assignManager(room._id)}
@@ -140,7 +152,6 @@ export default function DirectorManagers() {
                         Assign
                       </button>
                     ) : (
-                      // Manager exists — show Change + Remove
                       <>
                         <button
                           className="dm-change"

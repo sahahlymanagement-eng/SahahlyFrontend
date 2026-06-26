@@ -1,14 +1,9 @@
-/** Attach user/assignment context so the backend can log AI token usage. */
 import { estimateMarkingCost } from "./markingCost";
 
-export function appendMarkingContext(formData, { personId, assignmentId, classroomId } = {}) {
-
-  if (personId) formData.append("personId", personId);
-
+/** Attach assignment context for backend logging (person comes from JWT only). */
+export function appendMarkingContext(formData, { assignmentId, classroomId } = {}) {
   if (assignmentId) formData.append("assignmentId", assignmentId);
-
   if (classroomId) formData.append("classroomId", classroomId);
-
 }
 
 

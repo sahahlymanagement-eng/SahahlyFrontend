@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
+import { confirmToast } from "../../utils/confirmToast";
 import Select from "react-select";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -247,7 +248,11 @@ export default function ManagerDashboard() {
 };
 
 const removeAssistant = async (assignmentId) => {
-  if (!window.confirm("Remove assistant (and quality team if assigned)? Task will become UNASSIGNED.")) return;
+  const confirmed = await confirmToast(
+    "Remove assistant (and quality team if assigned)? Task will become UNASSIGNED.",
+    { title: "Remove assistant", confirmLabel: "Remove", danger: true }
+  );
+  if (!confirmed) return;
   try {
     await api.delete("/assignment-delegations/remove-assistant", {
       data: { assignmentId, assignedBy: user.id },

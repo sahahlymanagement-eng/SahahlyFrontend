@@ -67,15 +67,18 @@ import SubmissionActions from "./components/CourseManagment/SubmissionActions";
 import AssistantSubmissionViewer from "./pages/assistant/AssistantSubmissionViewer";
 import AssistantStudents from "./pages/assistant/AssistantStudents";
 import AssistantReports from "./pages/assistant/AssistantReports";
+import AssistantPerformance from "./pages/assistant/AssistantPerformance";
 
-import TeacherDashboard from "./pages/teacher/TeacherDashboard"
+import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+import TeacherLayout from "./pages/teacher/TeacherLayout";
+import TeacherCourses from "./pages/teacher/TeacherCourses";
 import ViewCoursework from "./components/CourseManagment/ViewCourseWork";
 
 function App() {
   return (
     <BrowserRouter>
       <ToastContainer
-          position="top-right"
+          position="bottom-right"
           autoClose={3500}
           hideProgressBar={false}
           newestOnTop
@@ -146,33 +149,28 @@ function App() {
         {/* Exam Position Mapper — admin-only tool */}
         {/* <Route path="/admin/exam-position-mapper" element={<ExamPositionMapper />} /> */}
 
-        <Route path="/teacher/dashboard" element={
+        <Route path="/teacher" element={
           <RoleProtectedRoute allowedRole="teacher">
-            <TeacherDashboard />
-          </RoleProtectedRoute>}
-        />
-
-        
-        <Route path="/teacher/courses" element={
-          <RoleProtectedRoute allowedRole={["teacher"]}>
-            <CoursesList />
-          </RoleProtectedRoute>}
-        />
-        <Route path="/teacher/coursework/:courseId" element={
-          <RoleProtectedRoute allowedRole={["teacher"]}>
-            <CourseWork />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/teacher/view-coursework/:courseId" element=
-        {<RoleProtectedRoute allowedRole={["teacher"]}> 
-        <ViewCoursework /> </RoleProtectedRoute>} />
-
+            <TeacherLayout />
+          </RoleProtectedRoute>
+        }>
+          <Route path="dashboard" element={<TeacherDashboard />} />
+          <Route path="courses" element={<TeacherCourses />} />
+          <Route path="coursework/:courseId" element={<CourseWork />} />
+          <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
+          <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
+        </Route>
 
         {/* Assistant dashboard route */}
         <Route path="/assistant/dashboard" element={
           <RoleProtectedRoute allowedRole="assistant">
             <AssistantDashboard />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/assistant/performance" element={
+          <RoleProtectedRoute allowedRole="assistant">
+            <AssistantPerformance />
           </RoleProtectedRoute>}
         />
 
@@ -279,6 +277,12 @@ function App() {
           </RoleProtectedRoute>}
         />
 
+        <Route path="/manager/coursework/:courseId/edit/:courseWorkId" element={
+          <RoleProtectedRoute allowedRole={["manager", "teacher"]}>
+            <CourseWork />
+          </RoleProtectedRoute>}
+        />
+
         <Route
           path="/manager/submission/:courseId/:courseWorkId/:submissionId" element={
           <RoleProtectedRoute allowedRole="manager">
@@ -332,6 +336,7 @@ function App() {
 
 
           <Route path="/director/coursework/:courseId" element={ <CourseWork />}/>
+          <Route path="/director/coursework/:courseId/edit/:courseWorkId" element={ <CourseWork />}/>
 <Route path="/director/view-coursework/:courseId" element={<ViewCoursework />} />
         </Route>
 

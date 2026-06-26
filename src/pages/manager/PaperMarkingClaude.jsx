@@ -38,7 +38,7 @@ export default function PaperMarkingClaude() {
     formData.append("markSchemePdf", markSchemeFile);
     formData.append("totalGrade",    totalGrade);
     formData.append("guidance",      guidance);
-    appendMarkingContext(formData, { personId: currentUserId() });
+    appendMarkingContext(formData);
 
     setLoading(true);
     setResult(null);

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
+import { promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
@@ -27,10 +28,12 @@ import {
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import {
+  formatCostPair,
   geminiModelLabel,
   parseGeminiModelsResponse,
   pickValidGeminiModel,
   PRIORITY_RATE_FACTOR,
+  resolveMarkingCost,
 } from "../../utils/markingCost";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
@@ -887,7 +890,6 @@ useEffect(() => {
       if (guidanceValue) fd.append("guidance", guidanceValue);
       if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
       appendMarkingContext(fd, {
-        personId: currentUserId(),
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
@@ -1023,7 +1025,6 @@ useEffect(() => {
       if (guidanceValue) fd.append("guidance", guidanceValue);
       if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
       appendMarkingContext(fd, {
-        personId: currentUserId(),
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
@@ -1035,10 +1036,17 @@ useEffect(() => {
         timeout: 600000
       });
 
+      const enrichedResult = buildPriorityMarkingResult(
+        res.data,
+        res.data.tokenUsage,
+        selectedModel,
+        res.data.servedServiceTier
+      );
+
       setResultModal({
         student,
-        result: res.data,
-        originalAiResult: JSON.parse(JSON.stringify(res.data)),
+        result: enrichedResult,
+        originalAiResult: JSON.parse(JSON.stringify(enrichedResult)),
         studentFile,
         submissionId: student.submissionId,
       });
@@ -1046,7 +1054,7 @@ useEffect(() => {
         ...prev,
         [student.submissionId]: {
           status: "done",
-          result: res.data,
+          result: enrichedResult,
           studentFile
         }
       }));
@@ -1057,15 +1065,15 @@ useEffect(() => {
         studentName: student.name,
         mode,
         provider: "gemini-priority",
-        result: res.data
+        result: enrichedResult
       });
       setSavedResults(prev => ({
         ...prev,
         [student.submissionId]: {
           status: "done",
-          result: res.data,
-          aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
-          totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+          result: enrichedResult,
+          aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
+          totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
         }
       }));
 
@@ -1075,8 +1083,8 @@ useEffect(() => {
             ? {
                 ...s,
                 assignedGrade:
-                  res.data?.criteriaGrade?.totalMarks ??
-                  res.data?.totalMarks ??
+                  enrichedResult?.criteriaGrade?.totalMarks ??
+                  enrichedResult?.totalMarks ??
                   null
               }
             : s
@@ -1087,7 +1095,16 @@ useEffect(() => {
         toast.info("Priority unavailable — ran at standard speed.");
       }
 
-      setEditingQuestions(res.data.questions.map(q => ({ ...q })));
+      const tokenTotal = enrichedResult?.tokenUsage?.totalTokens;
+      if (tokenTotal) {
+        const cost = resolveMarkingCost(enrichedResult);
+        const costText = cost ? ` · ${formatCostPair(cost)}` : "";
+        toast.success(
+          `Priority mark complete — ${Number(tokenTotal).toLocaleString()} tokens${costText}`
+        );
+      }
+
+      setEditingQuestions(enrichedResult.questions.map(q => ({ ...q })));
       setEditingMaxTotal(null);
     } catch (err) {
       const message = extractHumanError
@@ -1276,7 +1293,6 @@ useEffect(() => {
         if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
     
         appendMarkingContext(fd, {
-          personId: currentUserId(),
           assignmentId: selectedAssignment._id,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
@@ -1740,7 +1756,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     geminiModel:   selectedModel,
     subjectId:     selectedAssignment.subjectId,
     ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
-    personId:      currentUserId(),
     classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
   };
 
@@ -1857,7 +1872,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       geminiModel: selectedModel,
       subjectId:   selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
-      personId:    currentUserId(),
       classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
     });
 
@@ -1972,10 +1986,18 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     const ok = (data.results || []).length;
     const zeroed = (data.zeroed || []).length;
     const failed = (data.failed || []).length;
+    const tokenTotal = data.aggregateTokenUsage?.totalTokens;
+    const aggregateCost = data.aggregateEstimatedCost;
+    const tokenSummary =
+      tokenTotal != null
+        ? ` · ${Number(tokenTotal).toLocaleString()} tokens` +
+          (aggregateCost ? ` · ${formatCostPair(aggregateCost)}` : "")
+        : "";
     toast.success(
       `Priority complete — ${ok} marked` +
       (zeroed ? `, ${zeroed} zeroed` : "") +
-      (failed ? `, ${failed} failed` : "")
+      (failed ? `, ${failed} failed` : "") +
+      tokenSummary
     );
     if (downgradedCount) {
       toast.info(`${downgradedCount} student(s) ran at standard speed (priority unavailable).`);
@@ -3332,7 +3354,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   onClick={async () => {
                     if (!guidance.trim()) return toast.warn("Cannot save empty prompt");
 
-                    const name = prompt("Name this prompt:");
+                    const name = await promptToast("Name this prompt:", {
+                      title: "Save prompt",
+                      placeholder: "Prompt name",
+                      confirmLabel: "Save",
+                    });
                     if (!name) return;
 
                     try {

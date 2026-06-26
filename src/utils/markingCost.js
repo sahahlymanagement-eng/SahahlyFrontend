@@ -126,6 +126,8 @@ export function resolveMarkingCost(result) {
       usd: result.estimatedCostUsd,
       egp: result.estimatedCostEgp ?? result.estimatedCostUsd * USD_TO_EGP_RATE,
       batchPricing: result.batchPricing || result.estimatedCost?.batchPricing,
+      priorityPricing:
+        result.priorityPricing || result.estimatedCost?.priorityPricing,
     };
   }
   const batch =
