@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
-  FiUploadCloud, FiX, FiCalendar, FiSend,FiLayers, FiAlertCircle,FiCheck
+  FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import { usePagination } from "../../hooks/usePagination";
@@ -59,6 +59,7 @@ export default function ManagerSubmissionViewer() {
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [classroomSearch,    setClassroomSearch]    = useState("");
   const [assignmentSearch,   setAssignmentSearch]   = useState("");
+  const [studentSearch,      setStudentSearch]      = useState("");
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
 
   const classroomParams = useMemo(() => ({
@@ -91,6 +92,10 @@ export default function ManagerSubmissionViewer() {
     !!selectedClassroom?._id
   );
 
+  const studentParams = useMemo(() => ({
+    search: studentSearch,
+  }), [studentSearch]);
+
   const {
     data: students,
     page: studentPage,
@@ -102,7 +107,7 @@ export default function ManagerSubmissionViewer() {
     extra: studentExtra,
   } = usePagination(
     selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
-    {},
+    studentParams,
     10,
     "students",
     !!selectedAssignment?._id
@@ -150,6 +155,8 @@ export default function ManagerSubmissionViewer() {
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [deletingCorrection, setDeletingCorrection] = useState({});
 
   const [aiReviewProgress, setAiReviewProgress] = useState({});
   const [aiReviewModal, setAiReviewModal] = useState(null);
@@ -165,43 +172,57 @@ export default function ManagerSubmissionViewer() {
   message: null,
 });
 
-useEffect(() => {
-  const fetchSavedResults = async () => {
-    try {
-      const res = await api.get(
-        `/submission-files/save-results/${selectedAssignment._id}`
-      );
-
-      const map = {};
-
-      res.data.data.forEach(r => {
-        map[r.submissionId] = {
-          status: "done",
-          result: r.result,
-          aiOriginalResult: r.aiOriginalResult || r.result,
-          studentFile: r.studentFileMeta,
-          totalMarks: r.totalMarks,
-          provider: r.provider,
-          mode: r.mode,
-        };
-      });
-
-      setSavedResults(map);
-
-      setSingleProgress(prev => ({
-        ...prev,
-        ...map
-      }));
-
-    } catch (err) {
-      console.error("Failed to load saved results", err);
-    }
-  };
-
-  if (selectedAssignment?._id) {
-    fetchSavedResults();
+const fetchSavedResults = useCallback(async () => {
+  if (!selectedAssignment?._id) return;
+  try {
+    const res = await api.get(`/submission-files/save-results/${selectedAssignment._id}`);
+    const map = {};
+    res.data.data.forEach(r => {
+      map[r.submissionId] = {
+        status: "done",
+        result: r.result,
+        aiOriginalResult: r.aiOriginalResult || r.result,
+        studentFile: r.studentFileMeta,
+        totalMarks: r.totalMarks,
+        provider: r.provider,
+        mode: r.mode,
+      };
+    });
+    setSavedResults(map);
+    setSingleProgress(prev => ({ ...prev, ...map }));
+  } catch (err) {
+    console.error("Failed to load saved results", err);
   }
 }, [selectedAssignment?._id]);
+
+useEffect(() => {
+  fetchSavedResults();
+}, [fetchSavedResults]);
+
+useEffect(() => { setStudentSearch(""); }, [selectedAssignment?._id]);
+
+const refreshStudents = async () => {
+  setRefreshing(true);
+  await fetchStudentPage(studentPage);
+  await fetchSavedResults();
+  setRefreshing(false);
+};
+
+const deleteCorrection = async (student) => {
+  const { submissionId } = student;
+  setDeletingCorrection(prev => ({ ...prev, [submissionId]: true }));
+  try {
+    await api.delete(`/submission-files/save-results/${selectedAssignment._id}/${submissionId}`);
+    setSavedResults(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    setSingleProgress(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    setBulkProgress(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    toast.success("Correction deleted");
+  } catch (e) {
+    toast.error("Failed to delete correction");
+  } finally {
+    setDeletingCorrection(prev => ({ ...prev, [submissionId]: false }));
+  }
+};
 
 useEffect(() => {
   if (!students.length || !Object.keys(savedResults).length) return;
@@ -220,7 +241,6 @@ useEffect(() => {
   });
   if (changed) setStudents(updated);
 }, [savedResults, students]);
-
 
   const openErrorViewer = (title, error) => {
     let message = "";
@@ -2830,10 +2850,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                       <span className="ma-panel-count">{studentTotal} students</span>
                     </div>
+                    <div className="msv-panel-controls">
+                      <input
+                        className="msv-student-search"
+                        type="text"
+                        placeholder="Search by name…"
+                        value={studentSearch}
+                        onChange={e => setStudentSearch(e.target.value)}
+                      />
+                      <button
+                        className="msv-refresh-btn"
+                        onClick={refreshStudents}
+                        disabled={refreshing || loadingStudents}
+                      >
+                        <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
+                        {refreshing ? "Refreshing…" : "Refresh"}
+                      </button>
+                    </div>
                   </div>
 
                   {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
-                  {!loadingStudents && students.length === 0 && <p className="ma-empty-msg">No students found.</p>}
+                  {!loadingStudents && students.length === 0 && (
+                    <p className="ma-empty-msg">
+                      {studentSearch ? `No students match "${studentSearch}".` : "No students found."}
+                    </p>
+                  )}
 
                   {!loadingStudents && students.length > 0 && (
                     <div className="ma-table-wrap">
@@ -3026,6 +3067,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           {/* {bulkRetrying && (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
+
+                                        {db?.result && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--delete"
+                                            title="Delete Correction"
+                                            onClick={() => deleteCorrection(s)}
+                                            disabled={deletingCorrection[s.submissionId] || markingLoading}
+                                          >
+                                            {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
+                                          </button>
+                                        )}
 
                                         {inlineMarkResult?.tokenUsage && (
                                           <TokenUsageStats result={inlineMarkResult} compact />

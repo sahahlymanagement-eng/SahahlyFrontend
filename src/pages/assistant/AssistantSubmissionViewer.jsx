@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -103,6 +103,9 @@ export default function AssignmentSubmissionViewer() {
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [deletingCorrection, setDeletingCorrection] = useState({});
 
   // const [cachedMsFile, setCachedMsFile] = useState(null);
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
@@ -248,10 +251,14 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     return message;
   };
 
+  const studentParams = useMemo(() => ({
+    search: studentSearch,
+  }), [studentSearch]);
+
     const { data: students, page, totalPages, total: studentTotal, loading, fetchPage, extra, setData: setStudents } =
   usePagination(
     `/assignment-submissions/${assignmentId}/students`,
-    {},
+    studentParams,
     10,
     "students"  // dataKey matches what backend returns
   );
@@ -317,15 +324,10 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
       });
   }, [assignmentId]);
 
-  useEffect(() => {
-  const fetchSavedResults = async () => {
+  const fetchSavedResults = useCallback(async () => {
     try {
-      const res = await api.get(
-        `/submission-files/save-results/${assignmentId}`
-      );
-
+      const res = await api.get(`/submission-files/save-results/${assignmentId}`);
       const map = {};
-
       res.data.data.forEach(r => {
         map[r.submissionId] = {
           status: "done",
@@ -335,22 +337,16 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           totalMarks: r.totalMarks
         };
       });
-
       setSavedResults(map);
-
-      // optional: sync into your existing state
-      setSingleProgress(prev => ({
-        ...prev,
-        ...map
-      }));
-
+      setSingleProgress(prev => ({ ...prev, ...map }));
     } catch (err) {
       console.error("Failed to load saved results", err);
     }
-  };
+  }, [assignmentId]);
 
-  fetchSavedResults();
-}, [assignmentId]);
+  useEffect(() => {
+    fetchSavedResults();
+  }, [fetchSavedResults]);
 
 useEffect(() => {
   if (!students.length || !Object.keys(savedResults).length) return;
@@ -369,6 +365,29 @@ useEffect(() => {
   });
   if (changed) setStudents(updated);
 }, [savedResults, students]);
+
+const refreshStudents = async () => {
+  setRefreshing(true);
+  await fetchPage(page);
+  await fetchSavedResults();
+  setRefreshing(false);
+};
+
+const deleteCorrection = async (student) => {
+  const { submissionId } = student;
+  setDeletingCorrection(prev => ({ ...prev, [submissionId]: true }));
+  try {
+    await api.delete(`/submission-files/save-results/${assignmentId}/${submissionId}`);
+    setSavedResults(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    setSingleProgress(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    setBulkProgress(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+    toast.success("Correction deleted");
+  } catch (e) {
+    toast.error("Failed to delete correction");
+  } finally {
+    setDeletingCorrection(prev => ({ ...prev, [submissionId]: false }));
+  }
+};
 
   useEffect(() => {
     const generatePreview = async () => {
@@ -1972,8 +1991,34 @@ return (
                
             </div>
 
+              {/* SEARCH + REFRESH */}
+              <div className="msv-panel-controls" style={{ marginBottom: 10 }}>
+                <input
+                  className="msv-student-search"
+                  type="text"
+                  placeholder="Search by name…"
+                  value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                />
+                <button
+                  className="msv-refresh-btn"
+                  onClick={refreshStudents}
+                  disabled={refreshing || loading}
+                >
+                  <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
+                  {refreshing ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+
               {/* TABLE */}
                 {loading ? <p className="ma-loading-msg">Loading...</p> : (
+                  <>
+                  {students.length === 0 && (
+                    <p className="ma-empty-msg">
+                      {studentSearch ? `No students match "${studentSearch}".` : "No students found."}
+                    </p>
+                  )}
+                  {students.length > 0 && (
                   <div className="ma-table-wrap">
                     <div className="ma-table-scroll">
 
@@ -2151,6 +2196,17 @@ return (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
 
+                                        {db?.result && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--delete"
+                                            title="Delete Correction"
+                                            onClick={() => deleteCorrection(s)}
+                                            disabled={deletingCorrection[s.submissionId] || markingLoading}
+                                          >
+                                            {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
+                                          </button>
+                                        )}
+
                                         {inlineMarkResult?.tokenUsage && (
                                           <TokenUsageStats result={inlineMarkResult} compact />
                                         )}
@@ -2202,7 +2258,9 @@ return (
                       </div>
                     </div>
                   )}
-            
+                  </>
+                )}
+
             </div>
 
             </main>
