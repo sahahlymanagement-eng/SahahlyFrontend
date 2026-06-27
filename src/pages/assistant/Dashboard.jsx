@@ -150,7 +150,7 @@ export default function AssistantDashboard() {
         <ActionCard
           icon={<FiBarChart2 />}
           title="Performance"
-          desc="Papers corrected, tokens used, and deadline delivery"
+          desc="Papers corrected and deadline delivery"
           onClick={() => navigate("/assistant/performance")}
         />
       </div>

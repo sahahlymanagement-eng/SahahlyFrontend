@@ -15,6 +15,8 @@ import {
   parseAttendanceNamesFromFile,
 } from "../../utils/attendanceExcel";
 import ManagerSidebar from "../../components/ManagerSidebar";
+import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
+import { syncReportCartGrades, studentsByKey } from "../../utils/syncReportCartGrades";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 
@@ -44,6 +46,7 @@ export default function ManagerAssignments() {
   const [attendanceNames, setAttendanceNames] = useState([]);
   const [attendanceFileName, setAttendanceFileName] = useState("");
   const [parsingAttendance, setParsingAttendance] = useState(false);
+  const [refreshingGrades, setRefreshingGrades] = useState(false);
 
   const classroomParams = useMemo(() => ({
     personId: user?.id,
@@ -269,6 +272,31 @@ export default function ManagerAssignments() {
       enabled: true,
       attendedNames: attendanceNames,
     };
+  };
+
+  const refreshGrades = async () => {
+    if (!selectedAssignment?._id) return;
+    setRefreshingGrades(true);
+    try {
+      const res = await api.get(
+        `/manager-assignments/${selectedAssignment._id}/full`,
+        { params: { page: 1, limit: 9999 } }
+      );
+      const freshList = res.data.students || [];
+      if (res.data.summaryMap) {
+        setSummaryMap((prev) => ({ ...prev, ...res.data.summaryMap }));
+      }
+      const freshByKey = studentsByKey(freshList, (s) => s._id);
+      setReportCart((prev) =>
+        syncReportCartGrades(prev, freshByKey, (m) => m._id)
+      );
+      await fetchStudentPage(studentPage);
+      toast.success(`Grades refreshed for ${freshList.length} student(s)`);
+    } catch {
+      toast.error("Failed to refresh grades");
+    } finally {
+      setRefreshingGrades(false);
+    }
   };
 
   /* SEND */
@@ -674,7 +702,12 @@ export default function ManagerAssignments() {
                     <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                     <span className="ma-panel-count">{students.length} students</span>
                   </div>
-                  <div style={{ display: "flex", gap: "10px" }}>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <ReportGradesRefreshButton
+                    onClick={refreshGrades}
+                    loading={refreshingGrades}
+                    disabled={!selectedAssignment}
+                  />
                   <button
                     className="ma-send-btn"
                     onClick={selectAllStudentsForAssignment}

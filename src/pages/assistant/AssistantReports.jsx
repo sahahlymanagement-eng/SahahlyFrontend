@@ -9,13 +9,14 @@ import "react-international-phone/style.css";
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
+import { syncReportCartGrades, studentsByKey } from "../../utils/syncReportCartGrades";
 import { parseAttendanceNamesFromFile } from "../../utils/attendanceExcel";
 
 import {
   FiSend,
   FiCheckSquare,
   FiMessageSquare,
-  FiRefreshCw
 } from "react-icons/fi";
 
 export default function AssistantReports() {
@@ -34,6 +35,7 @@ export default function AssistantReports() {
   const [attendanceNames, setAttendanceNames] = useState([]);
   const [attendanceFileName, setAttendanceFileName] = useState("");
   const [parsingAttendance, setParsingAttendance] = useState(false);
+  const [refreshingGrades, setRefreshingGrades] = useState(false);
   // const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
   // const [classroomId, setClassroomId] = useState(null);
 
@@ -191,6 +193,28 @@ export default function AssistantReports() {
       enabled: true,
       attendedNames: attendanceNames,
     };
+  };
+
+  const refreshGrades = async () => {
+    if (!assignmentId) return;
+    setRefreshingGrades(true);
+    try {
+      const res = await api.get(`/assignment-submissions/${assignmentId}/students`, {
+        params: { page: 1, limit: 9999 },
+      });
+      const freshList = res.data.students || [];
+      setAllStudents(freshList);
+      const freshByKey = studentsByKey(freshList, getStudentId);
+      setReportCart((prev) =>
+        syncReportCartGrades(prev, freshByKey, getStudentId)
+      );
+      await fetchPage(page);
+      toast.success(`Grades refreshed for ${freshList.length} student(s)`);
+    } catch {
+      toast.error("Failed to refresh grades");
+    } finally {
+      setRefreshingGrades(false);
+    }
   };
 
   /* BUILD PAYLOAD */
@@ -359,11 +383,6 @@ export default function AssistantReports() {
           </div>
 
           <div className="ma-topbar-right">
-            <button className="ma-send-btn" onClick={() => fetchPage(page)}>
-              <FiRefreshCw size={13} />
-              Refresh
-            </button>
-
             <button className="msv-cancel-btn" onClick={() => navigate(-1)}>
               Back
             </button>
@@ -463,7 +482,11 @@ export default function AssistantReports() {
                   <h2 className="ma-panel-title">{assignmentTitle}</h2>
                   <span className="ma-panel-count">{students.length} students</span>
                 </div>
-                <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <ReportGradesRefreshButton
+                    onClick={refreshGrades}
+                    loading={refreshingGrades}
+                  />
                   <button
                     className="ma-send-btn"
                     onClick={selectAll}

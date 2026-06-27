@@ -2205,7 +2205,7 @@ return (
                                         )}
 
                                         {inlineMarkResult?.tokenUsage && (
-                                          <TokenUsageStats result={inlineMarkResult} compact />
+                                          <TokenUsageStats result={inlineMarkResult} compact hideCost />
                                         )}
 
                                         {inlineMarkResult?.pdfCompression && (
@@ -2326,7 +2326,7 @@ return (
                           </div>
                           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
                             {guidanceModal.batch
-                              ? `Submits all eligible students in this assignment to Gemini batch API (~50% cheaper) — ${studentTotal} students in class`
+                              ? `Submits all eligible students in this assignment via Gemini batch API — ${studentTotal} students in class`
                               : guidanceModal.bulk
                               ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                               : "AI will mark against the uploaded mark scheme"}
@@ -2377,8 +2377,8 @@ return (
                           </select>
                           <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                             {guidanceModal.batch
-                              ? "Used for the Gemini batch job (~50% cheaper than sequential marking)."
-                              : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
+                              ? "Used for the Gemini batch job (marks all students in one run)."
+                              : "Used when you start marking with Gemini."}
                           </p>
                         </div>
 
@@ -2666,7 +2666,7 @@ return (
 
                         <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
-                        <TokenUsageStats result={resultModal.result} />
+                        <TokenUsageStats result={resultModal.result} hideCost />
           
                         {/* ── CRITERIA MODE: show criteria grade first ── */}
                         {isCriteria && resultModal.result.criteriaGrade && (

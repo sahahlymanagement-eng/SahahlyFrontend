@@ -13,7 +13,6 @@ import {
   FiFileText,
   FiCpu,
 } from "react-icons/fi";
-import { formatCostEgp, formatCostUsd } from "../../utils/markingCost";
 import { AssistantPageHeader, AssistantLoading } from "./AssistantUI";
 
 function formatNum(n) {
@@ -77,7 +76,7 @@ export default function AssistantPerformance() {
       <AssistantPageHeader
         eyebrow="Analytics"
         title="Performance"
-        subtitle="Your marking output, token usage, and deadline delivery"
+        subtitle="Your marking output and deadline delivery"
         actions={
           <button
             type="button"
@@ -157,9 +156,9 @@ export default function AssistantPerformance() {
                 <span>Input: {formatNum(tokenUsage.inputTokens)}</span>
                 <span>Output: {formatNum(tokenUsage.outputTokens)}</span>
                 <span>Total: {formatNum(tokenUsage.totalTokens)}</span>
-                <span>
-                  Cost: {formatCostUsd(tokenUsage.costUsd)} · {formatCostEgp(tokenUsage.costEgp)}
-                </span>
+                {tokenUsage.requestCount ? (
+                  <span>{formatNum(tokenUsage.requestCount)} marking requests</span>
+                ) : null}
               </div>
             </section>
           )}

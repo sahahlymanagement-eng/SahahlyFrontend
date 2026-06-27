@@ -186,6 +186,48 @@
 .ma-send-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.45); }
 .ma-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.ma-grades-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1));
+  color: #6ee7b7;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.22s ease;
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.12);
+  white-space: nowrap;
+}
+.ma-grades-refresh-btn:hover:not(:disabled) {
+  border-color: rgba(52, 211, 153, 0.55);
+  color: #a7f3d0;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.22);
+}
+.ma-grades-refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.ma-grades-refresh-btn--compact {
+  padding: 6px 10px;
+  gap: 0;
+  border-radius: 8px;
+}
+.ma-grades-refresh-spin {
+  animation: ma-spin 0.7s linear infinite;
+}
+.ma-grade-col-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* CONTENT AREA */
 .ma-content {
   flex: 1; overflow-y: auto;

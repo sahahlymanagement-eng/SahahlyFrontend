@@ -25,7 +25,12 @@ function tokenLines(tokenUsage) {
     ]);
 }
 
-export default function TokenUsageStats({ result, compact = false, title = "AI Token Usage" }) {
+export default function TokenUsageStats({
+  result,
+  compact = false,
+  title = "AI Token Usage",
+  hideCost = false,
+}) {
   const tokenUsage = result?.tokenUsage;
   if (!tokenUsage) return null;
 
@@ -47,7 +52,7 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
             </span>
           ))}
         </div>
-        {cost && (
+        {cost && !hideCost && (
           <div style={{ marginTop: 4, color: "rgba(255,255,255,0.5)" }}>
             <span style={{ color: "#a78bfa", fontWeight: 700 }}>Cost:</span>{" "}
             {formatCostUsd(cost.usd)} · {formatCostEgp(cost.egp)}
@@ -96,7 +101,7 @@ export default function TokenUsageStats({ result, compact = false, title = "AI T
         ))}
       </div>
 
-      {cost && (
+      {cost && !hideCost && (
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10, fontSize: 13 }}>
           <div>
             <span style={{ color: "#a78bfa", fontWeight: 700 }}>Cost (USD):</span> {formatCostUsd(cost.usd)}
