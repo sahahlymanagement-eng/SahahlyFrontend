@@ -1043,7 +1043,14 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   return reportPageCount;
 }
 
-export async function annotatePdf({ studentFile, questions, totalMarks, maxTotalMarks, summary }) {
+export async function annotatePdf({
+  studentFile,
+  questions,
+  totalMarks,
+  maxTotalMarks,
+  summary,
+  skipCompress = false,
+}) {
   const buf = await studentFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -1194,5 +1201,6 @@ export async function annotatePdf({ studentFile, questions, totalMarks, maxTotal
   }
 
   const rawBytes = await pdfDoc.save();
+  if (skipCompress) return rawBytes;
   return await compressAnnotatedPdf(rawBytes);
 }

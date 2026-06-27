@@ -248,6 +248,22 @@ export function getResultMaxTotal(result) {
   return Number(result.maxTotalMarks) || 0;
 }
 
+/** Max shown in results modal / PDF — Classroom sync wins over saved AI max. */
+export function resolveDisplayMaxTotal({
+  assignmentMaxPoints = null,
+  result = null,
+  editingMaxTotal = null,
+} = {}) {
+  if (editingMaxTotal !== null && editingMaxTotal !== undefined) {
+    return Math.max(1, Number(editingMaxTotal) || 1);
+  }
+  const fromAssignment = Number(assignmentMaxPoints);
+  if (Number.isFinite(fromAssignment) && fromAssignment > 0) {
+    return fromAssignment;
+  }
+  return Math.max(1, Number(getResultMaxTotal(result)) || 1);
+}
+
 export function questionsHavePendingEdits(currentQuestions, confirmedSnapshot) {
   if (!confirmedSnapshot) return false;
   const current = currentQuestions || [];

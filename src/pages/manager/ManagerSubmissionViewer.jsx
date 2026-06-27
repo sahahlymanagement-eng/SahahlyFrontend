@@ -32,6 +32,7 @@ import {
   isStudentSubmitted,
   normalizeGuidance,
   getResultMaxTotal,
+  resolveDisplayMaxTotal,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
@@ -48,6 +49,7 @@ import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
   computeGradePercent,
   parsePercentInput,
+  resolveAssignmentMaxPoints,
 } from "../../utils/reportGradePercent";
 import {
   MARKING_MAX_ATTEMPTS,
@@ -196,16 +198,24 @@ const resolvePdfSummary = (submissionId, result) =>
     studentSummary: summaryMap[submissionId],
   });
 
-  // Compute effective max total
-  const effectiveMaxTotal = editingMaxTotal !== null
-    ? Math.max(1, Number(editingMaxTotal) || 1)
-    : resultModal
-    ? Math.max(1, Number(getResultMaxTotal(resultModal.result)) || 1)
-    : 1;
+  const assignmentMaxPoints = useMemo(() => {
+    const assignment =
+      selectedAssignment?.maxPoints != null
+        ? selectedAssignment
+        : studentExtra?.assignment ?? selectedAssignment;
+    return resolveAssignmentMaxPoints(assignment, savedResults);
+  }, [selectedAssignment, studentExtra?.assignment, savedResults]);
+
+  const effectiveMaxTotal = resolveDisplayMaxTotal({
+    assignmentMaxPoints,
+    result: resultModal?.result,
+    editingMaxTotal,
+  });
 
   const {
     annotatedPreviewUrl,
     previewLoading,
+    previewError,
     confirmingEdits,
     hasPendingEdits,
     confirmEdits,
@@ -216,6 +226,8 @@ const resolvePdfSummary = (submissionId, result) =>
     resultModal,
     editingQuestions,
     effectiveMaxTotal,
+    assignmentMaxPoints,
+    editingMaxTotal,
     resolvePdfSummary,
   });
 
@@ -261,6 +273,7 @@ const refreshStudents = async () => {
     const syncedMaxPoints = maxPoints ?? selectedAssignment.maxPoints ?? null;
     if (syncedMaxPoints != null) {
       setSelectedAssignment((prev) => (prev ? { ...prev, maxPoints: syncedMaxPoints } : prev));
+      setEditingMaxTotal(null);
     }
 
     let savedMap = {};
@@ -284,11 +297,15 @@ const refreshStudents = async () => {
       return grade != null ? { ...s, assignedGrade: grade } : s;
     });
 
-    if (syncedMaxPoints != null) {
+    const effectiveMax =
+      syncedMaxPoints ??
+      resolveAssignmentMaxPoints(selectedAssignment, savedMap);
+
+    if (effectiveMax != null) {
       setPercentOverrides(
         buildPercentOverridesFromStudents(
           mergedGrades,
-          syncedMaxPoints,
+          effectiveMax,
           (s) => s.submissionId
         )
       );
@@ -524,9 +541,6 @@ useEffect(() => {
     setMsInfo(null);
     setBulkProgress({});
   };
-
-  const assignmentMaxPoints =
-    selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
 
   const setPercentOverride = (submissionId, percentage) => {
     if (!submissionId) return;
@@ -2144,7 +2158,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           assignmentId: selectedAssignment._id,
           submissionId: submissionId
         },
-        responseType: "blob"
+        responseType: "blob",
+        timeout: 120_000,
       });
       const studentFile = new File(
         [pdfRes.data],
@@ -2156,7 +2171,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         studentFile,
         questions: editingQuestions,
         totalMarks: editingQuestions.reduce(
-          (s, q) => s + q.marksAwarded,
+          (s, q) => s + (Number(q.marksAwarded) || 0),
           0
         ),
         maxTotalMarks: effectiveMaxTotal,
@@ -2171,7 +2186,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       URL.revokeObjectURL(url);
       toast.success("Downloaded");
     } catch (err) {
-      toast.error(err.message || "Failed");
+      toast.error(await getApiErrorMessage(err) || "Failed to download PDF");
     } finally { setDownloading(false); }
   };
 
@@ -3896,6 +3911,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       {previewLoading ? (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
                           Generating preview…
+                        </div>
+                      ) : previewError ? (
+                        <div style={{ color: "#f87171", fontSize: 13 }}>
+                          {previewError}
                         </div>
                       ) : annotatedPreviewUrl ? (
 

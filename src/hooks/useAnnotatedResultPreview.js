@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { annotatePdf } from "../utils/annotatePdf";
+import { getApiErrorMessage } from "../utils/markingFormData";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
-  getResultMaxTotal,
+  resolveDisplayMaxTotal,
   sumQuestionMarks,
 } from "../utils/markingFormData";
 
@@ -11,9 +12,29 @@ function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
 }
 
+const PREVIEW_TIMEOUT_MS = 120_000;
+
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+      ms
+    );
+    promise
+      .then((v) => {
+        clearTimeout(timer);
+        resolve(v);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 /**
  * Annotated PDF preview for the results modal.
- * Preview only regenerates when the modal opens or after "Confirm Edits".
+ * Regenerates when the modal opens, after Confirm Edits, or when Classroom max points sync.
  */
 export function useAnnotatedResultPreview({
   api,
@@ -21,14 +42,25 @@ export function useAnnotatedResultPreview({
   resultModal,
   editingQuestions,
   effectiveMaxTotal,
+  assignmentMaxPoints,
+  editingMaxTotal,
   resolvePdfSummary,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
   const [confirmingEdits, setConfirmingEdits] = useState(false);
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
+  const resolvePdfSummaryRef = useRef(resolvePdfSummary);
+  resolvePdfSummaryRef.current = resolvePdfSummary;
+  const resultModalRef = useRef(resultModal);
+  resultModalRef.current = resultModal;
+  const assignmentMaxPointsRef = useRef(assignmentMaxPoints);
+  assignmentMaxPointsRef.current = assignmentMaxPoints;
+  const editingMaxTotalRef = useRef(editingMaxTotal);
+  editingMaxTotalRef.current = editingMaxTotal;
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
@@ -38,33 +70,40 @@ export function useAnnotatedResultPreview({
     setAnnotatedPreviewUrl(null);
   }, []);
 
-  const buildSnapshotFromModal = useCallback(
-    (modal) => {
-      if (!modal) return null;
-      const submissionId = getSubmissionId(modal);
-      if (!submissionId) return null;
-      const questions = (modal.result?.questions || []).map((q) => ({ ...q }));
-      const maxTotal = getResultMaxTotal(modal.result);
-      const summary = resolvePdfSummary(submissionId, modal.result);
-      return { submissionId, questions, maxTotal, summary };
-    },
-    [resolvePdfSummary]
-  );
+  const buildSnapshotFromModal = useCallback((modal) => {
+    if (!modal) return null;
+    const submissionId = getSubmissionId(modal);
+    if (!submissionId) return null;
+    const questions = (modal.result?.questions || []).map((q) => ({ ...q }));
+    const maxTotal = resolveDisplayMaxTotal({
+      assignmentMaxPoints: assignmentMaxPointsRef.current,
+      result: modal.result,
+      editingMaxTotal: editingMaxTotalRef.current,
+    });
+    const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
+    return { submissionId, questions, maxTotal, summary };
+  }, []);
 
   const generatePreview = useCallback(
     async (snapshot) => {
       if (!assignmentId || !snapshot?.submissionId) return;
       const requestId = ++previewRequestRef.current;
       setPreviewLoading(true);
+      setPreviewError(null);
 
       try {
-        const pdfRes = await api.get("/submission-files/pdf", {
-          params: {
-            assignmentId,
-            submissionId: snapshot.submissionId,
-          },
-          responseType: "blob",
-        });
+        const pdfRes = await withTimeout(
+          api.get("/submission-files/pdf", {
+            params: {
+              assignmentId,
+              submissionId: snapshot.submissionId,
+            },
+            responseType: "blob",
+            timeout: 90_000,
+          }),
+          90_000,
+          "Loading student PDF"
+        );
         if (requestId !== previewRequestRef.current) return;
 
         const studentFile = new File(
@@ -73,13 +112,18 @@ export function useAnnotatedResultPreview({
           { type: "application/pdf" }
         );
         const totalMarks = sumQuestionMarks(snapshot.questions);
-        const pdfBytes = await annotatePdf({
-          studentFile,
-          questions: snapshot.questions,
-          totalMarks,
-          maxTotalMarks: snapshot.maxTotal,
-          summary: snapshot.summary,
-        });
+        const pdfBytes = await withTimeout(
+          annotatePdf({
+            studentFile,
+            questions: snapshot.questions,
+            totalMarks,
+            maxTotalMarks: snapshot.maxTotal,
+            summary: snapshot.summary,
+            skipCompress: true,
+          }),
+          PREVIEW_TIMEOUT_MS,
+          "Building annotated preview"
+        );
         if (requestId !== previewRequestRef.current) return;
 
         revokePreviewUrl();
@@ -90,7 +134,9 @@ export function useAnnotatedResultPreview({
         setAnnotatedPreviewUrl(url);
       } catch (err) {
         if (requestId === previewRequestRef.current) {
+          const message = await getApiErrorMessage(err);
           console.error("Failed to generate annotated preview", err);
+          setPreviewError(message || "Failed to generate preview");
         }
       } finally {
         if (requestId === previewRequestRef.current) {
@@ -101,27 +147,31 @@ export function useAnnotatedResultPreview({
     [api, assignmentId, revokePreviewUrl]
   );
 
+  const openSubmissionId =
+    resultModal?.submissionId || resultModal?.student?.submissionId || null;
+
   useEffect(() => {
-    if (!resultModal) {
+    if (!openSubmissionId || !assignmentId) {
       previewRequestRef.current += 1;
       revokePreviewUrl();
       setConfirmedSnapshot(null);
-      return undefined;
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
     }
 
-    const snapshot = buildSnapshotFromModal(resultModal);
-    if (!snapshot) return undefined;
+    if (!resultModalRef.current) return;
+
+    const snapshot = buildSnapshotFromModal(resultModalRef.current);
+    if (!snapshot) return;
 
     setConfirmedSnapshot(snapshot);
     generatePreview(snapshot);
-
-    return () => {
-      previewRequestRef.current += 1;
-    };
   }, [
-    resultModal?.submissionId,
-    resultModal?.student?.submissionId,
+    openSubmissionId,
     assignmentId,
+    assignmentMaxPoints,
+    editingMaxTotal,
     buildSnapshotFromModal,
     generatePreview,
     revokePreviewUrl,
@@ -131,9 +181,14 @@ export function useAnnotatedResultPreview({
 
   const hasPendingEdits = useMemo(() => {
     if (!confirmedSnapshot) return false;
-    if (Number(effectiveMaxTotal) !== Number(confirmedSnapshot.maxTotal)) return true;
+    if (
+      editingMaxTotal !== null &&
+      Number(effectiveMaxTotal) !== Number(confirmedSnapshot.maxTotal)
+    ) {
+      return true;
+    }
     return questionsHavePendingEdits(editingQuestions, confirmedSnapshot);
-  }, [confirmedSnapshot, editingQuestions, effectiveMaxTotal]);
+  }, [confirmedSnapshot, editingQuestions, effectiveMaxTotal, editingMaxTotal]);
 
   const confirmEdits = useCallback(
     async (onPersist) => {
@@ -150,7 +205,7 @@ export function useAnnotatedResultPreview({
           questions,
           maxTotal
         );
-        const summary = resolvePdfSummary(submissionId, finalResult);
+        const summary = resolvePdfSummaryRef.current(submissionId, finalResult);
         const snapshot = { submissionId, questions, maxTotal, summary };
 
         if (onPersist) {
@@ -164,14 +219,7 @@ export function useAnnotatedResultPreview({
         setConfirmingEdits(false);
       }
     },
-    [
-      resultModal,
-      assignmentId,
-      editingQuestions,
-      effectiveMaxTotal,
-      resolvePdfSummary,
-      generatePreview,
-    ]
+    [resultModal, assignmentId, editingQuestions, effectiveMaxTotal, generatePreview]
   );
 
   const resetToConfirmed = useCallback(() => {
@@ -185,6 +233,7 @@ export function useAnnotatedResultPreview({
   return {
     annotatedPreviewUrl,
     previewLoading,
+    previewError,
     confirmingEdits,
     hasPendingEdits,
     confirmedSnapshot,

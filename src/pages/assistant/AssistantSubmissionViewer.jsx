@@ -28,6 +28,7 @@ import {
 import {
   computeGradePercent,
   parsePercentInput,
+  resolveAssignmentMaxPoints,
 } from "../../utils/reportGradePercent";
 import {
   appendMarkingContext,
@@ -44,6 +45,7 @@ import {
   isStudentSubmitted,
   normalizeGuidance,
   getResultMaxTotal,
+  resolveDisplayMaxTotal,
   sumQuestionMarks,
   gradeScorePercent,
   resolveTotalMarksFromResult,
@@ -280,6 +282,11 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {} } = extra;
 
+  const assignmentMaxPoints = useMemo(
+    () => resolveAssignmentMaxPoints({ maxPoints: maxGrade }, savedResults),
+    [maxGrade, savedResults]
+  );
+
   const setPercentOverride = (submissionId, percentage) => {
     if (!submissionId) return;
     setPercentOverrides((prev) => ({
@@ -295,15 +302,16 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     });
 
 
-  const effectiveMaxTotal = editingMaxTotal !== null
-    ? Math.max(1, Number(editingMaxTotal) || 1)
-    : resultModal
-      ? Math.max(1, Number(getResultMaxTotal(resultModal.result)) || 1)
-      : 1;
+  const effectiveMaxTotal = resolveDisplayMaxTotal({
+    assignmentMaxPoints,
+    result: resultModal?.result,
+    editingMaxTotal,
+  });
 
   const {
     annotatedPreviewUrl,
     previewLoading,
+    previewError,
     confirmingEdits,
     hasPendingEdits,
     confirmEdits,
@@ -314,6 +322,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     resultModal,
     editingQuestions,
     effectiveMaxTotal,
+    assignmentMaxPoints,
+    editingMaxTotal,
     resolvePdfSummary,
   });
 
@@ -406,6 +416,9 @@ const refreshStudents = async () => {
       "assistant"
     );
     const syncedMaxPoints = maxPoints ?? maxGrade ?? null;
+    if (syncedMaxPoints != null) {
+      setEditingMaxTotal(null);
+    }
 
     let savedMap = {};
     try {
@@ -428,11 +441,15 @@ const refreshStudents = async () => {
       return grade != null ? { ...s, assignedGrade: grade } : s;
     });
 
-    if (syncedMaxPoints != null) {
+    const effectiveMax =
+      syncedMaxPoints ??
+      resolveAssignmentMaxPoints({ maxPoints: maxGrade }, savedMap);
+
+    if (effectiveMax != null) {
       setPercentOverrides(
         buildPercentOverridesFromStudents(
           mergedGrades,
-          syncedMaxPoints,
+          effectiveMax,
           (s) => s.submissionId
         )
       );
@@ -1397,7 +1414,8 @@ const deleteCorrection = async (student) => {
           assignmentId,
           submissionId: submissionId
         },
-        responseType: "blob"
+        responseType: "blob",
+        timeout: 120_000,
       });
       const studentFile = new File(
         [pdfRes.data],
@@ -1423,8 +1441,8 @@ const deleteCorrection = async (student) => {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Downloaded");      
-    } catch {
-      toast.error("Download failed");
+    } catch (err) {
+      toast.error(await getApiErrorMessage(err) || "Download failed");
     } finally {
       setDownloading(false);
     }
@@ -2141,17 +2159,17 @@ return (
 
                               {/* PERCENT */}
                               <td>
-                                {s.assignedGrade != null && maxGrade ? (
-                                  <div className="ma-percent-wrap">
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      max={100}
-                                      className="ma-percent-input"
-                                      value={
-                                        percentOverrides[s.submissionId] ??
-                                        computeGradePercent(s.assignedGrade, maxGrade)
-                                      }
+                                {s.assignedGrade != null && assignmentMaxPoints ? (
+                                      <div className="ma-percent-wrap">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          className="ma-percent-input"
+                                          value={
+                                            percentOverrides[s.submissionId] ??
+                                            computeGradePercent(s.assignedGrade, assignmentMaxPoints)
+                                          }
                                       onChange={(e) =>
                                         setPercentOverride(
                                           s.submissionId,
@@ -2942,6 +2960,10 @@ return (
                       {previewLoading ? (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
                           Generating preview…
+                        </div>
+                      ) : previewError ? (
+                        <div style={{ color: "#f87171", fontSize: 13 }}>
+                          {previewError}
                         </div>
                       ) : annotatedPreviewUrl ? (
                         // <iframe
