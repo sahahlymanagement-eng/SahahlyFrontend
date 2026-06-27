@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { annotatePdf } from "../utils/annotatePdf";
-import { getApiErrorMessage } from "../utils/markingFormData";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
   resolveDisplayMaxTotal,
   sumQuestionMarks,
+  getOutOfScopeNotes,
+  getApiErrorMessage,
 } from "../utils/markingFormData";
 
 function getSubmissionId(modal) {
@@ -81,7 +82,8 @@ export function useAnnotatedResultPreview({
       editingMaxTotal: editingMaxTotalRef.current,
     });
     const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
-    return { submissionId, questions, maxTotal, summary };
+    const outOfScopeNotes = (modal.result?.outOfScopeNotes || []).map((n) => ({ ...n }));
+    return { submissionId, questions, maxTotal, summary, outOfScopeNotes };
   }, []);
 
   const generatePreview = useCallback(
@@ -119,6 +121,7 @@ export function useAnnotatedResultPreview({
             totalMarks,
             maxTotalMarks: snapshot.maxTotal,
             summary: snapshot.summary,
+            outOfScopeNotes: snapshot.outOfScopeNotes,
             skipCompress: true,
           }),
           PREVIEW_TIMEOUT_MS,
@@ -206,7 +209,7 @@ export function useAnnotatedResultPreview({
           maxTotal
         );
         const summary = resolvePdfSummaryRef.current(submissionId, finalResult);
-        const snapshot = { submissionId, questions, maxTotal, summary };
+        const snapshot = { submissionId, questions, maxTotal, summary, outOfScopeNotes: getOutOfScopeNotes(finalResult) };
 
         if (onPersist) {
           await onPersist({ finalResult, submissionId, questions, maxTotal });

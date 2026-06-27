@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
+import { promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 
 import { usePagination } from "../../hooks/usePagination";
@@ -31,6 +32,10 @@ import {
   resolveAssignmentMaxPoints,
 } from "../../utils/reportGradePercent";
 import {
+  exportAssignmentGradesExcel,
+  sanitizeExcelFilenameBase,
+} from "../../utils/exportGradesExcel";
+import {
   appendMarkingContext,
   assertPdfBlob,
   buildFinalMarkingResult,
@@ -50,6 +55,7 @@ import {
   gradeScorePercent,
   resolveTotalMarksFromResult,
   resolveSavedMarkingGrade,
+  getOutOfScopeNotes,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
@@ -122,6 +128,7 @@ export default function AssignmentSubmissionViewer() {
   const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
   const [refreshing, setRefreshing] = useState(false);
+  const [exportingGrades, setExportingGrades] = useState(false);
   const [studentSearch, setStudentSearch] = useState("");
   const [deletingCorrection, setDeletingCorrection] = useState({});
   const [percentOverrides, setPercentOverrides] = useState({});
@@ -463,6 +470,59 @@ const refreshStudents = async () => {
     toast.error("Failed to refresh from Google Classroom");
   } finally {
     setRefreshing(false);
+  }
+};
+
+const handleExportGradesExcel = async () => {
+  if (!assignmentId) return;
+
+  const raw = await promptToast(
+    "Enter the grade scale for this export (e.g. 20 for grades out of 20):",
+    {
+      title: "Export grades to Excel",
+      placeholder: "20",
+      defaultValue: "20",
+      confirmLabel: "Export",
+    }
+  );
+  if (raw == null) return;
+
+  const targetMax = Number(String(raw).trim());
+  if (!Number.isFinite(targetMax) || targetMax <= 0) {
+    toast.warn("Please enter a valid number greater than 0");
+    return;
+  }
+
+  setExportingGrades(true);
+  try {
+    const allStudents = await fetchAllPaginated(
+      api,
+      `/assignment-submissions/${assignmentId}/students`,
+      {},
+      "students"
+    );
+
+    const mergedStudents = allStudents.map((s) => {
+      const sr = savedResults[s.submissionId];
+      if (!sr) return s;
+      const grade = resolveSavedMarkingGrade(sr);
+      return grade != null ? { ...s, assignedGrade: grade } : s;
+    });
+
+    const filename = `${sanitizeExcelFilenameBase(assignmentTitle)}_grades_${targetMax}.xlsx`;
+    exportAssignmentGradesExcel({
+      students: mergedStudents,
+      targetMax,
+      assignmentMaxPoints,
+      savedResults,
+      percentOverrides,
+      filename,
+    });
+    toast.success("Grades exported to Excel");
+  } catch (err) {
+    toast.error(err?.message || "Failed to export grades");
+  } finally {
+    setExportingGrades(false);
   }
 };
 
@@ -1432,6 +1492,7 @@ const deleteCorrection = async (student) => {
         ),
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
+        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes]));
@@ -1525,6 +1586,7 @@ const deleteCorrection = async (student) => {
         ),
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
+        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
       });
 
       const fd = new FormData();
@@ -1641,6 +1703,7 @@ const deleteCorrection = async (student) => {
             totalMarks: total,
             maxTotalMarks: max,
             summary: resolvePdfSummary(student.submissionId, bulk.result),
+            outOfScopeNotes: getOutOfScopeNotes(bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -1699,6 +1762,7 @@ const deleteCorrection = async (student) => {
             totalMarks: total,
             maxTotalMarks: max,
             summary: resolvePdfSummary(submissionId, batch.result),
+            outOfScopeNotes: getOutOfScopeNotes(batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -1836,6 +1900,15 @@ return (
             </div>
 
               <div className="header-actions">
+                <button
+                  type="button"
+                  onClick={handleExportGradesExcel}
+                  disabled={exportingGrades}
+                  className="ma-send-btn"
+                >
+                  <FiDownload /> {exportingGrades ? "Exporting…" : "Export Grades"}
+                </button>
+
                 <button onClick={() => fetchPage(page)} className="ma-send-btn">
                   <FiRefreshCw /> Refresh
                 </button>

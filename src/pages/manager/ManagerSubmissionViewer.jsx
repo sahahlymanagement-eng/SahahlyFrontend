@@ -33,6 +33,7 @@ import {
   normalizeGuidance,
   getResultMaxTotal,
   resolveDisplayMaxTotal,
+  getOutOfScopeNotes,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
@@ -51,6 +52,10 @@ import {
   parsePercentInput,
   resolveAssignmentMaxPoints,
 } from "../../utils/reportGradePercent";
+import {
+  exportAssignmentGradesExcel,
+  sanitizeExcelFilenameBase,
+} from "../../utils/exportGradesExcel";
 import {
   MARKING_MAX_ATTEMPTS,
   MARKING_MAX_RETRIES_MESSAGE,
@@ -176,6 +181,7 @@ export default function ManagerSubmissionViewer() {
   const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
   const [savedResults, setSavedResults] = useState({});
   const [refreshing, setRefreshing] = useState(false);
+  const [exportingGrades, setExportingGrades] = useState(false);
   const [deletingCorrection, setDeletingCorrection] = useState({});
   const [percentOverrides, setPercentOverrides] = useState({});
 
@@ -319,6 +325,59 @@ const refreshStudents = async () => {
     toast.error("Failed to refresh from Google Classroom");
   } finally {
     setRefreshing(false);
+  }
+};
+
+const handleExportGradesExcel = async () => {
+  if (!selectedAssignment?._id) return;
+
+  const raw = await promptToast(
+    "Enter the grade scale for this export (e.g. 20 for grades out of 20):",
+    {
+      title: "Export grades to Excel",
+      placeholder: "20",
+      defaultValue: "20",
+      confirmLabel: "Export",
+    }
+  );
+  if (raw == null) return;
+
+  const targetMax = Number(String(raw).trim());
+  if (!Number.isFinite(targetMax) || targetMax <= 0) {
+    toast.warn("Please enter a valid number greater than 0");
+    return;
+  }
+
+  setExportingGrades(true);
+  try {
+    const allStudents = await fetchAllPaginated(
+      api,
+      `/manager-assignments/${selectedAssignment._id}/full`,
+      {},
+      "students"
+    );
+
+    const mergedStudents = allStudents.map((s) => {
+      const sr = savedResults[s.submissionId];
+      if (!sr) return s;
+      const grade = resolveSavedMarkingGrade(sr);
+      return grade != null ? { ...s, assignedGrade: grade } : s;
+    });
+
+    const filename = `${sanitizeExcelFilenameBase(selectedAssignment.title)}_grades_${targetMax}.xlsx`;
+    exportAssignmentGradesExcel({
+      students: mergedStudents,
+      targetMax,
+      assignmentMaxPoints,
+      savedResults,
+      percentOverrides,
+      filename,
+    });
+    toast.success("Grades exported to Excel");
+  } catch (err) {
+    toast.error(err?.message || "Failed to export grades");
+  } finally {
+    setExportingGrades(false);
   }
 };
 
@@ -2176,6 +2235,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         ),
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
+        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
@@ -2256,6 +2316,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         totalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
+        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
       });
       const fd = new FormData();
       fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
@@ -2477,6 +2538,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             totalMarks: total,
             maxTotalMarks: max,
             summary: resolvePdfSummary(student.submissionId, bulk.result),
+            outOfScopeNotes: getOutOfScopeNotes(bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2538,6 +2600,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             totalMarks: total,
             maxTotalMarks: max,
             summary: resolvePdfSummary(submissionId, batch.result),
+            outOfScopeNotes: getOutOfScopeNotes(batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2605,6 +2668,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             </span>
           </div>
           <div className="ma-topbar-right">
+            {selectedAssignment && (
+              <button
+                type="button"
+                onClick={handleExportGradesExcel}
+                disabled={exportingGrades}
+                className="ma-send-btn"
+                style={{ marginRight: 10 }}
+              >
+                <FiDownload size={13} /> {exportingGrades ? "Exporting…" : "Export Grades"}
+              </button>
+            )}
             <button type="button" onClick={handleBack} className="msv-cancel-btn">
               Back
             </button>

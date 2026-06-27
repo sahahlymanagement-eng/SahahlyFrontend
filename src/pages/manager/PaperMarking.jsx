@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
-import { appendMarkingContext, currentUserId } from "../../utils/markingFormData";
+import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import { parseGeminiModelsResponse } from "../../utils/markingCost";
@@ -185,7 +185,8 @@ export default function PaperMarking() {
         questions: result.questions,
         totalMarks: result.totalMarks,
         maxTotalMarks: result.maxTotalMarks,
-        summary: result.summary || ""
+        summary: result.summary || "",
+        outOfScopeNotes: getOutOfScopeNotes(result),
       });
 
       const url = URL.createObjectURL(

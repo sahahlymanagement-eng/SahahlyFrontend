@@ -224,6 +224,10 @@ export function gradeScorePercent(total, max) {
   return m > 0 ? Math.round((t / m) * 100) : 0;
 }
 
+export function getOutOfScopeNotes(result) {
+  return Array.isArray(result?.outOfScopeNotes) ? result.outOfScopeNotes : [];
+}
+
 export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
   const totalMarks = sumQuestionMarks(editingQuestions);

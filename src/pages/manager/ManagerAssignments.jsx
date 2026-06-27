@@ -448,7 +448,7 @@ export default function ManagerAssignments() {
         }
       );
 
-      toast.success("Teacher collective report sent");
+      toast.success("Teacher collective PDF report sent");
     } catch {
       toast.error("Failed to send teacher report");
     } finally {
@@ -486,7 +486,7 @@ export default function ManagerAssignments() {
         }
       );
 
-      toast.success("Custom report sent");
+      toast.success("Custom PDF report sent");
     } catch {
       toast.error("Failed to send custom report");
     } finally {
@@ -545,7 +545,7 @@ export default function ManagerAssignments() {
                 disabled={sending}
               >
                 <FiSend size={13} />
-                {sending ? "Sending…" : "Send Teacher Collective Report"}
+                {sending ? "Sending…" : "Send Teacher Collective PDF"}
               </button>
               <div style={{ minWidth: "260px" }}>
                 <PhoneInput
@@ -571,7 +571,7 @@ export default function ManagerAssignments() {
                 disabled={sending}
               >
                 <FiSend size={13} />
-                {sending ? "Sending…" : "Send Custom Collective Report"}
+                {sending ? "Sending…" : "Send Custom Collective PDF"}
               </button>
             </div>
           )}

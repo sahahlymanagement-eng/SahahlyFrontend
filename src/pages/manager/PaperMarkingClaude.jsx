@@ -4,7 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
-import { appendMarkingContext, currentUserId } from "../../utils/markingFormData";
+import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
 
 export default function PaperMarkingClaude() {
   const navigate = useNavigate();
@@ -95,7 +95,8 @@ export default function PaperMarkingClaude() {
         questions:     result.questions,
         totalMarks:    result.totalMarks,
         maxTotalMarks: result.maxTotalMarks,
-        summary:       result.summary || ""
+        summary:       result.summary || "",
+        outOfScopeNotes: getOutOfScopeNotes(result),
       });
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       const a   = document.createElement("a");

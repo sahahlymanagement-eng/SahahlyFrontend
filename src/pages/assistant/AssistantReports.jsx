@@ -334,17 +334,19 @@ export default function AssistantReports() {
       return;
     }
 
+    if (!classroomId) {
+      toast.warn("Classroom not loaded yet");
+      return;
+    }
+
     setSendingCollective(true);
     try {
-      await api.post(
-        `/assignment-submissions/${assignmentId}/students/reports`,
-        {
-          type: "teacher",
-          reports
-        }
-      );
+      await api.post("/manager-assignments/send-teacher-collective-report", {
+        reports,
+        classroomId,
+      });
 
-      toast.success("Teacher collective report sent");
+      toast.success("Teacher collective PDF report sent");
       setReportCart({});
     } catch {
       toast.error("Failed to send teacher report");
@@ -366,19 +368,21 @@ export default function AssistantReports() {
       return;
     }
 
+    if (!classroomId) {
+      toast.warn("Classroom not loaded yet");
+      return;
+    }
+
     setSendingCollective(true);
 
     try {
-      await api.post(
-        `/assignment-submissions/${assignmentId}/students/reports`,
-        {
-          type: "custom",
-          phone: customPhone,
-          reports
-        }
-      );
+      await api.post("/manager-assignments/send-custom-collective-report", {
+        reports,
+        classroomId,
+        phone: customPhone,
+      });
 
-      toast.success("Custom report sent");
+      toast.success("Custom PDF report sent");
     } catch {
       toast.error("Failed to send custom report");
     } finally {
@@ -441,7 +445,7 @@ export default function AssistantReports() {
                   disabled={isSending}
                 >
                   <FiSend size={13} />
-                  {sendingCollective ? "Sending…" : "Send Teacher Collective Report"}
+                  {sendingCollective ? "Sending…" : "Send Teacher Collective PDF"}
                 </button>
 
                 <div style={{ minWidth: "260px" }}>
@@ -469,7 +473,7 @@ export default function AssistantReports() {
                   disabled={isSending}
                 >
                   <FiSend size={13} />
-                  {sendingCollective ? "Sending…" : "Send Custom Collective Report"}
+                  {sendingCollective ? "Sending…" : "Send Custom Collective PDF"}
                 </button>
               </>
             )}

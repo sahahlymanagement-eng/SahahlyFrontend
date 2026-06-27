@@ -1043,12 +1043,41 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   return reportPageCount;
 }
 
+function drawOutOfScopeNote(page, note, paperW, bold) {
+  const { height } = page.getSize();
+  const yPct = Math.min(92, Math.max(5, note.yPercent ?? 30));
+  const anchorY = height - (height * yPct) / 100;
+  const label = san(note.label || "not included in your assignment");
+  const boxH = 24;
+  const boxW = Math.min(paperW - 16, Math.max(160, bold.widthOfTextAtSize(label, 8) + 16));
+  const boxX = 8;
+  const boxY = Math.max(30, anchorY - boxH / 2);
+
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxW,
+    height: boxH,
+    color: rgb(0.99, 0.95, 0.87),
+    borderColor: AMBER,
+    borderWidth: 1.2,
+  });
+  page.drawText(label, {
+    x: boxX + 8,
+    y: boxY + 8,
+    size: 8,
+    font: bold,
+    color: AMBER,
+  });
+}
+
 export async function annotatePdf({
   studentFile,
   questions,
   totalMarks,
   maxTotalMarks,
   summary,
+  outOfScopeNotes = [],
   skipCompress = false,
 }) {
   const buf = await studentFile.arrayBuffer();
@@ -1062,6 +1091,12 @@ export async function annotatePdf({
   for (const q of questions) {
     const p = Math.max(1, Math.min(q.pageNumber || 1, studentPageCount));
     (byPage[p] = byPage[p] || []).push(q);
+  }
+
+  const scopeByPage = {};
+  for (const note of outOfScopeNotes || []) {
+    const p = Math.max(1, Math.min(note.pageNumber || 1, studentPageCount));
+    (scopeByPage[p] = scopeByPage[p] || []).push(note);
   }
 
   const reportPageCount = prependGradingReport(pdfDoc, {
@@ -1173,6 +1208,10 @@ export async function annotatePdf({
     }
 
     drawExaminerColumn(page, layout, qs, bold, reg);
+
+    for (const note of scopeByPage[pageNum] || []) {
+      drawOutOfScopeNote(page, note, paperW, bold);
+    }
 
     const pageAwarded = qs.reduce((s, q) => s + Number(q.marksAwarded || 0), 0);
     const pageMax = qs.reduce((s, q) => s + Number(q.maxMarks || 0), 0);
