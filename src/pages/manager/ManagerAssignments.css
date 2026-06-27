@@ -186,6 +186,44 @@
 .ma-send-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.45); }
 .ma-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.ma-percent-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.ma-percent-input {
+  width: 58px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+  color: #6ee7b7;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  text-align: center;
+  outline: none;
+}
+.ma-percent-input:focus {
+  border-color: rgba(52, 211, 153, 0.6);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+.ma-percent-input::-webkit-outer-spin-button,
+.ma-percent-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.ma-percent-suffix {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(110, 231, 183, 0.75);
+}
+.ma-percent-readonly {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
 .ma-grades-refresh-btn {
   display: inline-flex;
   align-items: center;

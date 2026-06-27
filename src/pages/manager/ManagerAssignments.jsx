@@ -17,6 +17,7 @@ import {
 import ManagerSidebar from "../../components/ManagerSidebar";
 import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
 import { syncReportCartGrades, studentsByKey } from "../../utils/syncReportCartGrades";
+import { computeGradePercent, parsePercentInput, displayPercent } from "../../utils/reportGradePercent";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 
@@ -204,17 +205,22 @@ export default function ManagerAssignments() {
 
   };
 
-  const buildItem = (student) => ({
-    assignmentTitle: selectedAssignment.title,
-    assignmentId: selectedAssignment._id,
-    submissionId: student.submissionId || null,
-    state: student.state,
-    submittedAt: student.submittedAt,
-    isLate: student.isLate,
-    isOnTime: student.isOnTime,
-    assignedGrade: student.assignedGrade,
-    comment: student.summary || summaryMap[student.submissionId] || ""
-  });
+  const buildItem = (student) => {
+    const maxPoints =
+      selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
+    return {
+      assignmentTitle: selectedAssignment.title,
+      assignmentId: selectedAssignment._id,
+      submissionId: student.submissionId || null,
+      state: student.state,
+      submittedAt: student.submittedAt,
+      isLate: student.isLate,
+      isOnTime: student.isOnTime,
+      assignedGrade: student.assignedGrade,
+      percentage: computeGradePercent(student.assignedGrade, maxPoints) || null,
+      comment: student.summary || summaryMap[student.submissionId] || "",
+    };
+  };
 
   const isStudentSelected = (studentId) =>
     !!(reportCart[String(studentId)]?.items[selectedAssignment?._id]);
@@ -231,6 +237,22 @@ export default function ManagerAssignments() {
       }
     }));
   };
+
+  const setPercentage = (studentId, assignmentId, percentage) => {
+    setReportCart((prev) => ({
+      ...prev,
+      [studentId]: {
+        ...prev[studentId],
+        items: {
+          ...prev[studentId].items,
+          [assignmentId]: { ...prev[studentId].items[assignmentId], percentage },
+        },
+      },
+    }));
+  };
+
+  const assignmentMaxPoints =
+    selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
 
   const handleAttendanceToggle = (checked) => {
     setIncludeAttendance(checked);
@@ -287,9 +309,25 @@ export default function ManagerAssignments() {
         setSummaryMap((prev) => ({ ...prev, ...res.data.summaryMap }));
       }
       const freshByKey = studentsByKey(freshList, (s) => s._id);
-      setReportCart((prev) =>
-        syncReportCartGrades(prev, freshByKey, (m) => m._id)
-      );
+      const maxPoints =
+        res.data.assignment?.maxPoints ?? selectedAssignment?.maxPoints ?? null;
+      setReportCart((prev) => {
+        const synced = syncReportCartGrades(prev, freshByKey, (m) => m._id);
+        if (!maxPoints) return synced;
+        const next = {};
+        for (const [key, entry] of Object.entries(synced)) {
+          const items = {};
+          for (const [asgId, item] of Object.entries(entry.items || {})) {
+            items[asgId] = {
+              ...item,
+              percentage:
+                computeGradePercent(item.assignedGrade, maxPoints) || item.percentage,
+            };
+          }
+          next[key] = { ...entry, items };
+        }
+        return next;
+      });
       await fetchStudentPage(studentPage);
       toast.success(`Grades refreshed for ${freshList.length} student(s)`);
     } catch {
@@ -749,6 +787,7 @@ export default function ManagerAssignments() {
                             <th>Status</th>
                             <th>Submitted At</th>
                             <th>Grade</th>
+                            <th>%</th>
                             <th>Comment</th>
                           </tr>
                         </thead>
@@ -788,6 +827,45 @@ export default function ManagerAssignments() {
                                   {s.assignedGrade != null
                                     ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                     : <span className="ma-cell-empty">—</span>}
+                                </td>
+                                <td onClick={(e) => e.stopPropagation()}>
+                                  {s.assignedGrade != null && assignmentMaxPoints ? (
+                                    selected ? (
+                                      <div className="ma-percent-wrap">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          className="ma-percent-input"
+                                          value={
+                                            reportCart[stuId]?.items[asgId]?.percentage ??
+                                            computeGradePercent(s.assignedGrade, assignmentMaxPoints)
+                                          }
+                                          onChange={(e) =>
+                                            setPercentage(
+                                              stuId,
+                                              asgId,
+                                              parsePercentInput(e.target.value)
+                                            )
+                                          }
+                                        />
+                                        <span className="ma-percent-suffix">%</span>
+                                      </div>
+                                    ) : (
+                                      <span className="ma-percent-readonly">
+                                        {displayPercent(
+                                          s.assignedGrade,
+                                          assignmentMaxPoints,
+                                          null
+                                        ) || "—"}
+                                        {displayPercent(s.assignedGrade, assignmentMaxPoints, null)
+                                          ? "%"
+                                          : ""}
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="ma-cell-empty">—</span>
+                                  )}
                                 </td>
                                 <td onClick={e => e.stopPropagation()}>
                                   {selected ? (

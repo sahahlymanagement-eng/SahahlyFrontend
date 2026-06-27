@@ -11,6 +11,7 @@ import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
 import { syncReportCartGrades, studentsByKey } from "../../utils/syncReportCartGrades";
+import { computeGradePercent, parsePercentInput, displayPercent } from "../../utils/reportGradePercent";
 import { parseAttendanceNamesFromFile } from "../../utils/attendanceExcel";
 
 import {
@@ -51,6 +52,7 @@ export default function AssistantReports() {
   const summaryMap = extra.summaryMap || {};
   const assignmentTitle = extra.assignmentTitle || "Assignment";
   const classroomId = extra.classroomId || null;
+  const assignmentMaxPoints = extra.maxGrade ?? null;
 
   const [allStudents, setAllStudents] = useState([]);
 
@@ -72,7 +74,8 @@ export default function AssistantReports() {
     isLate: student.isLate,
     isOnTime: student.isOnTime,
     assignedGrade: student.assignedGrade,
-    comment: student.summary || summaryMap[student.submissionId] || ""
+    percentage: computeGradePercent(student.assignedGrade, assignmentMaxPoints) || null,
+    comment: student.summary || summaryMap[student.submissionId] || "",
   });
 
   const toggleStudent = (student) => {
@@ -144,10 +147,31 @@ export default function AssistantReports() {
             ...entry.items,
             [assignmentId]: {
               ...entry.items?.[assignmentId],
-              comment
-            }
-          }
-        }
+              comment,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const setPercentage = (studentId, percentage) => {
+    setReportCart((prev) => {
+      const entry = prev[studentId];
+      if (!entry) return prev;
+
+      return {
+        ...prev,
+        [studentId]: {
+          ...entry,
+          items: {
+            ...entry.items,
+            [assignmentId]: {
+              ...entry.items?.[assignmentId],
+              percentage,
+            },
+          },
+        },
       };
     });
   };
@@ -205,9 +229,24 @@ export default function AssistantReports() {
       const freshList = res.data.students || [];
       setAllStudents(freshList);
       const freshByKey = studentsByKey(freshList, getStudentId);
-      setReportCart((prev) =>
-        syncReportCartGrades(prev, freshByKey, getStudentId)
-      );
+      setReportCart((prev) => {
+        const synced = syncReportCartGrades(prev, freshByKey, getStudentId);
+        if (!assignmentMaxPoints) return synced;
+        const next = {};
+        for (const [key, entry] of Object.entries(synced)) {
+          const items = {};
+          for (const [asgId, item] of Object.entries(entry.items || {})) {
+            items[asgId] = {
+              ...item,
+              percentage:
+                computeGradePercent(item.assignedGrade, assignmentMaxPoints) ||
+                item.percentage,
+            };
+          }
+          next[key] = { ...entry, items };
+        }
+        return next;
+      });
       await fetchPage(page);
       toast.success(`Grades refreshed for ${freshList.length} student(s)`);
     } catch {
@@ -528,6 +567,7 @@ export default function AssistantReports() {
                           <th>Status</th>
                           <th>Submitted At</th>
                           <th>Grade</th>
+                          <th>%</th>
                           <th>Comment</th>
                         </tr>
                       </thead>
@@ -570,6 +610,37 @@ export default function AssistantReports() {
                                 {s.assignedGrade != null
                                   ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                   : <span className="ma-cell-empty">—</span>}
+                              </td>
+                              <td onClick={(e) => e.stopPropagation()}>
+                                {s.assignedGrade != null && assignmentMaxPoints ? (
+                                  selected ? (
+                                    <div className="ma-percent-wrap">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        className="ma-percent-input"
+                                        value={
+                                          reportCart[stuId]?.items[asgId]?.percentage ??
+                                          computeGradePercent(s.assignedGrade, assignmentMaxPoints)
+                                        }
+                                        onChange={(e) =>
+                                          setPercentage(stuId, parsePercentInput(e.target.value))
+                                        }
+                                      />
+                                      <span className="ma-percent-suffix">%</span>
+                                    </div>
+                                  ) : (
+                                    <span className="ma-percent-readonly">
+                                      {displayPercent(s.assignedGrade, assignmentMaxPoints, null) || "—"}
+                                      {displayPercent(s.assignedGrade, assignmentMaxPoints, null)
+                                        ? "%"
+                                        : ""}
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="ma-cell-empty">—</span>
+                                )}
                               </td>
                               <td onClick={(e) => e.stopPropagation()}>
                                 {selected ? (
