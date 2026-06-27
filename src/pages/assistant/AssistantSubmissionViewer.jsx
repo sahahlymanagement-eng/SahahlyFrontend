@@ -260,7 +260,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     `/assignment-submissions/${assignmentId}/students`,
     studentParams,
     10,
-    "students"  // dataKey matches what backend returns
+    "students",
+    !!assignmentId
   );
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {} } = extra;
