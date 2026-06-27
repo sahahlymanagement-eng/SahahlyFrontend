@@ -10,7 +10,10 @@ import "react-international-phone/style.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
-import { syncReportCartGrades, studentsByKey } from "../../utils/syncReportCartGrades";
+import {
+  refreshAssignmentGrades,
+  applyReportCartGradeSync,
+} from "../../utils/refreshAssignmentFromClassroom";
 import { computeGradePercent, parsePercentInput, displayPercent } from "../../utils/reportGradePercent";
 import { parseAttendanceNamesFromFile } from "../../utils/attendanceExcel";
 
@@ -223,32 +226,15 @@ export default function AssistantReports() {
     if (!assignmentId) return;
     setRefreshingGrades(true);
     try {
-      const res = await api.get(`/assignment-submissions/${assignmentId}/students`, {
-        params: { page: 1, limit: 9999 },
-      });
-      const freshList = res.data.students || [];
+      const { students: freshList, maxPoints } =
+        await refreshAssignmentGrades(api, assignmentId, "assistant");
+
       setAllStudents(freshList);
-      const freshByKey = studentsByKey(freshList, getStudentId);
-      setReportCart((prev) => {
-        const synced = syncReportCartGrades(prev, freshByKey, getStudentId);
-        if (!assignmentMaxPoints) return synced;
-        const next = {};
-        for (const [key, entry] of Object.entries(synced)) {
-          const items = {};
-          for (const [asgId, item] of Object.entries(entry.items || {})) {
-            items[asgId] = {
-              ...item,
-              percentage:
-                computeGradePercent(item.assignedGrade, assignmentMaxPoints) ||
-                item.percentage,
-            };
-          }
-          next[key] = { ...entry, items };
-        }
-        return next;
-      });
+      setReportCart((prev) =>
+        applyReportCartGradeSync(prev, freshList, maxPoints, getStudentId)
+      );
       await fetchPage(page);
-      toast.success(`Grades refreshed for ${freshList.length} student(s)`);
+      toast.success(`Synced grades, max points, and percentages for ${freshList.length} student(s)`);
     } catch {
       toast.error("Failed to refresh grades");
     } finally {
@@ -270,6 +256,7 @@ export default function AssistantReports() {
         const liveStudent =
           studentByKey[String(getStudentId(entry.studentMeta))] || entry.studentMeta;
         const submissionId = item.submissionId || liveStudent?.submissionId;
+        const assignedGrade = liveStudent?.assignedGrade ?? item.assignedGrade;
         const savedSummary =
           liveStudent?.summary ||
           (submissionId ? activeSummaryMap[submissionId] : "");
@@ -277,9 +264,17 @@ export default function AssistantReports() {
           ...item,
           assignmentId: item.assignmentId || assignmentId,
           submissionId,
-          comment: (item.comment || savedSummary || "").trim()
+          state: liveStudent?.state ?? item.state,
+          submittedAt: liveStudent?.submittedAt ?? item.submittedAt,
+          isLate: liveStudent?.isLate ?? item.isLate,
+          isOnTime: liveStudent?.isOnTime ?? item.isOnTime,
+          assignedGrade,
+          percentage:
+            item.percentage ??
+            (computeGradePercent(assignedGrade, assignmentMaxPoints) || null),
+          comment: (item.comment || savedSummary || "").trim(),
         };
-      })
+      }),
     }));
   };
 

@@ -12,13 +12,13 @@ export default function ReportGradesRefreshButton({
       className={`ma-grades-refresh-btn${compact ? " ma-grades-refresh-btn--compact" : ""}`}
       onClick={onClick}
       disabled={disabled || loading}
-      title="Pull latest grades from Google Classroom"
+      title="Sync max points, grades, percentages, and resubmissions from Google Classroom"
     >
       <FiRefreshCw
         size={compact ? 13 : 14}
         className={loading ? "ma-grades-refresh-spin" : ""}
       />
-      {!compact && (loading ? "Refreshing grades…" : "Refresh grades")}
+      {!compact && (loading ? "Refreshing…" : "Refresh grades")}
     </button>
   );
 }

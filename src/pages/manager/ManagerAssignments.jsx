@@ -16,7 +16,10 @@ import {
 } from "../../utils/attendanceExcel";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
-import { syncReportCartGrades, studentsByKey } from "../../utils/syncReportCartGrades";
+import {
+  refreshAssignmentGrades,
+  applyReportCartGradeSync,
+} from "../../utils/refreshAssignmentFromClassroom";
 import { computeGradePercent, parsePercentInput, displayPercent } from "../../utils/reportGradePercent";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
@@ -300,36 +303,20 @@ export default function ManagerAssignments() {
     if (!selectedAssignment?._id) return;
     setRefreshingGrades(true);
     try {
-      const res = await api.get(
-        `/manager-assignments/${selectedAssignment._id}/full`,
-        { params: { page: 1, limit: 9999 } }
-      );
-      const freshList = res.data.students || [];
-      if (res.data.summaryMap) {
-        setSummaryMap((prev) => ({ ...prev, ...res.data.summaryMap }));
+      const { students: freshList, summaryMap: freshSummary, maxPoints } =
+        await refreshAssignmentGrades(api, selectedAssignment._id, "manager");
+
+      if (freshSummary && Object.keys(freshSummary).length) {
+        setSummaryMap((prev) => ({ ...prev, ...freshSummary }));
       }
-      const freshByKey = studentsByKey(freshList, (s) => s._id);
-      const maxPoints =
-        res.data.assignment?.maxPoints ?? selectedAssignment?.maxPoints ?? null;
-      setReportCart((prev) => {
-        const synced = syncReportCartGrades(prev, freshByKey, (m) => m._id);
-        if (!maxPoints) return synced;
-        const next = {};
-        for (const [key, entry] of Object.entries(synced)) {
-          const items = {};
-          for (const [asgId, item] of Object.entries(entry.items || {})) {
-            items[asgId] = {
-              ...item,
-              percentage:
-                computeGradePercent(item.assignedGrade, maxPoints) || item.percentage,
-            };
-          }
-          next[key] = { ...entry, items };
-        }
-        return next;
-      });
+      if (maxPoints != null) {
+        setSelectedAssignment((prev) => (prev ? { ...prev, maxPoints } : prev));
+      }
+      setReportCart((prev) =>
+        applyReportCartGradeSync(prev, freshList, maxPoints, (m) => m._id)
+      );
       await fetchStudentPage(studentPage);
-      toast.success(`Grades refreshed for ${freshList.length} student(s)`);
+      toast.success(`Synced grades, max points, and percentages for ${freshList.length} student(s)`);
     } catch {
       toast.error("Failed to refresh grades");
     } finally {
@@ -364,6 +351,9 @@ export default function ManagerAssignments() {
       freshStudents.map((s) => [String(s._id), s])
     );
 
+    const assignmentMaxPoints =
+      selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
+
     const reports = cartEntries.map(([, entry]) => ({
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
@@ -371,6 +361,8 @@ export default function ManagerAssignments() {
       items: Object.values(entry.items).map((item) => {
         const liveStudent = studentById[String(entry.studentMeta._id)] || entry.studentMeta;
         const submissionId = item.submissionId || liveStudent?.submissionId;
+        const assignedGrade = liveStudent?.assignedGrade ?? item.assignedGrade;
+        const maxPoints = item.maxPoints ?? assignmentMaxPoints;
         const savedSummary =
           liveStudent?.summary ||
           (submissionId ? freshSummaryMap[submissionId] : "");
@@ -378,9 +370,17 @@ export default function ManagerAssignments() {
           ...item,
           assignmentId: item.assignmentId || selectedAssignment._id,
           submissionId,
-          comment: (item.comment || savedSummary || "").trim()
+          state: liveStudent?.state ?? item.state,
+          submittedAt: liveStudent?.submittedAt ?? item.submittedAt,
+          isLate: liveStudent?.isLate ?? item.isLate,
+          isOnTime: liveStudent?.isOnTime ?? item.isOnTime,
+          assignedGrade,
+          percentage:
+            item.percentage ??
+            (computeGradePercent(assignedGrade, maxPoints) || null),
+          comment: (item.comment || savedSummary || "").trim(),
         };
-      })
+      }),
     }));
     setSending(true);
     try {

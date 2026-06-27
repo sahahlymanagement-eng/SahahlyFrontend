@@ -182,15 +182,51 @@ export function getMarkingResultSummary(result, { storedSummary, studentSummary 
   return (typeof studentSummary === "string" && studentSummary.trim()) || "";
 }
 
+export function sumQuestionMarks(questions) {
+  return (questions || []).reduce(
+    (sum, q) => sum + (Number(q.marksAwarded) || 0),
+    0
+  );
+}
+
+/** Authoritative grade from per-question marks when available. */
+export function resolveTotalMarksFromResult(result) {
+  if (!result) return null;
+
+  if (Array.isArray(result.questions) && result.questions.length > 0) {
+    return sumQuestionMarks(result.questions);
+  }
+
+  const breakdown = result.criteriaGrade?.breakdown;
+  if (Array.isArray(breakdown) && breakdown.length > 0) {
+    return sumQuestionMarks(breakdown);
+  }
+
+  const stored =
+    result.criteriaGrade?.totalMarks ??
+    result.totalMarks ??
+    null;
+  return stored != null ? Number(stored) : null;
+}
+
+/** Grade for a saved MarkingResult row (DB totalMarks + nested result). */
+export function resolveSavedMarkingGrade(savedRow) {
+  if (!savedRow) return null;
+  const fromResult = resolveTotalMarksFromResult(savedRow.result);
+  if (fromResult != null) return fromResult;
+  const stored = savedRow.totalMarks;
+  return stored != null ? Number(stored) : null;
+}
+
+export function gradeScorePercent(total, max) {
+  const t = Number(total) || 0;
+  const m = Number(max) || 0;
+  return m > 0 ? Math.round((t / m) * 100) : 0;
+}
+
 export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
-  const totalMarks = editingQuestions.reduce(
-
-    (s, q) => s + (Number(q.marksAwarded) || 0),
-
-    0
-
-  );
+  const totalMarks = sumQuestionMarks(editingQuestions);
 
   return {
 
@@ -202,6 +238,43 @@ export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
   };
 
+}
+
+export function getResultMaxTotal(result) {
+  if (!result) return 0;
+  if (result.markingMode === "criteria") {
+    return Number(result.criteriaGrade?.maxTotalMarks) || 10;
+  }
+  return Number(result.maxTotalMarks) || 0;
+}
+
+export function questionsHavePendingEdits(currentQuestions, confirmedSnapshot) {
+  if (!confirmedSnapshot) return false;
+  const current = currentQuestions || [];
+  const confirmed = confirmedSnapshot.questions || [];
+  if (current.length !== confirmed.length) return true;
+  return current.some(
+    (q, i) =>
+      Number(q.marksAwarded) !== Number(confirmed[i]?.marksAwarded) ||
+      String(q.reason || "") !== String(confirmed[i]?.reason || "")
+  );
+}
+
+/** Apply teacher question edits and an optional new max-total to a marking result. */
+export function applyTeacherEditsToResult(baseResult, editingQuestions, maxTotalMarks) {
+  const finalResult = buildFinalMarkingResult(baseResult, editingQuestions);
+  const max = Math.max(1, Number(maxTotalMarks) || getResultMaxTotal(baseResult));
+
+  finalResult.maxTotalMarks = max;
+  if (finalResult.markingMode === "criteria" && finalResult.criteriaGrade) {
+    finalResult.criteriaGrade = {
+      ...finalResult.criteriaGrade,
+      maxTotalMarks: max,
+      totalMarks: finalResult.totalMarks,
+    };
+  }
+
+  return finalResult;
 }
 
 export function isStudentSubmitted(state) {

@@ -10,6 +10,7 @@ import {
 } from "react-icons/fi";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import { usePagination } from "../../hooks/usePagination";
+import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import Pagination from "../../components/Pagination";
 import {
   appendMarkingContext,
@@ -18,6 +19,11 @@ import {
   buildBatchMarkingResult,
   buildPriorityMarkingResult,
   buildNoSubmissionMarkingResult,
+  applyTeacherEditsToResult,
+  sumQuestionMarks,
+  gradeScorePercent,
+  resolveTotalMarksFromResult,
+  resolveSavedMarkingGrade,
   currentUserId,
   getApiErrorMessage,
   getMarkingResultSummary,
@@ -25,6 +31,7 @@ import {
   hasTeacherEdits,
   isStudentSubmitted,
   normalizeGuidance,
+  getResultMaxTotal,
 } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
@@ -36,7 +43,12 @@ import {
   PRIORITY_RATE_FACTOR,
   resolveMarkingCost,
 } from "../../utils/markingCost";
+import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
+import {
+  computeGradePercent,
+  parsePercentInput,
+} from "../../utils/reportGradePercent";
 import {
   MARKING_MAX_ATTEMPTS,
   MARKING_MAX_RETRIES_MESSAGE,
@@ -163,12 +175,7 @@ export default function ManagerSubmissionViewer() {
   const [savedResults, setSavedResults] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [deletingCorrection, setDeletingCorrection] = useState({});
-
-  const resolvePdfSummary = (submissionId, result) =>
-    getMarkingResultSummary(result, {
-      storedSummary: savedResults[submissionId]?.summary,
-      studentSummary: summaryMap[submissionId],
-    });
+  const [percentOverrides, setPercentOverrides] = useState({});
 
   const [aiReviewProgress, setAiReviewProgress] = useState({});
   const [aiReviewModal, setAiReviewModal] = useState(null);
@@ -176,13 +183,41 @@ export default function ManagerSubmissionViewer() {
   const [aiReviewSaving, setAiReviewSaving] = useState(false);
 
   // const [cachedMsFile, setCachedMsFile] = useState(null);
-  const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
 
   const [errorViewer, setErrorViewer] = useState({
   open: false,
   title: "",
   message: null,
 });
+
+const resolvePdfSummary = (submissionId, result) =>
+  getMarkingResultSummary(result, {
+    storedSummary: savedResults[submissionId]?.summary,
+    studentSummary: summaryMap[submissionId],
+  });
+
+  // Compute effective max total
+  const effectiveMaxTotal = editingMaxTotal !== null
+    ? Math.max(1, Number(editingMaxTotal) || 1)
+    : resultModal
+    ? Math.max(1, Number(getResultMaxTotal(resultModal.result)) || 1)
+    : 1;
+
+  const {
+    annotatedPreviewUrl,
+    previewLoading,
+    confirmingEdits,
+    hasPendingEdits,
+    confirmEdits,
+    resetToConfirmed,
+  } = useAnnotatedResultPreview({
+    api,
+    assignmentId: selectedAssignment?._id,
+    resultModal,
+    editingQuestions,
+    effectiveMaxTotal,
+    resolvePdfSummary,
+  });
 
 const fetchSavedResults = useCallback(async () => {
   if (!selectedAssignment?._id) return;
@@ -195,7 +230,7 @@ const fetchSavedResults = useCallback(async () => {
         result: r.result,
         aiOriginalResult: r.aiOriginalResult || r.result,
         studentFile: r.studentFileMeta,
-        totalMarks: r.totalMarks,
+        totalMarks: resolveSavedMarkingGrade(r),
         provider: r.provider,
         mode: r.mode,
         summary: r.summary || "",
@@ -215,10 +250,59 @@ useEffect(() => {
 useEffect(() => { setStudentSearch(""); }, [selectedAssignment?._id]);
 
 const refreshStudents = async () => {
+  if (!selectedAssignment?._id) return;
   setRefreshing(true);
-  await fetchStudentPage(studentPage);
-  await fetchSavedResults();
-  setRefreshing(false);
+  try {
+    const { students: freshList, maxPoints } = await refreshAssignmentGrades(
+      api,
+      selectedAssignment._id,
+      "manager"
+    );
+    const syncedMaxPoints = maxPoints ?? selectedAssignment.maxPoints ?? null;
+    if (syncedMaxPoints != null) {
+      setSelectedAssignment((prev) => (prev ? { ...prev, maxPoints: syncedMaxPoints } : prev));
+    }
+
+    let savedMap = {};
+    try {
+      const res = await api.get(`/submission-files/save-results/${selectedAssignment._id}`);
+      (res.data.data || []).forEach((r) => {
+        savedMap[r.submissionId] = {
+          totalMarks: resolveSavedMarkingGrade(r),
+          result: r.result,
+        };
+      });
+      await fetchSavedResults();
+    } catch {
+      // saved results optional
+    }
+
+    const mergedGrades = freshList.map((s) => {
+      const sr = savedMap[s.submissionId];
+      if (!sr) return s;
+      const grade = resolveSavedMarkingGrade(sr);
+      return grade != null ? { ...s, assignedGrade: grade } : s;
+    });
+
+    if (syncedMaxPoints != null) {
+      setPercentOverrides(
+        buildPercentOverridesFromStudents(
+          mergedGrades,
+          syncedMaxPoints,
+          (s) => s.submissionId
+        )
+      );
+    } else {
+      setPercentOverrides({});
+    }
+
+    await fetchStudentPage(studentPage);
+    toast.success("Synced grades, max points, and percentages from Google Classroom");
+  } catch {
+    toast.error("Failed to refresh from Google Classroom");
+  } finally {
+    setRefreshing(false);
+  }
 };
 
 const deleteCorrection = async (student) => {
@@ -243,11 +327,7 @@ useEffect(() => {
   const updated = students.map(s => {
     const sr = savedResults[s.submissionId];
     if (!sr) return s;
-    const newGrade =
-      sr.totalMarks ??
-      sr.result?.criteriaGrade?.totalMarks ??
-      sr.result?.totalMarks ??
-      null;
+    const newGrade = resolveSavedMarkingGrade(sr);
     if (s.assignedGrade === newGrade) return s;
     changed = true;
     return { ...s, assignedGrade: newGrade };
@@ -366,24 +446,6 @@ useEffect(() => {
     return message;
   };
 
-  // Compute effective max total
-  const effectiveMaxTotal = editingMaxTotal !== null
-    ? editingMaxTotal
-    : resultModal
-    ? (resultModal.result.markingMode === "criteria"
-    ? (resultModal.result.criteriaGrade?.maxTotalMarks || 10)
-    : resultModal.result.maxTotalMarks)
-    : 0;
-
-  // Replace effectiveTotal computed value with:
-  const effectiveTotal = resultModal
-    ? (editingTotal !== null
-    ? editingTotal
-    : resultModal.result.markingMode === "criteria"
-    ? (resultModal.result.criteriaGrade?.totalMarks || 0)
-    : editingQuestions.reduce((s, q) => s + q.marksAwarded, 0))
-    : 0;
-
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
@@ -463,6 +525,29 @@ useEffect(() => {
     setBulkProgress({});
   };
 
+  const assignmentMaxPoints =
+    selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
+
+  const setPercentOverride = (submissionId, percentage) => {
+    if (!submissionId) return;
+    setPercentOverrides((prev) => ({
+      ...prev,
+      [submissionId]: percentage,
+    }));
+  };
+
+  const handleBack = () => {
+    if (selectedAssignment) {
+      expandAssignmentSection();
+      return;
+    }
+    if (selectedClassroom) {
+      expandClassroomSection();
+      return;
+    }
+    navigate("/manager/dashboard");
+  };
+
   const handleMsUpload = async (file) => {
     if (!file || !selectedAssignment) return;
     setUploadingMs(true);
@@ -479,58 +564,6 @@ useEffect(() => {
       toast.error(err.response?.data?.message || "Upload failed");
     } finally { setUploadingMs(false); }
   };
-
-
-  useEffect(() => {
-    const generatePreview = async () => {
-      if (!resultModal) return;
-      if (!selectedAssignment?._id) return;
-
-      const submissionId =
-        resultModal?.submissionId ||
-        resultModal?.student?.submissionId;
-
-      try {
-        const pdfRes = await api.get("/submission-files/pdf", {
-          params: {
-            assignmentId: selectedAssignment._id,
-            submissionId: submissionId
-          },
-          responseType: "blob"
-        });
-
-        const studentFile = new File(
-          [pdfRes.data],
-          "student.pdf",
-          { type: "application/pdf" }
-        );
-
-        const pdfBytes = await annotatePdf({
-          studentFile,
-          questions: editingQuestions,
-          totalMarks: editingQuestions.reduce(
-            (s, q) => s + q.marksAwarded,
-            0
-          ),
-          maxTotalMarks: effectiveMaxTotal,
-          summary: resolvePdfSummary(submissionId, resultModal.result),
-        });
-
-        const blob = new Blob([pdfBytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-
-        setAnnotatedPreviewUrl(url);
-      } catch (err) {
-        console.error("Failed to generate preview", err);
-      }
-    };
-
-    generatePreview();
-
-    return () => {
-      if (annotatedPreviewUrl) URL.revokeObjectURL(annotatedPreviewUrl);
-    };
-  }, [resultModal, editingQuestions, effectiveMaxTotal, savedResults, summaryMap]);
 
 
   const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
@@ -841,10 +874,7 @@ useEffect(() => {
         aiOriginalResult: aiReviewModal.existingResult,
         provider: aiReviewModal.provider,
         mode: aiReviewModal.mode,
-        totalMarks:
-          finalResult?.criteriaGrade?.totalMarks ??
-          finalResult?.totalMarks ??
-          null,
+        totalMarks: resolveTotalMarksFromResult(finalResult),
       };
 
       setSavedResults((prev) => ({ ...prev, [submissionId]: savedEntry }));
@@ -854,10 +884,7 @@ useEffect(() => {
           s.submissionId === submissionId
             ? {
                 ...s,
-                assignedGrade:
-                  finalResult?.criteriaGrade?.totalMarks ??
-                  finalResult?.totalMarks ??
-                  null,
+                assignedGrade: resolveTotalMarksFromResult(finalResult),
               }
             : s
         )
@@ -870,17 +897,6 @@ useEffect(() => {
     } finally {
       setAiReviewSaving(false);
     }
-  };
-
-  const handleConfirmEdits = async () => {
-    if (!resultModal) return;
-    const originalQuestions = getOriginalQuestions(resultModal);
-    if (!hasTeacherEdits(originalQuestions, editingQuestions)) {
-      toast.info("No edits to save");
-      return;
-    }
-
-    toast.info("Batch marking stopped");
   };
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", provider = markingProvider) => {
@@ -969,7 +985,7 @@ useEffect(() => {
               status: "done",
               result: res.data,
               aiOriginalResult: JSON.parse(JSON.stringify(res.data)),
-              totalMarks: res.data?.criteriaGrade?.totalMarks ?? res.data?.totalMarks ?? null,
+              totalMarks: resolveTotalMarksFromResult(res.data),
             }
           }));
 
@@ -978,10 +994,7 @@ useEffect(() => {
           s.submissionId === student.submissionId
             ? {
                 ...s,
-                assignedGrade:
-                  res.data?.criteriaGrade?.totalMarks ??
-                  res.data?.totalMarks ??
-                  null
+                assignedGrade: resolveTotalMarksFromResult(res.data)
               }
             : s
         )
@@ -1102,7 +1115,7 @@ useEffect(() => {
           status: "done",
           result: enrichedResult,
           aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
-          totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
+          totalMarks: resolveTotalMarksFromResult(enrichedResult),
         }
       }));
 
@@ -1111,10 +1124,7 @@ useEffect(() => {
           s.submissionId === student.submissionId
             ? {
                 ...s,
-                assignedGrade:
-                  enrichedResult?.criteriaGrade?.totalMarks ??
-                  enrichedResult?.totalMarks ??
-                  null
+                assignedGrade: resolveTotalMarksFromResult(enrichedResult)
               }
             : s
         )
@@ -1385,10 +1395,7 @@ useEffect(() => {
               s.submissionId === student.submissionId
                 ? {
                     ...s,
-                    assignedGrade:
-                      resultData?.criteriaGrade?.totalMarks ??
-                      resultData?.totalMarks ??
-                      null,
+                    assignedGrade: resolveTotalMarksFromResult(resultData),
                   }
                 : s
             )
@@ -1410,7 +1417,7 @@ useEffect(() => {
             status: "done",
             result: resultData,
             aiOriginalResult: JSON.parse(JSON.stringify(resultData)),
-            totalMarks: resultData?.criteriaGrade?.totalMarks ?? resultData?.totalMarks ?? null,
+            totalMarks: resolveTotalMarksFromResult(resultData),
           }
         }));
         } else {
@@ -1572,10 +1579,7 @@ useEffect(() => {
               prev.map(s => s.submissionId === student.submissionId
                 ? {
                     ...s,
-                    assignedGrade:
-                      result?.criteriaGrade?.totalMarks ??
-                      result?.totalMarks ??
-                      null
+                    assignedGrade: resolveTotalMarksFromResult(result)
                   }
                 : s
               )
@@ -1953,10 +1957,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           s.submissionId === student.submissionId
             ? {
                 ...s,
-                assignedGrade:
-                  result?.criteriaGrade?.totalMarks ??
-                  result?.totalMarks ??
-                  null,
+                assignedGrade: resolveTotalMarksFromResult(result),
               }
             : s
         )
@@ -1977,7 +1978,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           status: "done",
           result: enrichedResult,
           aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
-          totalMarks: enrichedResult?.criteriaGrade?.totalMarks ?? enrichedResult?.totalMarks ?? null,
+          totalMarks: resolveTotalMarksFromResult(enrichedResult),
         }
       }));
     }
@@ -2122,7 +2123,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
-    if (!selectedAssignment?._id) return; 
+    if (!selectedAssignment?._id) return;
+    if (hasPendingEdits) {
+      toast.warn("Confirm your edits first");
+      return;
+    }
     setDownloading(true);
     try {
       const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
@@ -2170,29 +2175,43 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     } finally { setDownloading(false); }
   };
 
-  const returnToStudent = async () => {
-    if (!resultModal) return;
-    setReturning(true);
+  const handleConfirmEdits = async () => {
+    if (!resultModal || !selectedAssignment?._id) return;
     try {
-      const originalQuestions = getOriginalQuestions(resultModal);
-      if (hasTeacherEdits(originalQuestions, editingQuestions)) {
-        const finalResult = buildFinalMarkingResult(resultModal.result, editingQuestions);
+      const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         await api.post("/submission-files/save-results", {
           assignmentId: selectedAssignment._id,
-          submissionId: resultModal.student.submissionId,
+          submissionId: resultModal.student.submissionId || submissionId,
           studentId: resultModal.student.studentId,
           studentName: resultModal.student.name,
-          mode: resultModal.result.markingMode || markingModeModal,
+          mode: finalResult.markingMode || markingModeModal,
           provider: markingProvider,
           result: finalResult,
         });
         setResultModal((prev) => ({
           ...prev,
           result: finalResult,
-          originalAiResult: JSON.parse(JSON.stringify(finalResult)),
         }));
+        setEditingMaxTotal(null);
+        setEditingTotal(null);
+        await fetchSavedResults();
+      });
+      if (finalResult) {
+        toast.success("Edits confirmed — preview and grade updated");
       }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to confirm edits");
+    }
+  };
 
+  const returnToStudent = async () => {
+    if (!resultModal) return;
+    if (hasPendingEdits) {
+      toast.warn("Confirm your edits first so the returned PDF matches the preview");
+      return;
+    }
+    setReturning(true);
+    try {
       const db = savedResults[resultModal.student?.submissionId];
       const submissionId =
         resultModal?.submissionId ||
@@ -2201,7 +2220,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       let studentFile = resultModal.studentFile;
       if (!studentFile && submissionId) {
-      const pdfRes = await api.get("/submission-files/pdf", {
+        const pdfRes = await api.get("/submission-files/pdf", {
           params: {
             assignmentId: selectedAssignment._id,
             submissionId,
@@ -2215,24 +2234,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         );
       }
 
+      const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: editingQuestions.reduce(
-          (s, q) => s + q.marksAwarded,
-          0
-        ),
+        totalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
       });
       const fd = new FormData();
-      fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
-      fd.append("assignmentId",  selectedAssignment._id);
-      fd.append("submissionId",  resultModal.student.submissionId || submissionId);
-      fd.append("totalMarks",    effectiveTotal);
+      fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+      fd.append("assignmentId", selectedAssignment._id);
+      fd.append("submissionId", resultModal.student.submissionId || submissionId);
+      fd.append("totalMarks", totalMarks);
       fd.append("maxTotalMarks", effectiveMaxTotal);
-      fd.append("studentName",   resultModal.student.name || "Student" );
-      
+      fd.append("studentName", resultModal.student.name || "Student");
+
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
       if (pdfSummary) {
         await api.post("/submission-files/save-summary", {
@@ -2241,16 +2258,18 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           summary: pdfSummary,
         });
       }
-      
+
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000
+        timeout: 120000,
       });
       toast.success("Marked paper returned to student");
       setResultModal(null);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to return paper");
-    } finally { setReturning(false); }
+    } finally {
+      setReturning(false);
+    }
   };
 
   const handleReturnAll = async () => {
@@ -2397,10 +2416,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     setReturning(true);
 
     const computeReturnMarks = (result, editingQs) => ({
-      total:
-        result?.criteriaGrade?.totalMarks ??
-        result?.totalMarks ??
-        editingQs.reduce((s, q) => s + (q.marksAwarded || 0), 0),
+      total: resolveTotalMarksFromResult(result) ??
+        editingQs.reduce((s, q) => s + (Number(q.marksAwarded) || 0), 0),
       max:
         result?.criteriaGrade?.maxTotalMarks ??
         result?.maxTotalMarks ??
@@ -2551,9 +2568,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
 
-  const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+  const total = sumQuestionMarks(editingQuestions);
   const max   = effectiveMaxTotal;
-  const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+  const pct   = gradeScorePercent(total, max);
   const color = getScoreColor(total, max);
 
   return (
@@ -2571,6 +2588,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   : `Select assignment from ${selectedClassroom.name}`
                 : `Welcome back, ${user.name}`}
             </span>
+          </div>
+          <div className="ma-topbar-right">
+            <button type="button" onClick={handleBack} className="msv-cancel-btn">
+              Back
+            </button>
           </div>
         </header>
 
@@ -2895,6 +2917,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         className="msv-refresh-btn"
                         onClick={refreshStudents}
                         disabled={refreshing || loadingStudents}
+                        title="Sync max points, grades, and resubmissions from Google Classroom"
                       >
                         <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
                         {refreshing ? "Refreshing…" : "Refresh"}
@@ -2919,6 +2942,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               <th>Status</th>
                               <th>Submitted At</th>
                               <th>Grade</th>
+                              <th>%</th>
                               <th>Actions</th>
                             </tr>
                           </thead>
@@ -2985,6 +3009,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                     {s.assignedGrade != null
                                       ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                       : <span className="ma-cell-empty">—</span>}
+                                  </td>
+                                  <td>
+                                    {s.assignedGrade != null && assignmentMaxPoints ? (
+                                      <div className="ma-percent-wrap">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          className="ma-percent-input"
+                                          value={
+                                            percentOverrides[s.submissionId] ??
+                                            computeGradePercent(s.assignedGrade, assignmentMaxPoints)
+                                          }
+                                          onChange={(e) =>
+                                            setPercentOverride(
+                                              s.submissionId,
+                                              parsePercentInput(e.target.value)
+                                            )
+                                          }
+                                        />
+                                        <span className="ma-percent-suffix">%</span>
+                                      </div>
+                                    ) : (
+                                      <span className="ma-cell-empty">—</span>
+                                    )}
                                   </td>
                                   <td>
                                     {s.submissionId ? (
@@ -3534,7 +3583,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   <input
                     readOnly
                     type="number"
@@ -3544,9 +3593,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     // onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
-                      border: `1px solid ${getScoreColor(effectiveTotal, effectiveMaxTotal)}`,
-                      background: `${getScoreColor(effectiveTotal, effectiveMaxTotal)}15`,
-                      color: getScoreColor(effectiveTotal, effectiveMaxTotal),
+                      border: `1px solid ${color}`,
+                      background: `${color}15`,
+                      color: color,
                       fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
                       cursor:"not-allowed"
                     }}
@@ -3559,9 +3608,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     onChange={e => {
                       const newMax = Math.max(1, Number(e.target.value));
                       setEditingMaxTotal(newMax);
-                      // clamp total if it now exceeds new max
-                      if (editingTotal !== null && editingTotal > newMax) setEditingTotal(newMax);
-                      else if (editingTotal === null && effectiveTotal > newMax) setEditingTotal(newMax);
                     }}
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
@@ -3572,24 +3618,55 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     }}
                   />
                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
-                    ({effectiveMaxTotal > 0 ? Math.round((effectiveTotal / effectiveMaxTotal) * 100) : 0}%)
+                    ({pct}%)
                   </span>
-                  {(editingTotal !== null || editingMaxTotal !== null) && (
+                  {hasPendingEdits && (
+                    <span style={{ fontSize: 11, color: "#fbbf24", fontWeight: 600 }}>
+                      Unsaved edits
+                    </span>
+                  )}
+                  {(hasPendingEdits || editingMaxTotal !== null) && (
                     <button
-                      onClick={() => { setEditingTotal(null); setEditingMaxTotal(null); }}
+                      onClick={() => {
+                        const reset = resetToConfirmed();
+                        if (reset) {
+                          setEditingQuestions(reset.questions);
+                          setEditingMaxTotal(null);
+                          setEditingTotal(null);
+                        } else {
+                          setEditingTotal(null);
+                          setEditingMaxTotal(null);
+                        }
+                      }}
                       style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
                     >
                       Reset
                     </button>
                   )}
                 </div>
+                <div style={{ flex: "1 1 180px", minWidth: 140, maxWidth: 280 }}>
+                  <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
+                  </div>
+                </div>
               </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading} style={{ fontSize: 12 }}>
+                {hasPendingEdits && (
+                  <button
+                    className="msv-btn-ai"
+                    onClick={handleConfirmEdits}
+                    disabled={confirmingEdits || previewLoading}
+                    style={{ background: "rgba(34,197,94,0.15)", borderColor: "rgba(34,197,94,0.4)" }}
+                  >
+                    <FiCheck size={13} />
+                    {confirmingEdits ? "Confirming…" : "Confirm Edits"}
+                  </button>
+                )}
+                <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
                 </button>
-                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning}>
+                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
                 </button>
                 <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
@@ -3636,27 +3713,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                 {/* AI TOKEN USAGE*/}
               <TokenUsageStats result={resultModal.result} />
-
-              {/* Score bar */}
-              <div className="msv-score-bar">
-                {(() => {
-                  const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-                  const max   = effectiveMaxTotal;
-                  const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
-                  const color = getScoreColor(total, max);
-                  return (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>Total Score</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color }}>{total} / {max} ({pct}%)</span>
-                      </div>
-                      <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
-                        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
 
               {/* ── CRITERIA MODE: show criteria grade first ── */}
               {isCriteria && resultModal.result.criteriaGrade && (
@@ -3713,7 +3769,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
               )}
 
-              {/* ── NORMAL MODE: summary + score bar ── */}
+              {/* ── NORMAL MODE: summary only (grade + bar live in header) ── */}
               {!isCriteria && (
                 <>
                   {resultModal.result.summary && (
@@ -3722,34 +3778,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
                     </div>
                   )}
-                  <div className="msv-score-bar">
-                    {(() => {
-                      const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-                      const max   = effectiveMaxTotal;
-                      const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
-                      const color = getScoreColor(total, max);
-                      return (
-                        <>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600 }}>Total Score</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, color }}>{total} / {max} ({pct}%)</span>
-                          </div>
-                          <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
-                            <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-
                 </>
               )}
 
               {/* ── QUESTIONS (both modes) ── */}
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {editingQuestions.map((q, idx) => {
-                  const color = getScoreColor(q.marksAwarded, q.maxMarks);
-                  const pct   = q.maxMarks > 0 ? Math.round((q.marksAwarded / q.maxMarks) * 100) : 0;
+                  const awarded = Number(q.marksAwarded) || 0;
+                  const qMax = Number(q.maxMarks) || 0;
+                  const color = getScoreColor(awarded, qMax);
+                  const qPct = qMax > 0 ? Math.round((awarded / qMax) * 100) : 0;
                   return (
                     <div key={idx} className="msv-q-card">
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
@@ -3763,17 +3801,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
                               type="number" min={0} max={q.maxMarks}
-                              value={q.marksAwarded}
-                              onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(q.maxMarks, Math.max(0, Number(e.target.value))) } : x))}
+                              value={awarded}
+                              onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(qMax, Math.max(0, Number(e.target.value) || 0)) } : x))}
                               style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
                             />
                             <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/ {q.maxMarks}</span>
                           </div>
                         )}
                         <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3 }} />
+                          <div style={{ width: `${qPct}%`, height: "100%", background: color, borderRadius: 3 }} />
                         </div>
-                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{pct}%</span>
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{qPct}%</span>
                       </div>
 
                       {q.checklist && (
@@ -3841,12 +3879,25 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         fontWeight: 700,
                         marginBottom: 10,
                         color: "rgba(255,255,255,0.6)",
-                        textTransform: "uppercase"
+                        textTransform: "uppercase",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
                       }}>
-                        📄 Annotated PDF Preview
+                        <span>📄 Annotated PDF Preview</span>
+                        {hasPendingEdits && (
+                          <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                            Confirm edits to update preview
+                          </span>
+                        )}
                       </div>
 
-                      {annotatedPreviewUrl ? (
+                      {previewLoading ? (
+                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                          Generating preview…
+                        </div>
+                      ) : annotatedPreviewUrl ? (
 
                         <div
                           style={{
@@ -3855,6 +3906,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           }}
                         >
                           <iframe
+                            key={resultModal.student?.submissionId || resultModal.submissionId}
                             src={annotatedPreviewUrl}
                             title="Annotated PDF"
                             style={{
@@ -3867,7 +3919,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         </div>
                       ) : (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
-                          Generating preview...
+                          No preview available
                         </div>
                       )}
                     </div> 
