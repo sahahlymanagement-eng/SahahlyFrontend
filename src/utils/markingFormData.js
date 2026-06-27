@@ -324,25 +324,17 @@ export function buildNoSubmissionMarkingResult({
 
 
 
-export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel) {
+export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, pdfCompression = null) {
   const result = {
     ...parsed,
     provider: "gemini-batch",
     geminiModel: geminiModel || null,
     tokenUsage: tokenUsage || null,
-    pdfCompression: {
-      applied: false,
-      method: "gemini-batch",
-      student: {
-        applied: false,
-        reason: "Batch API — student PDF uploaded directly to Gemini",
-      },
-      markScheme: {
-        applied: false,
-        reason: "Batch API — mark scheme shared via Gemini file URI",
-      },
-    },
   };
+
+  if (pdfCompression) {
+    result.pdfCompression = pdfCompression;
+  }
 
   if (tokenUsage && geminiModel) {
     const cost = estimateMarkingCost(geminiModel, tokenUsage, { batch: true });

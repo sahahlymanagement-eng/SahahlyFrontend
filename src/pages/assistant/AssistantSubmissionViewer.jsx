@@ -1082,9 +1082,9 @@ const deleteCorrection = async (student) => {
         const resultMap = {};
         const saveMode = jobMeta.mode || "normal";
         const modelForResult = jobMeta.geminiModel || geminiModel;
-        for (const { student, result, success, error, tokenUsage } of data.results) {
+        for (const { student, result, success, error, tokenUsage, compression } of data.results) {
           const enrichedResult = success
-            ? buildBatchMarkingResult(result, tokenUsage, modelForResult)
+            ? buildBatchMarkingResult(result, tokenUsage, modelForResult, compression)
             : null;
           const originalAiResult = enrichedResult
             ? JSON.parse(JSON.stringify(enrichedResult))
