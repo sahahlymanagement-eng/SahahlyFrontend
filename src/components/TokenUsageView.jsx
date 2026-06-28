@@ -116,6 +116,62 @@ function describeRange({ period, year, month, day }) {
   return "Selected period";
 }
 
+function requestBarColor(percent) {
+  if (percent >= 90) return "#f87171";
+  if (percent >= 70) return "#fbbf24";
+  return "#22c55e";
+}
+
+function RequestUsageBar({ used, limit, rangeLabel }) {
+  const count = Number(used) || 0;
+  const cap = limit != null && limit > 0 ? Number(limit) : null;
+  const percent = cap ? Math.min(100, Math.round((count / cap) * 100)) : null;
+  const fillWidth = cap ? percent : count > 0 ? 100 : 0;
+
+  return (
+    <div className="tu-request-panel">
+      <div className="tu-request-panel-header">
+        <div>
+          <h3>AI marking requests</h3>
+          <p>
+            {cap
+              ? `${formatNum(count)} of ${formatNum(cap)} requests used · ${rangeLabel}`
+              : `${formatNum(count)} requests logged · ${rangeLabel}`}
+          </p>
+        </div>
+        {cap ? (
+          <span className="tu-request-panel-pct" style={{ color: requestBarColor(percent) }}>
+            {percent}%
+          </span>
+        ) : (
+          <span className="tu-request-panel-pct tu-request-panel-pct--open">
+            {formatNum(count)}
+          </span>
+        )}
+      </div>
+      <div className="tu-request-bar" aria-hidden={!count && !cap}>
+        <div
+          className="tu-request-bar-fill"
+          style={{
+            width: `${fillWidth}%`,
+            background: cap ? requestBarColor(percent) : "#3b82f6",
+          }}
+        />
+      </div>
+      {cap ? (
+        <p className="tu-request-panel-foot">
+          Monthly VPS budget from <code>AI_REQUEST_MONTHLY_LIMIT</code>. Each mark, batch job, or
+          priority run counts as one request.
+        </p>
+      ) : (
+        <p className="tu-request-panel-foot">
+          Set <code>AI_REQUEST_MONTHLY_LIMIT</code> on the VPS backend to show a quota bar.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function UsageTable({ columns, rows, rowKey }) {
   return (
     <table className="tu-table">
@@ -211,6 +267,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const [classroomBreakdown, setClassroomBreakdown] = useState(null);
   const [classroomDetail, setClassroomDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [requestLimit, setRequestLimit] = useState(null);
 
   const yearOptions = useMemo(() => buildYearOptions(), []);
   const dayOptions = useMemo(() => {
@@ -295,12 +352,15 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       if (tab === "classroom") {
         const res = await api.get(`${apiBase}/by-classroom`, { params });
         setByClassroom(res.data);
+        setRequestLimit(res.data?.requestLimit ?? null);
       } else if (tab === "assistant") {
         const res = await api.get(`${apiBase}/by-assistant`, { params });
         setByAssistant(res.data);
+        setRequestLimit(res.data?.requestLimit ?? null);
       } else {
         const res = await api.get(`${apiBase}/by-assignment`, { params });
         setByAssignment(res.data);
+        setRequestLimit(res.data?.requestLimit ?? null);
       }
     } catch {
       toast.error("Failed to load token usage");
@@ -319,6 +379,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         }),
       });
       setClassroomDetail(res.data);
+      if (res.data?.requestLimit != null) {
+        setRequestLimit(res.data.requestLimit);
+      }
     } catch {
       toast.error("Failed to load classroom breakdown");
     } finally {
@@ -406,6 +469,16 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     }
     if (tab === "assistant") return byAssistant?.grandCostEgp ?? 0;
     return byAssignment?.grandCostEgp ?? 0;
+  })();
+
+  const grandRequestCount = (() => {
+    if (tab === "classroom") {
+      if (classroomDetail) return classroomDetail.grandRequestCount ?? 0;
+      if (selectedClassroom) return selectedClassroom.requestCount ?? 0;
+      return byClassroom?.grandRequestCount ?? 0;
+    }
+    if (tab === "assistant") return byAssistant?.grandRequestCount ?? 0;
+    return byAssignment?.grandRequestCount ?? 0;
   })();
 
   const activePreset =
@@ -571,7 +644,19 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             <span>{summarySecondary.label}</span>
           </div>
         )}
+        <div className="tu-summary-card">
+          <h3 className="tu-num">{formatNum(grandRequestCount)}</h3>
+          <span>Marking requests</span>
+        </div>
       </div>
+
+      {!loading && (
+        <RequestUsageBar
+          used={grandRequestCount}
+          limit={requestLimit}
+          rangeLabel={rangeLabel}
+        />
+      )}
 
       {loading && <div className="tu-loading">Loading…</div>}
 
