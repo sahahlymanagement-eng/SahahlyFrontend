@@ -133,6 +133,11 @@ export default function AssignmentSubmissionViewer() {
   const [deletingCorrection, setDeletingCorrection] = useState({});
   const [percentOverrides, setPercentOverrides] = useState({});
 
+  const [expectedPages, setExpectedPages] = useState(null);
+  const [expectedPagesInput, setExpectedPagesInput] = useState("");
+  const [settingExpectedPages, setSettingExpectedPages] = useState(false);
+  const [showExpectedPagesEdit, setShowExpectedPagesEdit] = useState(false);
+
   const [errorViewer, setErrorViewer] = useState({
   open: false,
   title: "",
@@ -371,6 +376,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           webLink: res.data.assignment.markSchemeWebLink
         });
         setSubjectId(res.data.assignment.subjectId || null);
+        setExpectedPages(res.data.assignment.expectedPages ?? null);
+        setExpectedPagesInput(res.data.assignment.expectedPages != null ? String(res.data.assignment.expectedPages) : "");
       });
   }, [assignmentId]);
 
@@ -637,6 +644,11 @@ const deleteCorrection = async (student) => {
   };
 
   const openGuidanceModal = (student = null, isBatch = false) => {
+    if (expectedPages === null) {
+      toast.warn("Please set the expected page count for this assignment before marking");
+      setShowExpectedPagesEdit(true);
+      return;
+    }
     setGuidanceModal(
       isBatch
         ? { batch: true }
@@ -648,6 +660,27 @@ const deleteCorrection = async (student) => {
     setGuidance("");
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
+  };
+
+  const handleSetExpectedPages = async () => {
+    if (!assignmentId) return;
+    const val = expectedPagesInput.trim();
+    const parsed = val === "" ? null : parseInt(val, 10);
+    if (val !== "" && (!Number.isInteger(parsed) || parsed <= 0)) {
+      toast.warn("Expected pages must be a positive integer");
+      return;
+    }
+    setSettingExpectedPages(true);
+    try {
+      await api.patch(`/manager-assignments/${assignmentId}/expected-pages`, { expectedPages: parsed });
+      setExpectedPages(parsed);
+      setShowExpectedPagesEdit(false);
+      toast.success(parsed != null ? `Expected pages set to ${parsed}` : "Expected pages check disabled");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to set expected pages");
+    } finally {
+      setSettingExpectedPages(false);
+    }
   };
 
   const getOriginalQuestions = (modal) =>
@@ -2109,6 +2142,51 @@ return (
                
             </div>
 
+              {/* Expected Pages */}
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>📄 Expected Pages:</span>
+                {!showExpectedPagesEdit ? (
+                  <>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: expectedPages != null ? "#22c55e" : "#ef4444" }}>
+                      {expectedPages != null ? `${expectedPages} pages` : "Not set — required before marking"}
+                    </span>
+                    <button
+                      className="ma-send-btn"
+                      style={{ fontSize: 11, padding: "4px 10px" }}
+                      onClick={() => { setShowExpectedPagesEdit(true); setExpectedPagesInput(expectedPages != null ? String(expectedPages) : ""); }}
+                    >
+                      {expectedPages != null ? "Edit" : "Set"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="e.g. 8"
+                      value={expectedPagesInput}
+                      onChange={(e) => setExpectedPagesInput(e.target.value)}
+                      style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.07)", color: "white" }}
+                    />
+                    <button
+                      className="ma-send-btn"
+                      style={{ fontSize: 11, padding: "4px 10px" }}
+                      onClick={handleSetExpectedPages}
+                      disabled={settingExpectedPages}
+                    >
+                      {settingExpectedPages ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      className="msv-cancel-btn"
+                      style={{ fontSize: 11, padding: "4px 10px" }}
+                      onClick={() => setShowExpectedPagesEdit(false)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+
               {/* SEARCH + REFRESH */}
               <div className="msv-panel-controls" style={{ marginBottom: 10 }}>
                 <input
@@ -2204,6 +2282,14 @@ return (
                                     {(s.name || "?").charAt(0).toUpperCase()}
                                   </div>
                                   <span className="ma-cell-name">{s.name || "—"}</span>
+                                  {savedResults[s.submissionId]?.result?.fileWarning && (
+                                    <span
+                                      title="Submitted file may be wrong — page count differs from expected"
+                                      style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}
+                                    >
+                                      ⚠️ Review Submission
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
@@ -2841,6 +2927,22 @@ return (
                       }}
                     >
 
+                        {resultModal.result.fileWarning && (
+                          <div style={{
+                            marginBottom: 12,
+                            padding: "10px 14px",
+                            background: "rgba(245,158,11,0.1)",
+                            border: "1px solid rgba(245,158,11,0.35)",
+                            borderRadius: 10,
+                            fontSize: 13,
+                            color: "#fbbf24",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}>
+                            ⚠️ <span>{typeof resultModal.result.fileWarning === "string" ? resultModal.result.fileWarning : resultModal.result.fileWarning.message || "Submitted file may be wrong — page count differs from expected"}</span>
+                          </div>
+                        )}
                         <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
                         <TokenUsageStats result={resultModal.result} hideCost />
