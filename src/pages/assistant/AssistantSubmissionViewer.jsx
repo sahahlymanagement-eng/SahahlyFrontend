@@ -69,6 +69,8 @@ import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor"
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
+import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import {
   geminiModelLabel,
   parseGeminiModelsResponse,
@@ -1678,6 +1680,14 @@ const deleteCorrection = async (student) => {
     }
   };
 
+  const handleCorrectionPatch = useCallback(({ questions, summary }) => {
+    setEditingQuestions(questions.map((q) => ({ ...q })));
+    if (summary) {
+      setEditingSummary(summary);
+      setSummaryTouched(true);
+    }
+  }, []);
+
   const handleConfirmEdits = async () => {
     if (!resultModal || !assignmentId) return;
     try {
@@ -3169,6 +3179,24 @@ return (
                         <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
                         <TokenUsageStats result={resultModal.result} hideCost />
+
+                        {assignmentId && (
+                          <MarkingCorrectionChat
+                            assignmentId={assignmentId}
+                            submissionId={
+                              resultModal.student?.submissionId || resultModal.submissionId
+                            }
+                            studentId={resultModal.student?.studentId}
+                            studentName={resultModal.student?.name}
+                            currentResult={{
+                              ...resultModal.result,
+                              questions: editingQuestions,
+                              summary: editingSummary,
+                              totalMarks: sumQuestionMarks(editingQuestions),
+                            }}
+                            onApplyPatch={handleCorrectionPatch}
+                          />
+                        )}
           
                         {/* ── CRITERIA MODE: show criteria grade first ── */}
                         {isCriteria && resultModal.result.criteriaGrade && (
@@ -3401,33 +3429,15 @@ return (
                           {previewError}
                         </div>
                       ) : annotatedPreviewUrl ? (
-                        // <iframe
-                        //   src={annotatedPreviewUrl}
-                        //   style={{
-                        //     flex: 1,
-                        //     border: "none",
-                        //     borderRadius: 8,
-                        //     background: "#111"
-                        //   }}
-                        //   title="Annotated PDF"
-                        // />
                         <div
                           style={{
                             flex: 1,
-                            minHeight: 0
+                            minHeight: 0,
+                            display: "flex",
+                            flexDirection: "column",
                           }}
                         >
-                          <iframe
-                            key={resultModal.student?.submissionId || resultModal.submissionId}
-                            src={annotatedPreviewUrl}
-                            title="Annotated PDF"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              border: "none",
-                              borderRadius: 8
-                            }}
-                          />
+                          <AnnotatedPdfPreview url={annotatedPreviewUrl} />
                         </div>
                       ) : (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>

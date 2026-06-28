@@ -140,7 +140,7 @@ export function useAnnotatedResultPreview({
             summary: snapshot.summary,
             outOfScopeNotes: snapshot.outOfScopeNotes,
             teacherAnnotations: snapshot.teacherAnnotations,
-            skipCompress: true,
+            skipCompress: false,
           }),
           PREVIEW_TIMEOUT_MS,
           "Building annotated preview"

@@ -309,6 +309,46 @@ export function getOutOfScopeNotes(result) {
   return Array.isArray(result?.outOfScopeNotes) ? result.outOfScopeNotes : [];
 }
 
+const CORRECTION_PATCH_FIELDS = [
+  "marksAwarded",
+  "reason",
+  "markedKeywords",
+  "missingKeywords",
+  "studentAnswer",
+  "correctAnswer",
+  "studyTopic",
+  "mistakeAdvice",
+];
+
+/** Merge AI correction suggestions into live editing state. */
+export function applyCorrectionPatch(editingQuestions, { changes = [], summary = null } = {}) {
+  const patchMap = new Map(
+    (changes || []).map((c) => [String(c.questionNumber), c])
+  );
+
+  const questions = (editingQuestions || []).map((q) => {
+    const patch = patchMap.get(String(q.questionNumber));
+    if (!patch) return { ...q };
+
+    const next = { ...q };
+    for (const key of CORRECTION_PATCH_FIELDS) {
+      if (patch[key] !== undefined && patch[key] !== null) {
+        next[key] = patch[key];
+      }
+    }
+    const max = Number(next.maxMarks) || 0;
+    if (max > 0) {
+      next.marksAwarded = Math.min(max, Math.max(0, Number(next.marksAwarded) || 0));
+    }
+    return next;
+  });
+
+  return {
+    questions,
+    summary: summary != null && String(summary).trim() ? String(summary).trim() : null,
+  };
+}
+
 export { getTeacherAnnotations } from "./teacherAnnotations";
 
 export function buildFinalMarkingResult(baseResult, editingQuestions) {
