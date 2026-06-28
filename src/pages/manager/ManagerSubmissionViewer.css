@@ -170,6 +170,25 @@
   overflow: hidden;
   animation: ma-fade-up 0.3s cubic-bezier(0.22,1,0.36,1) both;
 }
+
+.msv-annotations-modal {
+  background: #04091f;
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 560px;
+  overflow: hidden;
+  animation: ma-fade-up 0.3s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.msv-annotations-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(0,0,0,0.15);
+}
 .msv-guidance-header {
   display: flex;
   justify-content: space-between;
@@ -197,6 +216,44 @@
 .msv-gemini-select option {
   color: #0f172a;
   background: #ffffff;
+}
+
+/* Annotation editor selects — light surface so native dropdown options stay readable */
+.msv-teacher-annotations .msv-annotation-select {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+
+.msv-teacher-annotations .msv-annotation-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+.msv-teacher-annotations .msv-annotation-select option {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.msv-teacher-annotations .msv-annotation-input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  outline: none;
+  font-family: inherit;
+}
+
+.msv-teacher-annotations .msv-annotation-input:focus {
+  border-color: rgba(99, 102, 241, 0.45);
 }
 
 /* ── RESULTS MODAL ── */

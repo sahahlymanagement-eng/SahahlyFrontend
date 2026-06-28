@@ -35,6 +35,12 @@ import {
   exportAssignmentGradesExcel,
   sanitizeExcelFilenameBase,
 } from "../../utils/exportGradesExcel";
+import SubmissionGradeInput from "../../components/SubmissionGradeInput";
+import {
+  gradeFromPercent,
+  resolveTableGrade,
+  appendClassroomGradeToFormData,
+} from "../../utils/submissionGrades";
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -45,6 +51,7 @@ import {
   currentUserId,
   getApiErrorMessage,
   getMarkingResultSummary,
+  rebuildMarkingSummary,
   guidanceForForm,
   hasTeacherEdits,
   isStudentSubmitted,
@@ -56,7 +63,10 @@ import {
   resolveTotalMarksFromResult,
   resolveSavedMarkingGrade,
   getOutOfScopeNotes,
+  getTeacherAnnotations,
 } from "../../utils/markingFormData";
+import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
+import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import {
@@ -115,7 +125,11 @@ export default function AssignmentSubmissionViewer() {
 
   const [singleProgress, setSingleProgress] = useState({});
   const [resultModal, setResultModal] = useState(null);
+  const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [editingAnnotations, setEditingAnnotations] = useState([]);
+  const [editingSummary, setEditingSummary] = useState("");
+  const [summaryTouched, setSummaryTouched] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [returning,        setReturning]        = useState(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
@@ -132,6 +146,8 @@ export default function AssignmentSubmissionViewer() {
   const [studentSearch, setStudentSearch] = useState("");
   const [deletingCorrection, setDeletingCorrection] = useState({});
   const [percentOverrides, setPercentOverrides] = useState({});
+  const [gradeOverrides, setGradeOverrides] = useState({});
+  const [classroomSyncedGrades, setClassroomSyncedGrades] = useState({});
 
   const [errorViewer, setErrorViewer] = useState({
   open: false,
@@ -300,6 +316,37 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
       ...prev,
       [submissionId]: percentage,
     }));
+    if (percentage != null && assignmentMaxPoints) {
+      const grade = gradeFromPercent(percentage, assignmentMaxPoints);
+      if (grade != null) {
+        setGradeOverrides((prev) => ({
+          ...prev,
+          [submissionId]: grade,
+        }));
+      }
+    }
+  };
+
+  const setGradeOverride = (submissionId, grade) => {
+    if (!submissionId) return;
+    if (grade == null) {
+      setGradeOverrides((prev) => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+      return;
+    }
+    setGradeOverrides((prev) => ({
+      ...prev,
+      [submissionId]: grade,
+    }));
+    if (assignmentMaxPoints) {
+      setPercentOverrides((prev) => ({
+        ...prev,
+        [submissionId]: computeGradePercent(grade, assignmentMaxPoints),
+      }));
+    }
   };
 
   const resolvePdfSummary = (submissionId, result) =>
@@ -328,11 +375,36 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     assignmentId,
     resultModal,
     editingQuestions,
+    editingAnnotations,
+    editingSummary,
     effectiveMaxTotal,
     assignmentMaxPoints,
     editingMaxTotal,
     resolvePdfSummary,
   });
+
+  useEffect(() => {
+    if (!resultModal || summaryTouched) return;
+    const submissionId =
+      resultModal.submissionId || resultModal.student?.submissionId;
+    setEditingSummary(
+      rebuildMarkingSummary({
+        questions: editingQuestions,
+        maxTotalMarks: effectiveMaxTotal,
+        previousSummary:
+          resultModal.result?.summary ||
+          getMarkingResultSummary(resultModal.result, {
+            storedSummary: savedResults[submissionId]?.summary,
+          }),
+      })
+    );
+  }, [
+    resultModal,
+    editingQuestions,
+    effectiveMaxTotal,
+    summaryTouched,
+    savedResults,
+  ]);
 
   // useEffect(() => {
   //   if (!assignmentId) return;
@@ -378,6 +450,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     try {
       const res = await api.get(`/submission-files/save-results/${assignmentId}`);
       const map = {};
+      const synced = {};
       res.data.data.forEach(r => {
         map[r.submissionId] = {
           status: "done",
@@ -385,10 +458,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           aiOriginalResult: r.aiOriginalResult || r.result,
           studentFile: r.studentFileMeta,
           totalMarks: resolveSavedMarkingGrade(r),
+          classroomAssignedGrade: r.classroomAssignedGrade ?? null,
           summary: r.summary || getMarkingResultSummary(r.result) || "",
         };
+        if (r.classroomAssignedGrade != null) {
+          synced[r.submissionId] = r.classroomAssignedGrade;
+        }
       });
       setSavedResults(map);
+      setClassroomSyncedGrades(synced);
       setSingleProgress(prev => ({ ...prev, ...map }));
     } catch (err) {
       console.error("Failed to load saved results", err);
@@ -403,6 +481,8 @@ useEffect(() => {
   if (!students.length || !Object.keys(savedResults).length) return;
   let changed = false;
   const updated = students.map(s => {
+    if (classroomSyncedGrades[s.submissionId] != null) return s;
+    if (savedResults[s.submissionId]?.classroomAssignedGrade != null) return s;
     const sr = savedResults[s.submissionId];
     if (!sr) return s;
     const newGrade = resolveSavedMarkingGrade(sr);
@@ -411,16 +491,17 @@ useEffect(() => {
     return { ...s, assignedGrade: newGrade };
   });
   if (changed) setStudents(updated);
-}, [savedResults, students]);
+}, [savedResults, students, classroomSyncedGrades]);
 
 const refreshStudents = async () => {
   if (!assignmentId) return;
   setRefreshing(true);
   try {
-    const { students: freshList, maxPoints } = await refreshAssignmentGrades(
+    const { students: freshList, maxPoints, pushResult } = await refreshAssignmentGrades(
       api,
       assignmentId,
-      "assistant"
+      "assistant",
+      { gradeOverrides, students, savedResults, classroomSyncedGrades }
     );
     const syncedMaxPoints = maxPoints ?? maxGrade ?? null;
     if (syncedMaxPoints != null) {
@@ -441,7 +522,37 @@ const refreshStudents = async () => {
       // saved results optional
     }
 
+    const pushedIds = new Set(
+      (pushResult?.results || []).filter((r) => r.ok).map((r) => r.submissionId)
+    );
+
+    let nextSyncedGrades = { ...classroomSyncedGrades };
+    for (const row of pushResult?.results || []) {
+      if (row.ok && row.submissionId != null) {
+        nextSyncedGrades[row.submissionId] = row.assignedGrade;
+      }
+    }
+    if (pushResult?.results?.length) {
+      setClassroomSyncedGrades(nextSyncedGrades);
+      setSavedResults((prev) => {
+        const next = { ...prev };
+        for (const row of pushResult.results) {
+          if (!row.ok || !row.submissionId) continue;
+          next[row.submissionId] = {
+            ...(next[row.submissionId] || {}),
+            classroomAssignedGrade: row.assignedGrade,
+          };
+        }
+        return next;
+      });
+    }
+
     const mergedGrades = freshList.map((s) => {
+      const syncedGrade = nextSyncedGrades[s.submissionId];
+      if (syncedGrade != null) {
+        return { ...s, assignedGrade: Number(syncedGrade) };
+      }
+      if (pushedIds.has(s.submissionId)) return s;
       const sr = savedMap[s.submissionId];
       if (!sr) return s;
       const grade = resolveSavedMarkingGrade(sr);
@@ -464,7 +575,28 @@ const refreshStudents = async () => {
       setPercentOverrides({});
     }
 
+    if (pushResult?.results?.length) {
+      const succeeded = pushResult.results.filter((r) => r.ok).map((r) => r.submissionId);
+      setGradeOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of succeeded) delete next[id];
+        return next;
+      });
+    } else {
+      setGradeOverrides({});
+    }
+
     await fetchPage(page);
+
+    if (pushResult?.pushed > 0 && !pushResult?.failed) {
+      toast.success(
+        `Updated ${pushResult.pushed} grade${pushResult.pushed === 1 ? "" : "s"} in Google Classroom`
+      );
+    } else if (pushResult?.pushed > 0 && pushResult?.failed > 0) {
+      toast.warn(
+        `Updated ${pushResult.pushed} grade(s) in Google Classroom; ${pushResult.failed} failed`
+      );
+    }
     toast.success("Synced grades, max points, and percentages from Google Classroom");
   } catch {
     toast.error("Failed to refresh from Google Classroom");
@@ -516,6 +648,8 @@ const handleExportGradesExcel = async () => {
       assignmentMaxPoints,
       savedResults,
       percentOverrides,
+      gradeOverrides,
+      classroomSyncedGrades,
       filename,
     });
     toast.success("Grades exported to Excel");
@@ -759,6 +893,7 @@ const deleteCorrection = async (student) => {
       );
 
       setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
+      setEditingAnnotations(getTeacherAnnotations(res.data).map((a) => ({ ...a })));
 
     } catch (err) {
           const message = extractHumanError
@@ -1493,6 +1628,7 @@ const deleteCorrection = async (student) => {
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes]));
@@ -1522,10 +1658,19 @@ const deleteCorrection = async (student) => {
           provider: markingProvider,
           result: finalResult,
         });
+        if (finalResult.summary?.trim()) {
+          await api.post("/submission-files/save-summary", {
+            assignmentId,
+            submissionId: resultModal.student.submissionId || submissionId,
+            summary: finalResult.summary,
+          });
+        }
         setResultModal((prev) => ({
           ...prev,
           result: finalResult,
         }));
+        setEditingSummary(finalResult.summary || "");
+        setSummaryTouched(false);
         setEditingMaxTotal(null);
         setEditingTotal(null);
         await fetchSavedResults();
@@ -1587,6 +1732,7 @@ const deleteCorrection = async (student) => {
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
 
       const fd = new FormData();
@@ -1596,6 +1742,14 @@ const deleteCorrection = async (student) => {
       fd.append("totalMarks", total);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
+      appendClassroomGradeToFormData(fd, {
+        submissionId: resultModal.student.submissionId || submissionId,
+        student: resultModal.student,
+        gradeOverrides,
+        savedResults,
+        classroomSyncedGrades,
+        fallbackTotal: total,
+      });
       
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
       if (pdfSummary) {
@@ -1704,6 +1858,7 @@ const deleteCorrection = async (student) => {
             maxTotalMarks: max,
             summary: resolvePdfSummary(student.submissionId, bulk.result),
             outOfScopeNotes: getOutOfScopeNotes(bulk.result),
+            teacherAnnotations: getTeacherAnnotations(bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -1718,6 +1873,14 @@ const deleteCorrection = async (student) => {
         fd.append("totalMarks", total);
         fd.append("maxTotalMarks", max);
         fd.append("studentName", student.name || "Student");
+        appendClassroomGradeToFormData(fd, {
+          submissionId: student.submissionId,
+          student,
+          gradeOverrides,
+          savedResults,
+          classroomSyncedGrades,
+          fallbackTotal: total,
+        });
 
         try {
           await api.post("/submission-files/return-marked", fd, {
@@ -1763,6 +1926,7 @@ const deleteCorrection = async (student) => {
             maxTotalMarks: max,
             summary: resolvePdfSummary(submissionId, batch.result),
             outOfScopeNotes: getOutOfScopeNotes(batch.result),
+            teacherAnnotations: getTeacherAnnotations(batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -1777,6 +1941,14 @@ const deleteCorrection = async (student) => {
         fd.append("totalMarks", total);
         fd.append("maxTotalMarks", max);
         fd.append("studentName", student.name || "Student");
+        appendClassroomGradeToFormData(fd, {
+          submissionId,
+          student,
+          gradeOverrides,
+          savedResults,
+          classroomSyncedGrades,
+          fallbackTotal: total,
+        });
 
         try {
           await api.post("/submission-files/return-marked", fd, {
@@ -2187,7 +2359,6 @@ return (
                               (batchDone && batch?.result) ||
                               (bulkDone && bulk?.result) ||
                               (db?.result?.tokenUsage ? db.result : null);
-                          
 
                           
                           return (
@@ -2221,18 +2392,27 @@ return (
 
                               {/* GRADE */}
                               <td>
-                                {s.assignedGrade != null ? (
-                                  <span className="ma-grade-pill">
-                                    {s.assignedGrade}
-                                  </span>
-                                ) : (
-                                  <span className="ma-cell-empty">—</span>
-                                )}
+                                <SubmissionGradeInput
+                                  student={s}
+                                  submissionId={s.submissionId}
+                                  assignmentMaxPoints={assignmentMaxPoints}
+                                  gradeOverrides={gradeOverrides}
+                                  savedResults={savedResults}
+                                  classroomSyncedGrades={classroomSyncedGrades}
+                                  onGradeChange={setGradeOverride}
+                                />
                               </td>
 
                               {/* PERCENT */}
                               <td>
-                                {s.assignedGrade != null && assignmentMaxPoints ? (
+                                {resolveTableGrade(
+                                  s.submissionId,
+                                  s,
+                                  gradeOverrides,
+                                  savedResults,
+                                  classroomSyncedGrades
+                                ) != null &&
+                                assignmentMaxPoints ? (
                                       <div className="ma-percent-wrap">
                                         <input
                                           type="number"
@@ -2241,7 +2421,16 @@ return (
                                           className="ma-percent-input"
                                           value={
                                             percentOverrides[s.submissionId] ??
-                                            computeGradePercent(s.assignedGrade, assignmentMaxPoints)
+                                            computeGradePercent(
+                                              resolveTableGrade(
+                                                s.submissionId,
+                                                s,
+                                                gradeOverrides,
+                                                savedResults,
+                                                classroomSyncedGrades
+                                              ),
+                                              assignmentMaxPoints
+                                            )
                                           }
                                       onChange={(e) =>
                                         setPercentOverride(
@@ -2311,7 +2500,21 @@ return (
                                                 studentFile,
                                               });
                                               setEditingQuestions((result.questions || []).map(q => ({ ...q })));
+                                              setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
                                               setEditingMaxTotal(null);
+                                              setSummaryTouched(false);
+                                              setEditingSummary(
+                                                rebuildMarkingSummary({
+                                                  questions: result.questions || [],
+                                                  maxTotalMarks: resolveDisplayMaxTotal({
+                                                    assignmentMaxPoints,
+                                                    result,
+                                                    editingMaxTotal: null,
+                                                  }),
+                                                  previousSummary: result.summary || "",
+                                                })
+                                              );
+                                              setAnnotationsPanelOpen(false);
                                             }}
                                           >
                                             ✅ Results
@@ -2780,6 +2983,9 @@ return (
                                   const reset = resetToConfirmed();
                                   if (reset) {
                                     setEditingQuestions(reset.questions);
+                                    setEditingAnnotations(reset.teacherAnnotations || []);
+                                    setEditingSummary(reset.summary || "");
+                                    setSummaryTouched(false);
                                     setEditingMaxTotal(null);
                                     setEditingTotal(null);
                                   } else {
@@ -2801,6 +3007,23 @@ return (
                         </div>
                         </div>
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="msv-btn-ai"
+                            onClick={() => setAnnotationsPanelOpen((open) => !open)}
+                            style={{
+                              fontSize: 12,
+                              background: annotationsPanelOpen
+                                ? "rgba(99,102,241,0.28)"
+                                : "rgba(99,102,241,0.12)",
+                              borderColor: "rgba(99,102,241,0.45)",
+                              color: "#c7d2fe",
+                            }}
+                            title="Add extra notes on the marked PDF preview"
+                          >
+                            📝 Annotate
+                            {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
+                          </button>
                           {hasPendingEdits && (
                             <button
                               className="msv-btn-ai"
@@ -2906,17 +3129,24 @@ return (
                         {/* ── NORMAL MODE: summary only (grade + bar live in header) ── */}
                         {!isCriteria && (
                           <>
-                            {resultModal.result.summary && (
-                              <div className="msv-summary-box">
-                                <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
-                                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
-                              </div>
-                            )}
+                            <div className="msv-summary-box">
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
+                              <textarea
+                                value={editingSummary}
+                                onChange={(e) => {
+                                  setSummaryTouched(true);
+                                  setEditingSummary(e.target.value);
+                                }}
+                                rows={5}
+                                placeholder="Summary updates automatically when you edit marks or question feedback. Confirm edits to refresh the PDF."
+                                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                              />
+                            </div>
                           </>
                         )}
           
                         {/* ── QUESTIONS (both modes) ── */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                           {editingQuestions.map((q, idx) => {
                             const awarded = Number(q.marksAwarded) || 0;
                             const qMax = Number(q.maxMarks) || 0;
@@ -2978,6 +3208,17 @@ return (
                                     <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
                                   </div>
                                 )}
+
+                                {!isCriteria && (
+                                  <QuestionKeywordFields
+                                    question={q}
+                                    onChange={(updated) =>
+                                      setEditingQuestions((prev) =>
+                                        prev.map((x, i) => (i === idx ? updated : x))
+                                      )
+                                    }
+                                  />
+                                )}
           
                                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                                   {isCriteria ? "Comment" : "Examiner Note"}
@@ -3023,12 +3264,31 @@ return (
                         gap: 8,
                       }}>
                         <span>📄 Annotated PDF Preview</span>
-                        {hasPendingEdits && (
-                          <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
-                            Confirm edits to update preview
-                          </span>
-                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {hasPendingEdits && (
+                            <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                              Confirm edits to update preview
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {annotationsPanelOpen && (
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            maxHeight: 240,
+                            overflowY: "auto",
+                            paddingRight: 4,
+                          }}
+                        >
+                          <TeacherAnnotationsEditor
+                            annotations={editingAnnotations}
+                            onChange={setEditingAnnotations}
+                            questions={editingQuestions}
+                          />
+                        </div>
+                      )}
 
                       {previewLoading ? (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>

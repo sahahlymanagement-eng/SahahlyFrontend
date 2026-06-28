@@ -1,5 +1,6 @@
 import { syncReportCartGrades, studentsByKey } from "./syncReportCartGrades";
 import { computeGradePercent } from "./reportGradePercent";
+import { buildGradesToPush } from "./submissionGrades";
 
 /** Sync maxPoints from Google Classroom into the local assignment record. */
 export async function syncAssignmentFromClassroom(api, assignmentId, route = "manager") {
@@ -69,12 +70,42 @@ export function buildPercentOverridesFromStudents(students, maxPoints, getSubmis
   return next;
 }
 
-/** Full refresh: maxPoints + live student submissions from Google Classroom. */
-export async function refreshAssignmentGrades(api, assignmentId, route = "manager") {
+/** Push edited table grades to Google Classroom before pulling fresh data. */
+export async function pushClassroomGrades(api, assignmentId, grades, route = "manager") {
+  if (!grades?.length) return { results: [], pushed: 0, failed: 0 };
+
+  const path =
+    route === "manager"
+      ? `/manager-assignments/${assignmentId}/push-classroom-grades`
+      : `/assignment-submissions/${assignmentId}/push-classroom-grades`;
+
+  const res = await api.post(path, { grades });
+  return res.data;
+}
+
+/**
+ * Full refresh: push pending grade edits, then maxPoints + live submissions from Classroom.
+ * @param {{ gradeOverrides?: Record<string, number|string>, students?: object[] }} options
+ */
+export async function refreshAssignmentGrades(api, assignmentId, route = "manager", options = {}) {
+  const { gradeOverrides, students, savedResults, classroomSyncedGrades } = options;
+  let pushResult = null;
+
+  const grades = buildGradesToPush(
+    gradeOverrides,
+    students,
+    savedResults,
+    classroomSyncedGrades
+  );
+  if (grades.length) {
+    pushResult = await pushClassroomGrades(api, assignmentId, grades, route);
+  }
+
   const maxPoints = await syncAssignmentFromClassroom(api, assignmentId, route);
   const fresh = await fetchFreshStudents(api, assignmentId, route);
   return {
     ...fresh,
     maxPoints: maxPoints ?? fresh.maxPoints,
+    pushResult,
   };
 }

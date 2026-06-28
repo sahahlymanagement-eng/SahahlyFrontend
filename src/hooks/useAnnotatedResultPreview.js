@@ -6,8 +6,11 @@ import {
   resolveDisplayMaxTotal,
   sumQuestionMarks,
   getOutOfScopeNotes,
+  getTeacherAnnotations,
   getApiErrorMessage,
+  rebuildMarkingSummary,
 } from "../utils/markingFormData";
+import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -42,6 +45,8 @@ export function useAnnotatedResultPreview({
   assignmentId,
   resultModal,
   editingQuestions,
+  editingAnnotations,
+  editingSummary,
   effectiveMaxTotal,
   assignmentMaxPoints,
   editingMaxTotal,
@@ -71,7 +76,7 @@ export function useAnnotatedResultPreview({
     setAnnotatedPreviewUrl(null);
   }, []);
 
-  const buildSnapshotFromModal = useCallback((modal) => {
+  const buildSnapshotFromModal = useCallback((modal, annotationOverride = null) => {
     if (!modal) return null;
     const submissionId = getSubmissionId(modal);
     if (!submissionId) return null;
@@ -83,7 +88,19 @@ export function useAnnotatedResultPreview({
     });
     const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
     const outOfScopeNotes = (modal.result?.outOfScopeNotes || []).map((n) => ({ ...n }));
-    return { submissionId, questions, maxTotal, summary, outOfScopeNotes };
+    const teacherAnnotations = (
+      annotationOverride != null
+        ? annotationOverride
+        : getTeacherAnnotations(modal.result)
+    ).map((a) => ({ ...a }));
+    return {
+      submissionId,
+      questions,
+      maxTotal,
+      summary,
+      outOfScopeNotes,
+      teacherAnnotations,
+    };
   }, []);
 
   const generatePreview = useCallback(
@@ -122,6 +139,7 @@ export function useAnnotatedResultPreview({
             maxTotalMarks: snapshot.maxTotal,
             summary: snapshot.summary,
             outOfScopeNotes: snapshot.outOfScopeNotes,
+            teacherAnnotations: snapshot.teacherAnnotations,
             skipCompress: true,
           }),
           PREVIEW_TIMEOUT_MS,
@@ -190,8 +208,26 @@ export function useAnnotatedResultPreview({
     ) {
       return true;
     }
-    return questionsHavePendingEdits(editingQuestions, confirmedSnapshot);
-  }, [confirmedSnapshot, editingQuestions, effectiveMaxTotal, editingMaxTotal]);
+    if (questionsHavePendingEdits(editingQuestions, confirmedSnapshot)) {
+      return true;
+    }
+    if (annotationsHavePendingEdits(
+      editingAnnotations,
+      confirmedSnapshot.teacherAnnotations
+    )) {
+      return true;
+    }
+    const currentSummary = String(editingSummary ?? "").trim();
+    const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
+    return currentSummary !== confirmedSummary;
+  }, [
+    confirmedSnapshot,
+    editingQuestions,
+    editingAnnotations,
+    editingSummary,
+    effectiveMaxTotal,
+    editingMaxTotal,
+  ]);
 
   const confirmEdits = useCallback(
     async (onPersist) => {
@@ -202,17 +238,27 @@ export function useAnnotatedResultPreview({
       setConfirmingEdits(true);
       try {
         const questions = editingQuestions.map((q) => ({ ...q }));
+        const teacherAnnotations = (editingAnnotations || []).map((a) => ({ ...a }));
         const maxTotal = Math.max(1, Number(effectiveMaxTotal) || 1);
         const finalResult = applyTeacherEditsToResult(
           resultModal.result,
           questions,
-          maxTotal
+          maxTotal,
+          teacherAnnotations,
+          editingSummary
         );
-        const summary = resolvePdfSummaryRef.current(submissionId, finalResult);
-        const snapshot = { submissionId, questions, maxTotal, summary, outOfScopeNotes: getOutOfScopeNotes(finalResult) };
+        const summary = finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
+        const snapshot = {
+          submissionId,
+          questions,
+          maxTotal,
+          summary,
+          outOfScopeNotes: getOutOfScopeNotes(finalResult),
+          teacherAnnotations,
+        };
 
         if (onPersist) {
-          await onPersist({ finalResult, submissionId, questions, maxTotal });
+          await onPersist({ finalResult, submissionId, questions, maxTotal, teacherAnnotations });
         }
 
         setConfirmedSnapshot(snapshot);
@@ -222,7 +268,15 @@ export function useAnnotatedResultPreview({
         setConfirmingEdits(false);
       }
     },
-    [resultModal, assignmentId, editingQuestions, effectiveMaxTotal, generatePreview]
+    [
+      resultModal,
+      assignmentId,
+      editingQuestions,
+      editingAnnotations,
+      editingSummary,
+      effectiveMaxTotal,
+      generatePreview,
+    ]
   );
 
   const resetToConfirmed = useCallback(() => {
@@ -230,6 +284,10 @@ export function useAnnotatedResultPreview({
     return {
       questions: confirmedSnapshot.questions.map((q) => ({ ...q })),
       maxTotal: confirmedSnapshot.maxTotal,
+      summary: confirmedSnapshot.summary || "",
+      teacherAnnotations: (confirmedSnapshot.teacherAnnotations || []).map((a) => ({
+        ...a,
+      })),
     };
   }, [confirmedSnapshot]);
 

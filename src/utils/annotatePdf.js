@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
+import { resolveTeacherAnnotationsForPdf } from "./teacherAnnotations";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const GREEN = rgb(0.04, 0.60, 0.25);
@@ -11,6 +12,8 @@ const GREY = rgb(0.55, 0.55, 0.60);
 const LGREY = rgb(0.88, 0.90, 0.94);
 const COL_BG = rgb(0.96, 0.97, 1);
 const COL_BORDER = rgb(0.72, 0.78, 0.92);
+const TEACHER_COL = rgb(0.30, 0.42, 0.90);
+const TEACHER_BG = rgb(0.93, 0.95, 1.0);
 
 /** Fixed-width examiner notes column appended to the right of each page. */
 const EXAMINER_COL_W = 178;
@@ -752,7 +755,7 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
 
   yPos -= 12;
 
-  const summaryLines = wrap(summary || "No overall summary provided.", reg, 8, CW).slice(0, 4);
+  const summaryLines = wrap(summary || "No overall summary provided.", reg, 8, CW).slice(0, 8);
   summaryLines.forEach((line) => {
     summaryPage.drawText(san(line), {
       x: M,
@@ -1071,6 +1074,101 @@ function drawOutOfScopeNote(page, note, paperW, bold) {
   });
 }
 
+function wrapTeacherLines(text, font, size, maxWidth, maxLines = 5) {
+  const words = san(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(test, size) > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+    if (lines.length >= maxLines) break;
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  return lines;
+}
+
+function drawTeacherAnnotationOnPaper(page, note, paperW, LM, height, bold, reg) {
+  const yPct = Math.min(92, Math.max(5, note.yPercent ?? 30));
+  const anchorY = height - (height * yPct) / 100;
+  const label = note.questionLabel ? `Teacher · ${note.questionLabel}` : "Teacher note";
+  const lines = wrapTeacherLines(note.text, reg, 7, paperW - LM - 24, 4);
+  const lineH = 9;
+  const boxH = 12 + lines.length * lineH;
+  const boxW = Math.min(paperW - LM - 14, 130);
+  const boxX = LM + 8;
+  const boxY = Math.max(34, Math.min(anchorY - boxH / 2, height - boxH - 30));
+
+  page.drawLine({
+    start: { x: LM + 2, y: anchorY },
+    end: { x: boxX, y: boxY + boxH / 2 },
+    thickness: 0.75,
+    color: TEACHER_COL,
+    dashArray: [2, 2],
+  });
+
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxW,
+    height: boxH,
+    color: TEACHER_BG,
+    borderColor: TEACHER_COL,
+    borderWidth: 1,
+  });
+  page.drawText(san(label), {
+    x: boxX + 5,
+    y: boxY + boxH - 10,
+    size: 7,
+    font: bold,
+    color: TEACHER_COL,
+  });
+  let ty = boxY + boxH - 20;
+  for (const ln of lines) {
+    page.drawText(ln, { x: boxX + 5, y: ty, size: 7, font: reg, color: NAVY });
+    ty -= lineH;
+  }
+}
+
+function drawTeacherAnnotationsInColumn(page, layout, notes, bold, reg) {
+  if (!notes?.length) return;
+  let y = layout.colBottom + 8;
+
+  for (const note of notes) {
+    const label = note.questionLabel ? `Teacher · ${note.questionLabel}` : "Teacher note";
+    const lines = wrapTeacherLines(note.text, reg, 6.5, layout.colWidth - 4, 4);
+    const blockH = 14 + lines.length * 7.5;
+    if (y + blockH > layout.colTop - 20) break;
+
+    page.drawRectangle({
+      x: layout.colX - 2,
+      y,
+      width: layout.colWidth + 4,
+      height: blockH,
+      color: TEACHER_BG,
+      borderColor: TEACHER_COL,
+      borderWidth: 0.8,
+    });
+    page.drawText(san(label), {
+      x: layout.colX,
+      y: y + blockH - 10,
+      size: 6.5,
+      font: bold,
+      color: TEACHER_COL,
+    });
+    let cy = y + blockH - 18;
+    for (const ln of lines) {
+      page.drawText(ln, { x: layout.colX + 1, y: cy, size: 6.5, font: reg, color: NAVY });
+      cy -= 7.5;
+    }
+    y += blockH + 4;
+  }
+}
+
 export async function annotatePdf({
   studentFile,
   questions,
@@ -1078,6 +1176,7 @@ export async function annotatePdf({
   maxTotalMarks,
   summary,
   outOfScopeNotes = [],
+  teacherAnnotations = [],
   skipCompress = false,
 }) {
   const buf = await studentFile.arrayBuffer();
@@ -1097,6 +1196,16 @@ export async function annotatePdf({
   for (const note of outOfScopeNotes || []) {
     const p = Math.max(1, Math.min(note.pageNumber || 1, studentPageCount));
     (scopeByPage[p] = scopeByPage[p] || []).push(note);
+  }
+
+  const resolvedTeacher = resolveTeacherAnnotationsForPdf(
+    teacherAnnotations,
+    questions
+  );
+  const teacherByPage = {};
+  for (const note of resolvedTeacher) {
+    const p = Math.max(1, Math.min(note.pageNumber || 1, studentPageCount));
+    (teacherByPage[p] = teacherByPage[p] || []).push(note);
   }
 
   const reportPageCount = prependGradingReport(pdfDoc, {
@@ -1208,6 +1317,11 @@ export async function annotatePdf({
     }
 
     drawExaminerColumn(page, layout, qs, bold, reg);
+
+    for (const note of teacherByPage[pageNum] || []) {
+      drawTeacherAnnotationOnPaper(page, note, paperW, LM, height, bold, reg);
+    }
+    drawTeacherAnnotationsInColumn(page, layout, teacherByPage[pageNum] || [], bold, reg);
 
     for (const note of scopeByPage[pageNum] || []) {
       drawOutOfScopeNote(page, note, paperW, bold);

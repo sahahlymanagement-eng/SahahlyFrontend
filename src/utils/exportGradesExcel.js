@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
-import { isStudentSubmitted, resolveSavedMarkingGrade, getResultMaxTotal } from "./markingFormData";
+import { isStudentSubmitted, getResultMaxTotal } from "./markingFormData";
 import { computeGradePercent } from "./reportGradePercent";
+import { resolveTableGrade } from "./submissionGrades";
 
 export function scaleGradeToTarget({ assignedGrade, maxPoints, percentOverride, targetMax }) {
   const target = Number(targetMax);
@@ -27,7 +28,14 @@ export function formatScaledGrade(scaled) {
 
 export function buildGradeExportRow(
   student,
-  { targetMax, assignmentMaxPoints, savedResults, percentOverrides }
+  {
+    targetMax,
+    assignmentMaxPoints,
+    savedResults,
+    percentOverrides,
+    gradeOverrides,
+    classroomSyncedGrades,
+  }
 ) {
   const name = String(student?.name || "—").trim() || "—";
 
@@ -35,11 +43,15 @@ export function buildGradeExportRow(
     return { name, gradeDisplay: "didn't submit" };
   }
 
+  const assignedGrade = resolveTableGrade(
+    student.submissionId,
+    student,
+    gradeOverrides,
+    savedResults,
+    classroomSyncedGrades
+  );
+
   const savedRow = savedResults?.[student.submissionId];
-  const assignedGrade =
-    student.assignedGrade != null
-      ? student.assignedGrade
-      : resolveSavedMarkingGrade(savedRow);
 
   const maxPoints =
     Number(assignmentMaxPoints) > 0
@@ -87,6 +99,8 @@ export function exportAssignmentGradesExcel({
   assignmentMaxPoints,
   savedResults,
   percentOverrides,
+  gradeOverrides,
+  classroomSyncedGrades,
   filename,
 }) {
   const rows = buildGradesExcelRows(students, {
@@ -94,6 +108,8 @@ export function exportAssignmentGradesExcel({
     assignmentMaxPoints,
     savedResults,
     percentOverrides,
+    gradeOverrides,
+    classroomSyncedGrades,
   });
   downloadGradesExcel({ filename, rows, targetMax });
 }
