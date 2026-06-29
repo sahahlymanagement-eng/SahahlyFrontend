@@ -1,5 +1,13 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
+import { enrichMarkingQuestions, isBlankQuestion } from "./blankQuestionFeedback";
+import {
+  compareQuestionNumbers,
+  normalizeQuestionPlacement,
+  paperAnchorY,
+  resolveVerticalCollisions,
+  yPercentOf,
+} from "./normalizeQuestionPlacement";
 import { resolveTeacherAnnotationsForPdf } from "./teacherAnnotations";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
@@ -362,10 +370,15 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
   const marked = (q.markedKeywords || []).filter(Boolean);
   const missing = (q.missingKeywords || []).filter(Boolean);
   const mcq = mcqChoiceSummary(q);
+  const blank = isBlankQuestion(q);
   const noteLines = q.reason ? wrap(q.reason, font, noteSize, colWidth) : [];
   const studentLines =
     mcq.isMcq && (mcq.student || mcq.notAttempted)
-      ? wrap(mcq.student || "Not attempted", font, noteSize - 0.5, colWidth)
+      ? wrap(mcq.student || "Question left blank — no answer provided.", font, noteSize - 0.5, colWidth)
+      : [];
+  const blankAnswerLines =
+    !mcq.isMcq && blank && q.studentAnswer
+      ? wrap(q.studentAnswer, font, noteSize - 0.5, colWidth)
       : [];
   const correctLines =
     mcq.isMcq && mcq.correct ? wrap(mcq.correct, font, noteSize - 0.5, colWidth) : [];
@@ -383,6 +396,7 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     if (correctLines.length && (!mcq.full || mcq.notAttempted)) h += labelH + correctLines.length * kwLineH;
     if (noteLines.length) h += sectionGap + labelH + noteLines.length * noteLineH;
   } else {
+    if (blankAnswerLines.length) h += labelH + blankAnswerLines.length * kwLineH;
     if (marked.length) {
       h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
     }
@@ -400,8 +414,10 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     missing,
     noteLines,
     studentLines,
+    blankAnswerLines,
     correctLines,
     mcq,
+    blank,
     kwLineH,
     noteLineH,
     sectionGap,
@@ -436,15 +452,15 @@ function drawWrappedLines(page, lines, { x, y, size, font, color, lineH }) {
   return cy;
 }
 
-function drawExaminerColumn(page, layout, questions, bold, reg) {
-  if (!questions.length) {
-    drawColumnHeader(page, layout, bold);
-    return;
-  }
-
-  const sorted = [...questions].sort((a, b) => (a.yPercent ?? 30) - (b.yPercent ?? 30));
+function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
   const headerBottom = drawColumnHeader(page, layout, bold);
-  const { noteSize, built, gap } = pickColumnFontSize(
+  if (!questions.length) return;
+
+  const sorted = [...questions].sort(
+    (a, b) => yPercentOf(a) - yPercentOf(b) || compareQuestionNumbers(a.questionNumber, b.questionNumber)
+  );
+
+  const { noteSize } = pickColumnFontSize(
     sorted,
     headerBottom,
     layout.colBottom,
@@ -452,25 +468,44 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
     bold
   );
 
-  let y = headerBottom;
+  const built = sorted.map((q) => {
+    const paperY = paperAnchorY(q, pageHeight);
+    return {
+      ...buildColumnBlock(q, bold, noteSize, layout.colWidth),
+      targetCenter: paperY,
+      paperY,
+    };
+  });
 
-  for (const block of built) {
+  const minCenter = layout.colBottom + Math.max(...built.map((b) => b.height)) / 2;
+  const maxCenter = headerBottom - Math.max(...built.map((b) => b.height)) / 2;
+  const placed = resolveVerticalCollisions(
+    built.map((b) => ({ ...b, targetCenter: b.targetCenter, height: b.height })),
+    { minCenter, maxCenter, gap: 3 }
+  );
+
+  for (const block of placed) {
     const {
       q,
       marked,
       missing,
       noteLines,
       studentLines,
+      blankAnswerLines,
       correctLines,
       mcq,
+      blank,
       kwLineH,
       noteLineH,
       sectionGap,
       blockPad,
+      height: blockH,
+      center,
+      paperY,
     } = block;
+
     const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
-    const blockTop = y;
-    const blockH = block.height;
+    const blockTop = center + blockH / 2;
 
     page.drawRectangle({
       x: layout.colX - 2,
@@ -494,7 +529,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
 
     if (mcq.isMcq) {
       if (studentLines.length > 0) {
-        const studentLabel = mcq.notAttempted ? "Not attempted:" : mcq.full ? "Chose:" : "Wrong:";
+        const studentLabel = mcq.notAttempted ? "Not answered:" : mcq.full ? "Chose:" : "Wrong:";
         const studentColor = mcq.notAttempted ? AMBER : mcq.full ? GREEN : RED;
         drawBoldText(page, studentLabel, {
           x: layout.colX,
@@ -562,6 +597,26 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
         });
       }
     } else {
+      if (blank && blankAnswerLines.length > 0) {
+        drawBoldText(page, "Not answered:", {
+          x: layout.colX,
+          y: cy,
+          size: noteSize - 0.5,
+          font: bold,
+          color: AMBER,
+        });
+        cy -= 8;
+        cy = drawWrappedLines(page, blankAnswerLines, {
+          x: layout.colX + 2,
+          y: cy,
+          size: noteSize - 0.5,
+          font: reg,
+          color: AMBER,
+          lineH: kwLineH,
+        });
+        cy -= 2;
+      }
+
       if (marked.length > 0) {
         drawBoldText(page, "Earned:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: GREEN });
         cy -= 8;
@@ -616,19 +671,14 @@ function drawExaminerColumn(page, layout, questions, bold, reg) {
       }
     }
 
-    // Link from paper edge to this block (stays off the scan)
-    const anchorY = layout.colTop - ((q.yPercent ?? 30) / 100) * (layout.colTop - layout.colBottom);
-    const linkY = Math.min(blockTop - blockH / 2, anchorY);
     page.drawLine({
-      start: { x: layout.paperW - 1, y: linkY },
-      end: { x: layout.colLeft + 2, y: blockTop - blockH / 2 },
+      start: { x: layout.paperW - 1, y: paperY },
+      end: { x: layout.colLeft + 2, y: center },
       thickness: 0.5,
       color: col,
       dashArray: [2, 2],
       dashPhase: 0,
     });
-
-    y -= blockH + gap;
   }
 }
 
@@ -1185,9 +1235,13 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
+  const enrichedQuestions = normalizeQuestionPlacement(
+    enrichMarkingQuestions(questions || []),
+    studentPageCount
+  );
 
   const byPage = {};
-  for (const q of questions) {
+  for (const q of enrichedQuestions) {
     const p = Math.max(1, Math.min(q.pageNumber || 1, studentPageCount));
     (byPage[p] = byPage[p] || []).push(q);
   }
@@ -1200,7 +1254,7 @@ export async function annotatePdf({
 
   const resolvedTeacher = resolveTeacherAnnotationsForPdf(
     teacherAnnotations,
-    questions
+    enrichedQuestions
   );
   const teacherByPage = {};
   for (const note of resolvedTeacher) {
@@ -1211,7 +1265,7 @@ export async function annotatePdf({
   const reportPageCount = prependGradingReport(pdfDoc, {
     bold,
     reg,
-    questions,
+    questions: enrichedQuestions,
     totalMarks,
     maxTotalMarks,
     summary,
@@ -1231,27 +1285,37 @@ export async function annotatePdf({
 
     const PAGE_BOTTOM = STRIP_H + 6;
     const PAGE_TOP = height - 8;
-    let leftCursor = PAGE_TOP;
+    const badgeH = 18;
+    const badgeBlockH = badgeH + 28;
 
-    const sortedQs = [...qs].sort((a, b) => (a.yPercent ?? 30) - (b.yPercent ?? 30));
+    const sortedQs = [...qs].sort(
+      (a, b) => yPercentOf(a) - yPercentOf(b) || compareQuestionNumbers(a.questionNumber, b.questionNumber)
+    );
 
-    for (const q of sortedQs) {
-      const yPct = Math.min(92, Math.max(5, q.yPercent ?? 30));
-      const anchorY = height - (height * yPct) / 100;
+    const badgePlacements = resolveVerticalCollisions(
+      sortedQs.map((q) => ({
+        q,
+        targetCenter: paperAnchorY(q, height),
+        height: badgeBlockH,
+      })),
+      {
+        minCenter: PAGE_BOTTOM + badgeBlockH / 2,
+        maxCenter: PAGE_TOP - badgeBlockH / 2,
+        gap: 6,
+      }
+    );
+
+    for (const { q, center: anchorY } of badgePlacements) {
       const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
       const bg = scoreBg(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
       const full = Number(q.marksAwarded || 0) >= Number(q.maxMarks || 0);
       const none = Number(q.marksAwarded || 0) === 0;
       const notAttempted = q.studentAnswer === "Not attempted";
 
-      const badgeH = 18;
       const scoreTxt = `${q.marksAwarded}/${q.maxMarks}`;
       const badgeW = Math.max(34, bold.widthOfTextAtSize(scoreTxt, 10) + 10);
       const badgeX = 3;
-
-      let leftBlockTop = Math.min(anchorY + badgeH / 2, leftCursor);
-      let badgeY = Math.max(PAGE_BOTTOM, leftBlockTop - badgeH);
-      leftBlockTop = badgeY + badgeH;
+      const badgeY = anchorY - badgeH / 2;
 
       page.drawRectangle({
         x: badgeX,
@@ -1280,7 +1344,7 @@ export async function annotatePdf({
       });
 
       const mcq = mcqChoiceSummary(q);
-      const symbolY = Math.max(PAGE_BOTTOM, badgeY - 18);
+      const symbolY = badgeY - 18;
 
       if (notAttempted) {
         page.drawText("?", { x: badgeX + 9, y: symbolY + 2, size: 14, font: bold, color: AMBER });
@@ -1304,11 +1368,9 @@ export async function annotatePdf({
         drawCross(page, badgeX + 16, symbolY, 12, RED);
       }
 
-      leftCursor = Math.max(PAGE_BOTTOM, Math.min(leftCursor, symbolY - 8));
-
       page.drawLine({
-        start: { x: badgeX + badgeW, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
-        end: { x: LM + 2, y: Math.min(anchorY, leftBlockTop - badgeH / 2) },
+        start: { x: badgeX + badgeW, y: anchorY },
+        end: { x: LM + 2, y: anchorY },
         thickness: 0.85,
         color: col,
         dashArray: [2, 2],
@@ -1316,7 +1378,7 @@ export async function annotatePdf({
       });
     }
 
-    drawExaminerColumn(page, layout, qs, bold, reg);
+    drawExaminerColumn(page, layout, qs, bold, reg, height);
 
     for (const note of teacherByPage[pageNum] || []) {
       drawTeacherAnnotationOnPaper(page, note, paperW, LM, height, bold, reg);

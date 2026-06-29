@@ -36,11 +36,13 @@ import {
   sanitizeExcelFilenameBase,
 } from "../../utils/exportGradesExcel";
 import SubmissionGradeInput from "../../components/SubmissionGradeInput";
+import { enrichMarkingQuestions, isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import {
   gradeFromPercent,
   resolveTableGrade,
   appendClassroomGradeToFormData,
 } from "../../utils/submissionGrades";
+import { SubmissionStatusBadge } from "../../utils/submissionStatusBadge";
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -2019,16 +2021,7 @@ const deleteCorrection = async (student) => {
     }
   };
 
-  const getStatusBadge = (s) => {
-      if (s.state === "TURNED_IN" || s.state === "RETURNED") {
-      if (s.isLate)   return <span className="ma-badge ma-badge--orange">Late</span>;
-      if (s.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
-      return <span className="ma-badge ma-badge--green">Submitted</span>;
-    }
-    if (s.state === "NEW" || s.state === "CREATED")
-      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
-    return <span className="ma-badge ma-badge--gray">{s.state}</span>;
-  };
+  const getStatusBadge = (s) => <SubmissionStatusBadge student={s} />;
   
   const formatError = (err) => {
     if (!err) return "Unknown error";
@@ -2595,7 +2588,9 @@ return (
                                                 originalAiResult: JSON.parse(JSON.stringify(originalAiResult)),
                                                 studentFile,
                                               });
-                                              setEditingQuestions((result.questions || []).map(q => ({ ...q })));
+                                              setEditingQuestions(
+                                                enrichMarkingQuestions(result.questions || []).map((q) => ({ ...q }))
+                                              );
                                               setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
                                               setEditingMaxTotal(null);
                                               setSummaryTouched(false);
@@ -3322,13 +3317,15 @@ return (
                                   </div>
                                 )}
           
-                                {q.studentAnswer && q.studentAnswer !== "Not attempted" && (
+                                {q.studentAnswer && !isBlankQuestion(q) && (
                                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
                                     <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
                                   </div>
                                 )}
-                                {q.studentAnswer === "Not attempted" && (
-                                  <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 6 }}>📭 Not attempted</div>
+                                {isBlankQuestion(q) && (
+                                  <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                                    📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
+                                  </div>
                                 )}
           
                                 {/* Correct answer — shown in criteria mode */}

@@ -63,11 +63,13 @@ import {
   sanitizeExcelFilenameBase,
 } from "../../utils/exportGradesExcel";
 import SubmissionGradeInput from "../../components/SubmissionGradeInput";
+import { enrichMarkingQuestions, isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import {
   gradeFromPercent,
   resolveTableGrade,
   appendClassroomGradeToFormData,
 } from "../../utils/submissionGrades";
+import { SubmissionStatusBadge } from "../../utils/submissionStatusBadge";
 import {
   MARKING_MAX_ATTEMPTS,
   MARKING_MAX_RETRIES_MESSAGE,
@@ -2648,16 +2650,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
   };
 
-  const statusBadge = (student) => {
-    if (student.state === "TURNED_IN" || student.state === "RETURNED") {
-      if (student.isLate)   return <span className="ma-badge ma-badge--orange">Late</span>;
-      if (student.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
-      return <span className="ma-badge ma-badge--green">Submitted</span>;
-    }
-    if (student.state === "NEW" || student.state === "CREATED")
-      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
-    return <span className="ma-badge ma-badge--gray">{student.state}</span>;
-  };
+  const statusBadge = (student) => <SubmissionStatusBadge student={student} />;
 
 
   const resolveBatchStudentForReturn = (submissionId) => {
@@ -3471,7 +3464,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                                 studentFile,
                                                 submissionId: s.submissionId,
                                               });
-                                              setEditingQuestions((result.questions || []).map(q => ({ ...q })));
+                                              setEditingQuestions(
+                                                enrichMarkingQuestions(result.questions || []).map((q) => ({ ...q }))
+                                              );
                                               setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
                                               setEditingMaxTotal(null);
                                               setSummaryTouched(false);
@@ -4287,13 +4282,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         </div>
                       )}
 
-                      {q.studentAnswer && q.studentAnswer !== "Not attempted" && (
+                      {q.studentAnswer && !isBlankQuestion(q) && (
                         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
                           <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
                         </div>
                       )}
-                      {q.studentAnswer === "Not attempted" && (
-                        <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 6 }}>📭 Not attempted</div>
+                      {isBlankQuestion(q) && (
+                        <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                          📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
+                        </div>
                       )}
 
                       {/* Correct answer — criteria mode or MCQ */}
