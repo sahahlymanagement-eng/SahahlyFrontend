@@ -80,6 +80,12 @@ import {
 } from "../../utils/markingCost";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
+  useMarkingStudentSelection,
+  loadEligibleStudentsForMarking,
+  markingActionLabel,
+} from "../../utils/markingStudentSelection";
+import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import {
   MARKING_MAX_ATTEMPTS,
   MARKING_MAX_RETRIES_MESSAGE,
   runWithMarkingRetries,
@@ -120,8 +126,8 @@ export default function AssignmentSubmissionViewer() {
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
   const batchStopRef = useRef(false);
-  const batchPollRef = useRef(null); 
-  
+  const batchPollRef = useRef(null);
+ 
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
   const [savedPrompts,       setSavedPrompts]       = useState([]);
@@ -314,6 +320,104 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {} } = extra;
 
+  const markingSelection = useMarkingStudentSelection();
+  const [selectingMarkingAll, setSelectingMarkingAll] = useState(false);
+
+  const studentsMarkingUrl = assignmentId
+    ? `/assignment-submissions/${assignmentId}/students`
+    : null;
+
+  useEffect(() => {
+    markingSelection.clear();
+  }, [assignmentId]);
+
+  const pageSelectableIds = useMemo(
+    () => students.filter((s) => s.submissionId).map((s) => s.submissionId),
+    [students]
+  );
+
+  const pageAllMarkingSelected = useMemo(
+    () =>
+      pageSelectableIds.length > 0 &&
+      pageSelectableIds.every((id) => markingSelection.isSelected(id)),
+    [pageSelectableIds, markingSelection.selectedIds]
+  );
+
+  const toggleMarkingSelectPage = () => {
+    if (pageAllMarkingSelected) {
+      markingSelection.selectIds(
+        [...markingSelection.selectedIds].filter(
+          (id) => !pageSelectableIds.includes(id)
+        )
+      );
+    } else {
+      markingSelection.mergeIds(pageSelectableIds);
+    }
+  };
+
+  const selectAllStudentsForMarking = async () => {
+    if (!studentsMarkingUrl) return;
+    setSelectingMarkingAll(true);
+    try {
+      const all = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
+      const ids = all.filter((s) => s.submissionId).map((s) => s.submissionId);
+      markingSelection.selectIds(ids);
+      toast.success(`Selected ${ids.length} student(s)`);
+    } catch {
+      toast.error("Failed to load all students");
+    } finally {
+      setSelectingMarkingAll(false);
+    }
+  };
+
+  const resolveEligibleForMarking = async (requireSubmitted = false) => {
+    toast.info(
+      markingSelection.selectedCount
+        ? `Preparing ${markingSelection.selectedCount} selected student(s)…`
+        : "Loading all students for this assignment…"
+    );
+    const result = await loadEligibleStudentsForMarking(api, {
+      assignmentId,
+      studentsUrl: studentsMarkingUrl,
+      selectedIds: markingSelection.selectedIds,
+      requireSubmitted,
+    });
+
+    if (result.error === "none_of_selected_found") {
+      toast.warn("Selected students were not found on this assignment");
+      return null;
+    }
+
+    const { allStudents, eligible, pool } = result;
+
+    if (markingSelection.selectedCount > 0 && !eligible.length) {
+      toast.warn("None of the selected students are eligible for marking (may already be marked)");
+      return null;
+    }
+
+    if (!eligible.length) {
+      const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        toast.warn("No students with submissions");
+        return null;
+      }
+      toast.warn(
+        markingSelection.selectedCount
+          ? "Selected students are already marked or not eligible"
+          : "All submitted students are already marked for this assignment"
+      );
+      return null;
+    }
+
+    if (markingSelection.selectedCount > 0 && eligible.length < pool.length) {
+      toast.info(
+        `${eligible.length} of ${pool.length} selected will be marked (others already marked)`
+      );
+    }
+
+    return { allStudents, eligible };
+  };
+
   const assignmentMaxPoints = useMemo(
     () => resolveAssignmentMaxPoints({ maxPoints: maxGrade }, savedResults),
     [maxGrade, savedResults]
@@ -420,7 +524,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   //   fetchStudents();
   // }, [assignmentId]);
 
-  useEffect(() => {
+    useEffect(() => {
     if (!promptDropdownOpen) return;
     const close = () => setPromptDropdownOpen(false);
     document.addEventListener("mousedown", close);
@@ -611,7 +715,7 @@ const refreshStudents = async () => {
     toast.success("Synced grades, max points, and percentages from Google Classroom");
   } catch {
     toast.error("Failed to refresh from Google Classroom");
-  } finally {
+    } finally {
     setRefreshing(false);
   }
 };
@@ -705,7 +809,7 @@ const deleteCorrection = async (student) => {
 
     setMsInfo({ fileId: res.data.fileId, webLink: res.data.webLink });
     // setCachedMsFile(file); 
-    toast.success("Mark scheme uploaded");
+      toast.success("Mark scheme uploaded");
     } catch (err) {
       toast.error(err.response?.data?.message || "Upload failed");
     } finally { setUploadingMs(false); }
@@ -718,12 +822,12 @@ const deleteCorrection = async (student) => {
         responseType: "blob"
       })
 
-    const blob = new Blob([res.data], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    window.open(url);
-        } catch {
-          toast.error("Failed to open PDF");
-        }
+const blob = new Blob([res.data], { type: "application/pdf" });
+const url = URL.createObjectURL(blob);
+window.open(url);
+    } catch {
+      toast.error("Failed to open PDF");
+    }
   };
 
   const downloadPdf = async (student) => {
@@ -733,8 +837,8 @@ const deleteCorrection = async (student) => {
         responseType: "blob"
       });
 
-      const blob = new Blob([res.data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
+const blob = new Blob([res.data], { type: "application/pdf" });
+const url = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
       a.href = url;
@@ -963,53 +1067,24 @@ const deleteCorrection = async (student) => {
 
   const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
     try {
-    toast.info("Loading all students for this assignment…");
-    const allStudents = await fetchAllPaginated(
-      api,
-      `/assignment-submissions/${assignmentId}/students`,
-      {},
-      "students"
-    );
-
-    const res = await api.post(
-      "/submission-files/eligible-for-bulk-marking",
-      {
-        assignmentId,
-        submissions: allStudents
-      }
-    );
-
-    const backendEligible = new Set(
-      res.data.map(s => s.submissionId)
-    );
-
-    const eligible = allStudents.filter(
-      s => s.submissionId && backendEligible.has(s.submissionId)
-    );
-    
-    if (!eligible.length) {
-      const withSubmissions = allStudents.filter((s) => s.submissionId);
-      if (!withSubmissions.length) {
-        return toast.warn("No students with submissions");
-      }
-      return toast.warn("All submitted students are already marked for this assignment");
-    }
-
+    const loaded = await resolveEligibleForMarking(false);
+    if (!loaded) return;
+    const { eligible } = loaded;
     const guidanceValue = guidanceForForm(guidanceText);
 
     bulkStopRef.current = false;
-    setBulkMarking(true);
+      setBulkMarking(true);
 
-    const progress = {};
+      const progress = {};
     eligible.forEach(s => {
       progress[s.submissionId] = { status: "pending" };
     });
-    setBulkProgress({ ...progress });
+      setBulkProgress({ ...progress });
 
     let doneCount = 0;
     let errorCount = 0;
-
-    for (const student of eligible) {
+  
+      for (const student of eligible) {
       if (bulkStopRef.current) break;
 
       setBulkProgress(p => ({
@@ -1023,17 +1098,17 @@ const deleteCorrection = async (student) => {
       let studentFile;
       let msFile;
 
-      try {
-        const [studentPdfRes, msPdfRes] = await Promise.all([
-          api.get("/submission-files/pdf", {
+        try {
+          const [studentPdfRes, msPdfRes] = await Promise.all([
+            api.get("/submission-files/pdf", {
             params: { assignmentId, submissionId: student.submissionId },
-            responseType: "blob"
-          }),
-          api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-            responseType: "blob"
-          })
-        ]);
-
+              responseType: "blob"
+            }),
+            api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
+              responseType: "blob"
+            })
+          ]);
+  
         await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
         await assertPdfBlob(msPdfRes.data, "Mark scheme");
 
@@ -1113,7 +1188,7 @@ const deleteCorrection = async (student) => {
       // -----------------------------
       // 2. PREP FORM DATA (ONCE)
       // -----------------------------
-      const fd = new FormData();
+          const fd = new FormData();
       fd.append("studentPdf", studentFile);
       fd.append("markingMode", mode);
 
@@ -1127,7 +1202,7 @@ const deleteCorrection = async (student) => {
       if (provider !== "claude") {
         fd.append("geminiModel", geminiModel);
       }
-      fd.append("markSchemePdf", msFile);
+          fd.append("markSchemePdf", msFile);
 
       const endpoint =
         provider === "claude"
@@ -1246,7 +1321,7 @@ const deleteCorrection = async (student) => {
       toast.error(`Bulk marking failed — ${errorCount} student${errorCount === 1 ? "" : "s"} could not be marked`);
     }
 
-    setBulkMarking(false);
+      setBulkMarking(false);
     if (bulkStopRef.current) {
       toast.info("Bulk marking stopped");
     } else {
@@ -1403,38 +1478,13 @@ const deleteCorrection = async (student) => {
     }
 
     let eligible;
-    let allStudents;
     try {
-      toast.info("Loading all students for this assignment…");
-      allStudents = await fetchAllPaginated(
-        api,
-        `/assignment-submissions/${assignmentId}/students`,
-        {},
-        "students"
-      );
-
-      const res = await api.post(
-        "/submission-files/eligible-for-bulk-marking",
-        {
-          assignmentId,
-          submissions: allStudents,
-        }
-      );
-      const backendEligible = new Set(res.data.map((s) => s.submissionId));
-      eligible = allStudents.filter(
-        (s) => s.submissionId && backendEligible.has(s.submissionId)
-      );
+      const loaded = await resolveEligibleForMarking(true);
+      if (!loaded) return;
+      eligible = loaded.eligible;
     } catch (err) {
       toast.error(extractHumanError(err) || "Failed to check eligible students");
       return;
-    }
-
-    if (!eligible.length) {
-      const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
-      if (!withSubmissions.length) {
-        return toast.warn("No students with submissions");
-      }
-      return toast.warn("All submitted students are already marked for this assignment");
     }
 
     const guidanceValue = guidanceForForm(guidanceText);
@@ -1624,9 +1674,9 @@ const deleteCorrection = async (student) => {
       // const total = editingQuestions.reduce(
       //   (s, q) => s + (typeof q.marksAwarded === "number" ? q.marksAwarded : 0),0);
       
-      const isUngraded =
-        maxGrade == null ||
-        resultModal?.result?.totalMarks == null;
+const isUngraded =
+  maxGrade == null ||
+  resultModal?.result?.totalMarks == null;
 
       // const pdfBytes = await annotatePdf({
       //   studentFile: resultModal.studentFile,
@@ -2085,29 +2135,29 @@ const deleteCorrection = async (student) => {
       setReturning(false);
     }
   };
-
-  const isCriteria = resultModal?.result?.markingMode === "criteria";
+  
+const isCriteria = resultModal?.result?.markingMode === "criteria";
 
   const total = sumQuestionMarks(editingQuestions);
-  const max   = effectiveMaxTotal;
+const max   = effectiveMaxTotal;
   const pct   = gradeScorePercent(total, max);
-  const color = getScoreColor(total, max);
+const color = getScoreColor(total, max);
 
 return (
     <div className="ma-root">
       <main className="ma-main">
 
-          <header className="ma-topbar">
-            <div className="ma-topbar-left">
-              <h1 className="ma-topbar-title">{assignmentTitle}</h1>
-              <span className="ma-topbar-sub">
-                {dueDateTime
-                  ? `Due: ${new Date(dueDateTime).toLocaleString()}`
-                  : "No due date"}
-              </span>
-            </div>
+        <header className="ma-topbar">
+  <div className="ma-topbar-left">
+    <h1 className="ma-topbar-title">{assignmentTitle}</h1>
+    <span className="ma-topbar-sub">
+      {dueDateTime
+        ? `Due: ${new Date(dueDateTime).toLocaleString()}`
+        : "No due date"}
+    </span>
+  </div>
 
-              <div className="header-actions">
+  <div className="header-actions">
                 <button
                   type="button"
                   onClick={handleExportGradesExcel}
@@ -2118,47 +2168,47 @@ return (
                 </button>
 
                 <button onClick={() => fetchPage(page)} className="ma-send-btn">
-                  <FiRefreshCw /> Refresh
-                </button>
+      <FiRefreshCw /> Refresh
+    </button>
 
                 <button onClick={() => navigate("/assistant/assignments")} className="msv-cancel-btn">
-                  Back
-                </button>
-              </div>
-          </header>
+      Back
+    </button>
+  </div>
+</header>
 
-            <div className="ma-content">
-            {/* MARK SCHEME BAR */}
-            <div className="msv-ms-bar">
-              <div className="msv-ms-info">
-                <div className="msv-ms-title">📋 Mark Scheme</div>
-                <div className={`msv-ms-status ${msInfo ? "msv-ms-status--ok" : ""}`}>
-                  {msInfo
-                    ? "✅ Uploaded — ready for AI marking"
-                    : "No mark scheme uploaded"}
-                </div>
-              </div>
+<div className="ma-content">
+{/* MARK SCHEME BAR */}
+<div className="msv-ms-bar">
+  <div className="msv-ms-info">
+    <div className="msv-ms-title">📋 Mark Scheme</div>
+    <div className={`msv-ms-status ${msInfo ? "msv-ms-status--ok" : ""}`}>
+      {msInfo
+        ? "✅ Uploaded — ready for AI marking"
+        : "No mark scheme uploaded"}
+    </div>
+  </div>
 
-              <input
-                type="file"
-                accept=".pdf"
-                style={{ display: "none" }}
-                id="ms-upload"
-                onChange={(e) => handleMsUpload(e.target.files[0])}
-              />
+  <input
+    type="file"
+    accept=".pdf"
+    style={{ display: "none" }}
+    id="ms-upload"
+    onChange={(e) => handleMsUpload(e.target.files[0])}
+  />
 
               {/* Upload Mark Scheme */}
-              <button
-                className="ma-send-btn"
-                onClick={() => document.getElementById("ms-upload").click()}
-              >
-                {uploadingMs ? "Uploading…" : msInfo ? "Replace MS" : "Upload MS"}
-              </button>
+  <button
+    className="ma-send-btn"
+    onClick={() => document.getElementById("ms-upload").click()}
+  >
+    {uploadingMs ? "Uploading…" : msInfo ? "Replace MS" : "Upload MS"}
+  </button>
 
                {/* View Mark Scheme */}
-              {msInfo && (
-                <button
-                  className="msv-btn-ai"
+  {msInfo && (
+    <button
+      className="msv-btn-ai"
                   onClick={() => openMarkScheme(msInfo)}
                   style={{
                     marginLeft: 10,
@@ -2167,8 +2217,8 @@ return (
                   }}
                 >
                   View Mark Scheme
-                </button>
-              )}
+    </button>
+  )}
 
               {/* Mark All */}
               {msInfo  && (
@@ -2182,7 +2232,7 @@ return (
                     cursor: bulkLocked ? "not-allowed" : "pointer"
                   }}
                 >
-                {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
+                {bulkMarking ? <><span className="pm-spinner" /> Marking…</> : <><FiCpu size={13} /> {markingActionLabel("Mark All Students", "Mark Selected", markingSelection.selectedCount)}</>}
                 </button>
               )}
               {msInfo && bulkMarking && (
@@ -2257,7 +2307,7 @@ return (
                     {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                     {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                     {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-                    {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
+                    {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
                   </button>
                 </div>
               )}
@@ -2380,10 +2430,20 @@ return (
                   <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
                   {refreshing ? "Refreshing…" : "Refresh"}
                 </button>
-              </div>
+</div>
 
-              {/* TABLE */}
-                {loading ? <p className="ma-loading-msg">Loading...</p> : (
+              <MarkingSelectionBar
+                selectedCount={markingSelection.selectedCount}
+                pageSelectableCount={pageSelectableIds.length}
+                pageAllSelected={pageAllMarkingSelected}
+                onTogglePage={toggleMarkingSelectPage}
+                onSelectAll={selectAllStudentsForMarking}
+                onClear={markingSelection.clear}
+                selectingAll={selectingMarkingAll}
+              />
+
+{/* TABLE */}
+{loading ? <p className="ma-loading-msg">Loading...</p> : (
                   <>
                   {students.length === 0 && (
                     <p className="ma-empty-msg">
@@ -2391,25 +2451,26 @@ return (
                     </p>
                   )}
                   {students.length > 0 && (
-                  <div className="ma-table-wrap">
-                    <div className="ma-table-scroll">
+  <div className="ma-table-wrap">
+    <div className="ma-table-scroll">
 
-                      <table className="ma-table">
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Status</th>
-                            <th>Submitted At</th>
-                            <th>Grade</th>
+      <table className="ma-table">
+        <thead>
+          <tr>
+            <th style={{ width: 44 }} aria-label="Select for marking" />
+            <th>Name</th>
+            <th>Status</th>
+            <th>Submitted At</th>
+            <th>Grade</th>
                             <th>%</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
+            <th>Actions</th>
+          </tr>
+        </thead>
 
-                        <tbody>
-                          {students.map((s, i) => {
-                            const bulk     = bulkProgress[s.submissionId];
-                            const bulkDone = bulk?.status === "done";
+        <tbody>
+          {students.map((s, i) => {
+            const bulk     = bulkProgress[s.submissionId];
+            const bulkDone = bulk?.status === "done";
                             const bulkPending = bulk?.status === "pending";
                             const bulkMarking = bulk?.status === "marking";
                             const bulkError   = bulk?.status === "error";
@@ -2440,22 +2501,34 @@ return (
                               (batchDone && batch?.result) ||
                               (bulkDone && bulk?.result) ||
                               (db?.result?.tokenUsage ? db.result : null);
+          
+          
+          return (
+            <tr
+              key={s.submissionId}
+              className="ma-row"
+              style={{ animationDelay: `${i * 0.025}s` }}
+            >
+              <td>
+                {s.submissionId ? (
+                  <button
+                    type="button"
+                    className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                    onClick={() => markingSelection.toggle(s.submissionId)}
+                    aria-label={`Select ${s.name || "student"} for marking`}
+                  >
+                    {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                  </button>
+                ) : null}
+              </td>
 
-                          
-                          return (
-                            <tr
-                              key={s.submissionId}
-                              className="ma-row"
-                              style={{ animationDelay: `${i * 0.025}s` }}
-                            >
-
-                              {/* NAME */}
-                              <td>
-                                <div className="ma-avatar-cell">
-                                  <div className="ma-avatar">
-                                    {(s.name || "?").charAt(0).toUpperCase()}
-                                  </div>
-                                  <span className="ma-cell-name">{s.name || "—"}</span>
+              {/* NAME */}
+              <td>
+                <div className="ma-avatar-cell">
+                  <div className="ma-avatar">
+                    {(s.name || "?").charAt(0).toUpperCase()}
+                  </div>
+                  <span className="ma-cell-name">{s.name || "—"}</span>
                                   {savedResults[s.submissionId]?.result?.fileWarning && (
                                     <span
                                       title="Submitted file may be wrong — page count differs from expected"
@@ -2464,23 +2537,23 @@ return (
                                       ⚠️ Review Submission
                                     </span>
                                   )}
-                                </div>
-                              </td>
+                </div>
+              </td>
 
-                              {/* STATUS */}
-                              <td>{getStatusBadge(s)}</td>
+              {/* STATUS */}
+              <td>{getStatusBadge(s)}</td>
 
-                              {/* SUBMITTED AT */}
-                              <td>
-                                <span className="ma-cell-muted">
-                                  {s.submittedAt
-                                    ? new Date(s.submittedAt).toLocaleString()
-                                    : "—"}
-                                </span>
-                              </td>
+              {/* SUBMITTED AT */}
+              <td>
+                <span className="ma-cell-muted">
+                  {s.submittedAt
+                    ? new Date(s.submittedAt).toLocaleString()
+                    : "—"}
+                </span>
+              </td>
 
-                              {/* GRADE */}
-                              <td>
+              {/* GRADE */}
+              <td>
                                 <SubmissionGradeInput
                                   student={s}
                                   submissionId={s.submissionId}
@@ -2530,18 +2603,18 @@ return (
                                     />
                                     <span className="ma-percent-suffix">%</span>
                                   </div>
-                                ) : (
-                                  <span className="ma-cell-empty">—</span>
-                                )}
-                              </td>
+                ) : (
+                  <span className="ma-cell-empty">—</span>
+                )}
+              </td>
 
-                              {/* ACTIONS */}
-                              <td>
-                                {s.submissionId ? (
-                                  <div className="msv-actions">
+              {/* ACTIONS */}
+              <td>
+                {s.submissionId ? (
+                  <div className="msv-actions">
 
-                                    <button className="msv-action-btn" onClick={() => openPdf(s)}> <FiEye size={13} /> </button>
-                                    <button className="msv-action-btn" onClick={() => downloadPdf(s)}> <FiDownload size={13} /> </button>
+                    <button className="msv-action-btn" onClick={() => openPdf(s)}> <FiEye size={13} /> </button>
+                    <button className="msv-action-btn" onClick={() => downloadPdf(s)}> <FiDownload size={13} /> </button>
 
                                     {studentErrors[s.submissionId] && (
                                       <button
@@ -2558,15 +2631,15 @@ return (
                                       </button>
                                     )}
 
-                                    {msInfo && (
+                    {msInfo && (
                                       <>
                                         
                                         {/* Results button — show if any source has results */}
                                         {(bulkDone || batchDone || single?.status === "done" || db?.result) && (
-                                          <button
+                      <button
                                             className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
                                             title="View Results"
-                                            onClick={() => {
+                        onClick={() => {
                                               const result =
                                                 batchDone ? batch.result :
                                                 bulkDone ? bulk.result :
@@ -2592,7 +2665,7 @@ return (
                                                 enrichMarkingQuestions(result.questions || []).map((q) => ({ ...q }))
                                               );
                                               setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
-                                              setEditingMaxTotal(null);
+                            setEditingMaxTotal(null);
                                               setSummaryTouched(false);
                                               setEditingSummary(
                                                 rebuildMarkingSummary({
@@ -2629,8 +2702,8 @@ return (
                                             : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
-                                            : <><FiCpu size={12} /> Mark</>
-                                          }
+                          : <><FiCpu size={12} /> Mark</>
+                        }
                                         </button>
 
                                           {/* {bulkRetrying && (
@@ -2645,7 +2718,7 @@ return (
                                             disabled={deletingCorrection[s.submissionId] || markingLoading}
                                           >
                                             {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
-                                          </button>
+                      </button>
                                         )}
 
                                         {inlineMarkResult?.tokenUsage && (
@@ -2683,28 +2756,28 @@ return (
                                           </div>
                                         )}
                                       </>
-                                    )}
-                                  
-                                  </div>
-                                ) : "—"}
-                              </td>
+                    )}
 
-                            </tr>
+                  </div>
+                ) : "—"}
+              </td>
+
+            </tr>
                             
-                          );
-                          })}
-                        </tbody>
-                      </table>
+          );
+          })}
+        </tbody>
+      </table>
 <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
-                      </div>
-                    </div>
-                  )}
+    </div>
+  </div>
+)}
                   </>
                 )}
 
-            </div>
+</div>
 
-            </main>
+      </main>
 
               {errorViewer.open && (
                 <div className="msv-overlay" onClick={() =>
@@ -2757,53 +2830,53 @@ return (
                 </div>
               )}
 
-          {/* ── GUIDANCE MODAL ── */}
-                {guidanceModal && (
-                  <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
-                    <div className="msv-guidance-modal" onClick={e => e.stopPropagation()}>
-                      <div className="msv-guidance-header">
+      {/* ── GUIDANCE MODAL ── */}
+      {guidanceModal && (
+        <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
+          <div className="msv-guidance-modal" onClick={e => e.stopPropagation()}>
+            <div className="msv-guidance-header">
                         
-                          <div style={{ fontSize: 15, fontWeight: 700 }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>
                             {guidanceModal.batch ? "⚡ Mark All Students (Batch)"  :
                             guidanceModal.bulk  ? "🤖 Mark All Students"           :
                                                   `🤖 Mark — ${guidanceModal.student?.name}`}
-                          </div>
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
                             {guidanceModal.batch
                               ? `Submits all eligible students in this assignment via Gemini batch API — ${studentTotal} students in class`
                               : guidanceModal.bulk
-                              ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
-                              : "AI will mark against the uploaded mark scheme"}
-                          </div>
+                    ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
+                    : "AI will mark against the uploaded mark scheme"}
+                </div>
                         
-                        <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
-                      </div>
+              <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
+            </div>
 
-                      <div style={{ padding: "20px 24px" }}>
-                        {/* Mode selector */}
-                        <div style={{ marginBottom: 16 }}>
-                          <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 8 }}>Marking Mode</label>
-                          <div style={{ display: "flex", gap: 10 }}>
-                            {[
-                              { value: "normal",   label: "📋 Normal Marking",  desc: "Marks against the mark scheme" },
-                              { value: "criteria", label: "🎯 Criteria Marking", desc: "Two-layer: corrections + criteria grade" }
-                            ].map(m => (
-                              <div
-                                key={m.value}
-                                onClick={() => setMarkingModeModal(m.value)}
-                                style={{
-                                  flex: 1, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                                  border: `2px solid ${markingModeModal === m.value ? "#399cf2" : "rgba(255,255,255,0.1)"}`,
-                                  background: markingModeModal === m.value ? "rgba(57,156,242,0.1)" : "rgba(255,255,255,0.03)",
-                                  transition: "all 0.18s ease"
-                                }}
-                              >
-                                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{m.label}</div>
-                                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{m.desc}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+            <div style={{ padding: "20px 24px" }}>
+              {/* Mode selector */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 8 }}>Marking Mode</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {[
+                    { value: "normal",   label: "📋 Normal Marking",  desc: "Marks against the mark scheme" },
+                    { value: "criteria", label: "🎯 Criteria Marking", desc: "Two-layer: corrections + criteria grade" }
+                  ].map(m => (
+                    <div
+                      key={m.value}
+                      onClick={() => setMarkingModeModal(m.value)}
+                      style={{
+                        flex: 1, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                        border: `2px solid ${markingModeModal === m.value ? "#399cf2" : "rgba(255,255,255,0.1)"}`,
+                        background: markingModeModal === m.value ? "rgba(57,156,242,0.1)" : "rgba(255,255,255,0.03)",
+                        transition: "all 0.18s ease"
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{m.label}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{m.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
                         {/* Gemini model (bulk, batch, and single mark) */}
                         <div style={{ marginBottom: 16 }}>
@@ -2826,27 +2899,27 @@ return (
                           </p>
                         </div>
 
-                        {/* Saved prompt dropdown */}
-                        {savedPrompts.length > 0 && (
-                          <div style={{ marginBottom: 14, position: "relative" }}>
-                            <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
-                            <div
-                              style={{
-                                width: "100%", padding: "9px 12px", borderRadius: 8,
-                                border: `1px solid ${promptDropdownOpen ? "rgba(57,156,242,0.5)" : "rgba(255,255,255,0.1)"}`,
-                                background: "rgba(255,255,255,0.04)", color: guidance ? "white" : "rgba(255,255,255,0.35)",
-                                fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
-                                justifyContent: "space-between", userSelect: "none",
-                                transition: "all 0.18s ease"
-                              }}
+              {/* Saved prompt dropdown */}
+              {savedPrompts.length > 0 && (
+                <div style={{ marginBottom: 14, position: "relative" }}>
+                  <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
+                  <div
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      border: `1px solid ${promptDropdownOpen ? "rgba(57,156,242,0.5)" : "rgba(255,255,255,0.1)"}`,
+                      background: "rgba(255,255,255,0.04)", color: guidance ? "white" : "rgba(255,255,255,0.35)",
+                      fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
+                      justifyContent: "space-between", userSelect: "none",
+                      transition: "all 0.18s ease"
+                    }}
                               onClick={e => {
                                 e.stopPropagation(); 
                                 setPromptDropdownOpen(v => !v); }}
-                            >
-                              <span>{guidance ? (savedPrompts.find(p => p.content === guidance)?.name || "📋 Custom guidance entered") : "📋 Select a saved prompt…"}</span>
-                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
-                            </div>
-                            {promptDropdownOpen && (
+                  >
+                    <span>{guidance ? (savedPrompts.find(p => p.content === guidance)?.name || "📋 Custom guidance entered") : "📋 Select a saved prompt…"}</span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
+                  </div>
+                  {promptDropdownOpen && (
                               <div 
                               style={{ 
                                 position: "absolute",
@@ -2862,9 +2935,9 @@ return (
                                 overflowX: "hidden",
                                 boxShadow: "0 8px 32px rgba(0,0,0,0.5)" 
                               }}>
-                                {savedPrompts.map((p, i) => (
-                                <div
-                                  key={p._id}
+                      {savedPrompts.map((p, i) => (
+                        <div
+                          key={p._id}
                                   style={{
                                     padding: "10px 14px",
                                     cursor: "pointer",
@@ -2886,7 +2959,7 @@ return (
                                   >
                                     <div style={{ fontSize: 13, fontWeight: 600 }}>
                                       {p.name}
-                                    </div>
+                        </div>
                                     <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                                       {p.content.slice(0, 80)}...
                                     </div>
@@ -2920,30 +2993,30 @@ return (
                                   </button>
                                 </div>
                                 
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                        <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
-                          {markingModeModal === "criteria"
-                            ? <><span style={{ color: "#e2e8f0" }}>Criteria</span> <span style={{ color: "#ef4444" }}>*</span> — define the grading criteria and weights</>
-                            : <>Additional Guidance <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span></>
-                          }
-                        </label>
-                        <textarea
-                          value={guidance}
-                          onChange={e => setGuidance(e.target.value)}
-                          rows={6}
-                          placeholder={markingModeModal === "criteria"
-                            ? "Define criteria e.g:\nOn-Time Submission: 2 marks — full marks if submitted on time\nCompleteness: 2 marks — all questions attempted\nShowing Steps: 2 marks — working shown\nSelf-Correction: 2 marks — evidence of review\nBase Score: 2 marks — guaranteed minimum"
-                            : "e.g. Be strict with units. Award method marks if working is shown..."
-                          }
-                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
-                        />
-                        <button
-                            className="ma-send-btn"
+              <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+                {markingModeModal === "criteria"
+                  ? <><span style={{ color: "#e2e8f0" }}>Criteria</span> <span style={{ color: "#ef4444" }}>*</span> — define the grading criteria and weights</>
+                  : <>Additional Guidance <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span></>
+                }
+              </label>
+              <textarea
+                value={guidance}
+                onChange={e => setGuidance(e.target.value)}
+                rows={6}
+                placeholder={markingModeModal === "criteria"
+                  ? "Define criteria e.g:\nOn-Time Submission: 2 marks — full marks if submitted on time\nCompleteness: 2 marks — all questions attempted\nShowing Steps: 2 marks — working shown\nSelf-Correction: 2 marks — evidence of review\nBase Score: 2 marks — guaranteed minimum"
+                  : "e.g. Be strict with units. Award method marks if working is shown..."
+                }
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
+              />
+                <button
+                  className="ma-send-btn"
                             onClick={async () => {
                               if (!guidance.trim()) return toast.warn("Cannot save empty prompt");
 
@@ -2975,9 +3048,9 @@ return (
                                   onClick={() => handleGuidanceConfirm("gemini")}
                                   disabled={markingModeModal === "criteria" && !guidance.trim()}
                                   style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}>
-                                  <FiCpu size={14} />
+                  <FiCpu size={14} />
                                   {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
-                                </button>
+                </button>
                                 <button className="ma-send-btn" onClick={() => handleGuidanceConfirm("claude")}>
                                   <FiCpu size={14} />
                                   {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
@@ -2998,78 +3071,78 @@ return (
                               </button>
                             )}
 
-                            <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
-                          </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-          {/* ── RESULTS MODAL ── */}
-                {resultModal && (
-                  <div className="msv-overlay" onClick={() => setResultModal(null)}>
-                    <div className="msv-results-modal" onClick={e => e.stopPropagation()}>
-                      <div className="msv-modal-header">
-                        <div>
-                          <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            AI Marking Results — {resultModal.student.name}
-                            <span style={{
-                              fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
-                              background: isCriteria ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
-                              color: isCriteria ? "#a78bfa" : "#399cf2",
-                              border: `1px solid ${isCriteria ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`
-                            }}>
-                              {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
+      {/* ── RESULTS MODAL ── */}
+            {resultModal && (
+              <div className="msv-overlay" onClick={() => setResultModal(null)}>
+                <div className="msv-results-modal" onClick={e => e.stopPropagation()}>
+                  <div className="msv-modal-header">
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        AI Marking Results — {resultModal.student.name}
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
+                          background: isCriteria ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
+                          color: isCriteria ? "#a78bfa" : "#399cf2",
+                          border: `1px solid ${isCriteria ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`
+                        }}>
+                          {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
                               readOnly
-                              type="number"
-                              min={0}
-                              max={effectiveMaxTotal}
-                              value={total}
-                              // value={editingTotal !== null ? editingTotal : effectiveTotal}
-                              // onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
-                              style={{
-                                width: 56, padding: "3px 8px", borderRadius: 6,
+                          type="number"
+                          min={0}
+                          max={effectiveMaxTotal}
+                          value={total}
+                          // value={editingTotal !== null ? editingTotal : effectiveTotal}
+                          // onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
+                          style={{
+                            width: 56, padding: "3px 8px", borderRadius: 6,
                                 border: `1px solid ${color}`,
                                 background: `${color}15`,
                                 color: color,
-                                fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
+                            fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
                                 // readonly: true,
-                                cursor: "not-allowed"  // optional: makes it visually clear
-                              }}
-                            />
-                            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>/</span>
-                            <input
-                              type="number"
-                              min={1}
-                              value={editingMaxTotal !== null ? editingMaxTotal : effectiveMaxTotal}
-                              onChange={e => {
-                                const newMax = Math.max(1, Number(e.target.value));
-                                setEditingMaxTotal(newMax);
-                              }}
-                              style={{
-                                width: 56, padding: "3px 8px", borderRadius: 6,
-                                border: "1px solid rgba(255,255,255,0.15)",
-                                background: "rgba(255,255,255,0.06)",
-                                color: "rgba(255,255,255,0.7)",
-                                fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none"
-                              }}
-                            />
-                            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                            cursor: "not-allowed"  // optional: makes it visually clear
+                          }}
+                        />
+                        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>/</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={editingMaxTotal !== null ? editingMaxTotal : effectiveMaxTotal}
+                          onChange={e => {
+                            const newMax = Math.max(1, Number(e.target.value));
+                            setEditingMaxTotal(newMax);
+                          }}
+                          style={{
+                            width: 56, padding: "3px 8px", borderRadius: 6,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "rgba(255,255,255,0.7)",
+                            fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none"
+                          }}
+                        />
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
                               ({pct}%)
-                            </span>
+                        </span>
                             {hasPendingEdits && (
                               <span style={{ fontSize: 11, color: "#fbbf24", fontWeight: 600 }}>
                                 Unsaved edits
                               </span>
                             )}
                             {(hasPendingEdits || editingMaxTotal !== null) && (
-                              <button
+                          <button
                                 onClick={() => {
                                   const reset = resetToConfirmed();
                                   if (reset) {
@@ -3084,20 +3157,20 @@ return (
                                     setEditingMaxTotal(null);
                                   }
                                 }}
-                                style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
-                              >
-                                Reset
-                              </button>
-                            )}
-                          </div>
+                            style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
                           <div style={{ flex: "1 1 180px", minWidth: 140, maxWidth: 280 }}>
                             <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
                               <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
                             </div>
                           </div>
-                        </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
                             className="msv-btn-ai"
@@ -3127,15 +3200,15 @@ return (
                             </button>
                           )}
                           <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
-                            <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
-                          </button>
+                        <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
+                      </button>
                           <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : undefined}>
-                            <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
-                          </button>
-                          <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
-                        </div>
-                      </div>
-          
+                        <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
+                      </button>
+                      <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
+                    </div>
+                  </div>
+      
                       <div 
                         className="msv-modal-body"
                         style={{
@@ -3156,7 +3229,7 @@ return (
                     >
 
                         {resultModal.result.fileWarning && (
-                          <div style={{
+                        <div style={{
                             marginBottom: 12,
                             padding: "10px 14px",
                             background: "rgba(245,158,11,0.1)",
@@ -3169,7 +3242,7 @@ return (
                             gap: 8,
                           }}>
                             ⚠️ <span>{typeof resultModal.result.fileWarning === "string" ? resultModal.result.fileWarning : resultModal.result.fileWarning.message || "Submitted file may be wrong — page count differs from expected"}</span>
-                          </div>
+                        </div>
                         )}
                         <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
@@ -3191,70 +3264,70 @@ return (
                             }}
                             onApplyPatch={handleCorrectionPatch}
                           />
-                        )}
-          
-                        {/* ── CRITERIA MODE: show criteria grade first ── */}
-                        {isCriteria && resultModal.result.criteriaGrade && (
-                          <div style={{ marginBottom: 20 }}>
-                            {/* Final grade card */}
-                            <div style={{ padding: "16px 20px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 12, marginBottom: 14 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(139,92,246,0.8)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
-                              {(() => {
-                                const cg    = resultModal.result.criteriaGrade;
-                                const total = cg.totalMarks || 0;
-                                const max   = cg.maxTotalMarks || 10;
-                                const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
-                                const color = getScoreColor(total, max);
-                                return (
-                                  <>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
-                                      <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{total}</div>
-                                      <div style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/ {max}</div>
-                                      <div style={{ flex: 1, minWidth: 100 }}>
-                                        <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
-                                          <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
-                                        </div>
-                                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>{pct}%</div>
-                                      </div>
+                    )}
+      
+                    {/* ── CRITERIA MODE: show criteria grade first ── */}
+                    {isCriteria && resultModal.result.criteriaGrade && (
+                      <div style={{ marginBottom: 20 }}>
+                        {/* Final grade card */}
+                        <div style={{ padding: "16px 20px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 12, marginBottom: 14 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(139,92,246,0.8)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
+                          {(() => {
+                            const cg    = resultModal.result.criteriaGrade;
+                            const total = cg.totalMarks || 0;
+                            const max   = cg.maxTotalMarks || 10;
+                            const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
+                            const color = getScoreColor(total, max);
+                            return (
+                              <>
+                                <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
+                                  <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{total}</div>
+                                  <div style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/ {max}</div>
+                                  <div style={{ flex: 1, minWidth: 100 }}>
+                                    <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                                      <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
                                     </div>
-                                    {/* Criteria breakdown table */}
-                                    {cg.breakdown?.length > 0 && (
-                                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                        {cg.breakdown.map((row, i) => (
-                                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, flexWrap: "wrap" }}>
-                                            <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>{row.criterion}</div>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: getScoreColor(row.marksAwarded, row.maxMarks), minWidth: 60 }}>
-                                              {row.marksAwarded} / {row.maxMarks}
-                                            </div>
-                                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", flex: 1 }}>{row.reason}</div>
-                                          </div>
-                                        ))}
+                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>{pct}%</div>
+                                  </div>
+                                </div>
+                                {/* Criteria breakdown table */}
+                                {cg.breakdown?.length > 0 && (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {cg.breakdown.map((row, i) => (
+                                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, flexWrap: "wrap" }}>
+                                        <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>{row.criterion}</div>
+                                        <div style={{ fontWeight: 700, fontSize: 13, color: getScoreColor(row.marksAwarded, row.maxMarks), minWidth: 60 }}>
+                                          {row.marksAwarded} / {row.maxMarks}
+                                        </div>
+                                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", flex: 1 }}>{row.reason}</div>
                                       </div>
-                                    )}
-                                    {cg.summary && (
-                                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
+                                    ))}
+                                  </div>
+                                )}
+                                {cg.summary && (
+                                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
                                     
                                     
                                     
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>
-          
-                            {/* Divider */}
-                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
-                              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
-                              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
-                            </div>
-                          </div>
-                        )}
-          
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+      
+                        {/* Divider */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
+                          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                        </div>
+                      </div>
+                    )}
+      
                         {/* ── NORMAL MODE: summary only (grade + bar live in header) ── */}
-                        {!isCriteria && (
-                          <>
-                            <div className="msv-summary-box">
+                    {!isCriteria && (
+                      <>
+                          <div className="msv-summary-box">
                               <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
                               <textarea
                                 value={editingSummary}
@@ -3266,75 +3339,75 @@ return (
                                 placeholder="Summary updates automatically when you edit marks or question feedback. Confirm edits to refresh the PDF."
                                 style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
                               />
-                            </div>
-                          </>
-                        )}
-          
-                        {/* ── QUESTIONS (both modes) ── */}
+                          </div>
+                      </>
+                    )}
+      
+                    {/* ── QUESTIONS (both modes) ── */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                          {editingQuestions.map((q, idx) => {
+                      {editingQuestions.map((q, idx) => {
                             const awarded = Number(q.marksAwarded) || 0;
                             const qMax = Number(q.maxMarks) || 0;
                             const color = getScoreColor(awarded, qMax);
                             const qPct = qMax > 0 ? Math.round((awarded / qMax) * 100) : 0;
-                            return (
-                              <div key={idx} className="msv-q-card">
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                                  <span style={{ fontSize: 14, fontWeight: 700 }}>Q{q.questionNumber}</span>
-                                  {/* In criteria mode, scores are read-only feedback */}
-                                  {isCriteria ? (
-                                    <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 13 }}>
+                        return (
+                          <div key={idx} className="msv-q-card">
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 14, fontWeight: 700 }}>Q{q.questionNumber}</span>
+                              {/* In criteria mode, scores are read-only feedback */}
+                              {isCriteria ? (
+                                <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 13 }}>
                                       {awarded} / {qMax}
-                                    </span>
-                                  ) : (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                      <input
+                                </span>
+                              ) : (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <input
                                         type="number" min={0} max={qMax}
                                         value={awarded}
                                         onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(qMax, Math.max(0, Number(e.target.value) || 0)) } : x))}
-                                        style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
-                                      />
+                                    style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
+                                  />
                                       <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/ {qMax}</span>
-                                    </div>
-                                  )}
-                                  <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
-                                    <div style={{ width: `${qPct}%`, height: "100%", background: color, borderRadius: 3 }} />
-                                  </div>
-                                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{qPct}%</span>
                                 </div>
-          
-                                {q.checklist && (
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-                                    {CHECKLIST_CONFIG.map(({ key, label, passIsGood }) => {
-                                      const val    = q.checklist[key];
-                                      const isGood = passIsGood ? val === true : val === false;
-                                      return (
-                                        <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "rgba(34,197,94,0.1)" : "rgba(255,77,79,0.1)", color: isGood ? "#22c55e" : "#ff4d4f", border: `1px solid ${isGood ? "rgba(34,197,94,0.2)" : "rgba(255,77,79,0.2)"}` }}>
-                                          {isGood ? "✅" : "❌"} {label}
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-          
+                              )}
+                              <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
+                                    <div style={{ width: `${qPct}%`, height: "100%", background: color, borderRadius: 3 }} />
+                              </div>
+                                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{qPct}%</span>
+                            </div>
+      
+                            {q.checklist && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+                                {CHECKLIST_CONFIG.map(({ key, label, passIsGood }) => {
+                                  const val    = q.checklist[key];
+                                  const isGood = passIsGood ? val === true : val === false;
+                                  return (
+                                    <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "rgba(34,197,94,0.1)" : "rgba(255,77,79,0.1)", color: isGood ? "#22c55e" : "#ff4d4f", border: `1px solid ${isGood ? "rgba(34,197,94,0.2)" : "rgba(255,77,79,0.2)"}` }}>
+                                      {isGood ? "✅" : "❌"} {label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+      
                                 {q.studentAnswer && !isBlankQuestion(q) && (
-                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
-                                    <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
-                                  </div>
-                                )}
+                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
+                                <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
+                              </div>
+                            )}
                                 {isBlankQuestion(q) && (
                                   <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
                                     📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
                                   </div>
-                                )}
-          
-                                {/* Correct answer — shown in criteria mode */}
+                            )}
+      
+                            {/* Correct answer — shown in criteria mode */}
                                 {/* Correct answer — criteria mode or MCQ */}
                                 {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
-                                  <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
-                                    <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
-                                  </div>
-                                )}
+                              <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
+                                <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
+                              </div>
+                            )}
 
                                 {!isCriteria && (
                                   <QuestionKeywordFields
@@ -3346,26 +3419,26 @@ return (
                                     }
                                   />
                                 )}
-          
-                                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                                  {isCriteria ? "Comment" : "Examiner Note"}
-                                </div>
-                                {isCriteria ? (
-                                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
-                                ) : (
-                                  <textarea
-                                    value={q.reason}
-                                    onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
-                                    rows={3}
-                                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
+      
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              {isCriteria ? "Comment" : "Examiner Note"}
+                            </div>
+                            {isCriteria ? (
+                              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
+                            ) : (
+                              <textarea
+                                value={q.reason}
+                                onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
+                                rows={3}
+                                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                      </div>
+                  </div>
                     
                     {/* RIGHT CARD (NEW - Annotated File) */}
                     <div style={{
@@ -3397,7 +3470,7 @@ return (
                               Confirm edits to update preview
                             </span>
                           )}
-                        </div>
+                </div>
                       </div>
 
                       {annotationsPanelOpen && (
@@ -3414,8 +3487,8 @@ return (
                             onChange={setEditingAnnotations}
                             questions={editingQuestions}
                           />
-                        </div>
-                      )}
+              </div>
+            )}
 
                       {previewLoading ? (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
@@ -3450,7 +3523,7 @@ return (
                 
                 )}
 
-    </div>
-  );
-}
+          </div>
+        );
+      }
 

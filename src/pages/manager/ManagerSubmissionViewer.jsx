@@ -54,6 +54,12 @@ import {
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
+  useMarkingStudentSelection,
+  loadEligibleStudentsForMarking,
+  markingActionLabel,
+} from "../../utils/markingStudentSelection";
+import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import {
   computeGradePercent,
   parsePercentInput,
   resolveAssignmentMaxPoints,
@@ -177,6 +183,104 @@ export default function ManagerSubmissionViewer() {
   const [batchJob, setBatchJob] = useState(null);
   const batchStopRef = useRef(false);
   const batchPollRef = useRef(null);
+
+  const markingSelection = useMarkingStudentSelection();
+  const [selectingMarkingAll, setSelectingMarkingAll] = useState(false);
+
+  const studentsMarkingUrl = selectedAssignment?._id
+    ? `/manager-assignments/${selectedAssignment._id}/full`
+    : null;
+
+  useEffect(() => {
+    markingSelection.clear();
+  }, [selectedAssignment?._id]);
+
+  const pageSelectableIds = useMemo(
+    () => students.filter((s) => s.submissionId).map((s) => s.submissionId),
+    [students]
+  );
+
+  const pageAllMarkingSelected = useMemo(
+    () =>
+      pageSelectableIds.length > 0 &&
+      pageSelectableIds.every((id) => markingSelection.isSelected(id)),
+    [pageSelectableIds, markingSelection.selectedIds]
+  );
+
+  const toggleMarkingSelectPage = () => {
+    if (pageAllMarkingSelected) {
+      markingSelection.selectIds(
+        [...markingSelection.selectedIds].filter(
+          (id) => !pageSelectableIds.includes(id)
+        )
+      );
+    } else {
+      markingSelection.mergeIds(pageSelectableIds);
+    }
+  };
+
+  const selectAllStudentsForMarking = async () => {
+    if (!studentsMarkingUrl) return;
+    setSelectingMarkingAll(true);
+    try {
+      const all = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
+      const ids = all.filter((s) => s.submissionId).map((s) => s.submissionId);
+      markingSelection.selectIds(ids);
+      toast.success(`Selected ${ids.length} student(s)`);
+    } catch {
+      toast.error("Failed to load all students");
+    } finally {
+      setSelectingMarkingAll(false);
+    }
+  };
+
+  const resolveEligibleForMarking = async (requireSubmitted = false) => {
+    toast.info(
+      markingSelection.selectedCount
+        ? `Preparing ${markingSelection.selectedCount} selected student(s)…`
+        : "Loading all students for this assignment…"
+    );
+    const result = await loadEligibleStudentsForMarking(api, {
+      assignmentId: selectedAssignment._id,
+      studentsUrl: studentsMarkingUrl,
+      selectedIds: markingSelection.selectedIds,
+      requireSubmitted,
+    });
+
+    if (result.error === "none_of_selected_found") {
+      toast.warn("Selected students were not found on this assignment");
+      return null;
+    }
+
+    const { allStudents, eligible, pool } = result;
+
+    if (markingSelection.selectedCount > 0 && !eligible.length) {
+      toast.warn("None of the selected students are eligible for marking (may already be marked)");
+      return null;
+    }
+
+    if (!eligible.length) {
+      const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        toast.warn("No students with submissions");
+        return null;
+      }
+      toast.warn(
+        markingSelection.selectedCount
+          ? "Selected students are already marked or not eligible"
+          : "All submitted students are already marked for this assignment"
+      );
+      return null;
+    }
+
+    if (markingSelection.selectedCount > 0 && eligible.length < pool.length) {
+      toast.info(
+        `${eligible.length} of ${pool.length} selected will be marked (others already marked)`
+      );
+    }
+
+    return { allStudents, eligible };
+  };
 
 
   // Results modal
@@ -1428,38 +1532,9 @@ useEffect(() => {
 
   const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
     try {
-    toast.info("Loading all students for this assignment…");
-    const allStudents = await fetchAllPaginated(
-      api,
-      `/manager-assignments/${selectedAssignment._id}/full`,
-      {},
-      "students"
-    );
-
-    const res = await api.post(
-      "/submission-files/eligible-for-bulk-marking",
-      {
-        assignmentId: selectedAssignment._id,
-        submissions: allStudents
-      }
-    );
-
-    const backendEligible = new Set(
-      res.data.map(s => s.submissionId)
-    );
-
-    const eligible = allStudents.filter(
-      s => s.submissionId && backendEligible.has(s.submissionId)
-    );
-    
-    if (!eligible.length) {
-      const withSubmissions = allStudents.filter((s) => s.submissionId);
-      if (!withSubmissions.length) {
-        return toast.warn("No students with submissions");
-      }
-      return toast.warn("All submitted students are already marked for this assignment");
-    }
-
+    const loaded = await resolveEligibleForMarking(false);
+    if (!loaded) return;
+    const { eligible } = loaded;
     const guidanceValue = guidanceForForm(guidanceText);
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
@@ -1883,44 +1958,15 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     setGeminiModel(selectedModel);
   }
 
-  // 00b30c1: fetch ALL students across pages, not just current page
+  // 00b30c1: fetch students (all or selected) across pages
   let eligible;
-  let allStudents;
   try {
-    toast.info("Loading all students for this assignment…");
-    allStudents = await fetchAllPaginated(
-      api,
-      `/manager-assignments/${selectedAssignment._id}/full`,
-      {},
-      "students"
-    );
-
-    const res = await api.post(
-      "/submission-files/eligible-for-bulk-marking",
-      {
-        assignmentId: selectedAssignment._id,
-        submissions: allStudents,
-      }
-    );
-    const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    // HEAD: also gate on isStudentSubmitted
-    eligible = allStudents.filter(
-      (s) =>
-        s.submissionId &&
-        backendEligible.has(s.submissionId) &&
-        isStudentSubmitted(s.state)
-    );
+    const loaded = await resolveEligibleForMarking(true);
+    if (!loaded) return;
+    eligible = loaded.eligible;
   } catch (err) {
     toast.error(extractHumanError(err) || "Failed to check eligible students");
     return;
-  }
-
-  if (!eligible.length) {
-    const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
-    if (!withSubmissions.length) {
-      return toast.warn("No students have submitted this assignment yet");
-    }
-    return toast.warn("All submitted students are already marked for this assignment");
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
@@ -2109,38 +2155,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
   let eligible;
-  let allStudents;
   try {
-    toast.info("Loading all students for this assignment…");
-    allStudents = await fetchAllPaginated(
-      api,
-      `/manager-assignments/${selectedAssignment._id}/full`,
-      {},
-      "students"
-    );
-
-    const res = await api.post("/submission-files/eligible-for-bulk-marking", {
-      assignmentId: selectedAssignment._id,
-      submissions: allStudents,
-    });
-    const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    eligible = allStudents.filter(
-      (s) =>
-        s.submissionId &&
-        backendEligible.has(s.submissionId) &&
-        isStudentSubmitted(s.state)
-    );
+    const loaded = await resolveEligibleForMarking(true);
+    if (!loaded) return;
+    eligible = loaded.eligible;
   } catch (err) {
     toast.error(extractHumanError(err) || "Failed to check eligible students");
     return;
-  }
-
-  if (!eligible.length) {
-    const submitted = allStudents.filter((s) => isStudentSubmitted(s.state));
-    if (!submitted.length) {
-      return toast.warn("No students have submitted this assignment yet");
-    }
-    return toast.warn("All submitted students are already marked for this assignment");
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
@@ -3027,7 +3048,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           onClick={() => openGuidanceModal(null, false)}
                           disabled={bulkMarking || batchJob?.phase === "processing"}
     >
-                        {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
+                        {bulkMarking ? <><span className="pm-spinner" /> Marking…</> : <><FiCpu size={13} /> {markingActionLabel("Mark All Students", "Mark Selected", markingSelection.selectedCount)}</>}
                       </button>
                       {bulkMarking && (
                         <button
@@ -3102,7 +3123,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                           {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                           {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
+                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
                         </button>
                     </div>
                     )}
@@ -3119,7 +3140,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       >
                         {priorityBulkRunning
                           ? <><span className="pm-spinner" /> Priority marking…</>
-                          : <><FiSend size={13} /> Mark All (Priority)</>}
+                          : <><FiSend size={13} /> {markingActionLabel("Mark All (Priority)", "Mark Selected (Priority)", markingSelection.selectedCount)}</>}
                       </button>
                       {priorityBulkRunning && (
                         <button
@@ -3272,6 +3293,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
                   </div>
 
+                  <MarkingSelectionBar
+                    selectedCount={markingSelection.selectedCount}
+                    pageSelectableCount={pageSelectableIds.length}
+                    pageAllSelected={pageAllMarkingSelected}
+                    onTogglePage={toggleMarkingSelectPage}
+                    onSelectAll={selectAllStudentsForMarking}
+                    onClear={markingSelection.clear}
+                    selectingAll={selectingMarkingAll}
+                  />
+
                   {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
                   {!loadingStudents && students.length === 0 && (
                     <p className="ma-empty-msg">
@@ -3285,6 +3316,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <table className="ma-table">
                           <thead>
                             <tr>
+                              <th style={{ width: 44 }} aria-label="Select for marking" />
                               <th>Name</th>
                               <th>Status</th>
                               <th>Submitted At</th>
@@ -3344,6 +3376,18 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                               return (
                                 <tr key={s._id || s.submissionId} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
+                                  <td>
+                                    {s.submissionId ? (
+                                      <button
+                                        type="button"
+                                        className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                                        onClick={() => markingSelection.toggle(s.submissionId)}
+                                        aria-label={`Select ${s.name || "student"} for marking`}
+                                      >
+                                        {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                                      </button>
+                                    ) : null}
+                                  </td>
                                   <td>
                                     <div className="ma-avatar-cell">
                                       <div className="ma-avatar">{(s.name || "?").charAt(0).toUpperCase()}</div>

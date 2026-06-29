@@ -1,170 +1,52 @@
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import AppSidebar from "../../components/AppSidebar";
 import "./DirectorLayout.css";
 
 import {
-  FiMenu,
-  FiX,
   FiHome,
   FiUsers,
   FiBook,
   FiShield,
-  FiLogOut,
   FiLayers,
   FiBarChart2,
-  FiChevronRight,
-  FiBookOpen
+  FiBookOpen,
 } from "react-icons/fi";
 
 export default function DirectorLayout() {
   const navigate = useNavigate();
-  const location = useLocation();
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const [collapsed, setCollapsed] = useState(false);
-
-  const user = JSON.parse(localStorage.getItem("user"));
-
-  const menuItems = [
-    {
-      name: "Dashboard",
-      icon: <FiHome />,
-      path: "/director/dashboard"
-    },
-    {
-      name: "People",
-      icon: <FiUsers />,
-      path: "/director/people"
-    },
-    {
-      name: "Classroom Managers",
-      icon: <FiLayers />,
-      path: "/director/classroommanagers"
-    },
-    {
-      name: "Quality Managers",
-      icon: <FiShield />,
-      path: "/director/quality-managers"
-    },
-    {
-      name: "Subjects",
-      icon: <FiBook />,
-      path: "/director/subjects"
-    },
-    {
-      name: "Manager Workload",
-      icon: <FiBarChart2 />,
-      path: "/director/manager-workload"
-    },
-    {
-      name: "Token Usage",
-      icon: <FiBarChart2 />,
-      path: "/director/token-usage"
-    },
-    {
-      name: "Create Teachers",
-      icon: <FiBarChart2 />,
-      path: "/director/manage-teachers"
-    },
-    {
-      name: "Assign Classroom Teacher",
-      icon: <FiBarChart2 />,
-      path: "/director/manage-classroom-teachers"
-    },
-    {
-      name: "Google Accounts",
-      icon: <FiBarChart2 />, 
-      path: "/director/google-accounts"
-    },
-    {
-      name: "Course Management",
-       icon: <FiBookOpen />,
-      path:  "/director/google-classroom"
-    },
+  const navItems = [
+    { label: "Dashboard", icon: <FiHome />, path: "/director/dashboard" },
+    { label: "People", icon: <FiUsers />, path: "/director/people" },
+    { label: "Classroom Managers", icon: <FiLayers />, path: "/director/classroommanagers" },
+    { label: "Quality Managers", icon: <FiShield />, path: "/director/quality-managers" },
+    { label: "Subjects", icon: <FiBook />, path: "/director/subjects" },
+    { label: "Manager Workload", icon: <FiBarChart2 />, path: "/director/manager-workload" },
+    { label: "Token Usage", icon: <FiBarChart2 />, path: "/director/token-usage" },
+    { label: "Create Teachers", icon: <FiBarChart2 />, path: "/director/manage-teachers" },
+    { label: "Assign Classroom Teacher", icon: <FiBarChart2 />, path: "/director/manage-classroom-teachers" },
+    { label: "Google Accounts", icon: <FiBarChart2 />, path: "/director/google-accounts" },
+    { label: "Course Management", icon: <FiBookOpen />, path: "/director/google-classroom" },
   ];
 
   return (
     <div className="directorLayout">
-      <aside className={`directorSidebar ${collapsed ? "collapsed" : ""}`}>
-        <div className="sidebarTop">
-          <div className="sidebarHeader">
-            {!collapsed && (
-              <div className="sidebarBrand">
-                <span className="brandTitle">Director Panel</span>
-              </div>
-            )}
-
-            <button
-              className="sidebarToggle"
-              onClick={() => setCollapsed(!collapsed)}
-            >
-              {collapsed ? <FiMenu size={18} /> : <FiX size={18} />}
-            </button>
-          </div>
-
-          {!collapsed ? (
-            <div className="directorUserCard">
-              <div className="directorUserAvatar">
-                {user?.name?.charAt(0)?.toUpperCase() || "D"}
-              </div>
-
-              <div className="directorUserInfo">
-                <span className="directorUserName">{user?.name || "Director"}</span>
-                <span className="directorUserRole">
-                  {user?.roleId?.name || "Admin"}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="directorUserAvatar directorUserAvatarSolo">
-              {user?.name?.charAt(0)?.toUpperCase() || "D"}
-            </div>
-          )}
-        </div>
-
-        <div className="sidebarMenu">
-          {menuItems.map((item) => {
-            const active = location.pathname === item.path;
-
-            return (
-              <div
-                key={item.path}
-                className={`sidebarItem ${active ? "active" : ""}`}
-                onClick={() => navigate(item.path)}
-              >
-                <div className="sidebarIcon">{item.icon}</div>
-
-                {!collapsed && (
-                  <>
-                    <span className="sidebarText">{item.name}</span>
-                    {active && <FiChevronRight className="sidebarArrow" size={14} />}
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="sidebarBottom">
-          <button
-            className="logoutBtn"
-            onClick={() => {
-              localStorage.clear();
-              navigate("/login");
-            }}
-          >
-            <FiLogOut size={16} />
-            {!collapsed && <span>Logout</span>}
-          </button>
-        </div>
-      </aside>
+      <AppSidebar
+        navItems={navItems}
+        roleTitle="Director"
+        roleSubtitle={user?.roleId?.name || "Administration"}
+        onLogout={() => {
+          localStorage.clear();
+          navigate("/login");
+        }}
+      />
 
       <main className="directorMain">
         <div className="directorTopbar">
           <div className="topbarLeft">
             <h1 className="topbarTitle">Director Workspace</h1>
-            <span className="topbarSubtitle">
-              Welcome back, {user?.name}
-            </span>
+            <span className="topbarSubtitle">Welcome back, {user?.name}</span>
           </div>
 
           <div className="topbarRight">

@@ -18,22 +18,18 @@ import ManagerSidebar from "../../components/ManagerSidebar";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 
-const ALL_STATUSES = [
-  "UNASSIGNED","ASSIGNED","IN_REVIEW","RECHECK_BY_ASSISTANT",
-  "IN_REVIEW_AFTER_RECHECK","EMERGENCY","DONE","DONE_BY_QUALITY","DONE_BY_QUALITY_LATE","FAILED_DEADLINE"
+const DASHBOARD_STATUSES = [
+  "UNASSIGNED",
+  "ASSIGNED",
+  "FAILED_DEADLINE",
+  "DONE",
 ];
 
 const STATUS_META = {
-  UNASSIGNED:               { icon: <FiClock />,        accent: "#64748b" },
-  ASSIGNED:                 { icon: <FiUser />,          accent: "#2563eb" },
-  IN_REVIEW:                { icon: <FiSearch />,        accent: "#0ea5e9" },
-  RECHECK_BY_ASSISTANT:     { icon: <FiAlertTriangle />, accent: "#f59e0b" },
-  IN_REVIEW_AFTER_RECHECK:  { icon: <FiSearch />,        accent: "#8b5cf6" },
-  EMERGENCY:                { icon: <FiZap />,           accent: "#ef4444" },
-  DONE:                     { icon: <FiCheckCircle />,   accent: "#22c55e" },
-  DONE_BY_QUALITY:          { icon: <FiCheckCircle />,   accent: "#10b981" },
-  DONE_BY_QUALITY_LATE:     { icon: <FiAlertTriangle />, accent: "#f97316" },
-   FAILED_DEADLINE:         { icon: <FiAlertTriangle />, accent: "#dc2626" },
+  UNASSIGNED:     { icon: <FiClock />,        accent: "#64748b" },
+  ASSIGNED:       { icon: <FiUser />,          accent: "#7c3aed" },
+  FAILED_DEADLINE:{ icon: <FiAlertTriangle />, accent: "#dc2626" },
+  DONE:           { icon: <FiCheckCircle />,   accent: "#22c55e" },
 };
 
 const formatStatus = (s) =>
@@ -174,7 +170,7 @@ export default function ManagerDashboard() {
 
       if (!ids.length) {
         setDelegations([]); setAssistantsMap({});
-        const e = {}; ALL_STATUSES.forEach((s) => { e[s] = 0; }); setStatusCounts(e);
+        const e = {}; DASHBOARD_STATUSES.forEach((s) => { e[s] = 0; }); setStatusCounts(e);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load dashboard");
@@ -228,7 +224,10 @@ export default function ManagerDashboard() {
 
   if (!user) return null;
 
-  const totalAssignments = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+  const totalAssignments = DASHBOARD_STATUSES.reduce(
+    (sum, status) => sum + (statusCounts[status] || 0),
+    0
+  );
 
   const changeAssistant = async (assignmentId) => {
   try {
@@ -346,7 +345,7 @@ const toggleRow = (id) => {
 
           {/* STATUS GRID */}
           <div className="md-status-grid">
-            {ALL_STATUSES.map((status, i) => {
+            {DASHBOARD_STATUSES.map((status, i) => {
               const meta = STATUS_META[status];
               const isActive = selectedStatus === status;
               const count = statusCounts[status] || 0;

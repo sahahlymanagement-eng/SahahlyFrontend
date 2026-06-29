@@ -24,6 +24,7 @@ import {
   FiSend,
   FiCheckSquare,
   FiMessageSquare,
+  FiClipboard,
 } from "react-icons/fi";
 
 export default function AssistantReports() {
@@ -457,10 +458,14 @@ export default function AssistantReports() {
 
   const cartCount = Object.keys(reportCart).length;
 
-  const totalItems = Object.values(reportCart).reduce(
+  const reportCount = Object.values(reportCart).reduce(
     (acc, e) => acc + Object.keys(e.items || {}).length,
     0
   );
+  const assignmentCount = new Set(
+    Object.values(reportCart).flatMap((e) => Object.keys(e.items || {}))
+  ).size;
+  const cartSummary = `${assignmentCount} assignment${assignmentCount !== 1 ? "s" : ""} and ${reportCount} report${reportCount !== 1 ? "s" : ""}`;
 
   const isSending = sending || sendingCollective;
 
@@ -481,13 +486,11 @@ export default function AssistantReports() {
               Back
             </button>
 
-            {cartCount > 0 && (
+            {reportCount > 0 && (
               <>
                 <div className="ma-cart-pill">
                   <FiCheckSquare size={13} />
-                  <span>
-                    {cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} item{totalItems !== 1 ? "s" : ""}
-                  </span>
+                  <span>{cartSummary}</span>
                 </div>
 
                 <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
@@ -597,9 +600,9 @@ export default function AssistantReports() {
                     Clear All
                   </button>
                 </div>
-                {cartCount > 0 && (
+                {reportCount > 0 && (
                   <span className="ma-panel-hint">
-                    <FiCheckSquare size={12} /> {cartCount} selected for report
+                    <FiCheckSquare size={12} /> {reportCount} report{reportCount !== 1 ? "s" : ""} ready
                   </span>
                 )}
               </div>
@@ -750,30 +753,30 @@ export default function AssistantReports() {
           </div>
         </div>
 
-        {cartCount > 0 && (
+        {reportCount > 0 && (
           <div className="ma-cart-bar">
             <div className="ma-cart-bar-left">
-              <span className="ma-cart-label">📋 Report Ready</span>
-              <span className="ma-cart-stats">
-                {cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} assignment{totalItems !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="ma-cart-students">
-              {Object.values(reportCart).map((entry) => (
-                <div key={getStudentId(entry.studentMeta)} className="ma-cart-chip">
-                  <div className="ma-cart-chip-avatar">
-                    {entry.studentMeta.name?.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="ma-cart-chip-info">
-                    <strong>{entry.studentMeta.name}</strong>
-                    <span>{Object.values(entry.items).map((i) => i.assignmentTitle).join(", ")}</span>
-                  </div>
+              <div className="ma-cart-icon-wrap" aria-hidden="true">
+                <FiClipboard size={26} />
+              </div>
+              <div className="ma-cart-bar-info">
+                <span className="ma-cart-label">Report Ready</span>
+                <div className="ma-cart-stats-row">
+                  <span className="ma-cart-stat">
+                    <strong>{assignmentCount}</strong>
+                    <em>assignment{assignmentCount !== 1 ? "s" : ""}</em>
+                  </span>
+                  <span className="ma-cart-stat-divider" aria-hidden="true">·</span>
+                  <span className="ma-cart-stat">
+                    <strong>{reportCount}</strong>
+                    <em>report{reportCount !== 1 ? "s" : ""}</em>
+                  </span>
                 </div>
-              ))}
+              </div>
             </div>
             <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
-              <FiSend size={14} />
-              {sending ? "Sending…" : `Send to ${cartCount} Student${cartCount !== 1 ? "s" : ""}`}
+              <FiSend size={18} />
+              {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
             </button>
           </div>
         )}

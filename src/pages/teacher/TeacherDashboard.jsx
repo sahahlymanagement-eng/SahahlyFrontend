@@ -7,6 +7,7 @@ import {
   FiRefreshCw,
   FiEdit3,
   FiBarChart2,
+  FiClipboard,
 } from "react-icons/fi";
 import { TeacherActionLink } from "./TeacherUI";
 import "./teacher.css";
@@ -101,7 +102,24 @@ export default function TeacherDashboard() {
         <button
           type="button"
           className="tch-action-card"
-          style={{ animationDelay: "0.1s" }}
+          style={{ animationDelay: "0.15s" }}
+          onClick={() => navigate("/teacher/reports")}
+        >
+          <div className="tch-action-card-icon">
+            <FiClipboard />
+          </div>
+          <h3>Student reports</h3>
+          <p>
+            Select students across your classrooms and assignments, then send
+            WhatsApp grade reports to parents.
+          </p>
+          <TeacherActionLink>Open reports</TeacherActionLink>
+        </button>
+
+        <button
+          type="button"
+          className="tch-action-card"
+          style={{ animationDelay: "0.2s" }}
           onClick={() => navigate("/teacher/courses")}
         >
           <div className="tch-action-card-icon">

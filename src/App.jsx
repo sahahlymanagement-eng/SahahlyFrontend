@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import "./styles/app-shell.css";
 
 
 import GoogleConnectTest from "./pages/GoogleConnectTest";
@@ -73,6 +74,7 @@ import AssistantLayout from "./pages/assistant/AssistantLayout";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import TeacherLayout from "./pages/teacher/TeacherLayout";
 import TeacherCourses from "./pages/teacher/TeacherCourses";
+import TeacherReports from "./pages/teacher/TeacherReports";
 import ViewCoursework from "./components/CourseManagment/ViewCourseWork";
 
 function App() {
@@ -157,6 +159,7 @@ function App() {
         }>
           <Route path="dashboard" element={<TeacherDashboard />} />
           <Route path="courses" element={<TeacherCourses />} />
+          <Route path="reports" element={<TeacherReports />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
           <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
