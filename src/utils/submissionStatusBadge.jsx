@@ -1,9 +1,11 @@
-function isStudentSubmitted(state) {
-  return state === "TURNED_IN" || state === "RETURNED";
-}
-
 export function getSubmissionStatusDisplay(student) {
-  if (isStudentSubmitted(student?.state)) {
+  const state = student?.state;
+
+  if (state === "RETURNED") {
+    return { tone: "blue", label: "Returned" };
+  }
+
+  if (state === "TURNED_IN") {
     if (student?.hasAttachment === false) {
       return { tone: "yellow", label: "No attachment" };
     }
@@ -11,10 +13,12 @@ export function getSubmissionStatusDisplay(student) {
     if (student?.isOnTime) return { tone: "green", label: "On Time" };
     return { tone: "green", label: "Submitted" };
   }
-  if (student?.state === "NEW" || student?.state === "CREATED") {
+
+  if (state === "NEW" || state === "CREATED") {
     return { tone: "red", label: "Not Submitted" };
   }
-  return { tone: "gray", label: student?.state || "Unknown" };
+
+  return { tone: "gray", label: state || "Unknown" };
 }
 
 export function SubmissionStatusBadge({ student }) {

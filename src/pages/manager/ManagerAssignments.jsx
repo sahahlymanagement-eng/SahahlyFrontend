@@ -11,9 +11,9 @@ import {
   FiCheckSquare, FiCalendar, FiMessageSquare
 } from "react-icons/fi";
 
-import {
-  parseAttendanceNamesFromFile,
-} from "../../utils/attendanceExcel";
+import { SubmissionStatusBadge } from "../../utils/submissionStatusBadge";
+import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, attendedNamesFromMap, countPresentInMap } from "../../utils/attendanceExcel";
+import ReportAttendanceSelect from "../../components/ReportAttendanceSelect";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
 import {
@@ -22,6 +22,7 @@ import {
 } from "../../utils/refreshAssignmentFromClassroom";
 import { computeGradePercent, parsePercentInput, displayPercent } from "../../utils/reportGradePercent";
 import { usePagination } from "../../hooks/usePagination";
+import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import Pagination from "../../components/Pagination";
 
 
@@ -47,10 +48,12 @@ export default function ManagerAssignments() {
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
 
   const [includeAttendance, setIncludeAttendance] = useState(false);
-  const [attendanceNames, setAttendanceNames] = useState([]);
+  const [attendanceMap, setAttendanceMap] = useState({});
+  const [attendanceRoster, setAttendanceRoster] = useState([]);
   const [attendanceFileName, setAttendanceFileName] = useState("");
   const [parsingAttendance, setParsingAttendance] = useState(false);
   const [refreshingGrades, setRefreshingGrades] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
 
   const classroomParams = useMemo(() => ({
     personId: user?.id,
@@ -86,6 +89,7 @@ export default function ManagerAssignments() {
     data: students,
     page: studentPage,
     totalPages: studentTotalPages,
+    total: studentTotal,
     loading: loadingStudents,
     fetchPage: fetchStudentPage,
     extra: studentExtra,
@@ -123,7 +127,8 @@ export default function ManagerAssignments() {
     setReportCart({});
     setSummaryMap({});
     setIncludeAttendance(false);
-    setAttendanceNames([]);
+    setAttendanceMap({});
+    setAttendanceRoster([]);
     setAttendanceFileName("");
   };
 
@@ -136,6 +141,9 @@ export default function ManagerAssignments() {
     }
     setSelectedAssignment(assignment);
     setSummaryMap({});
+    setAttendanceMap({});
+    setAttendanceRoster([]);
+    setAttendanceFileName("");
   };
 
   const expandClassroomSection = () => {
@@ -144,7 +152,8 @@ export default function ManagerAssignments() {
     setReportCart({});
     setSummaryMap({});
     setIncludeAttendance(false);
-    setAttendanceNames([]);
+    setAttendanceMap({});
+    setAttendanceRoster([]);
     setAttendanceFileName("");
   };
 
@@ -174,38 +183,60 @@ export default function ManagerAssignments() {
     });
   };
 
-  const selectAllStudentsForAssignment = () => {
-    if (!selectedAssignment || students.length === 0) return;
+  const selectAllStudentsForAssignment = async () => {
+    if (!selectedAssignment) return;
 
-    const asgId = selectedAssignment._id;
+    setSelectingAll(true);
+    try {
+      const allStudents = await fetchAllPaginated(
+        api,
+        `/manager-assignments/${selectedAssignment._id}/full`,
+        {},
+        "students",
+        100
+      );
 
-    setReportCart((prev) => {
-      const next = { ...prev };
+      if (allStudents.length === 0) {
+        toast.info("No students to select");
+        return;
+      }
 
-      students.forEach((student) => {
-        const stuId = String(student._id);
+      const asgId = selectedAssignment._id;
 
-        if (!next[stuId]) {
-          next[stuId] = {
-            studentMeta: student,
-            items: {
-              [asgId]: buildItem(student),
-            },
-          };
-        } else if (!next[stuId].items[asgId]) {
-          next[stuId] = {
-            ...next[stuId],
-            items: {
-              ...next[stuId].items,
-              [asgId]: buildItem(student),
-            },
-          };
-        }
+      setReportCart((prev) => {
+        const next = { ...prev };
+
+        allStudents.forEach((student) => {
+          const stuId = String(student._id);
+
+          if (!next[stuId]) {
+            next[stuId] = {
+              studentMeta: student,
+              items: {
+                [asgId]: buildItem(student),
+              },
+            };
+          } else if (!next[stuId].items[asgId]) {
+            next[stuId] = {
+              ...next[stuId],
+              items: {
+                ...next[stuId].items,
+                [asgId]: buildItem(student),
+              },
+            };
+          }
+        });
+
+        return next;
       });
 
-      return next;
-    });
-
+      toast.success(`Selected all ${allStudents.length} students`);
+    } catch (err) {
+      console.error("Select all students error:", err);
+      toast.error("Failed to select all students");
+    } finally {
+      setSelectingAll(false);
+    }
   };
 
   const buildItem = (student) => {
@@ -260,7 +291,8 @@ export default function ManagerAssignments() {
   const handleAttendanceToggle = (checked) => {
     setIncludeAttendance(checked);
     if (!checked) {
-      setAttendanceNames([]);
+      setAttendanceMap({});
+      setAttendanceRoster([]);
       setAttendanceFileName("");
     }
   };
@@ -270,32 +302,65 @@ export default function ManagerAssignments() {
     e.target.value = "";
     if (!file) return;
 
+    if (!selectedAssignment?._id) {
+      toast.warn("Select an assignment first to match attendance to students");
+      return;
+    }
+
     setParsingAttendance(true);
     try {
       const names = await parseAttendanceNamesFromFile(file);
       if (!names.length) {
         toast.warn("No student names found in that file");
-        setAttendanceNames([]);
+        setAttendanceMap({});
+        setAttendanceRoster([]);
         setAttendanceFileName("");
         return;
       }
-      setAttendanceNames(names);
+
+      const roster = await fetchAllPaginated(
+        api,
+        `/manager-assignments/${selectedAssignment._id}/full`,
+        {},
+        "students",
+        100
+      );
+
+      const map = buildInitialAttendanceMap(roster, names, (s) => s._id);
+      setAttendanceMap(map);
+      setAttendanceRoster(roster);
       setAttendanceFileName(file.name);
-      toast.success(`Loaded ${names.length} name(s) from attendance file`);
+      const present = countPresentInMap(map);
+      toast.success(
+        `Matched ${roster.length} student(s) — ${present} present, ${roster.length - present} absent (editable in table)`
+      );
     } catch (err) {
       toast.error(err?.message || "Failed to read attendance file");
-      setAttendanceNames([]);
+      setAttendanceMap({});
+      setAttendanceRoster([]);
       setAttendanceFileName("");
     } finally {
       setParsingAttendance(false);
     }
   };
 
+  const setStudentAttendance = (studentId, present) => {
+    setAttendanceMap((prev) => ({
+      ...prev,
+      [String(studentId)]: present,
+    }));
+  };
+
+  const showAttendanceColumn =
+    includeAttendance && Object.keys(attendanceMap).length > 0;
+
   const buildAttendancePayload = () => {
-    if (!includeAttendance || !attendanceNames.length) return undefined;
+    if (!includeAttendance || !Object.keys(attendanceMap).length) return undefined;
+    const roster = attendanceRoster.length ? attendanceRoster : students;
+    const attendedNames = attendedNamesFromMap(roster, attendanceMap, (s) => s._id);
     return {
       enabled: true,
-      attendedNames: attendanceNames,
+      attendedNames,
     };
   };
 
@@ -329,7 +394,7 @@ export default function ManagerAssignments() {
     const cartEntries = Object.entries(reportCart);
     if (cartEntries.length === 0) { toast.warn("No students selected"); return; }
 
-    if (includeAttendance && !attendanceNames.length) {
+    if (includeAttendance && !Object.keys(attendanceMap).length) {
       toast.warn("Upload an attendance Excel file first");
       return;
     }
@@ -408,16 +473,7 @@ export default function ManagerAssignments() {
   const cartCount = Object.keys(reportCart).length;
   const totalItems = Object.values(reportCart).reduce((acc, e) => acc + Object.keys(e.items).length, 0);
 
-  const statusBadge = (student) => {
-    if (student.state === "TURNED_IN" || student.state === "RETURNED") {
-      if (student.isLate)   return <span className="ma-badge ma-badge--orange">Late</span>;
-      if (student.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
-      return <span className="ma-badge ma-badge--green">Submitted</span>;
-    }
-    if (student.state === "NEW" || student.state === "CREATED")
-      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
-    return <span className="ma-badge ma-badge--gray">{student.state}</span>;
-  };
+  const statusBadge = (student) => <SubmissionStatusBadge student={student} />;
 
   const filteredClassrooms = classrooms;
 
@@ -601,7 +657,7 @@ export default function ManagerAssignments() {
                 </label>
                 {attendanceFileName && (
                   <span className="ma-attendance-meta">
-                    {attendanceFileName} · {attendanceNames.length} name(s)
+                    {attendanceFileName} · {countPresentInMap(attendanceMap)} present / {Object.keys(attendanceMap).length} students
                   </span>
                 )}
               </div>
@@ -738,7 +794,7 @@ export default function ManagerAssignments() {
                   <div className="ma-panel-title-wrap">
                     <div className="ma-panel-dot" />
                     <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
-                    <span className="ma-panel-count">{students.length} students</span>
+                    <span className="ma-panel-count">{studentTotal ?? students.length} students</span>
                   </div>
                   <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                   <ReportGradesRefreshButton
@@ -749,9 +805,9 @@ export default function ManagerAssignments() {
                   <button
                     className="ma-send-btn"
                     onClick={selectAllStudentsForAssignment}
-                    disabled={students.length === 0}
+                    disabled={selectingAll || loadingStudents || !selectedAssignment}
                   >
-                    Select All
+                    {selectingAll ? "Selecting…" : "Select All"}
                   </button>
 
                   <button
@@ -785,6 +841,7 @@ export default function ManagerAssignments() {
                             <th>Name</th>
                             <th>Email</th>
                             <th>Status</th>
+                            {showAttendanceColumn && <th>Attendance</th>}
                             <th>Submitted At</th>
                             <th>Grade</th>
                             <th>%</th>
@@ -818,6 +875,14 @@ export default function ManagerAssignments() {
                                 </td>
                                 <td><span className="ma-cell-muted">{s.email || "—"}</span></td>
                                 <td>{statusBadge(s)}</td>
+                                {showAttendanceColumn && (
+                                  <td onClick={(e) => e.stopPropagation()}>
+                                    <ReportAttendanceSelect
+                                      present={!!attendanceMap[stuId]}
+                                      onChange={(present) => setStudentAttendance(stuId, present)}
+                                    />
+                                  </td>
+                                )}
                                 <td>
                                   <span className="ma-cell-muted">
                                     {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}

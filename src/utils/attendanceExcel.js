@@ -67,3 +67,26 @@ export async function parseAttendanceNamesFromFile(file) {
 
   return [...names];
 }
+
+/** Per-student present/absent from parsed Excel names (editable before send). */
+export function buildInitialAttendanceMap(students, attendedNames, getStudentKey) {
+  const map = {};
+  for (const student of students || []) {
+    const key = String(getStudentKey(student));
+    const name = student.name || student.email || "";
+    map[key] = isStudentAttended(name, attendedNames);
+  }
+  return map;
+}
+
+/** Names marked present in the editable map (for report API payload). */
+export function attendedNamesFromMap(students, attendanceMap, getStudentKey) {
+  return (students || [])
+    .filter((s) => attendanceMap[String(getStudentKey(s))] === true)
+    .map((s) => s.name)
+    .filter(Boolean);
+}
+
+export function countPresentInMap(attendanceMap) {
+  return Object.values(attendanceMap || {}).filter(Boolean).length;
+}
