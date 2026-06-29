@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 
-GlobalWorkerOptions.workerSrc = pdfWorker;
+// CDN worker avoids nginx serving bundled .mjs as application/octet-stream on VPS
+GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
 /** Fit-to-width scale; cap pixel width so huge scans stay scrollable. */
 const MAX_RENDER_WIDTH = 920;
