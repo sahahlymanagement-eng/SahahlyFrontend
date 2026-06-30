@@ -1016,10 +1016,10 @@ export default function ManagerLoginCss() {
                                     {s.hasFeedbackPdf && (
                                       <button
                                         className="msv-action-btn"
-                                        title="View feedback PDF"
+                                        title="View the final graded PDF published to LoginCSS"
                                         onClick={() => viewFeedback(s)}
                                       >
-                                        <FiEye size={13} /> Feedback
+                                        <FiEye size={13} /> Published PDF
                                       </button>
                                     )}
 
