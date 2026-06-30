@@ -51,6 +51,7 @@ import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import PaperMarking from "./pages/manager/PaperMarking";
 import PaperMarkingClaude from "./pages/manager/PaperMarkingClaude";
+import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
 import QBManage from "./pages/questionbank/QBManage";
 import QBUpload from "./pages/questionbank/QBUpload";
 import QBBrowse from "./pages/questionbank/QBBrowse";
@@ -235,6 +236,12 @@ function App() {
         <Route path="/manager/marking" element={
           <RoleProtectedRoute allowedRole="manager">
             <PaperMarking />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/logincss" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <ManagerLoginCss />
           </RoleProtectedRoute>}
         />
 
