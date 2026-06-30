@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {
-  FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw,
+  FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
 import {
@@ -17,6 +17,8 @@ import {
   guidanceForForm,
   normalizeGuidance,
   getOutOfScopeNotes,
+  getTeacherAnnotations,
+  rebuildMarkingSummary,
   resolveTotalMarksFromResult,
   resolveDisplayMaxTotal,
   buildPriorityMarkingResult,
@@ -24,6 +26,10 @@ import {
 import { parseGeminiModelsResponse, pickValidGeminiModel } from "../../utils/markingCost";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
+import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
+import QuestionKeywordFields from "../../components/QuestionKeywordFields";
+import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
+import { isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
 import "./ManagerSubmissionViewer.css";
@@ -37,6 +43,10 @@ const CHECKLIST_CONFIG = [
   { key: "studentAnswerUnderstanding", label: "Student Answer Understood", passIsGood: true  },
   { key: "answerIsBlank",              label: "Answer is Blank",           passIsGood: false },
 ];
+
+// Stable per-assignment key (submissions with no assignment fall under "__none__").
+const submissionAssignmentKey = (s) =>
+  s.assignment?.id != null ? String(s.assignment.id) : "__none__";
 
 const getScoreColor = (awarded, max) => {
   const pct = max > 0 ? awarded / max : 0;
@@ -53,10 +63,11 @@ export default function ManagerLoginCss() {
   // ── LoginCSS submissions list ──
   const [submissions, setSubmissions] = useState([]);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [listTotal, setListTotal] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState("");
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [listTotal, setListTotal] = useState(0);
 
   // ── Guidance modal / marking config ──
   const [guidanceModal, setGuidanceModal] = useState(null);
@@ -82,6 +93,10 @@ export default function ManagerLoginCss() {
 
   const [resultModal, setResultModal] = useState(null);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
+  const [editingAnnotations, setEditingAnnotations] = useState([]);
+  const [editingSummary, setEditingSummary] = useState("");
+  const [summaryTouched, setSummaryTouched] = useState(false);
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [editingTotal, setEditingTotal] = useState(null);
   const [downloading, setDownloading] = useState(false);
@@ -212,11 +227,28 @@ export default function ManagerLoginCss() {
   } = useExternalAnnotatedPreview({
     resultModal,
     editingQuestions,
+    editingAnnotations,
+    editingSummary,
     effectiveMaxTotal,
     editingMaxTotal,
     resolvePdfSummary,
     getStudentFile,
   });
+
+  // Auto-rebuild the editable summary from current marks/feedback until the
+  // teacher manually edits it (summaryTouched).
+  useEffect(() => {
+    if (!resultModal || summaryTouched) return;
+    setEditingSummary(
+      rebuildMarkingSummary({
+        questions: editingQuestions,
+        maxTotalMarks: effectiveMaxTotal,
+        previousSummary:
+          resultModal.result?.summary ||
+          getMarkingResultSummary(resultModal.result, {}),
+      })
+    );
+  }, [resultModal, editingQuestions, effectiveMaxTotal, summaryTouched]);
 
   // ── Defensive normalisation of the LoginCSS list envelope ──
   const normalizeItem = (raw) => {
@@ -236,52 +268,57 @@ export default function ManagerLoginCss() {
       localGrade:
         raw.localGrade ?? (draftResult ? resolveTotalMarksFromResult(draftResult) : null),
       hasFeedbackPdf: !!raw.hasFeedbackPdf,
+      assignment: raw.assignment ?? null,
     };
   };
 
-  const fetchSubmissions = useCallback(async (p = 1) => {
+  // Load EVERY submission (paging through the LoginCSS list) so we can group by
+  // assignment and let the manager drill into one assignment at a time. Drafts
+  // are hydrated into React state so "✅ Results" + grades survive refresh.
+  const loadAll = useCallback(async () => {
     setLoadingList(true);
     try {
-      const res = await api.get("/external-grading/submissions", {
-        params: { page: p, per_page: PER_PAGE },
-      });
-      const body = res.data || {};
-      const items =
-        body.data ||
-        body.submissions ||
-        body.items ||
-        body.results ||
-        body.rows ||
-        (Array.isArray(body) ? body : []);
-      const meta = body.meta || body.pagination || body;
-      const totalCount = meta.total ?? meta.totalItems ?? meta.count ?? items.length;
-      const tp =
-        meta.totalPages ??
-        meta.total_pages ??
-        meta.last_page ??
-        (meta.per_page
-          ? Math.ceil(totalCount / meta.per_page)
-          : Math.max(1, Math.ceil(totalCount / PER_PAGE)));
-      setSubmissions(items.map(normalizeItem));
-      // Hydrate persisted drafts into React state so the "✅ Results" button and
-      // grade survive refresh / appear on other devices. studentFile is left
-      // undefined — it is lazily re-fetched from LoginCSS when the result opens.
+      const collected = [];
       const hydrated = {};
-      for (const raw of items) {
-        const sid = raw.id ?? raw.submissionId ?? raw._id;
-        if (sid != null && raw.draftResult) {
-          hydrated[sid] = {
-            result: raw.draftResult,
-            originalAiResult: raw.draftOriginalAiResult || raw.draftResult,
-            studentFile: undefined,
-          };
+      let p = 1;
+      let tp = 1;
+      do {
+        const res = await api.get("/external-grading/submissions", {
+          params: { page: p, per_page: 50 },
+        });
+        const body = res.data || {};
+        const items =
+          body.data ||
+          body.submissions ||
+          body.items ||
+          body.results ||
+          body.rows ||
+          (Array.isArray(body) ? body : []);
+        const meta = body.meta || body.pagination || body;
+        const totalCount = meta.total ?? meta.totalItems ?? meta.count ?? items.length;
+        tp =
+          meta.totalPages ??
+          meta.total_pages ??
+          meta.last_page ??
+          (meta.per_page ? Math.ceil(totalCount / meta.per_page) : 1);
+        for (const raw of items) {
+          collected.push(normalizeItem(raw));
+          const sid = raw.id ?? raw.submissionId ?? raw._id;
+          if (sid != null && raw.draftResult) {
+            hydrated[sid] = {
+              result: raw.draftResult,
+              originalAiResult: raw.draftOriginalAiResult || raw.draftResult,
+              studentFile: undefined,
+            };
+          }
         }
-      }
+        p += 1;
+      } while (p <= tp && p <= 100);
+
+      setSubmissions(collected);
       // In-memory results (prev) win over server drafts — keep fresher local edits.
       setResults((prev) => ({ ...hydrated, ...prev }));
-      setListTotal(totalCount || 0);
-      setTotalPages(tp || 1);
-      setPage(meta.page ?? meta.current_page ?? p);
+      setListTotal(collected.length);
     } catch (err) {
       console.error("Failed to load submissions", err);
       toast.error((await getApiErrorMessage(err)) || "Failed to load submissions");
@@ -297,8 +334,8 @@ export default function ManagerLoginCss() {
   }, [navigate]);
 
   useEffect(() => {
-    fetchSubmissions(1);
-  }, [fetchSubmissions]);
+    loadAll();
+  }, [loadAll]);
 
   useEffect(() => {
     api.get("/marking/prompts").then((r) => setSavedPrompts(r.data || [])).catch(() => {});
@@ -345,6 +382,10 @@ export default function ManagerLoginCss() {
       submissionId: student.submissionId,
     });
     setEditingQuestions((result.questions || []).map((q) => ({ ...q })));
+    setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
+    setEditingSummary(getMarkingResultSummary(result, {}) || "");
+    setSummaryTouched(false);
+    setAnnotationsPanelOpen(false);
     setEditingMaxTotal(null);
     setEditingTotal(null);
   };
@@ -468,43 +509,27 @@ export default function ManagerLoginCss() {
     }
   };
 
-  // ── Bulk mark: page through all submissions, mark sequentially ──
-  const fetchAllSubmissions = async () => {
-    const collected = [];
-    let p = 1;
-    let tp = 1;
-    do {
-      const res = await api.get("/external-grading/submissions", { params: { page: p, per_page: 50 } });
-      const body = res.data || {};
-      const items =
-        body.data || body.submissions || body.items || body.results || body.rows || (Array.isArray(body) ? body : []);
-      const meta = body.meta || body.pagination || body;
-      const totalCount = meta.total ?? meta.totalItems ?? meta.count ?? items.length;
-      tp =
-        meta.totalPages ??
-        meta.total_pages ??
-        meta.last_page ??
-        (meta.per_page ? Math.ceil(totalCount / meta.per_page) : 1);
-      collected.push(...items.map(normalizeItem));
-      p += 1;
-    } while (p <= tp && p <= 100);
-    return collected;
-  };
-
+  // ── Bulk mark: mark every unmarked submission in the selected assignment ──
   const runBulkMark = async (guidanceText, mode = "normal", provider = "gemini") => {
+    if (!selectedAssignment) {
+      toast.warn("Select an assignment first");
+      return;
+    }
     const isPriority = provider === "priority";
     const stopRef = isPriority ? priorityStopRef : bulkStopRef;
     stopRef.current = false;
     if (isPriority) setPriorityBulkRunning(true);
     else setBulkMarking(true);
     try {
-      toast.info("Loading all submissions…");
-      const all = await fetchAllSubmissions();
-      const eligible = all.filter(
-        (s) => s.submissionId && s.localStatus !== "done" && !results[s.submissionId]?.result
+      const eligible = submissions.filter(
+        (s) =>
+          submissionAssignmentKey(s) === selectedAssignment.key &&
+          s.submissionId &&
+          s.localStatus !== "done" &&
+          !results[s.submissionId]?.result
       );
       if (!eligible.length) {
-        toast.warn("No submissions left to mark");
+        toast.warn("No submissions left to mark in this assignment");
         return;
       }
 
@@ -601,6 +626,8 @@ export default function ManagerLoginCss() {
           results[submissionId]?.originalAiResult || resultModal?.originalAiResult
         );
         setResultModal((prev) => ({ ...prev, result: finalResult }));
+        setEditingSummary(finalResult.summary || "");
+        setSummaryTouched(false);
         setEditingMaxTotal(null);
         setEditingTotal(null);
         setSubmissions((prev) =>
@@ -635,6 +662,7 @@ export default function ManagerLoginCss() {
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       const a = document.createElement("a");
@@ -678,6 +706,7 @@ export default function ManagerLoginCss() {
         maxTotalMarks: effectiveMaxTotal,
         summary,
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
 
       const fd = new FormData();
@@ -703,7 +732,7 @@ export default function ManagerLoginCss() {
         )
       );
       setResultModal(null);
-      fetchSubmissions(page);
+      loadAll();
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || "Failed to upload to LoginCSS");
     } finally {
@@ -799,9 +828,57 @@ export default function ManagerLoginCss() {
 
   if (!user) return null;
 
-  const visibleSubmissions = search.trim()
-    ? submissions.filter((s) => (s.name || "").toLowerCase().includes(search.trim().toLowerCase()))
-    : submissions;
+  const selectAssignment = (a) => {
+    setSelectedAssignment(a);
+    setSearch("");
+    setPage(1);
+  };
+
+  const backToAssignments = () => {
+    setSelectedAssignment(null);
+    setSearch("");
+    setPage(1);
+  };
+
+  // Distinct assignments across ALL loaded submissions, each with its count.
+  const assignmentMap = new Map();
+  for (const s of submissions) {
+    const key = submissionAssignmentKey(s);
+    if (!assignmentMap.has(key)) {
+      assignmentMap.set(key, {
+        key,
+        id: s.assignment?.id ?? null,
+        name: s.assignment?.name || "Unassigned",
+        grade: s.assignment?.grade ?? null,
+        dueDate: s.assignment?.due_date || null,
+        count: 0,
+      });
+    }
+    assignmentMap.get(key).count += 1;
+  }
+  const assignments = Array.from(assignmentMap.values());
+
+  const aq = assignmentSearch.trim().toLowerCase();
+  const filteredAssignments = aq
+    ? assignments.filter((a) => (a.name || "").toLowerCase().includes(aq))
+    : assignments;
+
+  // Submissions for the selected assignment, filtered by name search.
+  const q = search.trim().toLowerCase();
+  const assignmentSubmissions = selectedAssignment
+    ? submissions.filter((s) => submissionAssignmentKey(s) === selectedAssignment.key)
+    : [];
+  const filteredSubmissions = q
+    ? assignmentSubmissions.filter((s) => (s.name || "").toLowerCase().includes(q))
+    : assignmentSubmissions;
+
+  // Client-side pagination within the selected assignment.
+  const clientTotalPages = Math.max(1, Math.ceil(filteredSubmissions.length / PER_PAGE));
+  const safePage = Math.min(page, clientTotalPages);
+  const visibleSubmissions = filteredSubmissions.slice(
+    (safePage - 1) * PER_PAGE,
+    safePage * PER_PAGE
+  );
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
   const total = sumQuestionMarks(editingQuestions);
@@ -818,10 +895,20 @@ export default function ManagerLoginCss() {
             <span className="ma-topbar-sub">Welcome back, {user.name}</span>
           </div>
           <div className="ma-topbar-right">
+            {selectedAssignment && (
+              <button
+                type="button"
+                className="msv-refresh-btn"
+                onClick={backToAssignments}
+                style={{ marginRight: 8 }}
+              >
+                <FiArrowLeft size={13} /> Assignments
+              </button>
+            )}
             <button
               type="button"
               className="msv-refresh-btn"
-              onClick={() => fetchSubmissions(page)}
+              onClick={() => loadAll()}
               disabled={loadingList}
             >
               <FiRefreshCw size={13} className={loadingList ? "msv-spin" : ""} />
@@ -832,13 +919,87 @@ export default function ManagerLoginCss() {
 
         <div className="ma-content">
           <div className="ma-layout msv-collapsible-layout">
+
+            {/* ── ASSIGNMENT SELECTION ── */}
+            {!selectedAssignment ? (
+              <div className="ma-column">
+                <p className="ma-section-label msv-section-header-expanded">
+                  ▼ Select Assignment
+                  <span className="ma-panel-count" style={{ marginLeft: 8 }}>
+                    {assignments.length} assignment{assignments.length === 1 ? "" : "s"} · {listTotal} submissions
+                  </span>
+                </p>
+                <input
+                  className="ma-search-input"
+                  placeholder="Search assignments..."
+                  value={assignmentSearch}
+                  onChange={(e) => setAssignmentSearch(e.target.value)}
+                />
+                <div className="ma-scroll-list">
+                  {loadingList ? (
+                    <p className="ma-loading-msg">Loading…</p>
+                  ) : filteredAssignments.length === 0 ? (
+                    <p className="ma-empty-msg">
+                      {assignmentSearch ? "No assignments match your search." : "No assignments found."}
+                    </p>
+                  ) : (
+                    filteredAssignments.map((a) => (
+                      <div
+                        key={a.key}
+                        className="ma-assignment-card"
+                        onClick={() => selectAssignment(a)}
+                      >
+                        <div className="ma-assignment-icon"><FiLayers size={14} /></div>
+                        <div className="ma-assignment-info">
+                          <span className="ma-assignment-title">{a.name}</span>
+                          <span className="ma-assignment-due">
+                            {a.id != null ? `#${a.id} · ` : ""}
+                            {a.count} submission{a.count === 1 ? "" : "s"}
+                            {a.grade != null ? ` · /${a.grade}` : ""}
+                            {a.dueDate ? (
+                              <>
+                                {" · "}
+                                <FiCalendar size={10} /> {new Date(a.dueDate).toLocaleDateString()}
+                              </>
+                            ) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div
+                className="msv-section-collapsed"
+                onClick={backToAssignments}
+                onKeyDown={(e) => e.key === "Enter" && backToAssignments()}
+                role="button"
+                tabIndex={0}
+              >
+                <span className="msv-section-collapsed-chevron">▶</span>
+                <span className="msv-section-collapsed-text">
+                  Assignment: {selectedAssignment.name}
+                </span>
+                <button
+                  type="button"
+                  className="msv-section-change"
+                  onClick={(e) => { e.stopPropagation(); backToAssignments(); }}
+                >
+                  [change]
+                </button>
+              </div>
+            )}
+
+            {/* ── SUBMISSIONS FOR SELECTED ASSIGNMENT ── */}
+            {selectedAssignment && (
             <div className="ma-right-panel msv-right-panel-full">
               <div className="ma-panel">
                 <div className="ma-panel-header">
                   <div className="ma-panel-title-wrap">
                     <div className="ma-panel-dot" />
-                    <h2 className="ma-panel-title">Submissions</h2>
-                    <span className="ma-panel-count">{listTotal} total</span>
+                    <h2 className="ma-panel-title">{selectedAssignment.name}</h2>
+                    <span className="ma-panel-count">{assignmentSubmissions.length} total</span>
                   </div>
                   <div className="msv-panel-controls" style={{ flexWrap: "wrap", gap: 8 }}>
                     <input
@@ -846,7 +1007,7 @@ export default function ManagerLoginCss() {
                       type="text"
                       placeholder="Search by name…"
                       value={search}
-                      onChange={(e) => setSearch(e.target.value)}
+                      onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                     />
                     <select
                       className="msv-gemini-select"
@@ -917,7 +1078,9 @@ export default function ManagerLoginCss() {
                 {loadingList && <p className="ma-loading-msg">Loading submissions…</p>}
                 {!loadingList && visibleSubmissions.length === 0 && (
                   <p className="ma-empty-msg">
-                    {search ? `No submissions match "${search}".` : "No submissions found."}
+                    {search
+                      ? `No submissions match "${search}".`
+                      : "No submissions for this assignment."}
                   </p>
                 )}
 
@@ -1095,11 +1258,16 @@ export default function ManagerLoginCss() {
                   </div>
                 )}
 
-                {!loadingList && submissions.length > 0 && (
-                  <Pagination page={page} totalPages={totalPages} onPageChange={fetchSubmissions} />
+                {!loadingList && filteredSubmissions.length > PER_PAGE && (
+                  <Pagination
+                    page={safePage}
+                    totalPages={clientTotalPages}
+                    onPageChange={(p) => setPage(p)}
+                  />
                 )}
               </div>
             </div>
+            )}
           </div>
         </div>
       </main>
@@ -1511,6 +1679,9 @@ export default function ManagerLoginCss() {
                           const reset = resetToConfirmed();
                           if (reset) {
                             setEditingQuestions(reset.questions);
+                            setEditingAnnotations(reset.teacherAnnotations || []);
+                            setEditingSummary(reset.summary || "");
+                            setSummaryTouched(false);
                             setEditingMaxTotal(null);
                             setEditingTotal(null);
                           } else {
@@ -1548,6 +1719,23 @@ export default function ManagerLoginCss() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="msv-btn-ai"
+                  onClick={() => setAnnotationsPanelOpen((open) => !open)}
+                  style={{
+                    fontSize: 12,
+                    background: annotationsPanelOpen
+                      ? "rgba(99,102,241,0.28)"
+                      : "rgba(99,102,241,0.12)",
+                    borderColor: "rgba(99,102,241,0.45)",
+                    color: "#c7d2fe",
+                  }}
+                  title="Add extra notes on the marked PDF preview"
+                >
+                  📝 Annotate
+                  {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
+                </button>
                 {hasPendingEdits && (
                   <button
                     className="msv-btn-ai"
@@ -1747,8 +1935,8 @@ export default function ManagerLoginCss() {
                   </div>
                 )}
 
-                {/* NORMAL MODE summary */}
-                {!isCriteria && resultModal.result.summary && (
+                {/* NORMAL MODE summary (editable) */}
+                {!isCriteria && (
                   <div className="msv-summary-box">
                     <div
                       style={{
@@ -1760,11 +1948,31 @@ export default function ManagerLoginCss() {
                         letterSpacing: "0.08em",
                       }}
                     >
-                      Summary
+                      Overall Summary
                     </div>
-                    <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>
-                      {resultModal.result.summary}
-                    </p>
+                    <textarea
+                      value={editingSummary}
+                      onChange={(e) => {
+                        setSummaryTouched(true);
+                        setEditingSummary(e.target.value);
+                      }}
+                      rows={5}
+                      placeholder="Summary updates automatically when you edit marks or question feedback. Confirm edits to refresh the PDF."
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.03)",
+                        color: "rgba(255,255,255,0.75)",
+                        fontSize: 13,
+                        lineHeight: 1.6,
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                        fontFamily: "inherit",
+                        outline: "none",
+                      }}
+                    />
                   </div>
                 )}
 
@@ -1881,14 +2089,16 @@ export default function ManagerLoginCss() {
                           </div>
                         )}
 
-                        {q.studentAnswer && q.studentAnswer !== "Not attempted" && (
+                        {q.studentAnswer && !isBlankQuestion(q) && (
                           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
                             <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>
                             {q.studentAnswer}
                           </div>
                         )}
-                        {q.studentAnswer === "Not attempted" && (
-                          <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 6 }}>📭 Not attempted</div>
+                        {isBlankQuestion(q) && (
+                          <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                            📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
+                          </div>
                         )}
 
                         {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
@@ -1906,6 +2116,17 @@ export default function ManagerLoginCss() {
                             <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>
                             {q.correctAnswer}
                           </div>
+                        )}
+
+                        {!isCriteria && (
+                          <QuestionKeywordFields
+                            question={q}
+                            onChange={(updated) =>
+                              setEditingQuestions((prev) =>
+                                prev.map((x, i) => (i === idx ? updated : x))
+                              )
+                            }
+                          />
                         )}
 
                         <div
@@ -1982,25 +2203,39 @@ export default function ManagerLoginCss() {
                   }}
                 >
                   <span>📄 Annotated PDF Preview</span>
-                  {hasPendingEdits && (
-                    <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
-                      Confirm edits to update preview
-                    </span>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {hasPendingEdits && (
+                      <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                        Confirm edits to update preview
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {annotationsPanelOpen && (
+                  <div
+                    style={{
+                      marginBottom: 10,
+                      maxHeight: 240,
+                      overflowY: "auto",
+                      paddingRight: 4,
+                    }}
+                  >
+                    <TeacherAnnotationsEditor
+                      annotations={editingAnnotations}
+                      onChange={setEditingAnnotations}
+                      questions={editingQuestions}
+                    />
+                  </div>
+                )}
 
                 {previewLoading ? (
                   <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Generating preview…</div>
                 ) : previewError ? (
                   <div style={{ color: "#f87171", fontSize: 13 }}>{previewError}</div>
                 ) : annotatedPreviewUrl ? (
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <iframe
-                      key={annotatedPreviewUrl}
-                      src={annotatedPreviewUrl}
-                      title="Annotated PDF"
-                      style={{ width: "100%", height: "100%", border: "none", borderRadius: 8 }}
-                    />
+                  <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                    <AnnotatedPdfPreview url={annotatedPreviewUrl} />
                   </div>
                 ) : (
                   <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>No preview available</div>
