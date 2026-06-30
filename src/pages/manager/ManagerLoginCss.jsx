@@ -222,6 +222,7 @@ export default function ManagerLoginCss() {
   // ── Defensive normalisation of the LoginCSS list envelope ──
   const normalizeItem = (raw) => {
     const id = raw.id ?? raw.submissionId ?? raw._id;
+    const draftResult = raw.draftResult ?? null;
     return {
       ...raw,
       submissionId: id,
@@ -232,8 +233,9 @@ export default function ManagerLoginCss() {
         raw.title ||
         (id != null ? `Submission #${id}` : "Submission"),
       submittedAt: raw.created_at || raw.createdAt || raw.submittedAt || null,
-      localStatus: raw.localStatus ?? null,
-      localGrade: raw.localGrade ?? null,
+      localStatus: raw.localStatus ?? (draftResult ? "grading" : null),
+      localGrade:
+        raw.localGrade ?? (draftResult ? resolveTotalMarksFromResult(draftResult) : null),
       hasFeedbackPdf: !!raw.hasFeedbackPdf,
     };
   };
@@ -262,6 +264,22 @@ export default function ManagerLoginCss() {
           ? Math.ceil(totalCount / meta.per_page)
           : Math.max(1, Math.ceil(totalCount / PER_PAGE)));
       setSubmissions(items.map(normalizeItem));
+      // Hydrate persisted drafts into React state so the "✅ Results" button and
+      // grade survive refresh / appear on other devices. studentFile is left
+      // undefined — it is lazily re-fetched from LoginCSS when the result opens.
+      const hydrated = {};
+      for (const raw of items) {
+        const sid = raw.id ?? raw.submissionId ?? raw._id;
+        if (sid != null && raw.draftResult) {
+          hydrated[sid] = {
+            result: raw.draftResult,
+            originalAiResult: raw.draftOriginalAiResult || raw.draftResult,
+            studentFile: undefined,
+          };
+        }
+      }
+      // In-memory results (prev) win over server drafts — keep fresher local edits.
+      setResults((prev) => ({ ...hydrated, ...prev }));
       setListTotal(totalCount || 0);
       setTotalPages(tp || 1);
       setPage(meta.page ?? meta.current_page ?? p);
@@ -385,15 +403,33 @@ export default function ManagerLoginCss() {
     return { result, studentFile };
   };
 
+  // ── Server-side draft persistence (survives refresh / other devices) ──
+  // Only the result JSON is stored; studentFile is always re-fetchable from LoginCSS.
+  const saveDraft = (submissionId, result, originalAiResult) => {
+    api
+      .put(`/external-grading/submissions/${submissionId}/draft`, {
+        result,
+        originalAiResult: originalAiResult || result,
+      })
+      .catch(async (err) =>
+        toast.error((await getApiErrorMessage(err)) || "Failed to save grading draft")
+      );
+  };
+
+  const deleteDraft = (submissionId) =>
+    api.delete(`/external-grading/submissions/${submissionId}/draft`).catch(() => {});
+
   const recordMarkResult = (submissionId, result, studentFile) => {
+    const originalAiResult = JSON.parse(JSON.stringify(result));
     setResults((prev) => ({
       ...prev,
       [submissionId]: {
         result,
-        originalAiResult: JSON.parse(JSON.stringify(result)),
+        originalAiResult,
         studentFile,
       },
     }));
+    saveDraft(submissionId, result, originalAiResult);
     setStudentErrors((prev) => {
       const n = { ...prev };
       delete n[submissionId];
@@ -520,6 +556,7 @@ export default function ManagerLoginCss() {
 
   const deleteResult = (student) => {
     const id = student.submissionId;
+    deleteDraft(id);
     setResults((prev) => {
       const n = { ...prev };
       delete n[id];
@@ -559,6 +596,11 @@ export default function ManagerLoginCss() {
           ...prev,
           [submissionId]: { ...(prev[submissionId] || {}), result: finalResult },
         }));
+        saveDraft(
+          submissionId,
+          finalResult,
+          results[submissionId]?.originalAiResult || resultModal?.originalAiResult
+        );
         setResultModal((prev) => ({ ...prev, result: finalResult }));
         setEditingMaxTotal(null);
         setEditingTotal(null);
@@ -652,6 +694,8 @@ export default function ManagerLoginCss() {
       });
 
       toast.success("Grade & feedback uploaded to LoginCSS");
+      // Published — free the draft (the annotated PDF now lives in LoginCSS).
+      deleteDraft(submissionId);
       setSubmissions((prev) =>
         prev.map((s) =>
           s.submissionId === submissionId
@@ -698,6 +742,27 @@ export default function ManagerLoginCss() {
       URL.revokeObjectURL(url);
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || `Failed to download ${label}`);
+    }
+  };
+
+  // Re-view the annotated feedback PDF that was published to LoginCSS (any device).
+  // Mirrors the /pdfs envelope: { feedback: { available, base64 } } — base64-only
+  // (no presigned URL) to avoid the R2 CORS problem of fetching the URL in-browser.
+  const viewFeedback = async (student) => {
+    try {
+      const res = await api.get(
+        `/external-grading/submissions/${student.submissionId}/feedback`,
+        { timeout: 120000 }
+      );
+      const feedback = res.data?.feedback || {};
+      if (!feedback.available || !feedback.base64) {
+        return toast.error("No feedback PDF available for this submission");
+      }
+      const file = base64ToFile(feedback.base64, `feedback_${student.submissionId}.pdf`);
+      await assertPdfBlob(file, "Feedback");
+      window.open(URL.createObjectURL(file), "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to open feedback PDF");
     }
   };
 
@@ -947,6 +1012,16 @@ export default function ManagerLoginCss() {
                                     >
                                       <FiDownload size={13} /> MS
                                     </button>
+
+                                    {s.hasFeedbackPdf && (
+                                      <button
+                                        className="msv-action-btn"
+                                        title="View feedback PDF"
+                                        onClick={() => viewFeedback(s)}
+                                      >
+                                        <FiEye size={13} /> Feedback
+                                      </button>
+                                    )}
 
                                     {studentErrors[s.submissionId] && (
                                       <button
