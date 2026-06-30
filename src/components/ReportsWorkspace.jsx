@@ -14,6 +14,7 @@ import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
 import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, attendedNamesFromMap, countPresentInMap } from "../utils/attendanceExcel";
 import ReportAttendanceSelect from "./ReportAttendanceSelect";
 import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
+import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
 import {
   refreshAssignmentGrades,
   applyReportCartGradeSync,
@@ -45,6 +46,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [parsingAttendance, setParsingAttendance] = useState(false);
   const [refreshingGrades, setRefreshingGrades] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
+  const [reportView, setReportView] = useState("assignment");
 
   const classroomParams = useMemo(() => {
     if (isTeacher) {
@@ -579,6 +581,15 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   if (!user) return null;
 
+  if (reportView === "monthly") {
+    return (
+      <MonthlyParentReportWorkspace
+        variant={variant}
+        onBack={() => setReportView("assignment")}
+      />
+    );
+  }
+
   const mainContent = (
       <main className="ma-main">
 
@@ -593,6 +604,21 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   : `Select an assignment from ${selectedClassroom.name}`
                 : `Welcome back, ${user.name}`}
             </span>
+            <div className="ma-report-tabs">
+              <button
+                type="button"
+                className="ma-report-tab ma-report-tab--active"
+              >
+                Assignment Reports
+              </button>
+              <button
+                type="button"
+                className="ma-report-tab"
+                onClick={() => setReportView("monthly")}
+              >
+                <FiCalendar size={12} /> Monthly Parent Reports
+              </button>
+            </div>
           </div>
           {reportCount > 0 && (
             <div className="ma-topbar-right">

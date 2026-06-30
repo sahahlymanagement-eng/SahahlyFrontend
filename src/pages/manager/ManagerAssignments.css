@@ -173,6 +173,38 @@
 }
 .ma-topbar-sub { font-size: 13px; color: #475569; font-weight: 400; }
 
+.ma-report-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.ma-report-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ma-report-tab:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.ma-report-tab--active {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #bfdbfe;
+}
+
 .ma-topbar-right { display: flex; align-items: center; gap: 10px; }
 
 .ma-cart-pill {

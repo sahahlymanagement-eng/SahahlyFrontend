@@ -1,17 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
 import "./DirectorClassroomManagers.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 import { toast } from "react-toastify";
+import { FiRefreshCw, FiSearch } from "react-icons/fi";
 
 export default function DirectorManagers() {
-  const { data: classrooms, page, totalPages, fetchPage: fetchClassroomsPage } =
-    usePagination("/classrooms", {}, 10);
+  const [search, setSearch] = useState("");
+  const classroomParams = useMemo(
+    () => ({ search: search.trim() || undefined }),
+    [search]
+  );
+
+  const {
+    data: classrooms,
+    page,
+    totalPages,
+    loading: loadingClassrooms,
+    fetchPage: fetchClassroomsPage,
+  } = usePagination("/classrooms", classroomParams, 10);
   const [people, setPeople] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [selectedManagers, setSelectedManagers] = useState({});
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => { loadSupportData(); }, []);
 
@@ -38,6 +51,18 @@ export default function DirectorManagers() {
 
   const reload = async () => {
     await Promise.all([fetchClassroomsPage(page), loadSupportData()]);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchClassroomsPage(1), loadSupportData()]);
+      toast.success("Classroom list refreshed");
+    } catch {
+      toast.error("Failed to refresh classrooms");
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const managers = people.filter(
@@ -103,7 +128,31 @@ export default function DirectorManagers() {
 
   return (
     <div className="dm-page">
-      <h2 className="dm-title">Assign Managers to Classrooms</h2>
+      <div className="dm-header">
+        <h2 className="dm-title">Assign Managers to Classrooms</h2>
+        <div className="dm-toolbar">
+          <div className="dm-search">
+            <FiSearch size={16} aria-hidden />
+            <input
+              type="search"
+              placeholder="Search classrooms…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search classrooms"
+            />
+          </div>
+          <button
+            type="button"
+            className="dm-refresh"
+            onClick={handleRefresh}
+            disabled={refreshing || loadingClassrooms}
+            title="Refresh classroom list"
+          >
+            <FiRefreshCw size={15} className={refreshing ? "dm-spin" : ""} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
 
       <div className="dm-table-box">
         <table className="dm-table">
@@ -117,7 +166,19 @@ export default function DirectorManagers() {
             </tr>
           </thead>
           <tbody>
-            {classrooms.map((room) => {
+            {loadingClassrooms && (
+              <tr>
+                <td colSpan={5} className="dm-empty">Loading classrooms…</td>
+              </tr>
+            )}
+            {!loadingClassrooms && classrooms.length === 0 && (
+              <tr>
+                <td colSpan={5} className="dm-empty">
+                  {search.trim() ? `No classrooms match "${search.trim()}".` : "No classrooms found."}
+                </td>
+              </tr>
+            )}
+            {!loadingClassrooms && classrooms.map((room) => {
               const alreadyAssigned = hasManager(room._id);
               return (
                 <tr key={room._id}>
