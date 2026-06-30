@@ -27,7 +27,7 @@ const DASHBOARD_STATUSES = [
 
 const STATUS_META = {
   UNASSIGNED:     { icon: <FiClock />,        accent: "#64748b" },
-  ASSIGNED:       { icon: <FiUser />,          accent: "#7c3aed" },
+  ASSIGNED:       { icon: <FiUser />,          accent: "#2563eb" },
   FAILED_DEADLINE:{ icon: <FiAlertTriangle />, accent: "#dc2626" },
   DONE:           { icon: <FiCheckCircle />,   accent: "#22c55e" },
 };

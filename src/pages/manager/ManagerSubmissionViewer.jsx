@@ -148,6 +148,7 @@ export default function ManagerSubmissionViewer() {
     fetchPage: fetchStudentPage,
     setData: setStudents,
     extra: studentExtra,
+    error: studentFetchError,
   } = usePagination(
     selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
     studentParams,
@@ -157,6 +158,15 @@ export default function ManagerSubmissionViewer() {
   );
 
   const summaryMap = studentExtra?.summaryMap || {};
+
+  useEffect(() => {
+    if (!selectedAssignment?._id || loadingStudents) return;
+    if (studentFetchError) {
+      toast.error(`Could not load students: ${studentFetchError}`);
+    } else if (studentExtra.googleUnavailable) {
+      toast.warn("Google Classroom is unavailable — showing saved students without live submission status.");
+    }
+  }, [selectedAssignment?._id, loadingStudents, studentFetchError, studentExtra.googleUnavailable]);
 
   // Mark scheme
   const [msInfo,      setMsInfo]      = useState(null);
@@ -3306,7 +3316,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
                   {!loadingStudents && students.length === 0 && (
                     <p className="ma-empty-msg">
-                      {studentSearch ? `No students match "${studentSearch}".` : "No students found."}
+                      {studentSearch
+                        ? `No students match "${studentSearch}".`
+                        : studentFetchError
+                          ? "Could not load students. Check your Google Classroom connection."
+                          : studentTotal === 0
+                            ? "No students synced for this classroom. Open Students Data and run Sync."
+                            : "No students found."}
                     </p>
                   )}
 

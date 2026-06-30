@@ -333,7 +333,7 @@ export default function QualityTeamDashboard() {
         </header>
 
         <div className="qt-stats">
-          <div className="qt-stat-card" style={{ "--accent": "#7c3aed" }}>
+          <div className="qt-stat-card" style={{ "--accent": "#2563eb" }}>
             <div className="qt-stat-icon"><FiShield /></div>
             <div className="qt-stat-content">
               <span className="qt-stat-label">Total Active</span>

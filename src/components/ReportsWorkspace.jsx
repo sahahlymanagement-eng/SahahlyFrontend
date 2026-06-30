@@ -7,7 +7,7 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 import {
   FiClipboard, FiUsers, FiSend,
-  FiCheckSquare, FiMessageSquare
+  FiCheckSquare, FiMessageSquare, FiCalendar
 } from "react-icons/fi";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
@@ -95,6 +95,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     loading: loadingStudents,
     fetchPage: fetchStudentPage,
     extra: studentExtra,
+    error: studentFetchError,
   } = usePagination(
     selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
     {},
@@ -108,6 +109,15 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       setSummaryMap(studentExtra.summaryMap);
     }
   }, [studentExtra]);
+
+  useEffect(() => {
+    if (!selectedAssignment?._id || loadingStudents) return;
+    if (studentFetchError) {
+      toast.error(`Could not load students: ${studentFetchError}`);
+    } else if (studentExtra.googleUnavailable) {
+      toast.warn("Google Classroom is unavailable — showing saved students without live submission status.");
+    }
+  }, [selectedAssignment?._id, loadingStudents, studentFetchError, studentExtra.googleUnavailable]);
 
   /* AUTH */
   useEffect(() => {
@@ -829,7 +839,13 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                 {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
 
                 {!loadingStudents && students.length === 0 && (
-                  <p className="ma-empty-msg">No students found.</p>
+                  <p className="ma-empty-msg">
+                    {studentFetchError
+                      ? "Could not load students. Check your Google Classroom connection."
+                      : studentTotal === 0
+                        ? "No students synced for this classroom. Open Students Data and run Sync."
+                        : "No students found."}
+                  </p>
                 )}
 
                 {!loadingStudents && students.length > 0 && (
