@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import {
   FiHome, FiUsers, FiClipboard, FiFileText, FiBookOpen,
-  FiZap, FiEye, FiMenu, FiX, FiChevronRight, FiLogOut, FiBarChart2
+  FiZap, FiEye, FiMenu, FiX, FiChevronRight, FiLogOut, FiBarChart2, FiUploadCloud
 } from "react-icons/fi";
 import "./ManagerSidebar.css";
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { icon: <FiEye />,       label: "Submission Viewer",   path: "/manager/submissions"    },
   { icon: <FiBarChart2 />, label: "Token Usage",         path: "/manager/token-usage"    },
   { icon: <FiFileText />,  label: "Gemini AI Marking",   path: "/manager/marking"        },
+  { icon: <FiUploadCloud />, label: "LoginCSS",          path: "/manager/logincss"       },
   { icon: <FiFileText />,  label: "Claude AI Marking",   path: "/manager/markingclaude"  },
   { icon: <FiZap />,       label: "Question Bank",       path: "/questionbank/manage"    },
   { icon: <FiBookOpen />,  label: "Course Management",   path: "/manager/google-classroom" },
