@@ -20,6 +20,7 @@ import QualityManagerAssignmentDelegationTest from "./pages/QualityManagerAssign
 import QualityTeamAssignmentsTest from "./pages/QualityTeamAssignmentsTest";
 import QualityChecklistItemsTest from "./pages/QualityChecklistItemsTest";
 import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
+import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
 import Login from "./pages/Login";
 import LandingPage from "./pages/LandingPage";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -234,6 +235,12 @@ function App() {
         <Route path="/manager/marking" element={
           <RoleProtectedRoute allowedRole="manager">
             <PaperMarking />
+          </RoleProtectedRoute>}
+        />
+
+        <Route path="/manager/logincss" element={
+          <RoleProtectedRoute allowedRole="manager">
+            <ManagerLoginCss />
           </RoleProtectedRoute>}
         />
 
