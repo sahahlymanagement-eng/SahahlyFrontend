@@ -27,6 +27,7 @@ import {
   currentUserId,
   getApiErrorMessage,
   getMarkingResultSummary,
+  rebuildMarkingSummary,
   guidanceForForm,
   hasTeacherEdits,
   isStudentSubmitted,
@@ -34,9 +35,14 @@ import {
   getResultMaxTotal,
   resolveDisplayMaxTotal,
   getOutOfScopeNotes,
+  getTeacherAnnotations,
 } from "../../utils/markingFormData";
+import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
+import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
+import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import {
   formatCostPair,
   geminiModelLabel,
@@ -48,6 +54,12 @@ import {
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
+  useMarkingStudentSelection,
+  loadEligibleStudentsForMarking,
+  markingActionLabel,
+} from "../../utils/markingStudentSelection";
+import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import {
   computeGradePercent,
   parsePercentInput,
   resolveAssignmentMaxPoints,
@@ -56,6 +68,14 @@ import {
   exportAssignmentGradesExcel,
   sanitizeExcelFilenameBase,
 } from "../../utils/exportGradesExcel";
+import SubmissionGradeInput from "../../components/SubmissionGradeInput";
+import { enrichMarkingQuestions, isBlankQuestion } from "../../utils/blankQuestionFeedback";
+import {
+  gradeFromPercent,
+  resolveTableGrade,
+  appendClassroomGradeToFormData,
+} from "../../utils/submissionGrades";
+import { SubmissionStatusBadge } from "../../utils/submissionStatusBadge";
 import {
   MARKING_MAX_ATTEMPTS,
   MARKING_MAX_RETRIES_MESSAGE,
@@ -164,11 +184,113 @@ export default function ManagerSubmissionViewer() {
   const batchStopRef = useRef(false);
   const batchPollRef = useRef(null);
 
+  const markingSelection = useMarkingStudentSelection();
+  const [selectingMarkingAll, setSelectingMarkingAll] = useState(false);
+
+  const studentsMarkingUrl = selectedAssignment?._id
+    ? `/manager-assignments/${selectedAssignment._id}/full`
+    : null;
+
+  useEffect(() => {
+    markingSelection.clear();
+  }, [selectedAssignment?._id]);
+
+  const pageSelectableIds = useMemo(
+    () => students.filter((s) => s.submissionId).map((s) => s.submissionId),
+    [students]
+  );
+
+  const pageAllMarkingSelected = useMemo(
+    () =>
+      pageSelectableIds.length > 0 &&
+      pageSelectableIds.every((id) => markingSelection.isSelected(id)),
+    [pageSelectableIds, markingSelection.selectedIds]
+  );
+
+  const toggleMarkingSelectPage = () => {
+    if (pageAllMarkingSelected) {
+      markingSelection.selectIds(
+        [...markingSelection.selectedIds].filter(
+          (id) => !pageSelectableIds.includes(id)
+        )
+      );
+    } else {
+      markingSelection.mergeIds(pageSelectableIds);
+    }
+  };
+
+  const selectAllStudentsForMarking = async () => {
+    if (!studentsMarkingUrl) return;
+    setSelectingMarkingAll(true);
+    try {
+      const all = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
+      const ids = all.filter((s) => s.submissionId).map((s) => s.submissionId);
+      markingSelection.selectIds(ids);
+      toast.success(`Selected ${ids.length} student(s)`);
+    } catch {
+      toast.error("Failed to load all students");
+    } finally {
+      setSelectingMarkingAll(false);
+    }
+  };
+
+  const resolveEligibleForMarking = async (requireSubmitted = false) => {
+    toast.info(
+      markingSelection.selectedCount
+        ? `Preparing ${markingSelection.selectedCount} selected student(s)…`
+        : "Loading all students for this assignment…"
+    );
+    const result = await loadEligibleStudentsForMarking(api, {
+      assignmentId: selectedAssignment._id,
+      studentsUrl: studentsMarkingUrl,
+      selectedIds: markingSelection.selectedIds,
+      requireSubmitted,
+    });
+
+    if (result.error === "none_of_selected_found") {
+      toast.warn("Selected students were not found on this assignment");
+      return null;
+    }
+
+    const { allStudents, eligible, pool } = result;
+
+    if (markingSelection.selectedCount > 0 && !eligible.length) {
+      toast.warn("None of the selected students are eligible for marking (may already be marked)");
+      return null;
+    }
+
+    if (!eligible.length) {
+      const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
+      if (!withSubmissions.length) {
+        toast.warn("No students with submissions");
+        return null;
+      }
+      toast.warn(
+        markingSelection.selectedCount
+          ? "Selected students are already marked or not eligible"
+          : "All submitted students are already marked for this assignment"
+      );
+      return null;
+    }
+
+    if (markingSelection.selectedCount > 0 && eligible.length < pool.length) {
+      toast.info(
+        `${eligible.length} of ${pool.length} selected will be marked (others already marked)`
+      );
+    }
+
+    return { allStudents, eligible };
+  };
+
 
   // Results modal
   const [singleProgress, setSingleProgress] = useState({});
   const [resultModal,      setResultModal]      = useState(null);
+  const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [editingAnnotations, setEditingAnnotations] = useState([]);
+  const [editingSummary, setEditingSummary] = useState("");
+  const [summaryTouched, setSummaryTouched] = useState(false);
   const [downloading,      setDownloading]      = useState(false);
   const [returning,        setReturning]        = useState(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
@@ -184,6 +306,8 @@ export default function ManagerSubmissionViewer() {
   const [exportingGrades, setExportingGrades] = useState(false);
   const [deletingCorrection, setDeletingCorrection] = useState({});
   const [percentOverrides, setPercentOverrides] = useState({});
+  const [gradeOverrides, setGradeOverrides] = useState({});
+  const [classroomSyncedGrades, setClassroomSyncedGrades] = useState({});
 
   const [aiReviewProgress, setAiReviewProgress] = useState({});
   const [aiReviewModal, setAiReviewModal] = useState(null);
@@ -236,17 +360,43 @@ const resolvePdfSummary = (submissionId, result) =>
     assignmentId: selectedAssignment?._id,
     resultModal,
     editingQuestions,
+    editingAnnotations,
+    editingSummary,
     effectiveMaxTotal,
     assignmentMaxPoints,
     editingMaxTotal,
     resolvePdfSummary,
   });
 
+useEffect(() => {
+  if (!resultModal || summaryTouched) return;
+  const submissionId =
+    resultModal.submissionId || resultModal.student?.submissionId;
+  setEditingSummary(
+    rebuildMarkingSummary({
+      questions: editingQuestions,
+      maxTotalMarks: effectiveMaxTotal,
+      previousSummary:
+        resultModal.result?.summary ||
+        getMarkingResultSummary(resultModal.result, {
+          storedSummary: savedResults[submissionId]?.summary,
+        }),
+    })
+  );
+}, [
+  resultModal,
+  editingQuestions,
+  effectiveMaxTotal,
+  summaryTouched,
+  savedResults,
+]);
+
 const fetchSavedResults = useCallback(async () => {
   if (!selectedAssignment?._id) return;
   try {
     const res = await api.get(`/submission-files/save-results/${selectedAssignment._id}`);
     const map = {};
+    const synced = {};
     res.data.data.forEach(r => {
       map[r.submissionId] = {
         status: "done",
@@ -254,12 +404,17 @@ const fetchSavedResults = useCallback(async () => {
         aiOriginalResult: r.aiOriginalResult || r.result,
         studentFile: r.studentFileMeta,
         totalMarks: resolveSavedMarkingGrade(r),
+        classroomAssignedGrade: r.classroomAssignedGrade ?? null,
         provider: r.provider,
         mode: r.mode,
         summary: r.summary || "",
       };
+      if (r.classroomAssignedGrade != null) {
+        synced[r.submissionId] = r.classroomAssignedGrade;
+      }
     });
     setSavedResults(map);
+    setClassroomSyncedGrades(synced);
     setSingleProgress(prev => ({ ...prev, ...map }));
   } catch (err) {
     console.error("Failed to load saved results", err);
@@ -276,10 +431,11 @@ const refreshStudents = async () => {
   if (!selectedAssignment?._id) return;
   setRefreshing(true);
   try {
-    const { students: freshList, maxPoints } = await refreshAssignmentGrades(
+    const { students: freshList, maxPoints, pushResult } = await refreshAssignmentGrades(
       api,
       selectedAssignment._id,
-      "manager"
+      "manager",
+      { gradeOverrides, students, savedResults, classroomSyncedGrades }
     );
     const syncedMaxPoints = maxPoints ?? selectedAssignment.maxPoints ?? null;
     if (syncedMaxPoints != null) {
@@ -301,7 +457,37 @@ const refreshStudents = async () => {
       // saved results optional
     }
 
+    const pushedIds = new Set(
+      (pushResult?.results || []).filter((r) => r.ok).map((r) => r.submissionId)
+    );
+
+    let nextSyncedGrades = { ...classroomSyncedGrades };
+    for (const row of pushResult?.results || []) {
+      if (row.ok && row.submissionId != null) {
+        nextSyncedGrades[row.submissionId] = row.assignedGrade;
+      }
+    }
+    if (pushResult?.results?.length) {
+      setClassroomSyncedGrades(nextSyncedGrades);
+      setSavedResults((prev) => {
+        const next = { ...prev };
+        for (const row of pushResult.results) {
+          if (!row.ok || !row.submissionId) continue;
+          next[row.submissionId] = {
+            ...(next[row.submissionId] || {}),
+            classroomAssignedGrade: row.assignedGrade,
+          };
+        }
+        return next;
+      });
+    }
+
     const mergedGrades = freshList.map((s) => {
+      const syncedGrade = nextSyncedGrades[s.submissionId];
+      if (syncedGrade != null) {
+        return { ...s, assignedGrade: Number(syncedGrade) };
+      }
+      if (pushedIds.has(s.submissionId)) return s;
       const sr = savedMap[s.submissionId];
       if (!sr) return s;
       const grade = resolveSavedMarkingGrade(sr);
@@ -324,7 +510,28 @@ const refreshStudents = async () => {
       setPercentOverrides({});
     }
 
+    if (pushResult?.results?.length) {
+      const succeeded = pushResult.results.filter((r) => r.ok).map((r) => r.submissionId);
+      setGradeOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of succeeded) delete next[id];
+        return next;
+      });
+    } else {
+      setGradeOverrides({});
+    }
+
     await fetchStudentPage(studentPage);
+
+    if (pushResult?.pushed > 0 && !pushResult?.failed) {
+      toast.success(
+        `Updated ${pushResult.pushed} grade${pushResult.pushed === 1 ? "" : "s"} in Google Classroom`
+      );
+    } else if (pushResult?.pushed > 0 && pushResult?.failed > 0) {
+      toast.warn(
+        `Updated ${pushResult.pushed} grade(s) in Google Classroom; ${pushResult.failed} failed`
+      );
+    }
     toast.success("Synced grades, max points, and percentages from Google Classroom");
   } catch {
     toast.error("Failed to refresh from Google Classroom");
@@ -376,6 +583,8 @@ const handleExportGradesExcel = async () => {
       assignmentMaxPoints,
       savedResults,
       percentOverrides,
+      gradeOverrides,
+      classroomSyncedGrades,
       filename,
     });
     toast.success("Grades exported to Excel");
@@ -406,6 +615,8 @@ useEffect(() => {
   if (!students.length || !Object.keys(savedResults).length) return;
   let changed = false;
   const updated = students.map(s => {
+    if (classroomSyncedGrades[s.submissionId] != null) return s;
+    if (savedResults[s.submissionId]?.classroomAssignedGrade != null) return s;
     const sr = savedResults[s.submissionId];
     if (!sr) return s;
     const newGrade = resolveSavedMarkingGrade(sr);
@@ -414,7 +625,7 @@ useEffect(() => {
     return { ...s, assignedGrade: newGrade };
   });
   if (changed) setStudents(updated);
-}, [savedResults, students]);
+}, [savedResults, students, classroomSyncedGrades]);
 
   const openErrorViewer = (title, error) => {
     let message = "";
@@ -620,6 +831,37 @@ useEffect(() => {
       ...prev,
       [submissionId]: percentage,
     }));
+    if (percentage != null && assignmentMaxPoints) {
+      const grade = gradeFromPercent(percentage, assignmentMaxPoints);
+      if (grade != null) {
+        setGradeOverrides((prev) => ({
+          ...prev,
+          [submissionId]: grade,
+        }));
+      }
+    }
+  };
+
+  const setGradeOverride = (submissionId, grade) => {
+    if (!submissionId) return;
+    if (grade == null) {
+      setGradeOverrides((prev) => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+      return;
+    }
+    setGradeOverrides((prev) => ({
+      ...prev,
+      [submissionId]: grade,
+    }));
+    if (assignmentMaxPoints) {
+      setPercentOverrides((prev) => ({
+        ...prev,
+        [submissionId]: computeGradePercent(grade, assignmentMaxPoints),
+      }));
+    }
   };
 
   const handleBack = () => {
@@ -1113,6 +1355,7 @@ useEffect(() => {
       );
 
       setEditingQuestions(res.data.questions.map(q => ({ ...q })));
+      setEditingAnnotations(getTeacherAnnotations(res.data).map((a) => ({ ...a })));
       setEditingMaxTotal(null);
     } catch (err) {
       const message = extractHumanError
@@ -1256,6 +1499,7 @@ useEffect(() => {
       }
 
       setEditingQuestions(enrichedResult.questions.map(q => ({ ...q })));
+      setEditingAnnotations(getTeacherAnnotations(enrichedResult).map((a) => ({ ...a })));
       setEditingMaxTotal(null);
     } catch (err) {
       const message = extractHumanError
@@ -1288,38 +1532,9 @@ useEffect(() => {
 
   const runBulkMark = async (guidanceText, mode = "normal", provider = markingProvider) => {
     try {
-    toast.info("Loading all students for this assignment…");
-    const allStudents = await fetchAllPaginated(
-      api,
-      `/manager-assignments/${selectedAssignment._id}/full`,
-      {},
-      "students"
-    );
-
-    const res = await api.post(
-      "/submission-files/eligible-for-bulk-marking",
-      {
-        assignmentId: selectedAssignment._id,
-        submissions: allStudents
-      }
-    );
-
-    const backendEligible = new Set(
-      res.data.map(s => s.submissionId)
-    );
-
-    const eligible = allStudents.filter(
-      s => s.submissionId && backendEligible.has(s.submissionId)
-    );
-    
-    if (!eligible.length) {
-      const withSubmissions = allStudents.filter((s) => s.submissionId);
-      if (!withSubmissions.length) {
-        return toast.warn("No students with submissions");
-      }
-      return toast.warn("All submitted students are already marked for this assignment");
-    }
-
+    const loaded = await resolveEligibleForMarking(false);
+    if (!loaded) return;
+    const { eligible } = loaded;
     const guidanceValue = guidanceForForm(guidanceText);
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
@@ -1743,44 +1958,15 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     setGeminiModel(selectedModel);
   }
 
-  // 00b30c1: fetch ALL students across pages, not just current page
+  // 00b30c1: fetch students (all or selected) across pages
   let eligible;
-  let allStudents;
   try {
-    toast.info("Loading all students for this assignment…");
-    allStudents = await fetchAllPaginated(
-      api,
-      `/manager-assignments/${selectedAssignment._id}/full`,
-      {},
-      "students"
-    );
-
-    const res = await api.post(
-      "/submission-files/eligible-for-bulk-marking",
-      {
-        assignmentId: selectedAssignment._id,
-        submissions: allStudents,
-      }
-    );
-    const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    // HEAD: also gate on isStudentSubmitted
-    eligible = allStudents.filter(
-      (s) =>
-        s.submissionId &&
-        backendEligible.has(s.submissionId) &&
-        isStudentSubmitted(s.state)
-    );
+    const loaded = await resolveEligibleForMarking(true);
+    if (!loaded) return;
+    eligible = loaded.eligible;
   } catch (err) {
     toast.error(extractHumanError(err) || "Failed to check eligible students");
     return;
-  }
-
-  if (!eligible.length) {
-    const withSubmissions = (allStudents || []).filter((s) => s.submissionId);
-    if (!withSubmissions.length) {
-      return toast.warn("No students have submitted this assignment yet");
-    }
-    return toast.warn("All submitted students are already marked for this assignment");
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
@@ -1969,38 +2155,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
   let eligible;
-  let allStudents;
   try {
-    toast.info("Loading all students for this assignment…");
-    allStudents = await fetchAllPaginated(
-      api,
-      `/manager-assignments/${selectedAssignment._id}/full`,
-      {},
-      "students"
-    );
-
-    const res = await api.post("/submission-files/eligible-for-bulk-marking", {
-      assignmentId: selectedAssignment._id,
-      submissions: allStudents,
-    });
-    const backendEligible = new Set(res.data.map((s) => s.submissionId));
-    eligible = allStudents.filter(
-      (s) =>
-        s.submissionId &&
-        backendEligible.has(s.submissionId) &&
-        isStudentSubmitted(s.state)
-    );
+    const loaded = await resolveEligibleForMarking(true);
+    if (!loaded) return;
+    eligible = loaded.eligible;
   } catch (err) {
     toast.error(extractHumanError(err) || "Failed to check eligible students");
     return;
-  }
-
-  if (!eligible.length) {
-    const submitted = allStudents.filter((s) => isStudentSubmitted(s.state));
-    if (!submitted.length) {
-      return toast.warn("No students have submitted this assignment yet");
-    }
-    return toast.warn("All submitted students are already marked for this assignment");
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
@@ -2275,6 +2436,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
 
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
@@ -2289,6 +2451,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     } finally { setDownloading(false); }
   };
 
+  const handleCorrectionPatch = useCallback(({ questions, summary }) => {
+    setEditingQuestions(questions.map((q) => ({ ...q })));
+    if (summary) {
+      setEditingSummary(summary);
+      setSummaryTouched(true);
+    }
+  }, []);
+
   const handleConfirmEdits = async () => {
     if (!resultModal || !selectedAssignment?._id) return;
     try {
@@ -2302,10 +2472,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           provider: markingProvider,
           result: finalResult,
         });
+        if (finalResult.summary?.trim()) {
+          await api.post("/submission-files/save-summary", {
+            assignmentId: selectedAssignment._id,
+            submissionId: resultModal.student.submissionId || submissionId,
+            summary: finalResult.summary,
+          });
+        }
         setResultModal((prev) => ({
           ...prev,
           result: finalResult,
         }));
+        setEditingSummary(finalResult.summary || "");
+        setSummaryTouched(false);
         setEditingMaxTotal(null);
         setEditingTotal(null);
         await fetchSavedResults();
@@ -2356,6 +2535,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
       const fd = new FormData();
       fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
@@ -2364,6 +2544,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       fd.append("totalMarks", totalMarks);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName", resultModal.student.name || "Student");
+      appendClassroomGradeToFormData(fd, {
+        submissionId: resultModal.student.submissionId || submissionId,
+        student: resultModal.student,
+        gradeOverrides,
+        savedResults,
+        classroomSyncedGrades,
+        fallbackTotal: totalMarks,
+      });
 
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
       if (pdfSummary) {
@@ -2483,16 +2671,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
   };
 
-  const statusBadge = (student) => {
-    if (student.state === "TURNED_IN" || student.state === "RETURNED") {
-      if (student.isLate)   return <span className="ma-badge ma-badge--orange">Late</span>;
-      if (student.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
-      return <span className="ma-badge ma-badge--green">Submitted</span>;
-    }
-    if (student.state === "NEW" || student.state === "CREATED")
-      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
-    return <span className="ma-badge ma-badge--gray">{student.state}</span>;
-  };
+  const statusBadge = (student) => <SubmissionStatusBadge student={student} />;
 
 
   const resolveBatchStudentForReturn = (submissionId) => {
@@ -2578,6 +2757,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             maxTotalMarks: max,
             summary: resolvePdfSummary(student.submissionId, bulk.result),
             outOfScopeNotes: getOutOfScopeNotes(bulk.result),
+            teacherAnnotations: getTeacherAnnotations(bulk.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2592,6 +2772,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         fd.append("totalMarks", total);
         fd.append("maxTotalMarks", max);
         fd.append("studentName", student.name || "Student");
+        appendClassroomGradeToFormData(fd, {
+          submissionId: student.submissionId,
+          student,
+          gradeOverrides,
+          savedResults,
+          classroomSyncedGrades,
+          fallbackTotal: total,
+        });
 
         try {
           await api.post("/submission-files/return-marked", fd, {
@@ -2640,6 +2828,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             maxTotalMarks: max,
             summary: resolvePdfSummary(submissionId, batch.result),
             outOfScopeNotes: getOutOfScopeNotes(batch.result),
+            teacherAnnotations: getTeacherAnnotations(batch.result),
           });
         } catch (err) {
           console.error("PDF annotation failed for:", student.name, err);
@@ -2654,6 +2843,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         fd.append("totalMarks", total);
         fd.append("maxTotalMarks", max);
         fd.append("studentName", student.name || "Student");
+        appendClassroomGradeToFormData(fd, {
+          submissionId,
+          student,
+          gradeOverrides,
+          savedResults,
+          classroomSyncedGrades,
+          fallbackTotal: total,
+        });
 
         try {
           await api.post("/submission-files/return-marked", fd, {
@@ -2851,7 +3048,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           onClick={() => openGuidanceModal(null, false)}
                           disabled={bulkMarking || batchJob?.phase === "processing"}
     >
-                        {bulkMarking ? <><span className="pm-spinner" /> Marking all…</> : <><FiCpu size={13} /> Mark All Students</>}
+                        {bulkMarking ? <><span className="pm-spinner" /> Marking…</> : <><FiCpu size={13} /> {markingActionLabel("Mark All Students", "Mark Selected", markingSelection.selectedCount)}</>}
                       </button>
                       {bulkMarking && (
                         <button
@@ -2926,7 +3123,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                           {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                           {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark All (Batch)</>}
+                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
                         </button>
                     </div>
                     )}
@@ -2943,7 +3140,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       >
                         {priorityBulkRunning
                           ? <><span className="pm-spinner" /> Priority marking…</>
-                          : <><FiSend size={13} /> Mark All (Priority)</>}
+                          : <><FiSend size={13} /> {markingActionLabel("Mark All (Priority)", "Mark Selected (Priority)", markingSelection.selectedCount)}</>}
                       </button>
                       {priorityBulkRunning && (
                         <button
@@ -3096,6 +3293,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
                   </div>
 
+                  <MarkingSelectionBar
+                    selectedCount={markingSelection.selectedCount}
+                    pageSelectableCount={pageSelectableIds.length}
+                    pageAllSelected={pageAllMarkingSelected}
+                    onTogglePage={toggleMarkingSelectPage}
+                    onSelectAll={selectAllStudentsForMarking}
+                    onClear={markingSelection.clear}
+                    selectingAll={selectingMarkingAll}
+                  />
+
                   {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
                   {!loadingStudents && students.length === 0 && (
                     <p className="ma-empty-msg">
@@ -3109,6 +3316,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <table className="ma-table">
                           <thead>
                             <tr>
+                              <th style={{ width: 44 }} aria-label="Select for marking" />
                               <th>Name</th>
                               <th>Status</th>
                               <th>Submitted At</th>
@@ -3169,6 +3377,18 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               return (
                                 <tr key={s._id || s.submissionId} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
                                   <td>
+                                    {s.submissionId ? (
+                                      <button
+                                        type="button"
+                                        className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                                        onClick={() => markingSelection.toggle(s.submissionId)}
+                                        aria-label={`Select ${s.name || "student"} for marking`}
+                                      >
+                                        {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                  <td>
                                     <div className="ma-avatar-cell">
                                       <div className="ma-avatar">{(s.name || "?").charAt(0).toUpperCase()}</div>
                                       <span className="ma-cell-name">{s.name || "—"}</span>
@@ -3185,12 +3405,25 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                   <td>{statusBadge(s)}</td>
                                   <td><span className="ma-cell-muted">{s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}</span></td>
                                   <td>
-                                    {s.assignedGrade != null
-                                      ? <span className="ma-grade-pill">{s.assignedGrade}</span>
-                                      : <span className="ma-cell-empty">—</span>}
+                                    <SubmissionGradeInput
+                                      student={s}
+                                      submissionId={s.submissionId}
+                                      assignmentMaxPoints={assignmentMaxPoints}
+                                      gradeOverrides={gradeOverrides}
+                                      savedResults={savedResults}
+                                      classroomSyncedGrades={classroomSyncedGrades}
+                                      onGradeChange={setGradeOverride}
+                                    />
                                   </td>
                                   <td>
-                                    {s.assignedGrade != null && assignmentMaxPoints ? (
+                                    {resolveTableGrade(
+                                      s.submissionId,
+                                      s,
+                                      gradeOverrides,
+                                      savedResults,
+                                      classroomSyncedGrades
+                                    ) != null &&
+                                    assignmentMaxPoints ? (
                                       <div className="ma-percent-wrap">
                                         <input
                                           type="number"
@@ -3199,7 +3432,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           className="ma-percent-input"
                                           value={
                                             percentOverrides[s.submissionId] ??
-                                            computeGradePercent(s.assignedGrade, assignmentMaxPoints)
+                                            computeGradePercent(
+                                              resolveTableGrade(
+                                                s.submissionId,
+                                                s,
+                                                gradeOverrides,
+                                                savedResults,
+                                                classroomSyncedGrades
+                                              ),
+                                              assignmentMaxPoints
+                                            )
                                           }
                                           onChange={(e) =>
                                             setPercentOverride(
@@ -3266,8 +3508,24 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                                 studentFile,
                                                 submissionId: s.submissionId,
                                               });
-                                              setEditingQuestions((result.questions || []).map(q => ({ ...q })));
+                                              setEditingQuestions(
+                                                enrichMarkingQuestions(result.questions || []).map((q) => ({ ...q }))
+                                              );
+                                              setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
                                               setEditingMaxTotal(null);
+                                              setSummaryTouched(false);
+                                              setEditingSummary(
+                                                rebuildMarkingSummary({
+                                                  questions: result.questions || [],
+                                                  maxTotalMarks: resolveDisplayMaxTotal({
+                                                    assignmentMaxPoints,
+                                                    result,
+                                                    editingMaxTotal: null,
+                                                  }),
+                                                  previousSummary: result.summary || "",
+                                                })
+                                              );
+                                              setAnnotationsPanelOpen(false);
                                             }}
                                           >
                                             ✅ Results
@@ -3810,6 +4068,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         const reset = resetToConfirmed();
                         if (reset) {
                           setEditingQuestions(reset.questions);
+                          setEditingAnnotations(reset.teacherAnnotations || []);
+                          setEditingSummary(reset.summary || "");
+                          setSummaryTouched(false);
                           setEditingMaxTotal(null);
                           setEditingTotal(null);
                         } else {
@@ -3831,6 +4092,23 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="msv-btn-ai"
+                  onClick={() => setAnnotationsPanelOpen((open) => !open)}
+                  style={{
+                    fontSize: 12,
+                    background: annotationsPanelOpen
+                      ? "rgba(99,102,241,0.28)"
+                      : "rgba(99,102,241,0.12)",
+                    borderColor: "rgba(99,102,241,0.45)",
+                    color: "#c7d2fe",
+                  }}
+                  title="Add extra notes on the marked PDF preview"
+                >
+                  📝 Annotate
+                  {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
+                </button>
                 {hasPendingEdits && (
                   <button
                     className="msv-btn-ai"
@@ -3909,6 +4187,24 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 {/* AI TOKEN USAGE*/}
               <TokenUsageStats result={resultModal.result} />
 
+              {selectedAssignment?._id && (
+                <MarkingCorrectionChat
+                  assignmentId={selectedAssignment._id}
+                  submissionId={
+                    resultModal.student?.submissionId || resultModal.submissionId
+                  }
+                  studentId={resultModal.student?.studentId}
+                  studentName={resultModal.student?.name}
+                  currentResult={{
+                    ...resultModal.result,
+                    questions: editingQuestions,
+                    summary: editingSummary,
+                    totalMarks: sumQuestionMarks(editingQuestions),
+                  }}
+                  onApplyPatch={handleCorrectionPatch}
+                />
+              )}
+
               {/* ── CRITERIA MODE: show criteria grade first ── */}
               {isCriteria && resultModal.result.criteriaGrade && (
                 <div style={{ marginBottom: 20 }}>
@@ -3967,17 +4263,24 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               {/* ── NORMAL MODE: summary only (grade + bar live in header) ── */}
               {!isCriteria && (
                 <>
-                  {resultModal.result.summary && (
-                    <div className="msv-summary-box">
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Summary</div>
-                      <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{resultModal.result.summary}</p>
-                    </div>
-                  )}
+                  <div className="msv-summary-box">
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
+                    <textarea
+                      value={editingSummary}
+                      onChange={(e) => {
+                        setSummaryTouched(true);
+                        setEditingSummary(e.target.value);
+                      }}
+                      rows={5}
+                      placeholder="Summary updates automatically when you edit marks or question feedback. Confirm edits to refresh the PDF."
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                    />
+                  </div>
                 </>
               )}
 
               {/* ── QUESTIONS (both modes) ── */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                 {editingQuestions.map((q, idx) => {
                   const awarded = Number(q.marksAwarded) || 0;
                   const qMax = Number(q.maxMarks) || 0;
@@ -4023,13 +4326,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         </div>
                       )}
 
-                      {q.studentAnswer && q.studentAnswer !== "Not attempted" && (
+                      {q.studentAnswer && !isBlankQuestion(q) && (
                         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
                           <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
                         </div>
                       )}
-                      {q.studentAnswer === "Not attempted" && (
-                        <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 6 }}>📭 Not attempted</div>
+                      {isBlankQuestion(q) && (
+                        <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                          📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
+                        </div>
                       )}
 
                       {/* Correct answer — criteria mode or MCQ */}
@@ -4037,6 +4342,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
                           <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
                         </div>
+                      )}
+
+                      {!isCriteria && (
+                        <QuestionKeywordFields
+                          question={q}
+                          onChange={(updated) =>
+                            setEditingQuestions((prev) =>
+                              prev.map((x, i) => (i === idx ? updated : x))
+                            )
+                          }
+                        />
                       )}
 
                       <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -4081,12 +4397,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         gap: 8,
                       }}>
                         <span>📄 Annotated PDF Preview</span>
-                        {hasPendingEdits && (
-                          <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
-                            Confirm edits to update preview
-                          </span>
-                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {hasPendingEdits && (
+                            <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                              Confirm edits to update preview
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {annotationsPanelOpen && (
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            maxHeight: 240,
+                            overflowY: "auto",
+                            paddingRight: 4,
+                          }}
+                        >
+                          <TeacherAnnotationsEditor
+                            annotations={editingAnnotations}
+                            onChange={setEditingAnnotations}
+                            questions={editingQuestions}
+                          />
+                        </div>
+                      )}
 
                       {previewLoading ? (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
@@ -4097,24 +4432,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           {previewError}
                         </div>
                       ) : annotatedPreviewUrl ? (
-
                         <div
                           style={{
                             flex: 1,
-                            minHeight: 0
+                            minHeight: 0,
+                            display: "flex",
+                            flexDirection: "column",
                           }}
                         >
-                          <iframe
-                            key={resultModal.student?.submissionId || resultModal.submissionId}
-                            src={annotatedPreviewUrl}
-                            title="Annotated PDF"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              border: "none",
-                              borderRadius: 8
-                            }}
-                          />
+                          <AnnotatedPdfPreview url={annotatedPreviewUrl} />
                         </div>
                       ) : (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
@@ -4374,6 +4700,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

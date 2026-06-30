@@ -7,7 +7,7 @@ import "../manager/ManagerSubmissionViewer.css";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
-import { usePagination } from "../../hooks/usePagination";
+import { SubmissionStatusBadge } from "../../utils/submissionStatusBadge";
 import Pagination from "../../components/Pagination";
 import ReportGradesRefreshButton from "../../components/ReportGradesRefreshButton";
 import {
@@ -15,12 +15,16 @@ import {
   applyReportCartGradeSync,
 } from "../../utils/refreshAssignmentFromClassroom";
 import { computeGradePercent, parsePercentInput, displayPercent } from "../../utils/reportGradePercent";
-import { parseAttendanceNamesFromFile } from "../../utils/attendanceExcel";
+import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, attendedNamesFromMap, countPresentInMap } from "../../utils/attendanceExcel";
+import ReportAttendanceSelect from "../../components/ReportAttendanceSelect";
+import { fetchAllPaginated } from "../../utils/fetchAllStudents";
+import { usePagination } from "../../hooks/usePagination";
 
 import {
   FiSend,
   FiCheckSquare,
   FiMessageSquare,
+  FiClipboard,
 } from "react-icons/fi";
 
 export default function AssistantReports() {
@@ -36,14 +40,16 @@ export default function AssistantReports() {
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
 
   const [includeAttendance, setIncludeAttendance] = useState(false);
-  const [attendanceNames, setAttendanceNames] = useState([]);
+  const [attendanceMap, setAttendanceMap] = useState({});
+  const [attendanceRoster, setAttendanceRoster] = useState([]);
   const [attendanceFileName, setAttendanceFileName] = useState("");
   const [parsingAttendance, setParsingAttendance] = useState(false);
   const [refreshingGrades, setRefreshingGrades] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
   // const [assignmentTitle, setAssignmentTitle] = useState("Assignment");
   // const [classroomId, setClassroomId] = useState(null);
 
-  const { data: students, page, totalPages, loading, fetchPage, extra, setData: setStudents } =
+  const { data: students, page, totalPages, total, loading, fetchPage, extra, setData: setStudents } =
     usePagination(
       `/assignment-submissions/${assignmentId}/students`,
       {},
@@ -61,9 +67,13 @@ export default function AssistantReports() {
 
   useEffect(() => {
     if (!assignmentId) return;
-    api.get(`/assignment-submissions/${assignmentId}/students`, {
-      params: { page: 1, limit: 9999 }
-    }).then(res => setAllStudents(res.data.students || []));
+    fetchAllPaginated(
+      api,
+      `/assignment-submissions/${assignmentId}/students`,
+      {},
+      "students",
+      100
+    ).then(setAllStudents).catch(() => setAllStudents([]));
   }, [assignmentId]);
 
   const getStudentId = (s) => s.studentId || s._id;
@@ -107,27 +117,53 @@ export default function AssistantReports() {
     });
   };
 
-  const selectAll = () => {
-    const asgId = assignmentId;
+  const selectAll = async () => {
+    if (!assignmentId) return;
 
-    setReportCart((prev) => {
-      const next = { ...prev };
+    setSelectingAll(true);
+    try {
+      const list = await fetchAllPaginated(
+        api,
+        `/assignment-submissions/${assignmentId}/students`,
+        {},
+        "students",
+        100
+      );
 
-      allStudents.forEach((s) => {
-        const stuId = String(getStudentId(s));
+      if (list.length === 0) {
+        toast.info("No students to select");
+        return;
+      }
 
-        if (!next[stuId]) {
-          next[stuId] = {
-            studentMeta: s,
-            items: { [asgId]: buildItem(s) }
-          };
-        } else if (!next[stuId].items[asgId]) {
-          next[stuId].items[asgId] = buildItem(s);
-        }
+      setAllStudents(list);
+      const asgId = assignmentId;
+
+      setReportCart((prev) => {
+        const next = { ...prev };
+
+        list.forEach((s) => {
+          const stuId = String(getStudentId(s));
+
+          if (!next[stuId]) {
+            next[stuId] = {
+              studentMeta: s,
+              items: { [asgId]: buildItem(s) },
+            };
+          } else if (!next[stuId].items[asgId]) {
+            next[stuId].items[asgId] = buildItem(s);
+          }
+        });
+
+        return next;
       });
 
-      return next;
-    });
+      toast.success(`Selected all ${list.length} students`);
+    } catch (err) {
+      console.error("Select all students error:", err);
+      toast.error("Failed to select all students");
+    } finally {
+      setSelectingAll(false);
+    }
   };
 
   const clearAll = () => setReportCart({});
@@ -183,7 +219,8 @@ export default function AssistantReports() {
   const handleAttendanceToggle = (checked) => {
     setIncludeAttendance(checked);
     if (!checked) {
-      setAttendanceNames([]);
+      setAttendanceMap({});
+      setAttendanceRoster([]);
       setAttendanceFileName("");
     }
   };
@@ -198,27 +235,56 @@ export default function AssistantReports() {
       const names = await parseAttendanceNamesFromFile(file);
       if (!names.length) {
         toast.warn("No student names found in that file");
-        setAttendanceNames([]);
+        setAttendanceMap({});
+        setAttendanceRoster([]);
         setAttendanceFileName("");
         return;
       }
-      setAttendanceNames(names);
+
+      const roster = await fetchAllPaginated(
+        api,
+        `/assignment-submissions/${assignmentId}/students`,
+        {},
+        "students",
+        100
+      );
+
+      const map = buildInitialAttendanceMap(roster, names, getStudentId);
+      setAttendanceMap(map);
+      setAttendanceRoster(roster);
+      setAllStudents(roster);
       setAttendanceFileName(file.name);
-      toast.success(`Loaded ${names.length} name(s) from attendance file`);
+      const present = countPresentInMap(map);
+      toast.success(
+        `Matched ${roster.length} student(s) — ${present} present, ${roster.length - present} absent (editable in table)`
+      );
     } catch (err) {
       toast.error(err?.message || "Failed to read attendance file");
-      setAttendanceNames([]);
+      setAttendanceMap({});
+      setAttendanceRoster([]);
       setAttendanceFileName("");
     } finally {
       setParsingAttendance(false);
     }
   };
 
+  const setStudentAttendance = (studentKey, present) => {
+    setAttendanceMap((prev) => ({
+      ...prev,
+      [String(studentKey)]: present,
+    }));
+  };
+
+  const showAttendanceColumn =
+    includeAttendance && Object.keys(attendanceMap).length > 0;
+
   const buildAttendancePayload = () => {
-    if (!includeAttendance || !attendanceNames.length) return undefined;
+    if (!includeAttendance || !Object.keys(attendanceMap).length) return undefined;
+    const roster = attendanceRoster.length ? attendanceRoster : allStudents;
+    const attendedNames = attendedNamesFromMap(roster, attendanceMap, getStudentId);
     return {
       enabled: true,
-      attendedNames: attendanceNames,
+      attendedNames,
     };
   };
 
@@ -289,7 +355,7 @@ export default function AssistantReports() {
       return;
     }
 
-    if (includeAttendance && !attendanceNames.length) {
+    if (includeAttendance && !Object.keys(attendanceMap).length) {
       toast.warn("Upload an attendance Excel file first");
       return;
     }
@@ -392,23 +458,18 @@ export default function AssistantReports() {
 
   const cartCount = Object.keys(reportCart).length;
 
-  const totalItems = Object.values(reportCart).reduce(
+  const reportCount = Object.values(reportCart).reduce(
     (acc, e) => acc + Object.keys(e.items || {}).length,
     0
   );
+  const assignmentCount = new Set(
+    Object.values(reportCart).flatMap((e) => Object.keys(e.items || {}))
+  ).size;
+  const cartSummary = `${assignmentCount} assignment${assignmentCount !== 1 ? "s" : ""} and ${reportCount} report${reportCount !== 1 ? "s" : ""}`;
 
   const isSending = sending || sendingCollective;
 
-  const statusBadge = (student) => {
-    if (student.state === "TURNED_IN" || student.state === "RETURNED") {
-      if (student.isLate) return <span className="ma-badge ma-badge--orange">Late</span>;
-      if (student.isOnTime) return <span className="ma-badge ma-badge--green">On Time</span>;
-      return <span className="ma-badge ma-badge--green">Submitted</span>;
-    }
-    if (student.state === "NEW" || student.state === "CREATED")
-      return <span className="ma-badge ma-badge--red">Not Submitted</span>;
-    return <span className="ma-badge ma-badge--gray">{student.state}</span>;
-  };
+  const statusBadge = (student) => <SubmissionStatusBadge student={student} />;
 
   return (
     <div className="ma-root">
@@ -425,13 +486,11 @@ export default function AssistantReports() {
               Back
             </button>
 
-            {cartCount > 0 && (
+            {reportCount > 0 && (
               <>
                 <div className="ma-cart-pill">
                   <FiCheckSquare size={13} />
-                  <span>
-                    {cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} item{totalItems !== 1 ? "s" : ""}
-                  </span>
+                  <span>{cartSummary}</span>
                 </div>
 
                 <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
@@ -503,7 +562,7 @@ export default function AssistantReports() {
               </label>
               {attendanceFileName && (
                 <span className="ma-attendance-meta">
-                  {attendanceFileName} · {attendanceNames.length} name(s)
+                  {attendanceFileName} · {countPresentInMap(attendanceMap)} present / {Object.keys(attendanceMap).length} students
                 </span>
               )}
             </div>
@@ -518,7 +577,7 @@ export default function AssistantReports() {
                 <div className="ma-panel-title-wrap">
                   <div className="ma-panel-dot" />
                   <h2 className="ma-panel-title">{assignmentTitle}</h2>
-                  <span className="ma-panel-count">{students.length} students</span>
+                  <span className="ma-panel-count">{total ?? students.length} students</span>
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                   <ReportGradesRefreshButton
@@ -528,9 +587,9 @@ export default function AssistantReports() {
                   <button
                     className="ma-send-btn"
                     onClick={selectAll}
-                    disabled={allStudents.length === 0}
+                    disabled={selectingAll || loading || !assignmentId}
                   >
-                    Select All
+                    {selectingAll ? "Selecting…" : "Select All"}
                   </button>
 
                   <button
@@ -541,9 +600,9 @@ export default function AssistantReports() {
                     Clear All
                   </button>
                 </div>
-                {cartCount > 0 && (
+                {reportCount > 0 && (
                   <span className="ma-panel-hint">
-                    <FiCheckSquare size={12} /> {cartCount} selected for report
+                    <FiCheckSquare size={12} /> {reportCount} report{reportCount !== 1 ? "s" : ""} ready
                   </span>
                 )}
               </div>
@@ -564,6 +623,7 @@ export default function AssistantReports() {
                           <th>Name</th>
                           <th>Email</th>
                           <th>Status</th>
+                          {showAttendanceColumn && <th>Attendance</th>}
                           <th>Submitted At</th>
                           <th>Grade</th>
                           <th>%</th>
@@ -600,6 +660,14 @@ export default function AssistantReports() {
                               </td>
                               <td><span className="ma-cell-muted">{s.email || "—"}</span></td>
                               <td>{statusBadge(s)}</td>
+                              {showAttendanceColumn && (
+                                <td onClick={(e) => e.stopPropagation()}>
+                                  <ReportAttendanceSelect
+                                    present={!!attendanceMap[stuId]}
+                                    onChange={(present) => setStudentAttendance(stuId, present)}
+                                  />
+                                </td>
+                              )}
                               <td>
                                 <span className="ma-cell-muted">
                                   {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
@@ -685,30 +753,30 @@ export default function AssistantReports() {
           </div>
         </div>
 
-        {cartCount > 0 && (
+        {reportCount > 0 && (
           <div className="ma-cart-bar">
             <div className="ma-cart-bar-left">
-              <span className="ma-cart-label">📋 Report Ready</span>
-              <span className="ma-cart-stats">
-                {cartCount} student{cartCount !== 1 ? "s" : ""} · {totalItems} assignment{totalItems !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="ma-cart-students">
-              {Object.values(reportCart).map((entry) => (
-                <div key={getStudentId(entry.studentMeta)} className="ma-cart-chip">
-                  <div className="ma-cart-chip-avatar">
-                    {entry.studentMeta.name?.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="ma-cart-chip-info">
-                    <strong>{entry.studentMeta.name}</strong>
-                    <span>{Object.values(entry.items).map((i) => i.assignmentTitle).join(", ")}</span>
-                  </div>
+              <div className="ma-cart-icon-wrap" aria-hidden="true">
+                <FiClipboard size={26} />
+              </div>
+              <div className="ma-cart-bar-info">
+                <span className="ma-cart-label">Report Ready</span>
+                <div className="ma-cart-stats-row">
+                  <span className="ma-cart-stat">
+                    <strong>{assignmentCount}</strong>
+                    <em>assignment{assignmentCount !== 1 ? "s" : ""}</em>
+                  </span>
+                  <span className="ma-cart-stat-divider" aria-hidden="true">·</span>
+                  <span className="ma-cart-stat">
+                    <strong>{reportCount}</strong>
+                    <em>report{reportCount !== 1 ? "s" : ""}</em>
+                  </span>
                 </div>
-              ))}
+              </div>
             </div>
             <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
-              <FiSend size={14} />
-              {sending ? "Sending…" : `Send to ${cartCount} Student${cartCount !== 1 ? "s" : ""}`}
+              <FiSend size={18} />
+              {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
             </button>
           </div>
         )}

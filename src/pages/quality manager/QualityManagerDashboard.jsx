@@ -246,7 +246,7 @@ export default function QualityManagerDashboard() {
         {/* STATS */}
         <div className="qm2-stats">
           <StatCard2 icon={<FiCheckCircle />} label="Done" value={stats.done} accent="#22c55e" />
-          <StatCard2 icon={<FiUserCheck />} label="Done by Quality" value={stats.doneByQuality} accent="#2563eb" />
+          <StatCard2 icon={<FiUserCheck />} label="Done by Quality" value={stats.doneByQuality} accent="#7c3aed" />
           <StatCard2 icon={<FiAlertTriangle />} label="Done by Quality Late" value={stats.doneByQualityLate} accent="#f59e0b" />
           <StatCard2 icon={<FiClock />} label="Pending Quality" value={stats.pendingQuality} accent="#ef4444" />
         </div>

@@ -224,9 +224,132 @@ export function gradeScorePercent(total, max) {
   return m > 0 ? Math.round((t / m) * 100) : 0;
 }
 
+/** Rebuild overall summary so grade + question edits are reflected on the grading report PDF. */
+export function rebuildMarkingSummary({
+  questions = [],
+  maxTotalMarks,
+  previousSummary = "",
+} = {}) {
+  const total = sumQuestionMarks(questions);
+  const max = Math.max(1, Number(maxTotalMarks) || 1);
+  const pct = gradeScorePercent(total, max);
+
+  let text = String(previousSummary || "").trim();
+  text = text.replace(/\s*After review:.*$/is, "").trim();
+
+  if (text) {
+    text = text.replace(/\b(\d+)\s*\/\s*(\d+)\b/g, `${total}/${max}`);
+    text = text.replace(
+      /\bscored\s+(\d+)\s*(?:out of|\/)\s*(\d+)/gi,
+      `scored ${total}/${max}`
+    );
+    const pctMatch = text.match(/\b(\d{1,3})%\b/);
+    if (pctMatch) {
+      text = text.replace(/\b(\d{1,3})%\b/, `${pct}%`);
+    }
+  }
+
+  const lost = (questions || []).filter((q) => {
+    const aw = Number(q.marksAwarded) || 0;
+    const mx = Number(q.maxMarks) || 0;
+    return mx > 0 && aw < mx;
+  });
+
+  const performance =
+    pct >= 75
+      ? "Excellent performance"
+      : pct >= 50
+        ? "Satisfactory performance"
+        : "Performance needs improvement";
+
+  const reviewParts = [];
+
+  if (lost.length === 0) {
+    reviewParts.push("Full marks were achieved on all graded questions after review.");
+  } else {
+    const lostDetail = lost
+      .slice(0, 6)
+      .map((q) => {
+        const bits = [`Q${q.questionNumber} (${q.marksAwarded}/${q.maxMarks})`];
+        if (q.missingKeywords?.length) {
+          bits.push(`missing: ${q.missingKeywords.join("; ")}`);
+        }
+        if (q.markedKeywords?.length) {
+          bits.push(`earned: ${q.markedKeywords.join("; ")}`);
+        }
+        if (q.reason?.trim()) {
+          bits.push(q.reason.trim());
+        }
+        return bits.join(" — ");
+      })
+      .join(" ");
+    reviewParts.push(
+      `Marks were lost on: ${lostDetail}${lost.length > 6 ? " …" : ""}`
+    );
+  }
+
+  const reviewNote = reviewParts.join(" ");
+
+  if (!text) {
+    return `${performance}! The student scored ${total}/${max} (${pct}%). ${reviewNote}`.trim();
+  }
+
+  if (!text.includes(`${total}/${max}`)) {
+    text = `${performance}! The student scored ${total}/${max} (${pct}%). ${text}`;
+  }
+
+  if (reviewNote) {
+    text = `${text} After review: ${reviewNote}`;
+  }
+
+  return text.trim();
+}
+
 export function getOutOfScopeNotes(result) {
   return Array.isArray(result?.outOfScopeNotes) ? result.outOfScopeNotes : [];
 }
+
+const CORRECTION_PATCH_FIELDS = [
+  "marksAwarded",
+  "reason",
+  "markedKeywords",
+  "missingKeywords",
+  "studentAnswer",
+  "correctAnswer",
+  "studyTopic",
+  "mistakeAdvice",
+];
+
+/** Merge AI correction suggestions into live editing state. */
+export function applyCorrectionPatch(editingQuestions, { changes = [], summary = null } = {}) {
+  const patchMap = new Map(
+    (changes || []).map((c) => [String(c.questionNumber), c])
+  );
+
+  const questions = (editingQuestions || []).map((q) => {
+    const patch = patchMap.get(String(q.questionNumber));
+    if (!patch) return { ...q };
+
+    const next = { ...q };
+    for (const key of CORRECTION_PATCH_FIELDS) {
+      if (patch[key] !== undefined && patch[key] !== null) {
+        next[key] = patch[key];
+      }
+    }
+    const max = Number(next.maxMarks) || 0;
+    if (max > 0) {
+      next.marksAwarded = Math.min(max, Math.max(0, Number(next.marksAwarded) || 0));
+    }
+    return next;
+  });
+
+  return {
+    questions,
+    summary: summary != null && String(summary).trim() ? String(summary).trim() : null,
+  };
+}
+
+export { getTeacherAnnotations } from "./teacherAnnotations";
 
 export function buildFinalMarkingResult(baseResult, editingQuestions) {
 
@@ -273,15 +396,27 @@ export function questionsHavePendingEdits(currentQuestions, confirmedSnapshot) {
   const current = currentQuestions || [];
   const confirmed = confirmedSnapshot.questions || [];
   if (current.length !== confirmed.length) return true;
+
+  const normKw = (arr) =>
+    JSON.stringify((arr || []).map((s) => String(s).trim()).filter(Boolean));
+
   return current.some(
     (q, i) =>
       Number(q.marksAwarded) !== Number(confirmed[i]?.marksAwarded) ||
-      String(q.reason || "") !== String(confirmed[i]?.reason || "")
+      String(q.reason || "") !== String(confirmed[i]?.reason || "") ||
+      normKw(q.markedKeywords) !== normKw(confirmed[i]?.markedKeywords) ||
+      normKw(q.missingKeywords) !== normKw(confirmed[i]?.missingKeywords)
   );
 }
 
 /** Apply teacher question edits and an optional new max-total to a marking result. */
-export function applyTeacherEditsToResult(baseResult, editingQuestions, maxTotalMarks) {
+export function applyTeacherEditsToResult(
+  baseResult,
+  editingQuestions,
+  maxTotalMarks,
+  editingAnnotations = null,
+  summaryOverride = null
+) {
   const finalResult = buildFinalMarkingResult(baseResult, editingQuestions);
   const max = Math.max(1, Number(maxTotalMarks) || getResultMaxTotal(baseResult));
 
@@ -292,6 +427,20 @@ export function applyTeacherEditsToResult(baseResult, editingQuestions, maxTotal
       maxTotalMarks: max,
       totalMarks: finalResult.totalMarks,
     };
+  }
+
+  if (editingAnnotations != null) {
+    finalResult.teacherAnnotations = editingAnnotations.map((a) => ({ ...a }));
+  }
+
+  if (summaryOverride != null && String(summaryOverride).trim()) {
+    finalResult.summary = String(summaryOverride).trim();
+  } else {
+    finalResult.summary = rebuildMarkingSummary({
+      questions: editingQuestions,
+      maxTotalMarks: max,
+      previousSummary: baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
+    });
   }
 
   return finalResult;

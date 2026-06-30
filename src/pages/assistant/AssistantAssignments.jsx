@@ -6,7 +6,7 @@ import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 import { AssistantPageHeader } from "./AssistantUI";
 
-import { FiSend, FiSearch } from "react-icons/fi";
+import { FiSend, FiSearch, FiCheckCircle, FiRotateCcw, FiAlertCircle } from "react-icons/fi";
 
 export default function AssistantAssignments() {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ export default function AssistantAssignments() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [classroomFilter, setClassroomFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
 
   /* AUTH */
 
@@ -104,6 +105,77 @@ export default function AssistantAssignments() {
 
   //   loadAssignments(user.id);
   // }, [user?.id]);
+
+  const updateAssignmentStatus = async (assignmentId, status) => {
+    try {
+      setUpdatingStatusId(assignmentId);
+      await api.post(
+        `/assignment-workflow/assistant/assignments/${assignmentId}/status`,
+        { personId: user.id, status }
+      );
+      toast.success(
+        status === "DONE"
+          ? "Marked as done — manager notified"
+          : "Returned to assigned — manager notified"
+      );
+      fetchPage(page);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update status");
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
+  const formatAssistantStatus = (status) =>
+    String(status || "ASSIGNED")
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (l) => l.toUpperCase());
+
+  const statusBadgeClass = (status) => {
+    switch (status) {
+      case "DONE":
+      case "DONE_BY_QUALITY":
+        return "ast-badge--done";
+      case "FAILED_DEADLINE":
+        return "ast-badge--failed";
+      default:
+        return "ast-badge--assigned";
+    }
+  };
+
+  const canOpenWorkflow = (status) =>
+    ["ASSIGNED", "DONE", "FAILED_DEADLINE", "RECHECK_BY_ASSISTANT"].includes(status);
+
+  const showManagerContactNotice = () => {
+    toast.info(
+      <div className="ast-manager-toast">
+        <div className="ast-manager-toast-icon" aria-hidden="true">
+          <FiAlertCircle size={22} />
+        </div>
+        <div className="ast-manager-toast-body">
+          <p className="ast-manager-toast-title">Deadline passed</p>
+          <p className="ast-manager-toast-text">Please contact your manager</p>
+        </div>
+      </div>,
+      {
+        autoClose: 4500,
+        className: "ast-manager-toast-wrap",
+        icon: false,
+      }
+    );
+  };
+
+  const openWorkflowOrNotify = (assistantStatus, path) => {
+    if (assistantStatus === "FAILED_DEADLINE") {
+      showManagerContactNotice();
+      return;
+    }
+    navigate(path);
+  };
+
+  const workflowBtnClass = (assistantStatus) =>
+    `ast-table-btn${assistantStatus === "FAILED_DEADLINE" ? " ast-table-btn--blocked" : ""}`;
 
   /* SUBMIT */
 
@@ -203,6 +275,7 @@ export default function AssistantAssignments() {
             <option value="ALL">All Status</option>
             <option value="ASSIGNED">Assigned</option>
             <option value="DONE">Done</option>
+            <option value="FAILED_DEADLINE">Failed Deadline</option>
           </select>
         </div>
 
@@ -243,6 +316,7 @@ export default function AssistantAssignments() {
               <th>Your Deadline</th>
               <th>Due Date</th>
               <th>Status</th>
+              <th>Update Status</th>
               <th>Submissions</th>
               <th>Students Data</th>
               <th>Reports</th>
@@ -252,7 +326,7 @@ export default function AssistantAssignments() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="9" className="ast-table-loading">
+                <td colSpan="10" className="ast-table-loading">
                   Loading assignments…
                 </td>
               </tr>
@@ -270,14 +344,13 @@ export default function AssistantAssignments() {
                 </tr>
               )} */}
 
-            {assignments.map(
-              (assignment) => {
+            {assignments.map((assignment) => {
                 const teacher =
-                  assignment.classroomId
-                    ?.teacherName ||
-                  assignment.classroomId
-                    ?.teacherId?.name ||
+                  assignment.classroomId?.teacherName ||
+                  assignment.classroomId?.teacherId?.name ||
                   "-";
+                const assistantStatus = assignment.assistantStatus || "ASSIGNED";
+                const isUpdating = updatingStatusId === assignment._id;
 
                 return (
                   <tr key={assignment._id}>
@@ -307,25 +380,49 @@ export default function AssistantAssignments() {
                     </td>
 
                     <td>
-                      <span
-                        className={`ast-badge ${
-                          assignment.allStudentsGraded
-                            ? "ast-badge--done"
-                            : "ast-badge--assigned"
-                        }`}
-                      >
-                        {assignment.allStudentsGraded ? "Done" : "Assigned"}
+                      <span className={`ast-badge ${statusBadgeClass(assistantStatus)}`}>
+                        {formatAssistantStatus(assistantStatus)}
                       </span>
                     </td>
 
                     <td>
-                      {(assignment.assistantStatus === "ASSIGNED" ||
-                        assignment.assistantStatus === "RECHECK_BY_ASSISTANT") && (
+                      {assistantStatus === "ASSIGNED" && (
                         <button
                           type="button"
-                          className="ast-table-btn"
+                          className="ast-table-btn ast-table-btn--done"
+                          disabled={isUpdating}
+                          onClick={() => updateAssignmentStatus(assignment._id, "DONE")}
+                        >
+                          <FiCheckCircle />
+                          {isUpdating ? "Updating…" : "Mark Done"}
+                        </button>
+                      )}
+                      {assistantStatus === "DONE" && (
+                        <button
+                          type="button"
+                          className="ast-table-btn ast-table-btn--reopen"
+                          disabled={isUpdating}
+                          onClick={() => updateAssignmentStatus(assignment._id, "ASSIGNED")}
+                        >
+                          <FiRotateCcw />
+                          {isUpdating ? "Updating…" : "Mark Assigned"}
+                        </button>
+                      )}
+                      {assistantStatus === "FAILED_DEADLINE" && (
+                        <span className="ast-status-hint">Deadline passed</span>
+                      )}
+                    </td>
+
+                    <td>
+                      {canOpenWorkflow(assistantStatus) && (
+                        <button
+                          type="button"
+                          className={workflowBtnClass(assistantStatus)}
                           onClick={() =>
-                            navigate(`/assistant/assignments/${assignment._id}`)
+                            openWorkflowOrNotify(
+                              assistantStatus,
+                              `/assistant/assignments/${assignment._id}`
+                            )
                           }
                         >
                           <FiSend />
@@ -335,13 +432,13 @@ export default function AssistantAssignments() {
                     </td>
 
                     <td>
-                      {(assignment.assistantStatus === "ASSIGNED" ||
-                        assignment.assistantStatus === "RECHECK_BY_ASSISTANT") && (
+                      {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
-                          className="ast-table-btn"
+                          className={workflowBtnClass(assistantStatus)}
                           onClick={() =>
-                            navigate(
+                            openWorkflowOrNotify(
+                              assistantStatus,
                               `/assistant/assignments/${assignment._id}/students`
                             )
                           }
@@ -352,13 +449,13 @@ export default function AssistantAssignments() {
                       )}
                     </td>
                     <td>
-                      {(assignment.assistantStatus === "ASSIGNED" ||
-                        assignment.assistantStatus === "RECHECK_BY_ASSISTANT") && (
+                      {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
-                          className="ast-table-btn"
+                          className={workflowBtnClass(assistantStatus)}
                           onClick={() =>
-                            navigate(
+                            openWorkflowOrNotify(
+                              assistantStatus,
                               `/assistant/assignments/${assignment._id}/students/reports`
                             )
                           }
@@ -370,8 +467,7 @@ export default function AssistantAssignments() {
                     </td>
                   </tr>
                 );
-              }
-            )}
+              })}
           </tbody>
         </table>
         </div>
