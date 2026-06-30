@@ -35,12 +35,21 @@
   overflow-y: auto;
 }
 
+.ast-main > .md-root,
+.ast-main > .ms-root,
+.ast-main > .tu-root,
 .ast-main > .ma-root,
-.ast-main > .ms-root {
+.ast-main > .qb-main--embedded {
   flex: 1;
   min-height: 0;
   width: 100%;
   height: 100%;
+}
+
+.ast-main > .qb-main--embedded {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .ast-page {

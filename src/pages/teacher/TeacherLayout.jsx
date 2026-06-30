@@ -1,14 +1,11 @@
 import { Outlet } from "react-router-dom";
 import TeacherSidebar from "./TeacherSidebar";
-import "./teacher.css";
+import RoleShell from "../../components/RoleShell";
 
 export default function TeacherLayout() {
   return (
-    <div className="tch-root">
-      <TeacherSidebar />
-      <main className="tch-main">
-        <Outlet />
-      </main>
-    </div>
+    <RoleShell sidebar={<TeacherSidebar />}>
+      <Outlet />
+    </RoleShell>
   );
 }

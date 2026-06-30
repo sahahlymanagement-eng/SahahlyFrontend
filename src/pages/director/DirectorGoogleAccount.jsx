@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../api/api";
 import "./DirectorGoogleAccount.css";
-import { FiMail, FiBookOpen, FiRefreshCw } from "react-icons/fi";
+import { FiMail, FiBookOpen, FiDownloadCloud, FiPlus, FiTrash2 } from "react-icons/fi";
 import { toast } from "react-toastify";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:6001/api";
 
 export default function DirectorGoogleAccountsPage() {
   const [accounts, setAccounts] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const [loadingAccountId, setLoadingAccountId] = useState(null);
+  const [syncingAccountId, setSyncingAccountId] = useState(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [connecting, setConnecting] = useState(false);
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     try {
       const res = await api.get("/director/google-accounts");
       setAccounts(Array.isArray(res.data) ? res.data : []);
@@ -19,39 +23,82 @@ export default function DirectorGoogleAccountsPage() {
       console.error("Failed to load accounts", err);
       toast.error(err.response?.data?.message || "Failed to load Google accounts");
     }
+  }, []);
+
+  const openGoogleConnect = (email = "") => {
+    const trimmed = email.trim().toLowerCase();
+    const url = trimmed
+      ? `${API_BASE}/google/auth?email=${encodeURIComponent(trimmed)}`
+      : `${API_BASE}/google/auth`;
+
+    setConnecting(true);
+    const popup = window.open(url, "sahahly-google-oauth", "width=520,height=720");
+
+    if (!popup) {
+      setConnecting(false);
+      toast.error("Pop-up blocked. Allow pop-ups for this site, then try again.");
+      return;
+    }
+
+    const timer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(timer);
+        setConnecting(false);
+        loadAccounts();
+      }
+    }, 800);
   };
 
-  const fetchClassrooms = async (account) => {
-    if (fetching) return;
+  const handleAddAccount = (e) => {
+    e.preventDefault();
+    const email = newEmail.trim().toLowerCase();
+    if (!email) {
+      toast.warn("Enter the Gmail address to connect");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.warn("Enter a valid email address");
+      return;
+    }
+    if (accounts.some((a) => a.email?.toLowerCase() === email)) {
+      toast.info("That account is already connected");
+      return;
+    }
+    openGoogleConnect(email);
+  };
+
+  const syncClassroomsFromGoogle = async (account) => {
+    if (syncingAccountId) return;
 
     try {
-      setFetching(true);
+      setSyncingAccountId(account._id);
       setSelectedAccount(account);
-      setClassrooms([]);
 
-      const res = await api.post(
-        `/director/google-accounts/${account._id}/classrooms`
-      );
+      const res = await api.post(`/classrooms/sync/${account._id}`);
+      const total = res.data?.total ?? 0;
 
-      setClassrooms(Array.isArray(res.data?.data) ? res.data.data : []);
-
-      const excluded = res.data?.excludedCorrupt ?? 0;
       toast.success(
-        excluded > 0
-          ? `Loaded ${res.data?.count ?? 0} classrooms (${excluded} corrupt record(s) excluded)`
-          : `Loaded ${res.data?.count ?? 0} classrooms from database`
+        total > 0
+          ? `Fetched ${total} classroom${total === 1 ? "" : "s"} for ${account.email}`
+          : `No classrooms found for ${account.email}`
       );
+
+      await loadClassrooms(account);
     } catch (err) {
-      console.error("Failed to fetch classrooms", err);
-      toast.error(err.response?.data?.message || "Failed to fetch classrooms");
+      console.error("Failed to sync classrooms from Google", err);
+      toast.error(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          "Failed to fetch classrooms from Google"
+      );
     } finally {
-      setFetching(false);
+      setSyncingAccountId(null);
     }
   };
 
   const loadClassrooms = async (account) => {
     try {
-      setLoading(true);
+      setLoadingAccountId(account._id);
       setSelectedAccount(account);
 
       const res = await api.get(
@@ -63,84 +110,139 @@ export default function DirectorGoogleAccountsPage() {
       console.error("Failed to load classrooms", err);
       toast.error(err.response?.data?.message || "Failed to load classrooms");
     } finally {
-      setLoading(false);
+      setLoadingAccountId(null);
+    }
+  };
+
+  const removeAccount = async (account) => {
+    if (!window.confirm(`Disconnect ${account.email}? Classrooms already synced stay in Sahahly.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/director/google-accounts/${account._id}`);
+      toast.success(`Disconnected ${account.email}`);
+      if (selectedAccount?._id === account._id) {
+        setSelectedAccount(null);
+        setClassrooms([]);
+      }
+      loadAccounts();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to disconnect account");
     }
   };
 
   useEffect(() => {
     loadAccounts();
-  }, []);
+
+    const onMessage = (event) => {
+      if (event.data?.type === "sahahly-google-connected") {
+        setConnecting(false);
+        loadAccounts();
+        toast.success("Google account connected");
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [loadAccounts]);
 
   return (
     <div className="directorGooglePage">
-      {/* HEADER */}
       <section className="directorGoogleSection">
         <div className="directorGoogleHeader">
           <div className="directorGoogleTitleWrap">
             <span className="directorGoogleDot" />
-            <h2 className="directorGoogleTitle">
-              Google Classroom Integration
-            </h2>
+            <h2 className="directorGoogleTitle">Google Classroom Integration</h2>
           </div>
-
-          <button
-            className="directorGooglePrimaryBtn"
-            onClick={() =>
-              (window.location.href =
-                `${import.meta.env.VITE_API_BASE_URL}/google/auth`)
-            }
-          >
-            Connect Google Account
-          </button>
         </div>
+
+        <p className="directorGoogleHint">
+          Connect multiple teacher Gmail accounts. Google opens a secure sign-in window
+          (Sahahly never stores your Google password).
+        </p>
+
+        <form className="directorGoogleAddForm" onSubmit={handleAddAccount}>
+          <input
+            type="email"
+            className="directorGoogleEmailInput"
+            placeholder="teacher@gmail.com"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            autoComplete="email"
+          />
+          <button
+            type="submit"
+            className="directorGooglePrimaryBtn"
+            disabled={connecting}
+          >
+            <FiPlus /> {connecting ? "Connecting…" : "Add Google Account"}
+          </button>
+        </form>
       </section>
 
-      {/* ACCOUNTS */}
       <section className="directorGoogleSection">
         <div className="directorGoogleHeader">
           <div className="directorGoogleTitleWrap">
             <span className="directorGoogleDot" />
-            <h2 className="directorGoogleTitle">
-              Connected Accounts
-            </h2>
+            <h2 className="directorGoogleTitle">Connected Accounts</h2>
           </div>
         </div>
 
         <div className="directorGoogleGrid">
           {accounts.length === 0 && (
             <div className="directorGoogleCard">
-              <p>No Google accounts connected.</p>
+              <p>No Google accounts connected yet. Add one above.</p>
             </div>
           )}
 
-          {accounts.map((acc) => (
-            <div key={acc._id} className="directorGoogleCard">
-              <div className="directorGoogleIconWrap">
-                <FiMail className="directorGoogleIcon" />
+          {accounts.map((acc) => {
+            const isSyncing = syncingAccountId === acc._id;
+            const isLoading = loadingAccountId === acc._id;
+
+            return (
+              <div key={acc._id} className="directorGoogleCard">
+                <div className="directorGoogleCardTop">
+                  <div className="directorGoogleIconWrap">
+                    <FiMail className="directorGoogleIcon" />
+                  </div>
+                  <button
+                    type="button"
+                    className="directorGoogleRemoveBtn"
+                    title="Disconnect account"
+                    onClick={() => removeAccount(acc)}
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </div>
+
+                <h3>{acc.email}</h3>
+
+                <div className="directorGoogleActions">
+                  <button
+                    type="button"
+                    className="directorGoogleFetchBtn"
+                    onClick={() => syncClassroomsFromGoogle(acc)}
+                    disabled={!!syncingAccountId}
+                  >
+                    <FiDownloadCloud />
+                    {isSyncing ? "Fetching…" : "Fetch Classrooms"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadClassrooms(acc)}
+                    disabled={!!loadingAccountId}
+                  >
+                    <FiBookOpen />
+                    {isLoading ? "Loading…" : "View Classrooms"}
+                  </button>
+                </div>
               </div>
-
-              <h3>{acc.email}</h3>
-
-              <div className="directorGoogleActions">
-                <button
-                  onClick={() => fetchClassrooms(acc)}
-                  disabled={fetching}
-                >
-                  <FiRefreshCw /> {fetching ? "Loading..." : "Load Classrooms"}
-                </button>
-
-                <button
-                  onClick={() => loadClassrooms(acc)}
-                >
-                  <FiBookOpen /> View Classrooms
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
-      {/* CLASSROOMS */}
       {selectedAccount && (
         <section className="directorGoogleSection">
           <div className="directorGoogleHeader">
@@ -152,17 +254,17 @@ export default function DirectorGoogleAccountsPage() {
             </div>
           </div>
 
-          {loading && (
+          {loadingAccountId === selectedAccount._id && (
             <div className="directorGoogleCard">
-              <p>Loading classrooms...</p>
+              <p>Loading classrooms…</p>
             </div>
           )}
 
-          {!loading && (
+          {loadingAccountId !== selectedAccount._id && (
             <div className="directorGoogleGrid">
               {classrooms.length === 0 && (
                 <div className="directorGoogleCard">
-                  <p>No classrooms found.</p>
+                  <p>No classrooms found. Click Fetch Classrooms first.</p>
                 </div>
               )}
 
@@ -171,9 +273,7 @@ export default function DirectorGoogleAccountsPage() {
                   <div className="directorGoogleIconWrap">
                     <FiBookOpen className="directorGoogleIcon" />
                   </div>
-
                   <h3>{c.name}</h3>
-
                   <p>Section: {c.section || "—"}</p>
                   <p>{c.description || "No description"}</p>
                 </div>

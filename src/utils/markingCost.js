@@ -2,6 +2,7 @@
 export const MARKING_GEMINI_PRICING = [
   { id: "gemini-3.1-flash-lite", inputPer1M: 0.25, outputPer1M: 1.5 },
   { id: "gemini-2.5-flash-lite", inputPer1M: 0.1, outputPer1M: 0.4 },
+  { id: "gemini-2.5-flash", inputPer1M: 0.3, outputPer1M: 2.5 },
   { id: "gemini-3-flash-preview", inputPer1M: 0.5, outputPer1M: 3.0 },
   { id: "gemini-3.5-flash", inputPer1M: 1.5, outputPer1M: 9.0, cachedInputPer1M: 0.15 },
 ];

@@ -14,9 +14,12 @@
 /* ───────────────────────────────── ROOT ── */
 .ma-root {
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  background: #000828;
+  background: transparent;
   color: #e2e8f0;
   font-family: 'Plus Jakarta Sans', sans-serif;
   animation: ma-fade-in 0.25s ease;

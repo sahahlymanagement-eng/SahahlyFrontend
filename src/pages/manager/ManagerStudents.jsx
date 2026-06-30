@@ -12,7 +12,6 @@ import {
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
-import ManagerSidebar from "../../components/ManagerSidebar";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 
@@ -159,9 +158,6 @@ export default function ManagerStudents() {
     <>
 
       <div className="ms-root">
-
-        <ManagerSidebar />
-        
 
         {/* MAIN */}
         <main className="ms-main">

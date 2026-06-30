@@ -70,6 +70,9 @@ import AssistantStudents from "./pages/assistant/AssistantStudents";
 import AssistantReports from "./pages/assistant/AssistantReports";
 import AssistantPerformance from "./pages/assistant/AssistantPerformance";
 import AssistantLayout from "./pages/assistant/AssistantLayout";
+import ManagerLayout from "./pages/manager/ManagerLayout";
+import QualityManagerLayout from "./pages/quality manager/QualityManagerLayout";
+import QualityTeamLayout from "./pages/quality team/QualityTeamLayout";
 
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import TeacherLayout from "./pages/teacher/TeacherLayout";
@@ -187,120 +190,59 @@ function App() {
         </Route>
 
 
-        {/* Manager dashboard route */}
-        <Route path="/manager/dashboard" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerDashboard />
-          </RoleProtectedRoute>}
-        />
-
-        {/* Manager Delegations route */}
-        <Route path="/manager/delegations" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerDelegations />
-          </RoleProtectedRoute>}
-        />
-
-
-        <Route path="/manager/operation-metrics" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <OperationMetrics defaultTab="metrics" />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/token-usage" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerTokenUsage />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/assignments" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerAssignments />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/students" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerStudents />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/submissions" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerSubmissionViewer />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/marking" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <PaperMarking />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/logincss" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <ManagerLoginCss />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/markingclaude" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <PaperMarkingClaude />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/google-classroom" element={
-          <RoleProtectedRoute allowedRole={["manager"]}>
-            <GoogleClassroom />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/courses" element={
-          <RoleProtectedRoute allowedRole={["manager"]}>
-            <CoursesList />
-          </RoleProtectedRoute>}
-        />
-
-        
-        
-        <Route path="/manager/coursework/:courseId" element={
-          <RoleProtectedRoute allowedRole={["manager", "teacher"]}>
-            <CourseWork />
-          </RoleProtectedRoute>}
-        />
-
-        <Route path="/manager/coursework/:courseId/edit/:courseWorkId" element={
-          <RoleProtectedRoute allowedRole={["manager", "teacher"]}>
-            <CourseWork />
-          </RoleProtectedRoute>}
-        />
-
+        {/* Manager routes */}
         <Route
-          path="/manager/submission/:courseId/:courseWorkId/:submissionId" element={
-          <RoleProtectedRoute allowedRole="manager">
-            <SubmissionActions />
-          </RoleProtectedRoute>}
-        />
-        <Route path="/manager/view-coursework/:courseId" element=
-        {<RoleProtectedRoute allowedRole={["manager"]}> 
-        <ViewCoursework /> </RoleProtectedRoute>} />
+          path="/manager"
+          element={
+            <RoleProtectedRoute allowedRole="manager">
+              <ManagerLayout />
+            </RoleProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<ManagerDashboard />} />
+          <Route path="delegations" element={<ManagerDelegations />} />
+          <Route path="operation-metrics" element={<OperationMetrics defaultTab="metrics" />} />
+          <Route path="token-usage" element={<ManagerTokenUsage />} />
+          <Route path="assignments" element={<ManagerAssignments />} />
+          <Route path="students" element={<ManagerStudents />} />
+          <Route path="submissions" element={<ManagerSubmissionViewer />} />
+          <Route path="marking" element={<PaperMarking />} />
+          <Route path="logincss" element={<ManagerLoginCss />} />
+          <Route path="markingclaude" element={<PaperMarkingClaude />} />
+          <Route path="google-classroom" element={<GoogleClassroom />} />
+          <Route path="courses" element={<CoursesList />} />
+          <Route path="coursework/:courseId" element={<CourseWork />} />
+          <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
+          <Route path="submission/:courseId/:courseWorkId/:submissionId" element={<SubmissionActions />} />
+          <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
+        </Route>
 
+        {/* Quality Team */}
+        <Route
+          path="/quality-team"
+          element={
+            <RoleProtectedRoute allowedRole="quality team">
+              <QualityTeamLayout />
+            </RoleProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<QualityTeamDashboard />} />
+        </Route>
 
-
-        {/* Quality Team dashboard route */}
-        <Route path="/quality-team/dashboard" element={
-          <RoleProtectedRoute allowedRole="quality team">
-            <QualityTeamDashboard />
-          </RoleProtectedRoute>}
-        />
-
-        {/* Quality Manager dashboard route */}
-        <Route path="/quality-manager/dashboard" element={
-          <RoleProtectedRoute allowedRole="quality manager">
-            <QualityManagerDashboard />
-          </RoleProtectedRoute>}
-        />
+        {/* Quality Manager */}
+        <Route
+          path="/quality-manager"
+          element={
+            <RoleProtectedRoute allowedRole="quality manager">
+              <QualityManagerLayout />
+            </RoleProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<QualityManagerDashboard />} />
+        </Route>
 
         {/* Director dashboard route */}
         <Route
