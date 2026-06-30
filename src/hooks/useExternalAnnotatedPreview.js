@@ -6,8 +6,10 @@ import {
   resolveDisplayMaxTotal,
   sumQuestionMarks,
   getOutOfScopeNotes,
+  getTeacherAnnotations,
   getApiErrorMessage,
 } from "../utils/markingFormData";
+import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -43,6 +45,8 @@ function withTimeout(promise, ms, label) {
 export function useExternalAnnotatedPreview({
   resultModal,
   editingQuestions,
+  editingAnnotations,
+  editingSummary,
   effectiveMaxTotal,
   editingMaxTotal,
   resolvePdfSummary,
@@ -83,8 +87,17 @@ export function useExternalAnnotatedPreview({
     });
     const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
     const outOfScopeNotes = (modal.result?.outOfScopeNotes || []).map((n) => ({ ...n }));
+    const teacherAnnotations = getTeacherAnnotations(modal.result).map((a) => ({ ...a }));
     const studentFile = modal.studentFile || null;
-    return { submissionId, questions, maxTotal, summary, outOfScopeNotes, studentFile };
+    return {
+      submissionId,
+      questions,
+      maxTotal,
+      summary,
+      outOfScopeNotes,
+      teacherAnnotations,
+      studentFile,
+    };
   }, []);
 
   const generatePreview = useCallback(async (snapshot) => {
@@ -114,6 +127,7 @@ export function useExternalAnnotatedPreview({
           maxTotalMarks: snapshot.maxTotal,
           summary: snapshot.summary,
           outOfScopeNotes: snapshot.outOfScopeNotes,
+          teacherAnnotations: snapshot.teacherAnnotations,
           skipCompress: true,
         }),
         PREVIEW_TIMEOUT_MS,
@@ -169,8 +183,26 @@ export function useExternalAnnotatedPreview({
     ) {
       return true;
     }
-    return questionsHavePendingEdits(editingQuestions, confirmedSnapshot);
-  }, [confirmedSnapshot, editingQuestions, effectiveMaxTotal, editingMaxTotal]);
+    if (questionsHavePendingEdits(editingQuestions, confirmedSnapshot)) {
+      return true;
+    }
+    if (annotationsHavePendingEdits(
+      editingAnnotations,
+      confirmedSnapshot.teacherAnnotations
+    )) {
+      return true;
+    }
+    const currentSummary = String(editingSummary ?? "").trim();
+    const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
+    return currentSummary !== confirmedSummary;
+  }, [
+    confirmedSnapshot,
+    editingQuestions,
+    editingAnnotations,
+    editingSummary,
+    effectiveMaxTotal,
+    editingMaxTotal,
+  ]);
 
   const confirmEdits = useCallback(
     async (onPersist) => {
@@ -181,9 +213,16 @@ export function useExternalAnnotatedPreview({
       setConfirmingEdits(true);
       try {
         const questions = editingQuestions.map((q) => ({ ...q }));
+        const teacherAnnotations = (editingAnnotations || []).map((a) => ({ ...a }));
         const maxTotal = Math.max(1, Number(effectiveMaxTotal) || 1);
-        const finalResult = applyTeacherEditsToResult(resultModal.result, questions, maxTotal);
-        const summary = resolvePdfSummaryRef.current(submissionId, finalResult);
+        const finalResult = applyTeacherEditsToResult(
+          resultModal.result,
+          questions,
+          maxTotal,
+          teacherAnnotations,
+          editingSummary
+        );
+        const summary = finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
         const studentFile = resultModalRef.current?.studentFile || null;
         const snapshot = {
           submissionId,
@@ -191,11 +230,12 @@ export function useExternalAnnotatedPreview({
           maxTotal,
           summary,
           outOfScopeNotes: getOutOfScopeNotes(finalResult),
+          teacherAnnotations,
           studentFile,
         };
 
         if (onPersist) {
-          await onPersist({ finalResult, submissionId, questions, maxTotal });
+          await onPersist({ finalResult, submissionId, questions, maxTotal, teacherAnnotations });
         }
 
         setConfirmedSnapshot(snapshot);
@@ -205,7 +245,14 @@ export function useExternalAnnotatedPreview({
         setConfirmingEdits(false);
       }
     },
-    [resultModal, editingQuestions, effectiveMaxTotal, generatePreview]
+    [
+      resultModal,
+      editingQuestions,
+      editingAnnotations,
+      editingSummary,
+      effectiveMaxTotal,
+      generatePreview,
+    ]
   );
 
   const resetToConfirmed = useCallback(() => {
@@ -213,6 +260,10 @@ export function useExternalAnnotatedPreview({
     return {
       questions: confirmedSnapshot.questions.map((q) => ({ ...q })),
       maxTotal: confirmedSnapshot.maxTotal,
+      summary: confirmedSnapshot.summary || "",
+      teacherAnnotations: (confirmedSnapshot.teacherAnnotations || []).map((a) => ({
+        ...a,
+      })),
     };
   }, [confirmedSnapshot]);
 
