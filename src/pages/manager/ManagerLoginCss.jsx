@@ -7,7 +7,6 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw,
 } from "react-icons/fi";
-import ManagerSidebar from "../../components/ManagerSidebar";
 import Pagination from "../../components/Pagination";
 import {
   assertPdfBlob,
@@ -811,7 +810,6 @@ export default function ManagerLoginCss() {
 
   return (
     <div className="ma-root">
-      <ManagerSidebar />
 
       <main className="ma-main">
         <header className="ma-topbar">

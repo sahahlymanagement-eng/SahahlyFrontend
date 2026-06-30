@@ -1,14 +1,11 @@
 import { Outlet } from "react-router-dom";
 import AssistantSidebar from "./AssistantSidebar";
-import "./assistant.css";
+import RoleShell from "../../components/RoleShell";
 
 export default function AssistantLayout() {
   return (
-    <div className="ast-root">
-      <AssistantSidebar />
-      <main className="ast-main">
-        <Outlet />
-      </main>
-    </div>
+    <RoleShell sidebar={<AssistantSidebar />}>
+      <Outlet />
+    </RoleShell>
   );
 }

@@ -46,6 +46,67 @@
   color: white;
   font-weight: 600;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.directorGooglePrimaryBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.directorGoogleHint {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0 0 16px 0;
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.directorGoogleAddForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.directorGoogleEmailInput {
+  flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.directorGoogleEmailInput:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.directorGoogleCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.directorGoogleRemoveBtn {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.directorGoogleRemoveBtn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
 }
 
 .directorGoogleGrid {
@@ -103,4 +164,16 @@
   color: white;
   cursor: pointer;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.directorGoogleActions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.directorGoogleFetchBtn {
+  background: #2563eb !important;
 }

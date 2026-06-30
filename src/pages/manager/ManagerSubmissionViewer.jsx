@@ -8,7 +8,6 @@ import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
   FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw
 } from "react-icons/fi";
-import ManagerSidebar from "../../components/ManagerSidebar";
 import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import Pagination from "../../components/Pagination";
@@ -81,6 +80,14 @@ import {
   MARKING_MAX_RETRIES_MESSAGE,
   runWithMarkingRetries,
 } from "../../utils/markingRetries";
+import {
+  patchBatchJob,
+  subscribeBatchJob,
+  registerBatchPoll,
+  clearBatchPoll,
+  setBatchStopped,
+  isBatchStopped,
+} from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 
 const CHECKLIST_CONFIG = [
@@ -191,8 +198,17 @@ export default function ManagerSubmissionViewer() {
 
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
-  const batchStopRef = useRef(false);
-  const batchPollRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedAssignment?._id) {
+      setBatchJob(null);
+      return undefined;
+    }
+    return subscribeBatchJob(selectedAssignment._id, setBatchJob);
+  }, [selectedAssignment?._id]);
+
+  const batchStarting =
+    batchJob?.phase === "uploading" || batchJob?.phase === "submitting";
 
   const markingSelection = useMarkingStudentSelection();
   const [selectingMarkingAll, setSelectingMarkingAll] = useState(false);
@@ -968,14 +984,15 @@ useEffect(() => {
   };
 
   const stopBatchMark = async () => {
-    batchStopRef.current = true;
-    if (batchPollRef.current) {
-      clearInterval(batchPollRef.current);
-      batchPollRef.current = null;
-    }
+    const assignId = selectedAssignment?._id;
+    if (!assignId) return;
+    setBatchStopped(assignId, true);
 
-    const jobId = batchJob?.jobId;
-    setBatchJob(null);
+    const job = batchJob;
+    const jobId = job?.jobId;
+    if (jobId) clearBatchPoll(jobId);
+
+    patchBatchJob(assignId, null);
 
     if (jobId) {
       try {
@@ -984,8 +1001,8 @@ useEffect(() => {
       } catch (err) {
         toast.warning(extractHumanError(err) || "Batch stop requested — server cancel failed");
       }
-  }
-}
+    }
+  };
 
   const stopPriorityBulk = () => {
     priorityStopRef.current = true;
@@ -1811,11 +1828,10 @@ useEffect(() => {
   };
 
   const checkForActiveJob = async () => {
+    const assignId = selectedAssignment?._id;
+    if (!assignId) return;
     try {
-      const { data } = await api.get(
-        `/marking/mark-batch/active/${selectedAssignment._id}`
-      );
-      console.log("checkForActiveJob response:", data);
+      const { data } = await api.get(`/marking/mark-batch/active/${assignId}`);
       if (data.active) {
         const {
           jobId,
@@ -1824,23 +1840,29 @@ useEffect(() => {
           geminiModel: jobModel,
         } = data.active;
         const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
-        console.log("restoring batch job:", jobId);
-        setBatchJob({
-          phase:       "processing",
+        setBatchStopped(assignId, false);
+        patchBatchJob(assignId, {
+          phase: "processing",
           jobId,
-          total:       studentOrder?.length || 0,
+          total: studentOrder?.length || 0,
           submittedAt,
-          skipped:     {},
-          results:     {},
-          mode:        "normal",
-          geminiModel: restoredModel,
-          batchStudents: studentOrder || [],
-        });
-        pollBatchJob(jobId, {
+          skipped: {},
+          results: {},
           mode: "normal",
           geminiModel: restoredModel,
           batchStudents: studentOrder || [],
         });
+        pollBatchJob(jobId, {
+          assignmentId: assignId,
+          mode: "normal",
+          geminiModel: restoredModel,
+          batchStudents: studentOrder || [],
+        });
+      } else {
+        const existing = batchJob;
+        if (existing?.phase === "processing") {
+          patchBatchJob(assignId, null);
+        }
       }
     } catch (err) {
       console.error("checkForActiveJob:", err.message);
@@ -1855,40 +1877,37 @@ useEffect(() => {
 
 
   const pollBatchJob = async (jobId, jobMeta = {}) => {
-    if (batchStopRef.current) return;
-    // Clear any existing poll first
-    if (batchPollRef.current) {
-      clearInterval(batchPollRef.current);
-      batchPollRef.current = null;
-    }
+    const assignId = jobMeta.assignmentId || selectedAssignment?._id;
+    if (!assignId || !jobId) return;
+    if (isBatchStopped(assignId)) return;
 
-    console.log("Starting poll for jobId:", jobId);
+    clearBatchPoll(jobId);
 
     const doPoll = async () => {
-      if (batchStopRef.current) return;
-      console.log("Polling:", jobId);
+      if (isBatchStopped(assignId)) return;
       try {
         const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
-        console.log("Poll response state:", data.state);
 
         if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
-          setBatchJob(prev => ({ ...prev, phase: "processing", jobId }));
-          toast.info("Still processing, check back soon…");
+          patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+          if (assignId === selectedAssignment?._id) {
+            toast.info("Still processing, check back soon…");
+          }
           return;
         }
 
-        clearInterval(batchPollRef.current);
-        batchPollRef.current = null;
+        clearBatchPoll(jobId);
 
         if (data.state === "JOB_STATE_FAILED") {
           const message = "Batch marking job failed.";
-          recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
-          setBatchJob(prev => ({ ...prev, phase: "error" }));
+          if (assignId === selectedAssignment?._id) {
+            recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
+          }
+          patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
           toast.error(message);
           return;
         }
 
-        // SUCCEEDED
         const resultMap = {};
         const saveMode = jobMeta.mode || "normal";
         const modelForResult = jobMeta.geminiModel || geminiModel;
@@ -1903,7 +1922,7 @@ useEffect(() => {
             ? { status: "done", result: enrichedResult, originalAiResult }
             : { status: "error", error };
 
-          if (!success) {
+          if (!success && assignId === selectedAssignment?._id) {
             const message =
               typeof error === "string"
                 ? error
@@ -1911,48 +1930,50 @@ useEffect(() => {
             recordStudentMarkingError(student.submissionId, message, error);
           }
 
-          if (success) {
-            setStudents(prev =>
-              prev.map(s => s.submissionId === student.submissionId
-                ? {
-                    ...s,
-                    assignedGrade: resolveTotalMarksFromResult(result)
-                  }
-                : s
+          if (success && assignId === selectedAssignment?._id) {
+            setStudents((prev) =>
+              prev.map((s) =>
+                s.submissionId === student.submissionId
+                  ? {
+                      ...s,
+                      assignedGrade: resolveTotalMarksFromResult(result),
+                    }
+                  : s
               )
             );
 
             await api.post("/submission-files/save-results", {
-              assignmentId: selectedAssignment._id,
+              assignmentId: assignId,
               submissionId: student.submissionId,
-              studentId:    student.studentId,
-              studentName:  student.name,
-              mode:         saveMode,
-              provider:     "gemini-batch",
-              result:         enrichedResult,
-            }).catch(e => console.error("save-results:", e.message));
+              studentId: student.studentId,
+              studentName: student.name,
+              mode: saveMode,
+              provider: "gemini-batch",
+              result: enrichedResult,
+            }).catch((e) => console.error("save-results:", e.message));
           }
         }
 
-        setBatchJob(prev => ({
+        patchBatchJob(assignId, (prev) => ({
           ...prev,
           phase: "done",
           results: { ...prev?.results, ...resultMap },
         }));
-        toast.success(`Batch complete — ${data.results.filter(r => r.success).length} students marked.`);
-        fetchStudentPage(studentPage);
-
+        const okCount = data.results.filter((r) => r.success).length;
+        toast.success(`Batch complete — ${okCount} student${okCount === 1 ? "" : "s"} marked.`);
+        if (assignId === selectedAssignment?._id) {
+          fetchStudentPage(studentPage);
+        }
       } catch (err) {
         console.error("Poll error:", err);
-        clearInterval(batchPollRef.current);
-        batchPollRef.current = null;
-        setBatchJob(prev => ({ ...prev, phase: "error" }));
+        clearBatchPoll(jobId);
+        patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
         toast.error(`Polling failed: ${extractHumanError(err)}`);
       }
     };
 
     doPoll();
-    batchPollRef.current = setInterval(doPoll, 15_000);
+    registerBatchPoll(jobId, setInterval(doPoll, 15_000));
   };
 
 
@@ -1980,18 +2001,18 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
   }
 
   const guidanceValue = guidanceForForm(guidanceText);
+  const assignId = selectedAssignment._id;
 
+  setBatchStopped(assignId, false);
 
-  batchStopRef.current = false;
-
-  setBatchJob({
+  patchBatchJob(assignId, {
     phase: "uploading",
     total: eligible.length,
     skipped: {},
     results: {},
     mode,
     geminiModel: selectedModel,
-    batchStudents: eligible.map(s => ({
+    batchStudents: eligible.map((s) => ({
       submissionId: s.submissionId,
       studentId: s.studentId,
       name: s.name,
@@ -2019,12 +2040,12 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
       "Upload failed"
     );
     toast.error(`Upload failed: ${message}`);
-    setBatchJob(prev => ({ ...prev, phase: "error" }));
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
     return;
   }
 
-  if (batchStopRef.current) {
-    setBatchJob(null);
+  if (isBatchStopped(assignId)) {
+    patchBatchJob(assignId, null);
     toast.info("Batch marking stopped");
     return;
   }
@@ -2039,7 +2060,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
         originalAiResult: JSON.parse(JSON.stringify(result)),
       };
     });
-    setBatchJob(prev => ({
+    patchBatchJob(assignId, (prev) => ({
       ...prev,
       results: { ...prev.results, ...zeroedResults },
     }));
@@ -2063,30 +2084,30 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
         typeof error === "string" ? error : error?.message || "Upload failed";
       recordStudentMarkingError(student.submissionId, message, error);
     });
-    setBatchJob(prev => ({ ...prev, skipped }));
+    patchBatchJob(assignId, (prev) => ({ ...prev, skipped }));
   }
 
   if (!succeeded?.length) {
     if (zeroed?.length) {
-      setBatchJob(prev => ({ ...prev, phase: "done" }));
+      patchBatchJob(assignId, (prev) => ({ ...prev, phase: "done" }));
       toast.success(`Batch complete — ${zeroed.length} student(s) awarded 0 (no submission PDF).`);
       return;
     }
     const message = "No valid submissions to mark.";
     recordMarkingErrorsForStudents(eligible, null, message);
     toast.error(message);
-    setBatchJob(prev => ({ ...prev, phase: "error" }));
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
     return;
   }
 
-  if (batchStopRef.current) {
-    setBatchJob(null);
+  if (isBatchStopped(assignId)) {
+    patchBatchJob(assignId, null);
     toast.info("Batch marking stopped");
     return;
   }
 
   // Step 2 — submit job (with overload retries)
-  setBatchJob(prev => ({ ...prev, phase: "submitting" }));
+  patchBatchJob(assignId, (prev) => ({ ...prev, phase: "submitting" }));
 
   const submitPayload = {
     assignmentId:  selectedAssignment._id,
@@ -2129,7 +2150,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
           "Batch submission failed"
         );
     toast.error(`Batch submission failed: ${message}`);
-    setBatchJob((prev) => ({ ...prev, phase: "error" }));
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
     return;
   }
 
@@ -2138,18 +2159,19 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null)
     toast.info("Resuming existing batch job...");
   }
 
-  setBatchJob(prev => ({
+  patchBatchJob(assignId, (prev) => ({
     ...prev,
     phase: "processing",
     jobId,
-    batchStudents: succeeded.map(r => r.student),
+    batchStudents: succeeded.map((r) => r.student),
   }));
 
   // Step 3 — hand off to standalone poller
   pollBatchJob(jobId, {
+    assignmentId: assignId,
     mode,
     geminiModel: selectedModel,
-    batchStudents: succeeded.map(r => r.student),
+    batchStudents: succeeded.map((r) => r.student),
   });
 };
 
@@ -2355,28 +2377,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 };
 
 
-// Clean up interval on unmount
-  useEffect(() => {
-    return () => {
-      if (batchPollRef.current) clearInterval(batchPollRef.current);
-    };
-  }, []);
-
-
-// Resume polling if page was already in "processing" state
-// (e.g. user navigated away and came back — if you persist batchJob to localStorage)
-  useEffect(() => {
-    if (batchJob?.phase === "processing" && batchJob?.jobId && !batchPollRef.current) {
-      pollBatchJob(batchJob.jobId, {
-        mode: batchJob.mode,
-        geminiModel: batchJob.geminiModel,
-        batchStudents: batchJob.batchStudents,
-      });
-    }
-  }, []); // only on mount
-
-
-
+// Resume polling is handled by checkForActiveJob when the assignment is selected.
 
   const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
@@ -2873,7 +2874,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           throw err;
         }
 
-        setBatchJob(prev => ({
+        patchBatchJob(selectedAssignment._id, (prev) => ({
           ...prev,
           results: {
             ...prev?.results,
@@ -2899,7 +2900,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   return (
     <div className="ma-root">
-      <ManagerSidebar />
 
       <main className="ma-main">
         <header className="ma-topbar">
@@ -3056,7 +3056,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           <button
                           className="msv-btn-ai"
                           onClick={() => openGuidanceModal(null, false)}
-                          disabled={bulkMarking || batchJob?.phase === "processing"}
+                          disabled={bulkMarking}
     >
                         {bulkMarking ? <><span className="pm-spinner" /> Marking…</> : <><FiCpu size={13} /> {markingActionLabel("Mark All Students", "Mark Selected", markingSelection.selectedCount)}</>}
                       </button>
@@ -3094,12 +3094,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         className="msv-gemini-select"
                         value={pickValidGeminiModel(geminiModels, geminiModel)}
                         onChange={(e) => setGeminiModel(e.target.value)}
-                        disabled={
-                          bulkMarking ||
-                          batchJob?.phase === "uploading" ||
-                          batchJob?.phase === "submitting" ||
-                          batchJob?.phase === "processing"
-                        }
+                        disabled={bulkMarking || batchStarting}
                         title="Gemini model for batch marking"
                         style={{ minWidth: 210, maxWidth: 280 }}
                       >
@@ -3118,6 +3113,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             if (batchJob?.phase === "processing") {
                               toast.info("Checking status…");
                               pollBatchJob(batchJob.jobId, {
+                                assignmentId: selectedAssignment._id,
                                 mode: batchJob.mode,
                                 geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                                 batchStudents: batchJob.batchStudents,
@@ -3126,7 +3122,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               openGuidanceModal(null, true);
                             }
                           }}
-                          disabled={bulkMarking || batchJob?.phase === "uploading" || batchJob?.phase === "submitting"}
+                          disabled={bulkMarking || batchStarting}
                           style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
                         >
                           {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
@@ -3144,7 +3140,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <button
                         className="msv-btn-ai"
                         onClick={() => openGuidanceModal(null, false,"priorityBulk")}
-                        disabled={bulkMarking || priorityBulkRunning || batchJob?.phase === "processing"}
+                        disabled={bulkMarking || priorityBulkRunning}
                         title="Mark whole class on Gemini priority tier (fastest, premium)"
                         style={{ background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
                       >
@@ -3196,6 +3192,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                 onClick={() => {
                                   console.log("Check now clicked, jobId:", batchJob.jobId);
                                   pollBatchJob(batchJob.jobId, {
+                                    assignmentId: selectedAssignment._id,
                                     mode: batchJob.mode,
                                     geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                                     batchStudents: batchJob.batchStudents,

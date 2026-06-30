@@ -13,7 +13,6 @@ import {
   FiUser, FiUsers, FiBookOpen, FiClock, FiCheckCircle,
   FiAlertTriangle, FiZap,FiClipboard,FiFileText
 } from "react-icons/fi";
-import ManagerSidebar from "../../components/ManagerSidebar";
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
@@ -323,7 +322,6 @@ const toggleRow = (id) => {
 
   return (
     <div className="md-root">
-      <ManagerSidebar />
       {/* MAIN */}
       <main className="md-main">
 
