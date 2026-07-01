@@ -410,6 +410,11 @@
   background: rgba(30, 58, 138, 0.25);
 }
 
+.tu-breakdown-btn--active {
+  border-color: #3b82f6;
+  background: rgba(30, 58, 138, 0.45);
+}
+
 .tu-breakdown-btn-title {
   font-size: 1rem;
   font-weight: 700;

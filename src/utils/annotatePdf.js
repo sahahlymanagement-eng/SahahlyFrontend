@@ -350,7 +350,7 @@ function drawColumnHeader(page, layout, bold) {
       x: layout.colX,
       y: titleY - 10 - i * 7,
       size: 6.2,
-      font: bold,
+        font: bold,
       color: GREY,
     });
   });
@@ -395,7 +395,7 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     if (studentLines.length) h += labelH + studentLines.length * kwLineH;
     if (correctLines.length && (!mcq.full || mcq.notAttempted)) h += labelH + correctLines.length * kwLineH;
     if (noteLines.length) h += sectionGap + labelH + noteLines.length * noteLineH;
-  } else {
+      } else {
     if (blankAnswerLines.length) h += labelH + blankAnswerLines.length * kwLineH;
     if (marked.length) {
       h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
@@ -418,8 +418,8 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     correctLines,
     mcq,
     blank,
-    kwLineH,
-    noteLineH,
+        kwLineH,
+        noteLineH,
     sectionGap,
     blockPad,
     height: h,
@@ -507,7 +507,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
     const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
     const blockTop = center + blockH / 2;
 
-    page.drawRectangle({
+          page.drawRectangle({
       x: layout.colX - 2,
       y: blockTop - blockH + blockPad,
       width: layout.colWidth + 4,
@@ -521,7 +521,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
       x: layout.colX,
       y: blockTop - 11,
       size: noteSize + 0.5,
-      font: bold,
+            font: bold,
       color: col,
     });
 
@@ -555,7 +555,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
           x: layout.colX,
           y: cy,
           size: noteSize - 0.5,
-          font: bold,
+            font: bold,
           color: GREEN,
         });
         cy -= 8;
@@ -590,7 +590,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
         drawWrappedLines(page, noteLines, {
           x: layout.colX,
           y: cy,
-          size: noteSize,
+            size: noteSize,
           font: reg,
           color: rgb(0.12, 0.14, 0.22),
           lineH: noteLineH,
@@ -602,7 +602,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
           x: layout.colX,
           y: cy,
           size: noteSize - 0.5,
-          font: bold,
+            font: bold,
           color: AMBER,
         });
         cy -= 8;
@@ -678,9 +678,9 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
       color: col,
       dashArray: [2, 2],
       dashPhase: 0,
-    });
+      });
+    }
   }
-}
 
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
 function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary }) {
@@ -748,7 +748,7 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
     color: sCol,
   });
 
-  const isUngraded =
+const isUngraded =
     totalMarks === "Ungraded" || maxTotalMarks == null || maxTotalMarks === "";
 
   const scoreText = isUngraded ? "Ungraded" : `${totalMarks} / ${maxTotalMarks}`;
@@ -835,15 +835,15 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   wrap(focusIntro, reg, 7.4, CW)
     .slice(0, 2)
     .forEach((line) => {
-      summaryPage.drawText(san(line), {
-        x: M,
-        y: yPos,
-        size: 7.4,
-        font: reg,
-        color: rgb(0.25, 0.25, 0.3),
-      });
-      yPos -= 9;
+    summaryPage.drawText(san(line), {
+      x: M,
+      y: yPos,
+      size: 7.4,
+      font: reg,
+      color: rgb(0.25, 0.25, 0.3),
     });
+    yPos -= 9;
+  });
 
   yPos -= 10;
 
@@ -893,7 +893,7 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
     yPos -= boxH + 9;
   } else {
     topics.forEach(([topic, data]) => {
-      const boxH = 52;
+    const boxH = 52;
       if (yPos - boxH < BD_FOOTER_Y + 20) {
         const next = openNextReportPage(
           pdfDoc,
@@ -912,61 +912,61 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
       }
 
       reportPage.drawRectangle({
-        x: M,
-        y: yPos - boxH,
-        width: CW,
-        height: boxH,
-        color: rgb(0.96, 0.97, 1),
-        borderColor: rgb(0.82, 0.84, 0.9),
-        borderWidth: 0.7,
-      });
+      x: M,
+      y: yPos - boxH,
+      width: CW,
+      height: boxH,
+      color: rgb(0.96, 0.97, 1),
+      borderColor: rgb(0.82, 0.84, 0.9),
+      borderWidth: 0.7,
+    });
 
       reportPage.drawRectangle({
-        x: M,
-        y: yPos - boxH,
-        width: 5,
-        height: boxH,
-        color: NAVY,
-      });
+      x: M,
+      y: yPos - boxH,
+      width: 5,
+      height: boxH,
+      color: NAVY,
+    });
 
       reportPage.drawText(san(topic).substring(0, 60), {
-        x: M + 14,
-        y: yPos - 16,
-        size: 10,
-        font: bold,
-        color: NAVY,
-      });
+      x: M + 14,
+      y: yPos - 16,
+      size: 10,
+      font: bold,
+      color: NAVY,
+    });
 
-      const qText = `Questions: ${data.questions.join(", ")}`;
+    const qText = `Questions: ${data.questions.join(", ")}`;
       wrap(qText, bold, 6.4, CW - 25)
         .slice(0, 1)
         .forEach((line) => {
           reportPage.drawText(san(line), {
-            x: M + 14,
-            y: yPos - 30,
-            size: 6.4,
-            font: bold,
-            color: RED,
-          });
-        });
+        x: M + 14,
+        y: yPos - 30,
+        size: 6.4,
+        font: bold,
+        color: RED,
+      });
+    });
 
-      const advice =
-        data.advice[0] || "Revise this topic carefully and practise similar exam questions.";
+    const advice =
+      data.advice[0] || "Revise this topic carefully and practise similar exam questions.";
 
       wrap(advice, reg, 6.8, CW - 25)
         .slice(0, 2)
         .forEach((line, i) => {
           reportPage.drawText(san(line), {
-            x: M + 14,
-            y: yPos - 43 - i * 8,
-            size: 6.8,
-            font: reg,
-            color: rgb(0.25, 0.25, 0.3),
-          });
-        });
-
-      yPos -= boxH + 9;
+        x: M + 14,
+        y: yPos - 43 - i * 8,
+        size: 6.8,
+        font: reg,
+        color: rgb(0.25, 0.25, 0.3),
+      });
     });
+
+    yPos -= boxH + 9;
+  });
   }
 
   yPos -= 4;
@@ -1070,21 +1070,21 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
 
     topicLines.forEach((line, li) => {
       reportPage.drawText(line, {
-        x: M + 110,
+      x: M + 110,
         y: textY - li * BD_LINE_H,
         size: BD_TOPIC_SIZE,
-        font: bold,
-        color: NAVY,
+      font: bold,
+      color: NAVY,
       });
     });
 
     noteLines.forEach((line, li) => {
       reportPage.drawText(line, {
-        x: M + 240,
+      x: M + 240,
         y: textY - li * BD_LINE_H,
         size: BD_NOTE_SIZE,
-        font: reg,
-        color: rgb(0.25, 0.25, 0.3),
+      font: reg,
+      color: rgb(0.25, 0.25, 0.3),
       });
     });
 

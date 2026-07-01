@@ -33,12 +33,23 @@ const TABS = [
   { id: "classroom", label: "Classrooms" },
   { id: "assistant", label: "Staff" },
   { id: "assignment", label: "Assignments" },
+  { id: "reports", label: "Reports & Analytics" },
 ];
 
 const MANAGER_TABS = [
   { id: "classroom", label: "Classrooms" },
   { id: "assistant", label: "Assistants" },
   { id: "assignment", label: "Assignments" },
+  { id: "reports", label: "Reports & Analytics" },
+];
+
+const REPORT_BREAKDOWN_OPTIONS = [
+  { id: "classroom", label: "By classroom" },
+  { id: "channel", label: "By channel" },
+  { id: "assignment", label: "By assignment" },
+  { id: "student", label: "By student" },
+  { id: "trigger", label: "By trigger" },
+  { id: "person", label: "By person" },
 ];
 
 const now = new Date();
@@ -216,6 +227,20 @@ const TOKEN_COLUMNS = [
   { key: "requests", label: "Requests", numeric: true, render: (r) => r.requestCount },
 ];
 
+const REPORT_TYPE_COLUMNS = [
+  { key: "type", label: "Report type", render: (r) => r.label || r.source },
+  DATE_COLUMN,
+  { key: "deliveries", label: "Deliveries", numeric: true, render: (r) => r.deliveryCount },
+  ...TOKEN_COLUMNS.filter((c) => c.key !== "requests"),
+];
+
+const REPORT_CHANNEL_COLUMNS = [
+  { key: "type", label: "Report type", render: (r) => r.sourceLabel },
+  { key: "channel", label: "Channel", render: (r) => r.channelLabel },
+  { key: "deliveries", label: "Deliveries", numeric: true, render: (r) => r.deliveryCount },
+  ...TOKEN_COLUMNS.filter((c) => c.key !== "requests"),
+];
+
 function formatRole(role) {
   return role || "—";
 }
@@ -263,6 +288,10 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const [byClassroom, setByClassroom] = useState(null);
   const [byAssistant, setByAssistant] = useState(null);
   const [byAssignment, setByAssignment] = useState(null);
+  const [reportsAnalytics, setReportsAnalytics] = useState(null);
+  const [selectedReportSource, setSelectedReportSource] = useState(null);
+  const [reportBreakdown, setReportBreakdown] = useState("classroom");
+  const [reportBreakdownData, setReportBreakdownData] = useState(null);
   const [selectedClassroomId, setSelectedClassroomId] = useState(null);
   const [classroomBreakdown, setClassroomBreakdown] = useState(null);
   const [classroomDetail, setClassroomDetail] = useState(null);
@@ -315,6 +344,8 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     setSelectedClassroomId(null);
     setClassroomBreakdown(null);
     setClassroomDetail(null);
+    setSelectedReportSource(null);
+    setReportBreakdownData(null);
   }, [tab, period, year, month, day]);
 
   useEffect(() => {
@@ -324,6 +355,14 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     }
     loadClassroomBreakdown();
   }, [user, selectedClassroomId, classroomBreakdown, period, year, month, day]);
+
+  useEffect(() => {
+    if (!user?.id || !selectedReportSource) {
+      setReportBreakdownData(null);
+      return;
+    }
+    loadReportBreakdown();
+  }, [user, selectedReportSource, reportBreakdown, period, year, month, day]);
 
   const queryParams = (extra = {}) => {
     const params = { ...extra };
@@ -357,15 +396,36 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         const res = await api.get(`${apiBase}/by-assistant`, { params });
         setByAssistant(res.data);
         setRequestLimit(res.data?.requestLimit ?? null);
-      } else {
+      } else if (tab === "assignment") {
         const res = await api.get(`${apiBase}/by-assignment`, { params });
         setByAssignment(res.data);
         setRequestLimit(res.data?.requestLimit ?? null);
+      } else {
+        const res = await api.get(`${apiBase}/reports-analytics`, { params });
+        setReportsAnalytics(res.data);
+        setRequestLimit(null);
       }
     } catch {
       toast.error("Failed to load token usage");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadReportBreakdown = async () => {
+    setDetailLoading(true);
+    try {
+      const res = await api.get(`${apiBase}/reports-analytics/breakdown`, {
+        params: queryParams({
+          source: selectedReportSource,
+          groupBy: reportBreakdown,
+        }),
+      });
+      setReportBreakdownData(res.data);
+    } catch {
+      toast.error("Failed to load report breakdown");
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -433,6 +493,11 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   };
 
   const handleBack = () => {
+    if (tab === "reports" && selectedReportSource) {
+      setSelectedReportSource(null);
+      setReportBreakdownData(null);
+      return;
+    }
     if (classroomBreakdown) {
       setClassroomBreakdown(null);
       setClassroomDetail(null);
@@ -448,7 +513,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       return byClassroom?.grandTotal ?? 0;
     }
     if (tab === "assistant") return byAssistant?.grandTotal ?? 0;
-    return byAssignment?.grandTotal ?? 0;
+    if (tab === "assignment") return byAssignment?.grandTotal ?? 0;
+    if (tab === "reports") {
+      if (reportBreakdownData) return reportBreakdownData.grandTotal ?? 0;
+      return reportsAnalytics?.grandTotal ?? 0;
+    }
+    return 0;
   })();
 
   const grandCostUsd = (() => {
@@ -458,7 +528,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       return byClassroom?.grandCostUsd ?? 0;
     }
     if (tab === "assistant") return byAssistant?.grandCostUsd ?? 0;
-    return byAssignment?.grandCostUsd ?? 0;
+    if (tab === "assignment") return byAssignment?.grandCostUsd ?? 0;
+    if (tab === "reports") {
+      if (reportBreakdownData) return reportBreakdownData.grandCostUsd ?? 0;
+      return reportsAnalytics?.grandCostUsd ?? 0;
+    }
+    return 0;
   })();
 
   const grandCostEgp = (() => {
@@ -468,7 +543,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       return byClassroom?.grandCostEgp ?? 0;
     }
     if (tab === "assistant") return byAssistant?.grandCostEgp ?? 0;
-    return byAssignment?.grandCostEgp ?? 0;
+    if (tab === "assignment") return byAssignment?.grandCostEgp ?? 0;
+    if (tab === "reports") {
+      if (reportBreakdownData) return reportBreakdownData.grandCostEgp ?? 0;
+      return reportsAnalytics?.grandCostEgp ?? 0;
+    }
+    return 0;
   })();
 
   const grandRequestCount = (() => {
@@ -478,7 +558,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       return byClassroom?.grandRequestCount ?? 0;
     }
     if (tab === "assistant") return byAssistant?.grandRequestCount ?? 0;
-    return byAssignment?.grandRequestCount ?? 0;
+    if (tab === "assignment") return byAssignment?.grandRequestCount ?? 0;
+    if (tab === "reports") {
+      if (reportBreakdownData) return reportBreakdownData.grandDeliveries ?? 0;
+      return reportsAnalytics?.grandDeliveries ?? 0;
+    }
+    return 0;
   })();
 
   const activePreset =
@@ -502,6 +587,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             ? "month"
             : null;
 
+  const inReportsFlow = tab === "reports" && selectedReportSource;
   const inClassroomFlow = tab === "classroom" && selectedClassroomId;
   const inClassroomPicker = inClassroomFlow && !classroomBreakdown;
   const inClassroomBreakdown = inClassroomFlow && classroomBreakdown;
@@ -518,6 +604,18 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     }
     if (tab === "assignment" && byAssignment) {
       return { count: byAssignment.assignments?.length ?? 0, label: "Assignments with usage" };
+    }
+    if (tab === "reports" && reportsAnalytics && !selectedReportSource) {
+      return {
+        count: reportsAnalytics.types?.length ?? 0,
+        label: "Report types",
+      };
+    }
+    if (tab === "reports" && reportBreakdownData) {
+      return {
+        count: reportBreakdownData.rows?.length ?? 0,
+        label: REPORT_BREAKDOWN_OPTIONS.find((o) => o.id === reportBreakdown)?.label || "Rows",
+      };
     }
     if (inClassroomBreakdown && classroomDetail) {
       return {
@@ -625,6 +723,13 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         </button>
       )}
 
+      {inReportsFlow && (
+        <button type="button" className="tu-back-btn" onClick={handleBack}>
+          <FiArrowLeft size={16} />
+          Back to report types
+        </button>
+      )}
+
       <div className="tu-summary">
         <div className="tu-summary-card">
           <h3 className="tu-num">{formatNum(grandTotal)}</h3>
@@ -646,11 +751,11 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         )}
         <div className="tu-summary-card">
           <h3 className="tu-num">{formatNum(grandRequestCount)}</h3>
-          <span>Marking requests</span>
+          <span>{tab === "reports" ? "Report deliveries" : "Marking requests"}</span>
         </div>
       </div>
 
-      {!loading && (
+      {!loading && tab !== "reports" && (
         <RequestUsageBar
           used={grandRequestCount}
           limit={requestLimit}
@@ -807,6 +912,143 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           )}
         </>
       )}
+
+      {!loading && tab === "reports" && !selectedReportSource && (
+        <>
+          {!reportsAnalytics?.types?.length ? (
+            <div className="tu-empty">
+              No report or analytics activity recorded for this period. Deliveries are logged when
+              monthly parent reports, executive teacher reports, 12h teacher submission
+              WhatsApp reports, collective WhatsApp reports, or question bank AI scans run.
+            </div>
+          ) : (
+            <>
+              {reportsAnalytics.byChannel?.length > 0 && (
+                <div className="tu-detail" style={{ marginBottom: 24 }}>
+                  <div className="tu-detail-header">
+                    <h2>By report type and channel</h2>
+                    <p>Email vs WhatsApp and other channels · {rangeLabel}</p>
+                  </div>
+                  <UsageTable
+                    columns={REPORT_CHANNEL_COLUMNS}
+                    rows={reportsAnalytics.byChannel}
+                    rowKey={(r) => `${r.source}-${r.reportChannel || "none"}`}
+                  />
+                </div>
+              )}
+              <div className="tu-detail-header" style={{ marginBottom: 12 }}>
+                <h2>Report types</h2>
+                <p>Click a report type for a detailed breakdown · {rangeLabel}</p>
+              </div>
+              <div className="tu-click-list">
+                {reportsAnalytics.types.map((t) => (
+                  <button
+                    key={t.source}
+                    type="button"
+                    className="tu-click-row"
+                    onClick={() => setSelectedReportSource(t.source)}
+                  >
+                    <div className="tu-click-row-main">
+                      <h3>{t.label}</h3>
+                      <span>
+                        {t.deliveryCount} deliveries
+                        {" · "}
+                        <span
+                          className="tu-date-cell"
+                          title={usageDateTitle(t.firstUsedAt, t.lastUsedAt)}
+                        >
+                          {formatUsageDate(t.firstUsedAt, t.lastUsedAt)}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="tu-click-row-meta">
+                      <span className="tu-num">
+                        {formatNum(t.totalTokens)} tokens
+                        {" · "}
+                        {formatCostUsd(t.costUsd)}
+                      </span>
+                      <FiChevronRight size={18} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {!loading && tab === "reports" && selectedReportSource && (
+        <div className="tu-detail">
+          <div className="tu-detail-header">
+            <h2>
+              {reportsAnalytics?.types?.find((t) => t.source === selectedReportSource)?.label ||
+                reportBreakdownData?.sourceLabel ||
+                selectedReportSource}
+            </h2>
+            <p>Detailed breakdown · {rangeLabel}</p>
+          </div>
+          <div className="tu-breakdown-picker">
+            {REPORT_BREAKDOWN_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={`tu-breakdown-btn ${reportBreakdown === opt.id ? "tu-breakdown-btn--active" : ""}`}
+                onClick={() => setReportBreakdown(opt.id)}
+              >
+                <span className="tu-breakdown-btn-title">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+          {detailLoading && <div className="tu-loading">Loading breakdown…</div>}
+          {!detailLoading && !reportBreakdownData?.rows?.length && (
+            <div className="tu-empty">No deliveries for this report type in the selected period.</div>
+          )}
+          {!detailLoading && reportBreakdownData?.rows?.length > 0 && (
+            <UsageTable
+              columns={reportBreakdownColumns(reportBreakdown)}
+              rows={reportBreakdownData.rows}
+              rowKey={(r) => reportBreakdownRowKey(r, reportBreakdown)}
+            />
+          )}
+        </div>
+      )}
     </main>
   );
+}
+
+function reportBreakdownColumns(groupBy) {
+  const nameCol = (() => {
+    if (groupBy === "classroom") {
+      return { key: "name", label: "Classroom", render: (r) => r.classroomName || "—" };
+    }
+    if (groupBy === "channel") {
+      return { key: "name", label: "Channel", render: (r) => r.channelLabel || "—" };
+    }
+    if (groupBy === "assignment") {
+      return { key: "name", label: "Assignment", render: (r) => r.assignmentTitle || "—" };
+    }
+    if (groupBy === "student") {
+      return { key: "name", label: "Student", render: (r) => r.studentName || "—" };
+    }
+    if (groupBy === "trigger") {
+      return { key: "name", label: "Trigger", render: (r) => r.reportTrigger || "—" };
+    }
+    return { key: "name", label: "Person", render: (r) => r.personName || "Automated" };
+  })();
+
+  return [
+    nameCol,
+    DATE_COLUMN,
+    { key: "deliveries", label: "Deliveries", numeric: true, render: (r) => r.deliveryCount },
+    ...TOKEN_COLUMNS.filter((c) => c.key !== "requests"),
+  ];
+}
+
+function reportBreakdownRowKey(row, groupBy) {
+  if (groupBy === "classroom") return String(row.classroomId || row.classroomName || "unknown");
+  if (groupBy === "channel") return String(row.reportChannel || "none");
+  if (groupBy === "assignment") return String(row.assignmentId || row.assignmentTitle || "unknown");
+  if (groupBy === "student") return String(row.studentId || row.studentName || "unknown");
+  if (groupBy === "trigger") return String(row.reportTrigger || "none");
+  return String(row.personId || row.personName || "automated");
 }

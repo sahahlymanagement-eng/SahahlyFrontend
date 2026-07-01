@@ -774,7 +774,7 @@ const handleExportGradesExcel = async () => {
     });
 
     const filename = `${sanitizeExcelFilenameBase(assignmentTitle)}_grades_${targetMax}.xlsx`;
-    exportAssignmentGradesExcel({
+    await exportAssignmentGradesExcel({
       students: mergedStudents,
       targetMax,
       assignmentMaxPoints,
@@ -783,6 +783,7 @@ const handleExportGradesExcel = async () => {
       gradeOverrides,
       classroomSyncedGrades,
       filename,
+      assignmentTitle,
     });
     toast.success("Grades exported to Excel");
   } catch (err) {
