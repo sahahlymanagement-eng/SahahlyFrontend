@@ -1,0 +1,159 @@
+.fb-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px 48px;
+  color: #ffffff;
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.fb-topbar h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.fb-topbar p {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-bottom: 24px;
+}
+
+.fb-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.fb-summary-card {
+  background: #06173c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 18px 22px;
+  min-width: 140px;
+}
+
+.fb-summary-card h3 {
+  font-size: 1.6rem;
+  margin: 0 0 4px;
+}
+
+.fb-summary-card span {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.fb-summary-card--warn h3 {
+  color: #fbbf24;
+}
+
+.fb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+
+.fb-filters label span {
+  display: block;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.fb-filters select {
+  background: #06173c;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.fb-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.fb-loading,
+.fb-empty {
+  color: #94a3b8;
+  padding: 24px 0;
+}
+
+.fb-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #06173c;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.fb-table th,
+.fb-table td {
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.88rem;
+}
+
+.fb-table td {
+  color: #e2e8f0;
+}
+
+.fb-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.fb-table tbody tr:hover td {
+  background: rgba(14, 165, 233, 0.06);
+}
+
+.fb-row--low {
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.fb-row--low:hover td {
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.fb-stars {
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+.fb-comment {
+  max-width: 220px;
+  word-break: break-word;
+  color: #cbd5e1;
+}
+
+.fb-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+  color: #94a3b8;
+}
+
+.fb-pagination button {
+  background: #06173c;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.fb-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

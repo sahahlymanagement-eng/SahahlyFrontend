@@ -1,0 +1,33 @@
+/* Director shell — single scroll area, no double padding */
+.ast-main > .ast-page.director-page {
+  padding: 0;
+  max-width: none;
+  width: 100%;
+  animation: none;
+}
+
+.director-page-inner {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(20px, 3vw, 36px) clamp(16px, 3vw, 40px) 48px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/* Pages that ship their own outer padding — avoid doubling */
+.director-page-inner > .directorDashboardPage,
+.director-page-inner > .directorGooglePage,
+.director-page-inner > .dm-page,
+.director-page-inner > .fb-main,
+.director-page-inner > .tu-main {
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+@media (max-width: 768px) {
+  .director-page-inner {
+    padding: 16px 14px 32px;
+  }
+}

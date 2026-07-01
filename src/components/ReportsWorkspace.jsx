@@ -7,7 +7,8 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 import {
   FiClipboard, FiUsers, FiSend,
-  FiCheckSquare, FiMessageSquare, FiCalendar
+  FiCheckSquare, FiMessageSquare,   FiCalendar,
+  FiBarChart2,
 } from "react-icons/fi";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
@@ -15,6 +16,7 @@ import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, attendedNamesF
 import ReportAttendanceSelect from "./ReportAttendanceSelect";
 import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
 import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
+import TeacherExecutiveAnalysisWorkspace from "./TeacherExecutiveAnalysisWorkspace";
 import {
   refreshAssignmentGrades,
   applyReportCartGradeSync,
@@ -586,6 +588,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       <MonthlyParentReportWorkspace
         variant={variant}
         onBack={() => setReportView("assignment")}
+        onNavigate={setReportView}
+      />
+    );
+  }
+
+  if (reportView === "executive") {
+    return (
+      <TeacherExecutiveAnalysisWorkspace
+        variant={variant}
+        onBack={() => setReportView("assignment")}
+        onNavigate={setReportView}
       />
     );
   }
@@ -618,6 +631,15 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               >
                 <FiCalendar size={12} /> Monthly Parent Reports
               </button>
+              {!isTeacher && (
+                <button
+                  type="button"
+                  className="ma-report-tab"
+                  onClick={() => setReportView("executive")}
+                >
+                  <FiBarChart2 size={12} /> Teacher Executive Analysis
+                </button>
+              )}
             </div>
           </div>
           {reportCount > 0 && (

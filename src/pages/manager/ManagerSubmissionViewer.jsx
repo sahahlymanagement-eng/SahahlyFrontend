@@ -4289,8 +4289,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         setSummaryTouched(true);
                         setEditingSummary(e.target.value);
                       }}
-                      rows={5}
-                      placeholder="Summary updates automatically when you edit marks or question feedback. Confirm edits to refresh the PDF."
+                      rows={4}
+                      placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
                       style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
                     />
                   </div>

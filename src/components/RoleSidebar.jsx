@@ -11,12 +11,13 @@ import "./RoleSidebar.css";
 
 /**
  * Shared assistant-style sidebar for all roles.
- * @param {{ roleLabel: string, accountLabel?: string, navItems: { icon: React.ReactNode, label: string, path: string }[] }} props
+ * @param {{ roleLabel: string, accountLabel?: string, navItems?: { icon: React.ReactNode, label: string, path: string }[], navSections?: { label?: string, items: { icon: React.ReactNode, label: string, path: string }[] }[] }} props
  */
 export default function RoleSidebar({
   roleLabel,
   accountLabel,
-  navItems,
+  navItems = [],
+  navSections,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,6 +34,9 @@ export default function RoleSidebar({
   };
 
   const subtitle = accountLabel || `${roleLabel} account`;
+  const sections = navSections?.length
+    ? navSections
+    : [{ items: navItems }];
 
   return (
     <aside className={`ast-sidebar ${collapsed ? "ast-sidebar--collapsed" : ""}`}>
@@ -75,23 +79,31 @@ export default function RoleSidebar({
       </div>
 
       <nav className="ast-sidebar-nav">
-        {!collapsed && <span className="ast-nav-label">Menu</span>}
-        {navItems.map((item) => {
-          const active = isActive(item.path);
-          return (
-            <button
-              key={item.path}
-              type="button"
-              className={`ast-nav-item ${active ? "ast-nav-item--active" : ""}`}
-              onClick={() => navigate(item.path)}
-              title={collapsed ? item.label : ""}
-            >
-              <span className="ast-nav-icon">{item.icon}</span>
-              {!collapsed && <span className="ast-nav-text">{item.label}</span>}
-              {!collapsed && active && <FiChevronRight className="ast-nav-arrow" size={14} />}
-            </button>
-          );
-        })}
+        {sections.map((section, sectionIndex) => (
+          <div className="ast-nav-section" key={section.label || `section-${sectionIndex}`}>
+            {!collapsed && section.label && (
+              <span className="ast-nav-label">{section.label}</span>
+            )}
+            {section.items.map((item) => {
+              const active = isActive(item.path);
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  className={`ast-nav-item ${active ? "ast-nav-item--active" : ""}`}
+                  onClick={() => navigate(item.path)}
+                  title={collapsed ? item.label : ""}
+                >
+                  <span className="ast-nav-icon">{item.icon}</span>
+                  {!collapsed && <span className="ast-nav-text">{item.label}</span>}
+                  {!collapsed && active && (
+                    <FiChevronRight className="ast-nav-arrow" size={14} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="ast-sidebar-bottom">

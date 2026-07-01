@@ -14,6 +14,35 @@
   color: #e2e8f0;
   font-family: 'Plus Jakarta Sans', sans-serif;
   animation: ast-fade-in 0.3s ease;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+/* Thin dark scrollbars across assistant / director / manager shells */
+.ast-root ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ast-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ast-root ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.ast-root ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.ast-root ::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .ast-main {
@@ -32,7 +61,11 @@
 
 .ast-main > .ast-page {
   flex: 1;
+  min-height: 0;
+  width: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 
 .ast-main > .md-root,
@@ -855,6 +888,10 @@
 @media (max-width: 768px) {
   .ast-page {
     padding: 20px 16px 32px;
+  }
+
+  .ast-main > .ast-page.director-page {
+    padding: 0;
   }
 
   .ast-hero h1 {

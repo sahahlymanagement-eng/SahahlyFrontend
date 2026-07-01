@@ -167,19 +167,52 @@ export function hasTeacherEdits(originalQuestions, editingQuestions) {
 
 
 /** Resolve overall summary from live AI result and/or DB-persisted sources. */
+export function normalizeMarkingSummaryBullets(summary) {
+  const text = String(summary || "").trim();
+  if (!text) return "";
+
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const bulletLines = lines.filter((line) => /^[•\-*]/.test(line));
+  if (bulletLines.length >= 2) {
+    return bulletLines
+      .map((line) => (line.startsWith("•") ? line : `• ${line.replace(/^[\-*]\s*/, "")}`))
+      .slice(0, 6)
+      .join("\n");
+  }
+
+  const chunks = text
+    .replace(/\s*After review:\s*/gi, "\n")
+    .replace(/\s*Marks were lost on:\s*/gi, "\n")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((part) => part.trim().replace(/^[•\-*]\s*/, ""))
+    .filter((part) => part.length > 8);
+
+  if (!chunks.length) return text;
+
+  return chunks
+    .slice(0, 5)
+    .map((part) => `• ${part}`)
+    .join("\n");
+}
+
 export function getMarkingResultSummary(result, { storedSummary, studentSummary } = {}) {
   const fromResult =
     (typeof result?.summary === "string" && result.summary.trim()) ||
     (typeof result?.criteriaGrade?.summary === "string" && result.criteriaGrade.summary.trim()) ||
     "";
-  if (fromResult) return fromResult;
+  if (fromResult) return normalizeMarkingSummaryBullets(fromResult);
 
   const fromStored =
     (typeof storedSummary === "string" && storedSummary.trim()) ||
     "";
-  if (fromStored) return fromStored;
+  if (fromStored) return normalizeMarkingSummaryBullets(fromStored);
 
-  return (typeof studentSummary === "string" && studentSummary.trim()) || "";
+  const fromStudent = (typeof studentSummary === "string" && studentSummary.trim()) || "";
+  return fromStudent ? normalizeMarkingSummaryBullets(fromStudent) : "";
 }
 
 export function sumQuestionMarks(questions) {
@@ -224,7 +257,7 @@ export function gradeScorePercent(total, max) {
   return m > 0 ? Math.round((t / m) * 100) : 0;
 }
 
-/** Rebuild overall summary so grade + question edits are reflected on the grading report PDF. */
+/** Rebuild overall summary as short bullet points when marks or feedback change. */
 export function rebuildMarkingSummary({
   questions = [],
   maxTotalMarks,
@@ -234,20 +267,14 @@ export function rebuildMarkingSummary({
   const max = Math.max(1, Number(maxTotalMarks) || 1);
   const pct = gradeScorePercent(total, max);
 
-  let text = String(previousSummary || "").trim();
-  text = text.replace(/\s*After review:.*$/is, "").trim();
+  const performance =
+    pct >= 75
+      ? "strong"
+      : pct >= 50
+        ? "satisfactory"
+        : "needs improvement";
 
-  if (text) {
-    text = text.replace(/\b(\d+)\s*\/\s*(\d+)\b/g, `${total}/${max}`);
-    text = text.replace(
-      /\bscored\s+(\d+)\s*(?:out of|\/)\s*(\d+)/gi,
-      `scored ${total}/${max}`
-    );
-    const pctMatch = text.match(/\b(\d{1,3})%\b/);
-    if (pctMatch) {
-      text = text.replace(/\b(\d{1,3})%\b/, `${pct}%`);
-    }
-  }
+  const bullets = [`• Score: ${total}/${max} (${pct}%) — ${performance} performance`];
 
   const lost = (questions || []).filter((q) => {
     const aw = Number(q.marksAwarded) || 0;
@@ -255,54 +282,35 @@ export function rebuildMarkingSummary({
     return mx > 0 && aw < mx;
   });
 
-  const performance =
-    pct >= 75
-      ? "Excellent performance"
-      : pct >= 50
-        ? "Satisfactory performance"
-        : "Performance needs improvement";
-
-  const reviewParts = [];
-
   if (lost.length === 0) {
-    reviewParts.push("Full marks were achieved on all graded questions after review.");
+    bullets.push("• Full marks on all graded questions");
   } else {
-    const lostDetail = lost
-      .slice(0, 6)
-      .map((q) => {
-        const bits = [`Q${q.questionNumber} (${q.marksAwarded}/${q.maxMarks})`];
-        if (q.missingKeywords?.length) {
-          bits.push(`missing: ${q.missingKeywords.join("; ")}`);
-        }
-        if (q.markedKeywords?.length) {
-          bits.push(`earned: ${q.markedKeywords.join("; ")}`);
-        }
-        if (q.reason?.trim()) {
-          bits.push(q.reason.trim());
-        }
-        return bits.join(" — ");
-      })
-      .join(" ");
-    reviewParts.push(
-      `Marks were lost on: ${lostDetail}${lost.length > 6 ? " …" : ""}`
-    );
+    for (const q of lost.slice(0, 4)) {
+      let line = `• Q${q.questionNumber} (${q.marksAwarded}/${q.maxMarks})`;
+      if (q.studyTopic) {
+        line += ` — ${q.studyTopic}`;
+      } else if (q.missingKeywords?.length) {
+        line += ` — missing: ${q.missingKeywords.slice(0, 2).join(", ")}`;
+      } else if (q.reason?.trim()) {
+        const short = q.reason.trim().split(/[.!]/)[0].slice(0, 72);
+        if (short) line += ` — ${short}`;
+      }
+      bullets.push(line);
+    }
+    if (lost.length > 4) {
+      bullets.push(`• ${lost.length - 4} more question(s) with lost marks`);
+    }
   }
 
-  const reviewNote = reviewParts.join(" ");
+  const prevBullets = normalizeMarkingSummaryBullets(previousSummary)
+    .split("\n")
+    .filter((line) => /revise|focus|strength|well|excellent|improve|weak/i.test(line));
 
-  if (!text) {
-    return `${performance}! The student scored ${total}/${max} (${pct}%). ${reviewNote}`.trim();
+  for (const line of prevBullets.slice(0, 2)) {
+    if (!bullets.includes(line)) bullets.push(line);
   }
 
-  if (!text.includes(`${total}/${max}`)) {
-    text = `${performance}! The student scored ${total}/${max} (${pct}%). ${text}`;
-  }
-
-  if (reviewNote) {
-    text = `${text} After review: ${reviewNote}`;
-  }
-
-  return text.trim();
+  return bullets.slice(0, 6).join("\n");
 }
 
 export function getOutOfScopeNotes(result) {
@@ -345,7 +353,10 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
 
   return {
     questions,
-    summary: summary != null && String(summary).trim() ? String(summary).trim() : null,
+    summary:
+      summary != null && String(summary).trim()
+        ? normalizeMarkingSummaryBullets(summary)
+        : null,
   };
 }
 
@@ -434,7 +445,7 @@ export function applyTeacherEditsToResult(
   }
 
   if (summaryOverride != null && String(summaryOverride).trim()) {
-    finalResult.summary = String(summaryOverride).trim();
+    finalResult.summary = normalizeMarkingSummaryBullets(summaryOverride);
   } else {
     finalResult.summary = rebuildMarkingSummary({
       questions: editingQuestions,

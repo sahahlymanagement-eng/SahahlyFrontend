@@ -335,6 +335,11 @@
   background: rgba(37, 99, 235, 0.12);
 }
 
+.mpr-card--active {
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(37, 99, 235, 0.18);
+}
+
 .mpr-card-title {
   display: block;
   font-size: 13px;
@@ -465,4 +470,115 @@
   margin: 0;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
+}
+
+/* Teacher executive analysis tab */
+.tea-trigger-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.tea-trigger-select select {
+  background: #06173c;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.tea-preview {
+  overflow-y: auto;
+  max-height: min(420px, calc(100vh - 280px));
+}
+
+.tea-preview-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.tea-preview-meta {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+}
+
+.tea-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.tea-kpi {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.tea-kpi span {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 4px;
+}
+
+.tea-kpi strong {
+  font-size: 18px;
+  color: #93c5fd;
+}
+
+.tea-block {
+  margin-top: 14px;
+}
+
+.tea-block h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.tea-block ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.55;
+}
+
+.tea-missing-list {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.tea-missing-list li {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+.tea-empty-list {
+  margin: 0;
+  font-size: 12px;
+  color: #4ade80;
+}
+
+.tea-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
 }

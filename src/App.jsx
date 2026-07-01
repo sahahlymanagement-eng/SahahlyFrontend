@@ -43,8 +43,10 @@ import DirectorClassroomManagers from "./pages/director/DirectorClassroomManager
 import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
+import DirectorFeedback from "./pages/director/DirectorFeedback";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
+import ManagerFeedback from "./pages/manager/ManagerFeedback";
 import ManagerAssignments from "./pages/manager/ManagerAssignments";
 import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
@@ -204,6 +206,7 @@ function App() {
           <Route path="delegations" element={<ManagerDelegations />} />
           <Route path="operation-metrics" element={<OperationMetrics defaultTab="metrics" />} />
           <Route path="token-usage" element={<ManagerTokenUsage />} />
+          <Route path="feedback" element={<ManagerFeedback />} />
           <Route path="assignments" element={<ManagerAssignments />} />
           <Route path="students" element={<ManagerStudents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer />} />
@@ -261,6 +264,7 @@ function App() {
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
           <Route path="token-usage" element={<DirectorTokenUsage />} />
+          <Route path="feedback" element={<DirectorFeedback />} />
           <Route path="manage-teachers" element={<TeacherManager />} />
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />

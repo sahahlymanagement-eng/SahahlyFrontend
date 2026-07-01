@@ -2,7 +2,7 @@
 
 .ast-sidebar {
   width: 252px;
-  background: #04091f;
+  background: linear-gradient(180deg, #050b1f 0%, #04091a 100%);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
@@ -10,8 +10,10 @@
   overflow: hidden;
   flex-shrink: 0;
   height: 100vh;
-  position: sticky;
-  top: 0;
+  min-height: 0;
+  position: relative;
+  z-index: 40;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
 }
 
 .ast-sidebar--collapsed {
@@ -138,11 +140,26 @@
 
 .ast-sidebar-nav {
   flex: 1;
-  padding: 16px 10px;
+  min-height: 0;
+  padding: 12px 10px 16px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.ast-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.ast-nav-section:last-child {
+  margin-bottom: 0;
 }
 
 .ast-nav-label {
@@ -151,7 +168,8 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: #475569;
-  padding: 0 10px 8px;
+  padding: 10px 10px 6px;
+  flex-shrink: 0;
 }
 
 .ast-nav-item {
@@ -159,28 +177,29 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 11px 12px;
+  padding: 10px 12px;
   border-radius: 11px;
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
-  color: #64748b;
+  color: #94a3b8;
   font-size: 13px;
   font-weight: 600;
   font-family: 'Plus Jakarta Sans', sans-serif;
   text-align: left;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
 
 .ast-nav-item:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
+  color: #e2e8f0;
 }
 
 .ast-nav-item--active {
-  background: rgba(124, 58, 237, 0.14);
-  color: #c4b5fd;
-  border-color: rgba(124, 58, 237, 0.22);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(79, 70, 229, 0.12));
+  color: #ddd6fe;
+  border-color: rgba(124, 58, 237, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .ast-nav-icon {
@@ -191,6 +210,8 @@
 
 .ast-nav-text {
   flex: 1;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .ast-nav-arrow {

@@ -1956,8 +1956,8 @@ export default function ManagerLoginCss() {
                         setSummaryTouched(true);
                         setEditingSummary(e.target.value);
                       }}
-                      rows={5}
-                      placeholder="Summary updates automatically when you edit marks or question feedback. Confirm edits to refresh the PDF."
+                      rows={4}
+                      placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
                       style={{
                         width: "100%",
                         padding: "8px 10px",
