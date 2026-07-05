@@ -29,6 +29,7 @@ import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
+import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import { isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
@@ -330,7 +331,11 @@ export default function ManagerLoginCss() {
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
-    setUser(JSON.parse(stored));
+    const parsed = JSON.parse(stored);
+    if (parsed?.email?.toLowerCase() !== "manager01@manager") {
+      return navigate("/manager/dashboard", { replace: true });
+    }
+    setUser(parsed);
   }, [navigate]);
 
   useEffect(() => {
@@ -389,6 +394,14 @@ export default function ManagerLoginCss() {
     setEditingMaxTotal(null);
     setEditingTotal(null);
   };
+
+  const handleCorrectionPatch = useCallback(({ questions, summary }) => {
+    setEditingQuestions(questions.map((q) => ({ ...q })));
+    if (summary) {
+      setEditingSummary(summary);
+      setSummaryTouched(true);
+    }
+  }, []);
 
   const openGuidanceModal = (student, opts = {}) => {
     setGuidance("");
@@ -1804,6 +1817,26 @@ export default function ManagerLoginCss() {
                 )}
                 <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
                 <TokenUsageStats result={resultModal.result} />
+
+                {(resultModal.student?.assignment?.id ?? selectedAssignment?.id) && (
+                  <MarkingCorrectionChat
+                    assignmentId={
+                      resultModal.student?.assignment?.id ?? selectedAssignment?.id
+                    }
+                    submissionId={
+                      resultModal.student?.submissionId || resultModal.submissionId
+                    }
+                    studentId={resultModal.student?.studentId}
+                    studentName={resultModal.student?.name}
+                    currentResult={{
+                      ...resultModal.result,
+                      questions: editingQuestions,
+                      summary: editingSummary,
+                      totalMarks: sumQuestionMarks(editingQuestions),
+                    }}
+                    onApplyPatch={handleCorrectionPatch}
+                  />
+                )}
 
                 {/* CRITERIA MODE */}
                 {isCriteria && resultModal.result.criteriaGrade && (
