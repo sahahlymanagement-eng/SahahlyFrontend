@@ -29,9 +29,18 @@ import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
+import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import { isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
+import {
+  patchBatchJob,
+  subscribeBatchJob,
+  registerBatchPoll,
+  clearBatchPoll,
+  setBatchStopped,
+  isBatchStopped,
+} from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 
 const PER_PAGE = 10;
@@ -90,6 +99,9 @@ export default function ManagerLoginCss() {
   const [bulkProgress, setBulkProgress] = useState({});
   const bulkStopRef = useRef(false);
   const priorityStopRef = useRef(false);
+
+  // ── Server-side batch marking (Gemini batch API via external-grading) ──
+  const [batchJob, setBatchJob] = useState(null);
 
   const [resultModal, setResultModal] = useState(null);
   const [editingQuestions, setEditingQuestions] = useState([]);
@@ -330,7 +342,11 @@ export default function ManagerLoginCss() {
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
-    setUser(JSON.parse(stored));
+    const parsed = JSON.parse(stored);
+    if (parsed?.email?.toLowerCase() !== "manager01@manager") {
+      return navigate("/manager/dashboard", { replace: true });
+    }
+    setUser(parsed);
   }, [navigate]);
 
   useEffect(() => {
@@ -390,6 +406,14 @@ export default function ManagerLoginCss() {
     setEditingTotal(null);
   };
 
+  const handleCorrectionPatch = useCallback(({ questions, summary }) => {
+    setEditingQuestions(questions.map((q) => ({ ...q })));
+    if (summary) {
+      setEditingSummary(summary);
+      setSummaryTouched(true);
+    }
+  }, []);
+
   const openGuidanceModal = (student, opts = {}) => {
     setGuidance("");
     setGuidanceModal({ student, ...opts });
@@ -399,7 +423,8 @@ export default function ManagerLoginCss() {
     const gm = guidanceModal;
     setGuidanceModal(null);
     if (!gm) return;
-    if (gm.priorityBulk) runBulkMark(guidance, markingModeModal, "priority");
+    if (gm.batch) runBatchMark(guidance, markingModeModal);
+    else if (gm.priorityBulk) runBulkMark(guidance, markingModeModal, "priority");
     else if (gm.bulk) runBulkMark(guidance, markingModeModal, provider);
     else if (gm.priority) runMarkSubmission(gm.student, guidance, markingModeModal, "priority");
     else runMarkSubmission(gm.student, guidance, markingModeModal, provider);
@@ -459,7 +484,7 @@ export default function ManagerLoginCss() {
   const deleteDraft = (submissionId) =>
     api.delete(`/external-grading/submissions/${submissionId}/draft`).catch(() => {});
 
-  const recordMarkResult = (submissionId, result, studentFile) => {
+  const recordMarkResult = (submissionId, result, studentFile, { persist = true } = {}) => {
     const originalAiResult = JSON.parse(JSON.stringify(result));
     setResults((prev) => ({
       ...prev,
@@ -469,7 +494,8 @@ export default function ManagerLoginCss() {
         studentFile,
       },
     }));
-    saveDraft(submissionId, result, originalAiResult);
+    // Batch marking already persists drafts server-side — skip the redundant PUT.
+    if (persist) saveDraft(submissionId, result, originalAiResult);
     setStudentErrors((prev) => {
       const n = { ...prev };
       delete n[submissionId];
@@ -571,6 +597,249 @@ export default function ManagerLoginCss() {
     priorityStopRef.current = true;
     toast.info("Stopping after the current submission…");
   };
+
+  // ── Server-side batch marking (upload → submit → poll) ──
+  // Results are written to each submission's LoginCSS draft server-side, so on
+  // success we hydrate straight from the returned results (falling back to a full
+  // re-fetch of the drafts). The per-assignment job lives in assignmentBatchJobStore
+  // so it survives navigation between assignments and page reloads.
+
+  const pollBatchJob = useCallback(
+    (jobId, jobMeta = {}) => {
+      const assignId = jobMeta.assignmentId || (selectedAssignment?.id != null ? String(selectedAssignment.id) : null);
+      if (!assignId || !jobId) return;
+      if (isBatchStopped(assignId)) return;
+
+      clearBatchPoll(jobId);
+
+      const doPoll = async () => {
+        if (isBatchStopped(assignId)) return;
+        try {
+          const { data } = await api.get(`/external-grading/mark-batch/status/${jobId}`);
+
+          if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+            patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+            return;
+          }
+
+          clearBatchPoll(jobId);
+
+          if (data.state === "JOB_STATE_FAILED") {
+            patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
+            toast.error("Batch marking job failed.");
+            return;
+          }
+
+          // JOB_STATE_SUCCEEDED (or any terminal success) — hydrate results.
+          const results = Array.isArray(data.results) ? data.results : null;
+          if (results) {
+            let ok = 0;
+            let failed = 0;
+            for (const r of results) {
+              const submissionId = r.submissionId ?? r.submission_id;
+              if (submissionId == null) continue;
+              if (r.success && r.result) {
+                // Backend already persisted the draft — skip the redundant PUT.
+                recordMarkResult(submissionId, r.result, undefined, { persist: false });
+                ok += 1;
+              } else {
+                const message =
+                  typeof r.error === "string"
+                    ? r.error
+                    : r.error?.message || "Batch marking failed";
+                setStudentErrors((prev) => ({ ...prev, [submissionId]: { message } }));
+                failed += 1;
+              }
+            }
+            toast.success(
+              `Batch complete — ${ok} submission${ok === 1 ? "" : "s"} marked${failed ? `, ${failed} failed` : ""}.`
+            );
+          } else {
+            // No inline results — re-hydrate drafts from the server.
+            loadAll();
+            toast.success("Batch complete — results loaded.");
+          }
+
+          patchBatchJob(assignId, null);
+        } catch (err) {
+          clearBatchPoll(jobId);
+          patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
+          toast.error((await getApiErrorMessage(err)) || "Failed to check batch status");
+        }
+      };
+
+      doPoll();
+      registerBatchPoll(jobId, setInterval(doPoll, 15000));
+    },
+    [selectedAssignment?.id, loadAll]
+  );
+
+  const runBatchMark = async (guidanceText, mode = "normal") => {
+    if (!selectedAssignment || selectedAssignment.id == null) {
+      toast.warn("Batch marking needs a real assignment — pick an assignment with a LoginCSS id.");
+      return;
+    }
+    const assignId = String(selectedAssignment.id);
+
+    const eligible = submissions.filter(
+      (s) =>
+        submissionAssignmentKey(s) === selectedAssignment.key &&
+        s.submissionId &&
+        s.localStatus !== "done" &&
+        !results[s.submissionId]?.result
+    );
+    if (!eligible.length) {
+      toast.warn("No submissions left to mark in this assignment");
+      return;
+    }
+
+    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
+    if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
+
+    setBatchStopped(assignId, false);
+    patchBatchJob(assignId, {
+      phase: "uploading",
+      total: eligible.length,
+      mode,
+      geminiModel: selectedModel,
+      batchSubmissions: eligible.map((s) => ({ submissionId: s.submissionId, name: s.name })),
+    });
+
+    // Step 1 — upload student PDFs + shared mark scheme.
+    let msUri;
+    let succeeded;
+    let failed;
+    try {
+      const res = await api.post("/external-grading/mark-batch/upload", {
+        assignmentId: selectedAssignment.id,
+        submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
+        markingMode: mode,
+      });
+      ({ msUri, succeeded, failed } = res.data || {});
+    } catch (err) {
+      patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
+      toast.error((await getApiErrorMessage(err)) || "Batch upload failed");
+      return;
+    }
+
+    if (isBatchStopped(assignId)) {
+      patchBatchJob(assignId, null);
+      return;
+    }
+
+    if (failed?.length) {
+      toast.warning(`${failed.length} submission(s) could not be uploaded`);
+      failed.forEach((f) => {
+        const submissionId = f.submissionId ?? f.submission_id ?? f.student?.submissionId;
+        if (submissionId == null) return;
+        const message =
+          typeof f.error === "string" ? f.error : f.error?.message || "Upload failed";
+        setStudentErrors((prev) => ({ ...prev, [submissionId]: { message } }));
+      });
+    }
+
+    if (!succeeded?.length) {
+      patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
+      toast.error("No valid submissions to mark.");
+      return;
+    }
+
+    // Step 2 — submit the batch job.
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "submitting" }));
+
+    let jobId;
+    try {
+      const res = await api.post("/external-grading/mark-batch/submit", {
+        assignmentId: selectedAssignment.id,
+        msUri,
+        succeeded,
+        markingMode: mode,
+        guidance: guidanceForForm(guidanceText),
+        ...(selectedAssignment.grade != null ? { totalGrade: selectedAssignment.grade } : {}),
+        geminiModel: selectedModel,
+      });
+      jobId = res.data?.jobId;
+    } catch (err) {
+      // A job is already running for this assignment — resume it.
+      if (err.response?.status === 409 && err.response.data?.jobId) {
+        jobId = err.response.data.jobId;
+        toast.info("Resuming existing batch job…");
+      } else {
+        patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
+        toast.error((await getApiErrorMessage(err)) || "Batch submission failed");
+        return;
+      }
+    }
+
+    if (!jobId) {
+      patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
+      toast.error("Batch submission did not return a job id");
+      return;
+    }
+
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+    pollBatchJob(jobId, { assignmentId: assignId, mode, geminiModel: selectedModel });
+  };
+
+  const stopBatchMark = async () => {
+    if (!selectedAssignment || selectedAssignment.id == null) return;
+    const assignId = String(selectedAssignment.id);
+    setBatchStopped(assignId, true);
+
+    const jobId = batchJob?.jobId;
+    if (jobId) clearBatchPoll(jobId);
+    patchBatchJob(assignId, null);
+
+    if (jobId) {
+      try {
+        await api.delete(`/external-grading/mark-batch/cancel/${jobId}`);
+        toast.info("Batch marking cancelled");
+      } catch (err) {
+        toast.warning(
+          (await getApiErrorMessage(err)) || "Batch stop requested — server cancel failed"
+        );
+      }
+    } else {
+      toast.info("Batch marking stopped");
+    }
+  };
+
+  const checkForActiveJob = useCallback(async () => {
+    if (!selectedAssignment || selectedAssignment.id == null) return;
+    const assignId = String(selectedAssignment.id);
+    try {
+      const { data } = await api.get(`/external-grading/mark-batch/active/${selectedAssignment.id}`);
+      const active = data?.active;
+      const jobId = active?.jobId || (data?.jobId && data?.active !== false ? data.jobId : null);
+      if (active && jobId) {
+        setBatchStopped(assignId, false);
+        patchBatchJob(assignId, {
+          phase: "processing",
+          jobId,
+          mode: active.markingMode || active.mode || "normal",
+          geminiModel: pickValidGeminiModel(geminiModels, active.geminiModel || geminiModel),
+        });
+        pollBatchJob(jobId, { assignmentId: assignId });
+      }
+    } catch (err) {
+      console.error("checkForActiveJob:", err?.message);
+    }
+  }, [selectedAssignment?.id, geminiModels, geminiModel, pollBatchJob]);
+
+  // Subscribe the panel to this assignment's batch job (survives navigation).
+  useEffect(() => {
+    if (selectedAssignment?.id == null) {
+      setBatchJob(null);
+      return;
+    }
+    return subscribeBatchJob(String(selectedAssignment.id), setBatchJob);
+  }, [selectedAssignment?.id]);
+
+  // Resume polling a running job whenever an assignment is selected.
+  useEffect(() => {
+    if (selectedAssignment?.id == null) return;
+    checkForActiveJob();
+  }, [selectedAssignment?.id, checkForActiveJob]);
 
   const openSavedResult = (student) => {
     const saved = results[student.submissionId];
@@ -1072,8 +1341,85 @@ export default function ManagerLoginCss() {
                         <FiX size={13} /> Stop
                       </button>
                     )}
+                    <button
+                      className="msv-btn-ai"
+                      onClick={() => {
+                        if (batchJob?.phase === "processing") {
+                          toast.info("Checking batch status…");
+                          pollBatchJob(batchJob.jobId, {
+                            assignmentId: String(selectedAssignment.id),
+                            mode: batchJob.mode,
+                            geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
+                          });
+                        } else {
+                          openGuidanceModal(null, { batch: true });
+                        }
+                      }}
+                      disabled={
+                        selectedAssignment.id == null ||
+                        bulkMarking ||
+                        priorityBulkRunning ||
+                        batchJob?.phase === "uploading" ||
+                        batchJob?.phase === "submitting"
+                      }
+                      title={
+                        selectedAssignment.id == null
+                          ? "Batch marking needs an assignment with a LoginCSS id"
+                          : "Submit one Gemini batch job for all unmarked submissions"
+                      }
+                      style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                    >
+                      {batchJob?.phase === "uploading" && <><span className="pm-spinner" /> Uploading…</>}
+                      {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
+                      {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
+                      {batchJob?.phase === "error" && <>⚡ Batch failed — retry?</>}
+                      {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark batch</>}
+                    </button>
                   </div>
                 </div>
+
+                {batchJob && batchJob.phase !== "done" && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "rgba(99,102,241,0.08)",
+                      border: "1px solid rgba(99,102,241,0.2)",
+                      fontSize: 12,
+                      color: "rgba(255,255,255,0.6)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <span className="pm-spinner" style={{ width: 12, height: 12 }} />
+                    <span>
+                      {batchJob.phase === "uploading" && `Uploading ${batchJob.total} submission PDF(s) to Gemini…`}
+                      {batchJob.phase === "submitting" && "Submitting batch job…"}
+                      {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
+                    </span>
+                    {(batchJob.phase === "uploading" ||
+                      batchJob.phase === "submitting" ||
+                      batchJob.phase === "processing") && (
+                      <button
+                        onClick={stopBatchMark}
+                        style={{
+                          marginLeft: "auto",
+                          fontSize: 11,
+                          color: "#f87171",
+                          background: "rgba(239,68,68,0.12)",
+                          border: "1px solid rgba(239,68,68,0.35)",
+                          borderRadius: 6,
+                          padding: "4px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {loadingList && <p className="ma-loading-msg">Loading submissions…</p>}
                 {!loadingList && visibleSubmissions.length === 0 && (
@@ -1322,7 +1668,9 @@ export default function ManagerLoginCss() {
           <div className="msv-guidance-modal" onClick={(e) => e.stopPropagation()}>
             <div className="msv-guidance-header">
               <div style={{ fontSize: 15, fontWeight: 700 }}>
-                {guidanceModal.priorityBulk
+                {guidanceModal.batch
+                  ? "📦 Mark Batch (Gemini)"
+                  : guidanceModal.priorityBulk
                   ? "🚀 Mark All (Priority)"
                   : guidanceModal.bulk
                   ? "🤖 Mark All Submissions"
@@ -1548,7 +1896,23 @@ export default function ManagerLoginCss() {
               </button>
 
               <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                {guidanceModal.priority || guidanceModal.priorityBulk ? (
+                {guidanceModal.batch ? (
+                  <button
+                    className="ma-send-btn"
+                    onClick={() => handleGuidanceConfirm("gemini")}
+                    disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                    style={{
+                      flex: 1,
+                      justifyContent: "center",
+                      opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
+                      background: "rgba(99,102,241,0.15)",
+                      borderColor: "rgba(99,102,241,0.4)",
+                    }}
+                  >
+                    <FiLayers size={14} />
+                    Start Batch Marking
+                  </button>
+                ) : guidanceModal.priority || guidanceModal.priorityBulk ? (
                   <button
                     className="ma-send-btn"
                     onClick={() => handleGuidanceConfirm("gemini")}
@@ -1804,6 +2168,26 @@ export default function ManagerLoginCss() {
                 )}
                 <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
                 <TokenUsageStats result={resultModal.result} />
+
+                {(resultModal.student?.assignment?.id ?? selectedAssignment?.id) && (
+                  <MarkingCorrectionChat
+                    assignmentId={
+                      resultModal.student?.assignment?.id ?? selectedAssignment?.id
+                    }
+                    submissionId={
+                      resultModal.student?.submissionId || resultModal.submissionId
+                    }
+                    studentId={resultModal.student?.studentId}
+                    studentName={resultModal.student?.name}
+                    currentResult={{
+                      ...resultModal.result,
+                      questions: editingQuestions,
+                      summary: editingSummary,
+                      totalMarks: sumQuestionMarks(editingQuestions),
+                    }}
+                    onApplyPatch={handleCorrectionPatch}
+                  />
+                )}
 
                 {/* CRITERIA MODE */}
                 {isCriteria && resultModal.result.criteriaGrade && (

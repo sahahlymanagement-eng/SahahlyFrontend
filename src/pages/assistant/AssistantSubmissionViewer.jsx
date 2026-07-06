@@ -2177,10 +2177,6 @@ return (
                   <FiDownload /> {exportingGrades ? "Exporting…" : "Export Grades"}
                 </button>
 
-                <button onClick={() => fetchPage(page)} className="ma-send-btn">
-      <FiRefreshCw /> Refresh
-    </button>
-
                 <button onClick={() => navigate("/assistant/assignments")} className="msv-cancel-btn">
       Back
     </button>

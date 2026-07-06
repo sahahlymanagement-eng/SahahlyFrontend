@@ -19,11 +19,17 @@ const NAV_ITEMS = [
 ];
 
 export default function ManagerSidebar() {
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isManager01 = user?.email?.toLowerCase() === "manager01@manager";
+  const navItems = isManager01
+    ? NAV_ITEMS
+    : NAV_ITEMS.filter((item) => item.path !== "/manager/logincss");
+
   return (
     <RoleSidebar
       roleLabel="Manager"
       accountLabel="Manager account"
-      navItems={NAV_ITEMS}
+      navItems={navItems}
     />
   );
 }
