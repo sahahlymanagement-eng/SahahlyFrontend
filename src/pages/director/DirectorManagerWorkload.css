@@ -204,6 +204,144 @@ border-left:4px solid #3b82f6;
 border-left:4px solid #f59e0b;
 }
 
+.assigned{
+border-left:4px solid #3b82f6;
+}
+
+.unassigned{
+border-left:4px solid #64748b;
+}
+
+.statusGrid--four{
+grid-template-columns:repeat(2,1fr);
+}
+
+.mw-summary-grid{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+gap:12px;
+margin-bottom:16px;
+}
+
+.mw-summary-card{
+display:flex;
+align-items:center;
+gap:12px;
+background:#081c44;
+border:1px solid rgba(255,255,255,0.06);
+border-radius:12px;
+padding:14px 16px;
+}
+
+.mw-summary-icon{
+font-size:20px;
+color:#60a5fa;
+}
+
+.mw-summary-value{
+display:block;
+font-size:22px;
+font-weight:600;
+}
+
+.mw-summary-label{
+display:block;
+font-size:12px;
+color:#9ca3af;
+margin-top:2px;
+}
+
+.mw-summary-status{
+display:flex;
+flex-wrap:wrap;
+gap:10px;
+margin-bottom:20px;
+}
+
+.mw-status-pill{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:16px;
+min-width:140px;
+padding:10px 14px;
+border-radius:10px;
+background:#000828;
+font-size:13px;
+color:#cbd5e1;
+}
+
+.mw-status-pill strong{
+font-size:18px;
+color:#fff;
+}
+
+.mw-status-pill--done{border-left:4px solid #22c55e;}
+.mw-status-pill--assigned{border-left:4px solid #3b82f6;}
+.mw-status-pill--unassigned{border-left:4px solid #64748b;}
+.mw-status-pill--failed{border-left:4px solid #f59e0b;}
+
+.mw-progress-wrap{
+display:flex;
+flex-direction:column;
+gap:6px;
+}
+
+.mw-progress-label{
+display:flex;
+justify-content:space-between;
+font-size:12px;
+color:#94a3b8;
+}
+
+.mw-progress-label strong{
+color:#e2e8f0;
+font-size:14px;
+}
+
+.mw-progress-track{
+height:8px;
+border-radius:999px;
+background:rgba(0,0,0,0.35);
+overflow:hidden;
+}
+
+.mw-progress-fill{
+height:100%;
+border-radius:999px;
+background:linear-gradient(90deg,#22c55e,#16a34a);
+transition:width 0.3s ease;
+}
+
+.mw-extra-metrics{
+display:flex;
+flex-wrap:wrap;
+gap:8px;
+}
+
+.mw-flag{
+display:inline-flex;
+align-items:center;
+gap:6px;
+font-size:12px;
+color:#94a3b8;
+padding:6px 10px;
+border-radius:8px;
+background:rgba(0,0,0,0.25);
+}
+
+.mw-flag--warn{
+color:#fbbf24;
+background:rgba(245,158,11,0.12);
+border:1px solid rgba(245,158,11,0.25);
+}
+
+@media (max-width:768px){
+.statusGrid--four{
+grid-template-columns:1fr;
+}
+}
+
 
 /* LOADING */
 

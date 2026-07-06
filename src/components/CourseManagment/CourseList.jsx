@@ -1,237 +1,319 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import api from "../../api/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { FiSearch, FiX } from "react-icons/fi";
+import {
+  FiSearch,
+  FiX,
+  FiChevronDown,
+  FiChevronRight,
+  FiFolder,
+  FiPlus,
+  FiArrowLeft,
+  FiBookOpen,
+  FiEye,
+} from "react-icons/fi";
 import "./CourseManagement.css";
 import { usePagination } from "../../hooks/usePagination";
-import Pagination from "../../components/Pagination";
+
+const UNASSIGNED_KEY = "__unassigned__";
+
+function teacherFromCourse(course) {
+  const t = course.teacherId;
+  if (!t || typeof t !== "object") {
+    return { id: UNASSIGNED_KEY, name: "Unassigned", email: null };
+  }
+  return {
+    id: String(t._id || t.id || UNASSIGNED_KEY),
+    name: t.name || "Unassigned",
+    email: t.email || null,
+  };
+}
+
+function groupCoursesByTeacher(courses) {
+  const map = new Map();
+
+  for (const course of courses) {
+    const teacher = teacherFromCourse(course);
+    if (!map.has(teacher.id)) {
+      map.set(teacher.id, { ...teacher, courses: [] });
+    }
+    map.get(teacher.id).courses.push(course);
+  }
+
+  return [...map.values()].sort((a, b) => {
+    if (a.id === UNASSIGNED_KEY) return 1;
+    if (b.id === UNASSIGNED_KEY) return -1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function courseId(course) {
+  return course.googleCourseId || course.id || course._id;
+}
 
 export default function CoursesList() {
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [expandedFolders, setExpandedFolders] = useState({});
 
-  const handleToggleCourse = async (courseId, currentStatus) => {
-    try {
-      await api.patch(`/google-classroom/courses/${courseId}/toggle-active`, {
-        active: !currentStatus,
-      });
-
-      toast.success(
-        `Course ${!currentStatus ? "enabled" : "disabled"} successfully`
-      );
-
-      fetchPage(page); // refresh current page
-    } catch (error) {
-      toast.error("Failed to update course status");
-    }
-  };
-
-  // Get user once
   const storedUser = localStorage.getItem("user");
   const user = storedUser ? JSON.parse(storedUser) : null;
-
   const role = user?.roleId?.name?.toLowerCase();
+  const isAdmin = role === "admin";
+  const isManager = role === "manager";
+  const isFolderView = isAdmin || isManager;
 
   const listParams = useMemo(() => {
-    if (role === "admin" && search) return { search };
-    return {};
-  }, [role, search]);
+    const params = {};
+    if (isManager && user?.id) params.personId = user.id;
+    if (search) params.search = search;
+    return params;
+  }, [isManager, user?.id, search]);
 
-const url =
-  role === "admin"
+  const url = isAdmin
     ? "/google-classroom/courses"
-    : role === "manager"
+    : isManager
       ? "/google-classroom/courses/manager"
       : `/google-classroom/teacher-courses/${user?.id}`;
 
-const { data: courses, page, totalPages, total, loading, fetchPage } =
-  usePagination(url, listParams, 6);
+  const { data: courses, loading, fetchPage, page } = usePagination(
+    url,
+    listParams,
+    500,
+    "data",
+    isManager ? !!user?.id : true
+  );
 
-  const runSearch = () => {
-    setSearch(searchInput.trim());
-  };
+  const teacherFolders = useMemo(
+    () => (isFolderView ? groupCoursesByTeacher(courses) : []),
+    [courses, isFolderView]
+  );
 
+  const totalCourses = courses.length;
+
+  const runSearch = () => setSearch(searchInput.trim());
   const clearSearch = () => {
     setSearchInput("");
     setSearch("");
   };
 
-  const handleSearchKeyDown = (e) => {
-    if (e.key === "Enter") runSearch();
+  const toggleFolder = (folderId) => {
+    setExpandedFolders((prev) => ({
+      ...prev,
+      [folderId]: prev[folderId] === false,
+    }));
   };
 
-  const teacherLabel = (course) => {
-    const t = course.teacherId;
-    if (!t) return null;
-    if (typeof t === "object") return t.name || t.email || null;
-    return null;
+  const isFolderOpen = (folderId) => expandedFolders[folderId] !== false;
+
+  const handleToggleCourse = async (id, currentStatus) => {
+    try {
+      await api.patch(`/google-classroom/courses/${id}/toggle-active`, {
+        active: !currentStatus,
+      });
+      toast.success(`Course ${!currentStatus ? "enabled" : "disabled"} successfully`);
+      fetchPage(page);
+    } catch {
+      toast.error("Failed to update course status");
+    }
+  };
+
+  const basePath = isManager ? "/manager" : isAdmin ? "/director" : "/teacher";
+
+  const goCreateCoursework = (course) => {
+    navigate(`${basePath}/coursework/${courseId(course)}`);
+  };
+
+  const goViewCoursework = (course) => {
+    navigate(`${basePath}/view-coursework/${courseId(course)}`, {
+      state: { courseName: course.name },
+    });
   };
 
   return (
-    <div className="pm-page">
-      <div className="pm-shell">
+    <div className="cm-courses-page">
+      <header className="cm-courses-header">
+        <button type="button" className="cm-courses-back" onClick={() => navigate(-1)}>
+          <FiArrowLeft />
+          Back
+        </button>
 
-        <header className="pm-header" >
-          <button className="pm-back-btn" style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              fontSize: "14px",
-              color: "#6b7280",
-            }} 
-          onClick={() => navigate(-1)}>
-                    ← Back
-                  </button>
+        <div className="cm-courses-header-main">
+          <h1>Course management</h1>
+          <p>
+            {isManager
+              ? "Classrooms assigned to you, grouped by teacher"
+              : isAdmin
+                ? "All classrooms grouped by teacher"
+                : "Your Google Classroom courses"}
+          </p>
+        </div>
 
-            <h2 style={{position: "absolute",left: "50%",transform: "translateX(-50%)",margin: 0 }} >Courses</h2> 
-{/* 
-            {(role === "manager")&&
+        <div className="cm-courses-header-actions">
+          {(isManager || isAdmin) && (
             <button
-              className="pm-back"
-              onClick={() => navigate("/manager/google-classroom")}
+              type="button"
+              className="cm-courses-btn cm-courses-btn--primary"
+              onClick={() => navigate(`${basePath}/google-classroom`)}
             >
-              + New Course
+              <FiPlus />
+              New course
             </button>
-}
-            { role === "admin" &&
-            <button
-              className="pm-back"
-              onClick={() => navigate("/director/google-classroom")}
-            >
-              + New Course
-            </button>
-} */}
-        </header>
+          )}
+        </div>
+      </header>
 
-        {role === "admin" && (
-          <div className="cm-search-bar">
-            <input
-              className="cm-search-input"
-              type="search"
-              placeholder="Search by name, section, teacher, ID, status…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-            />
-            <button type="button" className="cm-search-btn" onClick={runSearch}>
-              <FiSearch size={15} />
-              Search
+      {isFolderView && (
+        <div className="cm-search-bar">
+          <FiSearch className="cm-search-icon" />
+          <input
+            className="cm-search-input"
+            type="search"
+            placeholder="Search teacher, course name, or section…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runSearch()}
+          />
+          <button type="button" className="cm-search-btn" onClick={runSearch}>
+            Search
+          </button>
+          {search ? (
+            <button type="button" className="cm-search-clear" onClick={clearSearch}>
+              <FiX size={15} />
+              Clear
             </button>
-            {search ? (
-              <button type="button" className="cm-search-clear" onClick={clearSearch}>
-                <FiX size={15} />
-                Clear
-              </button>
-            ) : null}
-            {search ? (
-              <span className="cm-search-meta">
-                {total} result{total === 1 ? "" : "s"} for &ldquo;{search}&rdquo;
-              </span>
-            ) : null}
-          </div>
-        )}
+          ) : null}
+        </div>
+      )}
 
-        {loading ? (
-          <div className="pm-loading-panel">
-            <p>Loading courses...</p>
+      {isFolderView && !loading && (
+        <div className="cm-courses-summary">
+          <span>{teacherFolders.length} teachers</span>
+          <span>{totalCourses} classrooms</span>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="cm-courses-loading">Loading courses…</div>
+      ) : isFolderView ? (
+        !teacherFolders.length ? (
+          <div className="cm-search-empty">
+            {search
+              ? `No courses match "${search}".`
+              : isManager
+                ? "No classrooms are assigned to you yet."
+                : "No courses found."}
           </div>
         ) : (
-          <>
-            <div className="pm-questions">
-              {!courses.length && (
-                <div className="cm-search-empty">
-                  {search
-                    ? `No courses match "${search}". Try another term or clear the search.`
-                    : "No courses found."}
-                </div>
-              )}
-              {courses.map((course) => (
-                <div
-                  key={course.googleCourseId || course.id || course._id}
-                  className="pm-question-card"
-                >
-                  <div className="pm-q-header">
-                    <span className="pm-q-number">
-                      {course.name}
-                    {role === "admin" && (
-  <div className="course-toggle">
-    <label className="switch">
-      <input
-        type="checkbox"
-        checked={course.active}
-        onChange={() =>
-          handleToggleCourse(
-            course.googleCourseId || course.id || course._id,
-            course.active
-          )
-        }
-      />
-      <span className="slider round"></span>
-    </label>
-
-    <span>
-      {course.active ? "Active" : "Inactive"}
-    </span>
-  </div>
-)}  
+          <div className="cm-folder-list">
+            {teacherFolders.map((folder) => {
+              const open = isFolderOpen(folder.id);
+              return (
+                <section key={folder.id} className="cm-folder">
+                  <button
+                    type="button"
+                    className="cm-folder-header"
+                    onClick={() => toggleFolder(folder.id)}
+                  >
+                    <span className="cm-folder-icon">
+                      {open ? <FiChevronDown /> : <FiChevronRight />}
                     </span>
-                  </div>
+                    <span className="cm-folder-avatar">
+                      {folder.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="cm-folder-info">
+                      <strong>{folder.name}</strong>
+                      {folder.email ? (
+                        <span className="cm-folder-email">{folder.email}</span>
+                      ) : null}
+                    </span>
+                    <span className="cm-folder-count">
+                      <FiFolder />
+                      {folder.courses.length} course{folder.courses.length === 1 ? "" : "s"}
+                    </span>
+                  </button>
 
-                  <p style={{ opacity: 0.6 }}>
-                    {course.section || "No section"}
-                  </p>
+                  {open && (
+                    <div className="cm-folder-body">
+                      {folder.courses.map((course) => (
+                        <article key={courseId(course)} className="cm-course-card">
+                          <div className="cm-course-card-top">
+                            <div>
+                              <h3>{course.name}</h3>
+                              <p>{course.section || "No section"}</p>
+                            </div>
+                            {isAdmin && (
+                              <div className="cm-course-toggle">
+                                <label className="switch">
+                                  <input
+                                    type="checkbox"
+                                    checked={course.active !== false}
+                                    onChange={() =>
+                                      handleToggleCourse(courseId(course), course.active !== false)
+                                    }
+                                  />
+                                  <span className="slider round" />
+                                </label>
+                                <span>{course.active !== false ? "Active" : "Inactive"}</span>
+                              </div>
+                            )}
+                          </div>
 
-                  {role === "admin" && teacherLabel(course) && (
-                    <p style={{ opacity: 0.75, marginTop: 4 }}>
-                      Teacher: {teacherLabel(course)}
-                    </p>
+                          <div className="cm-course-actions">
+                            <button
+                              type="button"
+                              className="cm-courses-btn cm-courses-btn--primary"
+                              onClick={() => goCreateCoursework(course)}
+                            >
+                              <FiBookOpen />
+                              Create coursework
+                            </button>
+                            <button
+                              type="button"
+                              className="cm-courses-btn cm-courses-btn--secondary"
+                              onClick={() => goViewCoursework(course)}
+                            >
+                              <FiEye />
+                              View coursework
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
                   )}
-
-            
-                    <button
-                      className="pm-mark-btn"
-                      style={{ marginTop: 12 }}
-                        onClick={() =>
-                        navigate(
-                          role === "manager"
-                            ? `/manager/coursework/${
-                            course.googleCourseId || course.id}`
-                            : role === "admin"
-                            ? `/director/coursework/${
-                            course.googleCourseId || course.id}`
-                            : `/teacher/coursework/${
-                            course.googleCourseId || course.id}`
-                        )
-                      }>
-                      Create Coursework
-                    </button>
-                    
-                    <button
-                      className="pm-mark-btn"
-                      onClick={() =>
-                        navigate(
-                          role === "manager"
-                            ? `/manager/view-coursework/${course.googleCourseId || course.id}`
-                            : role === "admin"
-                            ? `/director/view-coursework/${course.googleCourseId || course.id}`
-                            : `/teacher/view-coursework/${course.googleCourseId || course.id}`,
-                          { state: { courseName: course.name } }
-                        )
-                      }
-                    >
-                       View Coursework
-                    </button> 
-
-                </div>
-              ))}
-              <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
-            </div>
-          </>       
-        )}
-
-      </div>
+                </section>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        <div className="cm-legacy-list">
+          {courses.map((course) => (
+            <article key={courseId(course)} className="cm-course-card">
+              <h3>{course.name}</h3>
+              <p>{course.section || "No section"}</p>
+              <div className="cm-course-actions">
+                <button
+                  type="button"
+                  className="cm-courses-btn cm-courses-btn--primary"
+                  onClick={() => goCreateCoursework(course)}
+                >
+                  Create coursework
+                </button>
+                <button
+                  type="button"
+                  className="cm-courses-btn cm-courses-btn--secondary"
+                  onClick={() => goViewCoursework(course)}
+                >
+                  View coursework
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

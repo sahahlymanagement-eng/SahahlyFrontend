@@ -287,12 +287,11 @@ function buildTopicsMap(questions) {
 }
 
 /** Widen page: student paper on the left, dedicated examiner column on the right. */
-async function appendExaminerColumn(pdfDoc, page, stripH) {
+function appendExaminerColumn(page, stripH) {
   const { width: paperW, height } = page.getSize();
-  const embedded = await pdfDoc.embedPage(page);
 
+  // setSize keeps existing student content at (0,0); only extends width to the right.
   page.setSize(paperW + EXAMINER_COL_W, height);
-  page.drawPage(embedded, { x: 0, y: 0, width: paperW, height });
 
   const colLeft = paperW;
   const colTop = height - stripH - 4;
@@ -1280,7 +1279,7 @@ export async function annotatePdf({
     const pageNum = i - reportPageCount + 1;
     const qs = byPage[pageNum] || [];
 
-    const layout = await appendExaminerColumn(pdfDoc, page, STRIP_H);
+    const layout = appendExaminerColumn(page, STRIP_H);
     const { paperW, totalW, height } = { paperW: layout.paperW, totalW: layout.totalW, height: page.getSize().height };
 
     const PAGE_BOTTOM = STRIP_H + 6;

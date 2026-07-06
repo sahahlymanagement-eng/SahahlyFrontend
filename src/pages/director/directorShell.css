@@ -20,6 +20,9 @@
 .director-page-inner > .directorGooglePage,
 .director-page-inner > .dm-page,
 .director-page-inner > .fb-main,
+.director-page-inner > .dap-page,
+.director-page-inner > .cm-courses-page,
+.director-page-inner > .managerWorkloadPage,
 .director-page-inner > .tu-main {
   padding: 0;
   min-height: 0;
