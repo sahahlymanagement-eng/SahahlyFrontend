@@ -216,7 +216,7 @@ export default function ManagerDashboard() {
     { icon: <FiFileText />, label: "Gemini AI Marking", path: "/manager/marking" },
     { icon: <FiFileText />, label: "Claude AI Marking", path: "/manager/markingclaude" },
     { icon: <FiZap />, label: "AI Classifier Test", path: "/questionbank/manage" },
-    { label: "Course Management", path: "/manager/google-classroom" },
+    { label: "Course Management", path: "/manager/courses" },
     
     
   ];

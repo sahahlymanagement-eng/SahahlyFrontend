@@ -68,6 +68,33 @@
   scrollbar-gutter: stable;
 }
 
+/* Teacher shell pages (direct Outlet children — not wrapped in .ast-page) */
+.ast-main > .tch-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  box-sizing: border-box;
+}
+
+/* Teacher reports reuse manager layout — scroll inside .ma-content */
+.ast-main > .ma-main {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ast-main > .ast-page.teacher-page {
+  padding: 0;
+  max-width: none;
+}
+
 .ast-main > .md-root,
 .ast-main > .ms-root,
 .ast-main > .tu-root,

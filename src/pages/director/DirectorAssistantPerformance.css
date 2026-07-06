@@ -1,0 +1,394 @@
+.dap-page {
+  color: #e2e8f0;
+  font-family: "Inter", sans-serif;
+}
+
+.dap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dap-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dap-header-icon {
+  width: 44px;
+  height: 44px;
+  background: #081c44;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 20px;
+}
+
+.dap-header h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.dap-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.dap-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #081c44;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dap-refresh-btn:hover:not(:disabled) {
+  background: #0a2558;
+}
+
+.dap-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dap-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #081c44;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 24px;
+  max-width: 480px;
+}
+
+.dap-search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: white;
+  width: 100%;
+}
+
+.dap-search svg {
+  color: #9ca3af;
+}
+
+.dap-loading {
+  color: #9ca3af;
+  margin: 20px 0;
+}
+
+.dap-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.dap-summary-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #081c44;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.dap-summary-icon {
+  color: #60a5fa;
+  font-size: 18px;
+}
+
+.dap-summary-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dap-summary-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.dap-summary-pill--good .dap-summary-icon {
+  color: #4ade80;
+}
+
+.dap-summary-pill--warn .dap-summary-icon {
+  color: #fbbf24;
+}
+
+.dap-table-card {
+  background: #081c44;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.dap-table-card .dap-table-wrap {
+  padding: 0;
+}
+
+.dap-table-card .dap-table th,
+.dap-table-card .dap-table td {
+  padding: 12px 16px;
+}
+
+.dap-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dap-manager-card {
+  background: #081c44;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  overflow: hidden;
+}
+
+.dap-manager-top {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  background: none;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dap-manager-top:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dap-manager-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #000828;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #60a5fa;
+}
+
+.dap-manager-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dap-manager-info h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.dap-manager-info > p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.dap-manager-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.dap-expand-icon {
+  color: #94a3b8;
+  font-size: 18px;
+  padding-top: 4px;
+}
+
+.dap-subject-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.dap-subject-chips--sm {
+  margin-top: 0;
+}
+
+.dap-chip {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+
+.dap-assistants-panel {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 16px 20px 20px;
+  background: rgba(0, 8, 40, 0.5);
+}
+
+.dap-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.dap-table-wrap {
+  overflow-x: auto;
+}
+
+.dap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dap-table th,
+.dap-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.dap-table th {
+  color: #94a3b8;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.dap-table td {
+  color: #e2e8f0;
+}
+
+.dap-muted {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.dap-good {
+  color: #4ade80 !important;
+  font-weight: 600;
+}
+
+.dap-warn {
+  color: #fbbf24 !important;
+  font-weight: 600;
+}
+
+.dap-detail-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(37, 99, 235, 0.12);
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.dap-detail-btn:hover {
+  background: rgba(37, 99, 235, 0.22);
+}
+
+.dap-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.dap-modal {
+  width: 100%;
+  max-width: 920px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #081c44;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 24px;
+}
+
+.dap-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dap-modal-eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.dap-modal-header h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.dap-modal-sub {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.dap-modal-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.dap-modal-close:hover {
+  color: #e2e8f0;
+}
+
+.dap-modal-body .ast-perf-grid {
+  margin: 20px 0;
+}
+
+@media (max-width: 768px) {
+  .dap-header {
+    flex-direction: column;
+  }
+
+  .dap-manager-top {
+    padding: 14px;
+  }
+
+  .dap-modal {
+    padding: 16px;
+  }
+}

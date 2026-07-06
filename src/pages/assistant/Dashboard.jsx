@@ -7,20 +7,14 @@ import {
   FiClipboard,
   FiCheckCircle,
   FiAlertTriangle,
-  FiSearch,
   FiBarChart2,
-  FiClock,
   FiChevronRight,
 } from "react-icons/fi";
 import { AssistantLoading } from "./AssistantUI";
 
 const STATUSES = [
   { key: "ASSIGNED", label: "Assigned", icon: <FiClipboard />, tone: "violet" },
-  { key: "IN_REVIEW", label: "In Review", icon: <FiClock />, tone: "cyan" },
-  { key: "RECHECK_BY_ASSISTANT", label: "Recheck Required", icon: <FiAlertTriangle />, tone: "amber" },
-  { key: "IN_REVIEW_AFTER_RECHECK", label: "Review After Recheck", icon: <FiSearch />, tone: "purple" },
   { key: "DONE", label: "Done", icon: <FiCheckCircle />, tone: "green" },
-  { key: "DONE_BY_QUALITY", label: "Done by Quality", icon: <FiCheckCircle />, tone: "emerald" },
   { key: "FAILED_DEADLINE", label: "Failed Deadline", icon: <FiAlertTriangle />, tone: "red" },
   { key: "TOTAL", label: "Total", icon: <FiBarChart2 />, tone: "indigo" },
 ];

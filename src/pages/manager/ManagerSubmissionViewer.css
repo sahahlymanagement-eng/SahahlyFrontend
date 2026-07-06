@@ -725,9 +725,12 @@
 
 .pdf-preview-page {
   margin-bottom: 8px;
-  background: #fff;
   border-radius: 4px;
   overflow: hidden;
+}
+
+.pdf-preview-page--ready {
+  background: #fff;
 }
 
 .pdf-preview-canvas {

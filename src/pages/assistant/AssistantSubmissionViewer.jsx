@@ -79,6 +79,8 @@ import {
   pickValidGeminiModel,
 } from "../../utils/markingCost";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
+import { buildReturnAllQueue } from "../../utils/returnAllQueue";
+import { confirmReturnAll, confirmReturnSingle } from "../../utils/returnConfirmation";
 import {
   useMarkingStudentSelection,
   loadEligibleStudentsForMarking,
@@ -1803,6 +1805,9 @@ const isUngraded =
       return;
     }
 
+    const confirmed = await confirmReturnSingle(resultModal.student?.name);
+    if (!confirmed) return;
+
     setReturning(true);
     try {
       const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
@@ -1890,24 +1895,26 @@ const isUngraded =
   };
 
   const returnAllToStudents = async () => {
-    const bulkQueue = students.filter(s => {
-      const bulk = bulkProgress[s.submissionId];
-      return bulk?.status === "done" && bulk?.result && !bulk?.returned;
-    });
+    if (!studentsMarkingUrl) {
+      toast.error("Assignment not loaded");
+      return;
+    }
 
-    const bulkSubmissionIds = new Set(bulkQueue.map(s => s.submissionId));
-    const batchQueue = Object.entries(batchJob?.results || {})
-      .filter(([submissionId, batch]) =>
-        !bulkSubmissionIds.has(submissionId) &&
-        batch?.status === "done" &&
-        batch?.result &&
-        !batch?.returned
-      )
-      .map(([submissionId, batch]) => ({
-        student: resolveBatchStudentForReturn(submissionId),
-        batch,
-        submissionId,
-      }));
+    let allStudents = [];
+    try {
+      allStudents = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load all students for return");
+      return;
+    }
+
+    const { bulkQueue, batchQueue } = buildReturnAllQueue({
+      bulkProgress,
+      batchJob,
+      savedResults,
+      allStudents,
+    });
 
     if (!bulkQueue.length && !batchQueue.length) {
       toast.warn("No new graded students to return");
@@ -1927,8 +1934,7 @@ const isUngraded =
     });
 
     try {
-      for (const student of bulkQueue) {
-        const bulk = bulkProgress[student.submissionId];
+      for (const { submissionId, student, bulk } of bulkQueue) {
 
         if (!bulk?.result) {
           toast.error(`Missing data for ${student.name}. Stopping return process.`);
@@ -2000,7 +2006,7 @@ const isUngraded =
 
         setBulkProgress(p => ({
           ...p,
-          [student.submissionId]: { ...bulk, returned: true }
+          [submissionId]: { ...bulk, returned: true }
         }));
       }
 
@@ -2075,7 +2081,11 @@ const isUngraded =
         }));
       }
 
-      toast.success("All graded papers returned");
+      toast.success(
+        `Returned ${bulkQueue.length + batchQueue.length} graded paper${
+          bulkQueue.length + batchQueue.length === 1 ? "" : "s"
+        }`
+      );
     } finally {
       setReturning(false);
     }
@@ -2107,38 +2117,60 @@ const isUngraded =
   };
 
   const handleReturnAll = async () => {
+    if (!studentsMarkingUrl) return;
+
     try {
+      const allStudents = await fetchAllPaginated(
+        api,
+        studentsMarkingUrl,
+        {},
+        "students"
+      );
+
+      const { bulkQueue, batchQueue } = buildReturnAllQueue({
+        bulkProgress,
+        batchJob,
+        savedResults,
+        allStudents,
+      });
+
+      const returnCount = bulkQueue.length + batchQueue.length;
+      if (returnCount === 0) {
+        toast.warn("No graded papers to return");
+        return;
+      }
+
+      const confirmed = await confirmReturnAll(returnCount);
+      if (!confirmed) return;
+
       setReturning(true);
 
-      const bulkSaveRequests = Object.entries(bulkProgress)
-        .filter(([submissionId, bulk]) =>
-          bulk?.status === "done" &&
-          resolvePdfSummary(submissionId, bulk?.result) &&
-          !bulk?.returned
-        )
-        .map(([submissionId, bulk]) =>
-          api.post("/submission-files/save-summary", {
-            assignmentId,
-            submissionId,
-            summary: resolvePdfSummary(submissionId, bulk.result),
+      const saveRequests = [
+        ...bulkQueue
+          .map(({ submissionId, bulk }) => {
+            const summary = resolvePdfSummary(submissionId, bulk?.result);
+            if (!summary) return null;
+            return api.post("/submission-files/save-summary", {
+              assignmentId,
+              submissionId,
+              summary,
+            });
           })
-        );
-
-      const batchSaveRequests = Object.entries(batchJob?.results || {})
-        .filter(([submissionId, batch]) =>
-          batch?.status === "done" &&
-          resolvePdfSummary(submissionId, batch?.result) &&
-          !batch?.returned
-        )
-        .map(([submissionId, batch]) =>
-          api.post("/submission-files/save-summary", {
-            assignmentId,
-            submissionId,
-            summary: resolvePdfSummary(submissionId, batch.result),
+          .filter(Boolean),
+        ...batchQueue
+          .map(({ submissionId, batch }) => {
+            const summary = resolvePdfSummary(submissionId, batch?.result);
+            if (!summary) return null;
+            return api.post("/submission-files/save-summary", {
+              assignmentId,
+              submissionId,
+              summary,
+            });
           })
-        );
+          .filter(Boolean),
+      ];
 
-      await Promise.all([...bulkSaveRequests, ...batchSaveRequests]);
+      await Promise.all(saveRequests);
 
       await returnAllToStudents();
     } finally {

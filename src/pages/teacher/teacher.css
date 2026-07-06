@@ -29,10 +29,11 @@
 }
 
 .tch-page {
-  padding: 32px 40px 48px;
+  padding: 32px 40px 80px;
   max-width: 1200px;
   margin: 0 auto;
   animation: tch-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-sizing: border-box;
 }
 
 .tch-page--wide {
@@ -553,8 +554,9 @@
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
-  padding: 28px 32px;
+  padding: 28px 32px 32px;
   max-width: 720px;
+  margin-bottom: 24px;
 }
 
 .tch-form-section-title {
@@ -1072,7 +1074,7 @@
 
 @media (max-width: 768px) {
   .tch-page {
-    padding: 20px 16px 32px;
+    padding: 20px 16px 72px;
   }
 
   .tch-page-title {

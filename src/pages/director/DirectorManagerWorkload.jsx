@@ -9,13 +9,21 @@ import {
   FiMail,
   FiHome,
   FiCheckCircle,
-  FiShield,
   FiAlertTriangle,
   FiSearch,
+  FiClock,
+  FiUsers,
+  FiTrendingUp,
+  FiCalendar,
 } from "react-icons/fi";
 
+function formatNum(n) {
+  return (Number(n) || 0).toLocaleString();
+}
+
 export default function DirectorManagerWorkload() {
-  const [data, setData] = useState([]);
+  const [managers, setManagers] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -27,13 +35,15 @@ export default function DirectorManagerWorkload() {
     try {
       setLoading(true);
       const res = await api.get("/director/manager-workload");
-      setData(res.data?.managers || []);
+      setManagers(res.data?.managers || []);
+      setSummary(res.data?.summary || null);
     } catch (err) {
       console.error(err);
       toast.error(
         err.response?.data?.message || "Failed to load manager workload"
       );
-      setData([]);
+      setManagers([]);
+      setSummary(null);
     } finally {
       setLoading(false);
     }
@@ -41,14 +51,14 @@ export default function DirectorManagerWorkload() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return data;
+    if (!q) return managers;
 
-    return data.filter(
+    return managers.filter(
       (m) =>
         m.name?.toLowerCase().includes(q) ||
         m.email?.toLowerCase().includes(q)
     );
-  }, [search, data]);
+  }, [search, managers]);
 
   return (
     <div className="managerWorkloadPage">
@@ -57,13 +67,50 @@ export default function DirectorManagerWorkload() {
           <div className="headerIcon">
             <FiBarChart2 />
           </div>
-
           <div>
             <h2>Manager Workload</h2>
-            <p>Overview of manager classroom assignments and completed tasks</p>
+            <p>Assignment pipeline across each manager&apos;s classrooms</p>
           </div>
         </div>
       </div>
+
+      {summary && !loading && (
+        <div className="mw-summary-grid">
+          <SummaryCard
+            icon={<FiUsers />}
+            label="Managers"
+            value={formatNum(summary.managerCount)}
+          />
+          <SummaryCard
+            icon={<FiHome />}
+            label="Classrooms"
+            value={formatNum(summary.classroomCount)}
+          />
+          <SummaryCard
+            icon={<FiBarChart2 />}
+            label="Total assignments"
+            value={formatNum(summary.totalAssignments)}
+          />
+          <SummaryCard
+            icon={<FiTrendingUp />}
+            label="Completion rate"
+            value={`${summary.completionRate || 0}%`}
+          />
+        </div>
+      )}
+
+      {summary && !loading && (
+        <div className="mw-summary-status">
+          <StatusPill label="Done" value={summary.done} tone="done" />
+          <StatusPill label="Assigned" value={summary.assigned} tone="assigned" />
+          <StatusPill label="Unassigned" value={summary.unassigned} tone="unassigned" />
+          <StatusPill
+            label="Failed deadline"
+            value={summary.failedDeadline}
+            tone="failed"
+          />
+        </div>
+      )}
 
       <div className="searchBar">
         <FiSearch />
@@ -74,13 +121,11 @@ export default function DirectorManagerWorkload() {
         />
       </div>
 
-      {loading && <p className="loading">Loading workload...</p>}
+      {loading && <p className="loading">Loading workload…</p>}
 
       {!loading && !filtered.length && (
         <p className="loading">
-          {search
-            ? `No managers match "${search}".`
-            : "No managers found."}
+          {search ? `No managers match "${search}".` : "No managers found."}
         </p>
       )}
 
@@ -91,13 +136,25 @@ export default function DirectorManagerWorkload() {
               <div className="managerAvatar">
                 <FiUser />
               </div>
-
               <div className="managerInfo">
                 <h3>{m.name}</h3>
                 <p>
                   <FiMail />
                   <span>{m.email}</span>
                 </p>
+              </div>
+            </div>
+
+            <div className="mw-progress-wrap">
+              <div className="mw-progress-label">
+                <span>Completion</span>
+                <strong>{m.completionRate || 0}%</strong>
+              </div>
+              <div className="mw-progress-track">
+                <div
+                  className="mw-progress-fill"
+                  style={{ width: `${Math.min(m.completionRate || 0, 100)}%` }}
+                />
               </div>
             </div>
 
@@ -111,56 +168,95 @@ export default function DirectorManagerWorkload() {
                   <p>Classrooms</p>
                 </div>
               </div>
-
+              <div className="metricBox">
+                <div className="metricIcon">
+                  <FiUsers />
+                </div>
+                <div>
+                  <span>{m.teacherCount}</span>
+                  <p>Teachers</p>
+                </div>
+              </div>
               <div className="metricBox">
                 <div className="metricIcon">
                   <FiBarChart2 />
                 </div>
                 <div>
                   <span>{m.totalAssignments}</span>
-                  <p>Total Assignments</p>
-                </div>
-              </div>
-
-              <div className="metricBox">
-                <div className="metricIcon">
-                  <FiCheckCircle />
-                </div>
-                <div>
-                  <span>{m.totalCompleted}</span>
-                  <p>Completed</p>
+                  <p>Assignments</p>
                 </div>
               </div>
             </div>
 
-            <div className="statusGrid">
+            <div className="statusGrid statusGrid--four">
               <div className="statusItem done">
                 <div className="statusTitle">
                   <FiCheckCircle />
                   <span>Done</span>
                 </div>
-                <strong>{m.doneCount}</strong>
+                <strong>{m.done}</strong>
               </div>
-
-              <div className="statusItem quality">
+              <div className="statusItem assigned">
                 <div className="statusTitle">
-                  <FiShield />
-                  <span>Done by Quality</span>
+                  <FiUser />
+                  <span>Assigned</span>
                 </div>
-                <strong>{m.doneByQualityCount}</strong>
+                <strong>{m.assigned}</strong>
               </div>
-
+              <div className="statusItem unassigned">
+                <div className="statusTitle">
+                  <FiClock />
+                  <span>Unassigned</span>
+                </div>
+                <strong>{m.unassigned}</strong>
+              </div>
               <div className="statusItem late">
                 <div className="statusTitle">
                   <FiAlertTriangle />
-                  <span>Quality Late</span>
+                  <span>Failed deadline</span>
                 </div>
-                <strong>{m.doneByQualityLateCount}</strong>
+                <strong>{m.failedDeadline}</strong>
               </div>
+            </div>
+
+            <div className="mw-extra-metrics">
+              {m.overdueUnassigned > 0 && (
+                <span className="mw-flag mw-flag--warn">
+                  <FiCalendar />
+                  {m.overdueUnassigned} overdue &amp; unassigned
+                </span>
+              )}
+              {m.averageTurnaroundHours != null && (
+                <span className="mw-flag">
+                  <FiTrendingUp />
+                  Avg turnaround: {m.averageTurnaroundHours}h after due
+                </span>
+              )}
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SummaryCard({ icon, label, value }) {
+  return (
+    <div className="mw-summary-card">
+      <span className="mw-summary-icon">{icon}</span>
+      <div>
+        <span className="mw-summary-value">{value}</span>
+        <span className="mw-summary-label">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ label, value, tone }) {
+  return (
+    <div className={`mw-status-pill mw-status-pill--${tone}`}>
+      <span>{label}</span>
+      <strong>{formatNum(value)}</strong>
     </div>
   );
 }

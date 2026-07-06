@@ -10,6 +10,8 @@ export default function CreateCourse() {
   const [description, setDescription] = useState("");
   const [teachers, setTeachers] = useState([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
+  const [googleAccounts, setGoogleAccounts] = useState([]);
+  const [selectedGoogleAccountId, setSelectedGoogleAccountId] = useState("");
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   
@@ -20,22 +22,39 @@ export default function CreateCourse() {
 
   // Fetch teachers list only if manager
   useEffect(() => {
-    if (role === "manager" || role === "admin") {
-      const fetchTeachers = async () => {
+    const loadFormData = async () => {
+      try {
+        const accountsRes = await api.get("/google-classroom/accounts");
+        const accounts = accountsRes.data || [];
+        setGoogleAccounts(accounts);
+        if (accounts.length === 1) {
+          setSelectedGoogleAccountId(accounts[0]._id);
+        }
+      } catch (err) {
+        toast.error("Failed to load Google accounts");
+      }
+
+      if (role === "manager" || role === "admin") {
         try {
-          const res = await api.get("/people/teachers"); // adjust to your endpoint
+          const res = await api.get("/people/teachers");
           setTeachers(res.data);
         } catch (err) {
           toast.error("Failed to load teachers");
         }
-      };
-      fetchTeachers();
-    }
+      }
+    };
+
+    loadFormData();
   }, [role]);
 
   const handleCreate = async () => {
     if (!name) return toast.warn("Course name is required");
-    if ((role === "manager" || role === "admin") && !selectedTeacherId) return toast.warn("Please select a teacher");
+    if (!selectedGoogleAccountId) {
+      return toast.warn("Please select which Gmail account should own and send the invitation");
+    }
+    if ((role === "manager" || role === "admin") && !selectedTeacherId) {
+      return toast.warn("Please select a teacher");
+    }
 
     setLoading(true);
 
@@ -45,18 +64,34 @@ export default function CreateCourse() {
         : "/google-classroom/courses/teacher";
 
       const payload = (role === "manager" || role === "admin")
-        ? { courseData: { name, section, description }, teacherId: selectedTeacherId }
-        : { courseData: { name, section, description }, userId: user.id };
+        ? {
+            courseData: { name, section, description },
+            teacherId: selectedTeacherId,
+            googleAccountId: selectedGoogleAccountId,
+          }
+        : {
+            courseData: { name, section, description },
+            userId: user.id,
+            googleAccountId: selectedGoogleAccountId,
+          };
 
-      await api.post(url, payload);
+      const res = await api.post(url, payload);
+      const accountEmail =
+        res.data?.ownerGoogleAccountEmail ||
+        googleAccounts.find((a) => a._id === selectedGoogleAccountId)?.email;
 
+      if (res.data?.teacherInvitation?.sent) {
+        toast.success(`Course created. Teacher invitation sent from ${accountEmail}`);
+      } else if (res.data?.teacherInvitation?.reason === "already_invited") {
+        toast.success(`Course created. Teacher was already invited on ${accountEmail}`);
+      } else {
+        toast.success(`Course created using ${accountEmail}`);
+      }
 
-      toast.success("Course created successfully");
       setName("");
       setSection("");
       setDescription("");
       setSelectedTeacherId("");
-
     } catch (err) {
       toast.error(err.response?.data?.error || "Failed to create course");
     } finally {
@@ -136,6 +171,25 @@ export default function CreateCourse() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Course description..."
             />
+          </div>
+
+          <div className="pm-input-group">
+            <label className="pm-input-label">Gmail account (invitation sender)</label>
+            <select
+              className="pm-input"
+              value={selectedGoogleAccountId}
+              onChange={(e) => setSelectedGoogleAccountId(e.target.value)}
+            >
+              <option value="">Select Gmail account…</option>
+              {googleAccounts.map((account) => (
+                <option key={account._id} value={account._id}>
+                  {account.email}
+                </option>
+              ))}
+            </select>
+            <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#6b7280" }}>
+              This account creates the classroom and sends the teacher invitation.
+            </p>
           </div>
 
           {/* Only show teacher dropdown for manager */}

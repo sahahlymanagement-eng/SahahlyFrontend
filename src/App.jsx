@@ -43,6 +43,7 @@ import DirectorClassroomManagers from "./pages/director/DirectorClassroomManager
 import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
+import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
 import DirectorFeedback from "./pages/director/DirectorFeedback";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
@@ -263,20 +264,17 @@ function App() {
           <Route path="quality-managers" element={<DirectorQualityManagers/>}/> 
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
+          <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
           <Route path="manage-teachers" element={<TeacherManager />} />
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />
-          
-          <Route path="/director/google-classroom" element={<GoogleClassroom />}/>
-
-          <Route path="/director/courses" element={<CoursesList />}/>
-
-
-          <Route path="/director/coursework/:courseId" element={ <CourseWork />}/>
-          <Route path="/director/coursework/:courseId/edit/:courseWorkId" element={ <CourseWork />}/>
-<Route path="/director/view-coursework/:courseId" element={<ViewCoursework />} />
+          <Route path="google-classroom" element={<GoogleClassroom />} />
+          <Route path="courses" element={<CoursesList />} />
+          <Route path="coursework/:courseId" element={<CourseWork />} />
+          <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
+          <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
         </Route>
 
 

@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { icon: <FiFileText />,  label: "Claude AI Marking",  path: "/manager/markingclaude"  },
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },
   { icon: <FiZap />,       label: "Question Bank",      path: "/questionbank/manage"    },
-  { icon: <FiBookOpen />,  label: "Course Management",  path: "/manager/google-classroom" },
+  { icon: <FiBookOpen />,  label: "Course Management",  path: "/manager/courses" },
 ];
 
 export default function ManagerSidebar() {

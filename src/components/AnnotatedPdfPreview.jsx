@@ -15,11 +15,11 @@ function LazyPdfPage({ pdf, pageNumber, containerWidth, scrollRoot }) {
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const renderedRef = useRef(false);
-  const [placeholderH, setPlaceholderH] = useState(480);
+  const [rendered, setRendered] = useState(false);
 
   useEffect(() => {
     renderedRef.current = false;
-    setPlaceholderH(480);
+    setRendered(false);
   }, [pdf, pageNumber, containerWidth]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function LazyPdfPage({ pdf, pageNumber, containerWidth, scrollRoot }) {
         const ctx = canvas.getContext("2d", { alpha: false });
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
-        setPlaceholderH(viewport.height);
+        setRendered(true);
 
         if (renderTaskRef.current) {
           try {
@@ -62,6 +62,7 @@ function LazyPdfPage({ pdf, pageNumber, containerWidth, scrollRoot }) {
           console.warn("[AnnotatedPdfPreview] page render:", err);
         }
         renderedRef.current = false;
+        setRendered(false);
       }
     };
 
@@ -90,8 +91,7 @@ function LazyPdfPage({ pdf, pageNumber, containerWidth, scrollRoot }) {
   return (
     <div
       ref={wrapRef}
-      className="pdf-preview-page"
-      style={{ minHeight: placeholderH }}
+      className={`pdf-preview-page${rendered ? " pdf-preview-page--ready" : ""}`}
       data-page={pageNumber}
     >
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
