@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, Fragment } from "react";
+import { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -16,6 +16,7 @@ import {
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import { useLoginCssNotifications } from "../../context/LoginCssNotificationContext";
 
 const DASHBOARD_STATUSES = [
   "UNASSIGNED",
@@ -69,6 +70,18 @@ export default function ManagerDashboard() {
     if (parsed?.roleId?.name?.toLowerCase() !== "manager") { navigate("/login", { replace: true }); return; }
     setUser(parsed);
   }, [navigate]);
+
+  const { newCount } = useLoginCssNotifications();
+  const loginCssAlerted = useRef(false);
+
+  useEffect(() => {
+    if (!loginCssAlerted.current && newCount > 0) {
+      loginCssAlerted.current = true;
+      toast.info(
+        `${newCount} new LoginCSS submission${newCount > 1 ? "s" : ""} pending grading`
+      );
+    }
+  }, [newCount]);
 
   const computeDashboardStatus = (a) => {
     if (a.status === "UNASSIGNED" && a.assignedAssistantId) return "ASSIGNED";
