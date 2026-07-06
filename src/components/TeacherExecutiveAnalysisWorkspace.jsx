@@ -11,6 +11,14 @@ import {
 } from "react-icons/fi";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "./Pagination";
+import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
+import MarksLostBreakdownPreview from "./MarksLostBreakdownPreview";
+import StudentWatchlistsPreview from "./StudentWatchlistsPreview";
+import ReportDecisionGuide from "./ReportDecisionGuide";
+import ReportPdfPreview from "./ReportPdfPreview";
+import GradeDistributionPreview from "./GradeDistributionPreview";
+import TopicMasteryPreview from "./TopicMasteryPreview";
+import SmartRecommendationsPreview from "./SmartRecommendationsPreview";
 import "./MonthlyParentReport.css";
 
 const TRIGGERS = [
@@ -35,6 +43,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendEmailToo, setSendEmailToo] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -84,6 +93,8 @@ export default function TeacherExecutiveAnalysisWorkspace({
     }
 
     setLoadingReport(true);
+    setReviewConfirmed(false);
+
     api
       .get(`/reports/assignment-executive/preview/${selectedAssignment._id}`, {
         params: { trigger },
@@ -94,6 +105,14 @@ export default function TeacherExecutiveAnalysisWorkspace({
         toast.error(err.response?.data?.message || "Failed to load executive report");
       })
       .finally(() => setLoadingReport(false));
+  }, [selectedAssignment?._id, trigger]);
+
+  const pdfPreviewConfig = useMemo(() => {
+    if (!selectedAssignment?._id) return null;
+    return {
+      url: `/reports/assignment-executive/pdf/${selectedAssignment._id}`,
+      params: { trigger },
+    };
   }, [selectedAssignment?._id, trigger]);
 
   const selectClassroom = (classroom) => {
@@ -209,7 +228,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   type="button"
                   className="mpr-btn mpr-btn--whatsapp"
                   onClick={sendToTeacher}
-                  disabled={sending || !report?.meta?.teacherPhone}
+                  disabled={sending || !report?.meta?.teacherPhone || !reviewConfirmed}
                   title={
                     report?.meta?.teacherPhone
                       ? `Send to ${report.meta.teacherPhone}`
@@ -328,6 +347,13 @@ export default function TeacherExecutiveAnalysisWorkspace({
 
             {selectedAssignment && !loadingReport && report && (
               <div className="mpr-preview tea-preview">
+                <ReportPdfPreview
+                  fetchConfig={pdfPreviewConfig}
+                  title="Executive report PDF"
+                />
+
+                <ReportDecisionGuide guide={report.decisionGuide} />
+
                 <h3 className="tea-preview-title">{report.meta.assignmentTitle}</h3>
                 <p className="tea-preview-meta">
                   {report.meta.classroomName} · {report.meta.subject}
@@ -359,18 +385,20 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     <strong>{report.meta.papersMarked ?? "—"}</strong>
                   </div>
                   <div className="tea-kpi">
-                    <span>AI agreement</span>
+                    <span>Marking unchanged</span>
                     <strong>
-                      {report.kpis.aiAgreementRate != null
-                        ? `${report.kpis.aiAgreementRate}%`
-                        : "—"}
+                      {report.kpis.markingUnchangedRate != null
+                        ? `${report.kpis.markingUnchangedRate}%`
+                        : report.kpis.aiAgreementRate != null
+                          ? `${report.kpis.aiAgreementRate}%`
+                          : "—"}
                     </strong>
                   </div>
                 </div>
 
                 {report.executiveSummary?.length > 0 && (
                   <div className="tea-block">
-                    <h4>Executive summary</h4>
+                    <h4>Key insights</h4>
                     <ul>
                       {report.executiveSummary.map((line) => (
                         <li key={line}>{line}</li>
@@ -378,6 +406,21 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     </ul>
                   </div>
                 )}
+
+                <GradeDistributionPreview distribution={report.gradeDistribution} />
+
+                <TopicMasteryPreview
+                  topics={report.topicMastery}
+                  title="What should I reteach?"
+                />
+
+                <QuestionAnalyticsPreview analytics={report.questionAnalytics} />
+
+                <MarksLostBreakdownPreview breakdown={report.marksLostBreakdown} />
+
+                <StudentWatchlistsPreview watchlists={report.studentWatchlists} />
+
+                <SmartRecommendationsPreview recommendations={report.recommendations} />
 
                 <div className="tea-block">
                   <h4>Students who did not submit ({notSubmitted.length})</h4>
@@ -402,6 +445,15 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     Also email PDF to teacher ({report.meta.teacherEmail || "no email on file"})
                   </label>
                 )}
+
+                <label className="mpr-review-check">
+                  <input
+                    type="checkbox"
+                    checked={reviewConfirmed}
+                    onChange={(e) => setReviewConfirmed(e.target.checked)}
+                  />
+                  I have reviewed the PDF preview and analysis above — ready to send
+                </label>
               </div>
             )}
           </section>
