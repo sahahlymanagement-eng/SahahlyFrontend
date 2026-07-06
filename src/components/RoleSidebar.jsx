@@ -96,6 +96,12 @@ export default function RoleSidebar({
                 >
                   <span className="ast-nav-icon">{item.icon}</span>
                   {!collapsed && <span className="ast-nav-text">{item.label}</span>}
+                  {!collapsed && item.badge ? (
+                    <span className="ast-nav-badge">{item.badge}</span>
+                  ) : null}
+                  {collapsed && item.badge ? (
+                    <span className="ast-nav-badge-dot" />
+                  ) : null}
                   {!collapsed && active && (
                     <FiChevronRight className="ast-nav-arrow" size={14} />
                   )}

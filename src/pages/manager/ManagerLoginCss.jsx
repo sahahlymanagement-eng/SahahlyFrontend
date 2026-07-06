@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
+import { useLoginCssNotifications } from "../../context/LoginCssNotificationContext";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import {
@@ -66,6 +67,7 @@ const getScoreColor = (awarded, max) => {
 
 export default function ManagerLoginCss() {
   const navigate = useNavigate();
+  const { markSeen } = useLoginCssNotifications();
 
   const [user, setUser] = useState(null);
 
@@ -352,6 +354,10 @@ export default function ManagerLoginCss() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    markSeen();
+  }, [markSeen]);
 
   useEffect(() => {
     api.get("/marking/prompts").then((r) => setSavedPrompts(r.data || [])).catch(() => {});
