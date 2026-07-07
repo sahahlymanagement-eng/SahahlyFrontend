@@ -68,6 +68,16 @@
   overflow-y: auto;
 }
 
+.msv-teacher-filter {
+  margin-top: 10px;
+}
+
+.msv-classroom-teacher {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
 /* ── MARK SCHEME BAR ── */
 .msv-ms-bar {
   display: flex;

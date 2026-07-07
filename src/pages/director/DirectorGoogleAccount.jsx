@@ -94,11 +94,12 @@ export default function DirectorGoogleAccountsPage() {
       await loadClassrooms(account);
     } catch (err) {
       console.error("Failed to sync classrooms from Google", err);
-      toast.error(
+      const msg =
         err.response?.data?.error ||
-          err.response?.data?.message ||
-          "Failed to fetch classrooms from Google"
-      );
+        err.response?.data?.message ||
+        "Failed to fetch classrooms from Google";
+      const detail = err.response?.data?.detail;
+      toast.error(detail && detail !== msg ? `${msg} (${detail})` : msg);
     } finally {
       setSyncingAccountId(null);
     }
@@ -146,12 +147,24 @@ export default function DirectorGoogleAccountsPage() {
       const { data } = await api.post(
         `/director/google-accounts/${account._id}/refresh-token`
       );
-      toast.success(data?.message || `Token refreshed for ${account.email}`);
+      if (data?.classroomAccess?.ok === false) {
+        toast.warn(
+          data.classroomAccess.message ||
+            "Token refreshed, but this account cannot access Google Classroom yet. Reconnect it and approve all permissions."
+        );
+      } else {
+        toast.success(data?.message || `Token refreshed for ${account.email}`);
+      }
     } catch (err) {
-      toast.error(
+      const msg =
         err.response?.data?.message ||
-          err.response?.data?.detail ||
-          "Failed to refresh token"
+        err.response?.data?.error ||
+        "Failed to refresh token";
+      const detail = err.response?.data?.detail;
+      toast.error(
+        detail && detail !== msg
+          ? `${msg} — try Reconnect for ${account.email}`
+          : `${msg} — try Reconnect for ${account.email}`
       );
     } finally {
       setRefreshingTokenId(null);
@@ -244,8 +257,22 @@ export default function DirectorGoogleAccountsPage() {
                 </div>
 
                 <h3>{acc.email}</h3>
+                {!acc.hasRefreshToken && (
+                  <p className="directorGoogleAccountWarn">
+                    No refresh token — use Reconnect below.
+                  </p>
+                )}
 
                 <div className="directorGoogleActions">
+                  <button
+                    type="button"
+                    className="directorGoogleReconnectBtn"
+                    onClick={() => openGoogleConnect(acc.email)}
+                    disabled={connecting}
+                  >
+                    <FiRefreshCw />
+                    Reconnect
+                  </button>
                   <button
                     type="button"
                     className="directorGoogleRefreshBtn"

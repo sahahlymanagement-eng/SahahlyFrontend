@@ -12,7 +12,7 @@ import {
 } from "react-icons/fi";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
-import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, attendedNamesFromMap, countPresentInMap } from "../utils/attendanceExcel";
+import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, countPresentInMap } from "../utils/attendanceExcel";
 import ReportAttendanceSelect from "./ReportAttendanceSelect";
 import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
 import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
@@ -41,11 +41,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [customPhone, setCustomPhone] = useState("");
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
-  const [includeAttendance, setIncludeAttendance] = useState(false);
-  const [attendanceMap, setAttendanceMap] = useState({});
-  const [attendanceRoster, setAttendanceRoster] = useState([]);
-  const [attendanceFileName, setAttendanceFileName] = useState("");
-  const [parsingAttendance, setParsingAttendance] = useState(false);
+  const [assignmentAttendance, setAssignmentAttendance] = useState({});
+  const [parsingAttendanceForAssignment, setParsingAttendanceForAssignment] = useState(null);
   const [refreshingGrades, setRefreshingGrades] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
   const [reportView, setReportView] = useState("assignment");
@@ -310,13 +307,25 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const assignmentMaxPoints =
     selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
 
-  const handleAttendanceToggle = (checked) => {
-    setIncludeAttendance(checked);
-    if (!checked) {
-      setAttendanceMap({});
-      setAttendanceRoster([]);
-      setAttendanceFileName("");
-    }
+  const currentAssignmentAttendance = useMemo(() => {
+    const id = selectedAssignment?._id ? String(selectedAssignment._id) : null;
+    if (!id) return { enabled: false, map: {}, roster: [], fileName: "" };
+    return (
+      assignmentAttendance[id] || { enabled: false, map: {}, roster: [], fileName: "" }
+    );
+  }, [assignmentAttendance, selectedAssignment?._id]);
+
+  const handleAttendanceToggle = (assignmentId, checked) => {
+    const key = String(assignmentId);
+    setAssignmentAttendance((prev) => {
+      const current = prev[key] || { enabled: false, map: {}, roster: [], fileName: "" };
+      return {
+        ...prev,
+        [key]: checked
+          ? { ...current, enabled: true }
+          : { enabled: false, map: {}, roster: [], fileName: "" },
+      };
+    });
   };
 
   const handleAttendanceFile = async (e) => {
@@ -329,14 +338,16 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       return;
     }
 
-    setParsingAttendance(true);
+    const assignmentId = String(selectedAssignment._id);
+    setParsingAttendanceForAssignment(assignmentId);
     try {
       const names = await parseAttendanceNamesFromFile(file);
       if (!names.length) {
         toast.warn("No student names found in that file");
-        setAttendanceMap({});
-        setAttendanceRoster([]);
-        setAttendanceFileName("");
+        setAssignmentAttendance((prev) => ({
+          ...prev,
+          [assignmentId]: { enabled: true, map: {}, roster: [], fileName: "" },
+        }));
         return;
       }
 
@@ -349,42 +360,44 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       );
 
       const map = buildInitialAttendanceMap(roster, names, (s) => s._id);
-      setAttendanceMap(map);
-      setAttendanceRoster(roster);
-      setAttendanceFileName(file.name);
+      setAssignmentAttendance((prev) => ({
+        ...prev,
+        [assignmentId]: { enabled: true, map, roster, fileName: file.name },
+      }));
       const present = countPresentInMap(map);
       toast.success(
         `Matched ${roster.length} student(s) — ${present} present, ${roster.length - present} absent (editable in table)`
       );
     } catch (err) {
       toast.error(err?.message || "Failed to read attendance file");
-      setAttendanceMap({});
-      setAttendanceRoster([]);
-      setAttendanceFileName("");
+      setAssignmentAttendance((prev) => ({
+        ...prev,
+        [assignmentId]: { enabled: true, map: {}, roster: [], fileName: "" },
+      }));
     } finally {
-      setParsingAttendance(false);
+      setParsingAttendanceForAssignment(null);
     }
   };
 
-  const setStudentAttendance = (studentId, present) => {
-    setAttendanceMap((prev) => ({
-      ...prev,
-      [String(studentId)]: present,
-    }));
+  const setStudentAttendance = (assignmentId, studentId, present) => {
+    const key = String(assignmentId);
+    setAssignmentAttendance((prev) => {
+      const current = prev[key] || { enabled: true, map: {}, roster: [], fileName: "" };
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          map: {
+            ...(current.map || {}),
+            [String(studentId)]: present,
+          },
+        },
+      };
+    });
   };
 
   const showAttendanceColumn =
-    includeAttendance && Object.keys(attendanceMap).length > 0;
-
-  const buildAttendancePayload = () => {
-    if (!includeAttendance || !Object.keys(attendanceMap).length) return undefined;
-    const roster = attendanceRoster.length ? attendanceRoster : students;
-    const attendedNames = attendedNamesFromMap(roster, attendanceMap, (s) => s._id);
-    return {
-      enabled: true,
-      attendedNames,
-    };
-  };
+    currentAssignmentAttendance.enabled;
 
   const refreshGrades = async () => {
     if (!selectedAssignment?._id) return;
@@ -416,11 +429,6 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     const cartEntries = Object.entries(reportCart);
     if (cartEntries.length === 0) { toast.warn("No students selected"); return; }
 
-    if (includeAttendance && !Object.keys(attendanceMap).length) {
-      toast.warn("Upload an attendance Excel file first");
-      return;
-    }
-
     let freshSummaryMap = summaryMap;
     let freshStudents = students;
     try {
@@ -442,6 +450,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
 
     const reports = cartEntries.map(([, entry]) => ({
+      studentId: entry.studentMeta._id,
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
@@ -453,6 +462,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         const savedSummary =
           liveStudent?.summary ||
           (submissionId ? freshSummaryMap[submissionId] : "");
+        const attendanceCfg =
+          assignmentAttendance[String(item.assignmentId || selectedAssignment?._id)] ||
+          { enabled: false, map: {} };
         return {
           ...item,
           assignmentId: item.assignmentId || selectedAssignment._id,
@@ -466,6 +478,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             item.percentage ??
             (computeGradePercent(assignedGrade, maxPoints) || null),
           comment: (item.comment || savedSummary || "").trim(),
+          includeAttendance: Boolean(attendanceCfg.enabled),
+          attendancePresent: attendanceCfg.enabled
+            ? Boolean(attendanceCfg.map?.[String(entry.studentMeta._id)])
+            : null,
         };
       }),
     }));
@@ -474,7 +490,6 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       const res = await api.post("/manager-assignments/send-report", {
         reports,
         classroomId: selectedClassroom?._id,
-        attendance: buildAttendancePayload(),
       });
       const summary = res.data.summary || [];
       const succeeded = summary.filter(r => r.status === "fulfilled").length;
@@ -692,38 +707,6 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           )}
         </header>
 
-        {selectedClassroom && (
-          <div className="ma-attendance-bar">
-            <label className="ma-attendance-check">
-              <input
-                type="checkbox"
-                checked={includeAttendance}
-                onChange={(e) => handleAttendanceToggle(e.target.checked)}
-              />
-              <span>Attendance</span>
-            </label>
-            {includeAttendance && (
-              <div className="ma-attendance-upload">
-                <label className="ma-attendance-file-btn">
-                  {parsingAttendance ? "Reading file…" : "Upload Excel"}
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleAttendanceFile}
-                    disabled={parsingAttendance}
-                    hidden
-                  />
-                </label>
-                {attendanceFileName && (
-                  <span className="ma-attendance-meta">
-                    {attendanceFileName} · {countPresentInMap(attendanceMap)} present / {Object.keys(attendanceMap).length} students
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="ma-content">
           <div className="ma-layout msv-collapsible-layout">
           {/* COLUMN 1 — CLASSROOMS */}
@@ -884,6 +867,46 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   )}
                 </div>
 
+                {selectedAssignment && (
+                  <div className="ma-attendance-bar">
+                    <label className="ma-attendance-check">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(currentAssignmentAttendance.enabled)}
+                        onChange={(e) =>
+                          handleAttendanceToggle(selectedAssignment._id, e.target.checked)
+                        }
+                      />
+                      <span>Add attendance for this assignment</span>
+                    </label>
+                    {currentAssignmentAttendance.enabled && (
+                      <div className="ma-attendance-upload">
+                        <label className="ma-attendance-file-btn">
+                          {parsingAttendanceForAssignment === String(selectedAssignment._id)
+                            ? "Reading file…"
+                            : "Upload Excel"}
+                          <input
+                            type="file"
+                            accept=".xlsx,.xls,.csv"
+                            onChange={handleAttendanceFile}
+                            disabled={
+                              parsingAttendanceForAssignment === String(selectedAssignment._id)
+                            }
+                            hidden
+                          />
+                        </label>
+                        {currentAssignmentAttendance.fileName && (
+                          <span className="ma-attendance-meta">
+                            {currentAssignmentAttendance.fileName} ·{" "}
+                            {countPresentInMap(currentAssignmentAttendance.map)} present /{" "}
+                            {Object.keys(currentAssignmentAttendance.map || {}).length} students
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
 
                 {!loadingStudents && students.length === 0 && (
@@ -943,8 +966,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                 {showAttendanceColumn && (
                                   <td onClick={(e) => e.stopPropagation()}>
                                     <ReportAttendanceSelect
-                                      present={!!attendanceMap[stuId]}
-                                      onChange={(present) => setStudentAttendance(stuId, present)}
+                                      present={!!currentAssignmentAttendance.map?.[stuId]}
+                                      onChange={(present) =>
+                                        setStudentAttendance(asgId, stuId, present)
+                                      }
                                     />
                                   </td>
                                 )}

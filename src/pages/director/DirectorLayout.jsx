@@ -74,6 +74,8 @@ const NAV_SECTIONS = [
 
       { icon: <FiBookOpen />, label: "Course Management", path: "/director/courses" },
 
+      { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
+
     ],
 
   },

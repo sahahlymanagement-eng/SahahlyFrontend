@@ -70,7 +70,6 @@ import {
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
-import TokenUsageStats from "../../components/TokenUsageStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import {
@@ -328,7 +327,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     search: studentSearch,
   }), [studentSearch]);
 
-    const { data: students, page, totalPages, total: studentTotal, loading, fetchPage, extra, setData: setStudents } =
+    const { data: students, page, totalPages, total: studentTotal, loading, fetchPage, extra, setData: setStudents, error: studentFetchError } =
   usePagination(
     `/assignment-submissions/${assignmentId}/students`,
     studentParams,
@@ -337,7 +336,18 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     !!assignmentId
   );
 
-  const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {} } = extra;
+  const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable } = extra;
+
+  useEffect(() => {
+    if (!assignmentId || loading) return;
+    if (studentFetchError) {
+      toast.error(`Could not load students: ${studentFetchError}`);
+    } else if (googleUnavailable) {
+      toast.warn(
+        "Google Classroom is temporarily unavailable — showing saved students. Ask the director to reconnect the classroom Gmail account if this persists."
+      );
+    }
+  }, [assignmentId, loading, studentFetchError, googleUnavailable]);
 
   const markingSelection = useMarkingStudentSelection();
   const [selectingMarkingAll, setSelectingMarkingAll] = useState(false);
@@ -732,9 +742,16 @@ const refreshStudents = async () => {
       );
     }
     toast.success("Synced grades, max points, and percentages from Google Classroom");
-  } catch {
-    toast.error("Failed to refresh from Google Classroom");
-    } finally {
+  } catch (err) {
+    const detail =
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      err?.message ||
+      "Failed to refresh from Google Classroom";
+    toast.error(detail.includes("refresh token")
+      ? "Google sign-in expired for this classroom. Ask the director to reconnect the Gmail account under Google Accounts."
+      : detail);
+  } finally {
     setRefreshing(false);
   }
 };
@@ -2756,9 +2773,6 @@ return (
                       </button>
                                         )}
 
-                                        {inlineMarkResult?.tokenUsage && (
-                                          <TokenUsageStats result={inlineMarkResult} compact hideCost />
-                                        )}
 
                                         {inlineMarkResult?.pdfCompression && (
                                           <div style={{
@@ -3281,7 +3295,6 @@ return (
                         )}
                         <PdfCompressionStats pdfCompression={resultModal.result.pdfCompression} />
           
-                        <TokenUsageStats result={resultModal.result} hideCost />
 
                         {assignmentId && (
                           <MarkingCorrectionChat

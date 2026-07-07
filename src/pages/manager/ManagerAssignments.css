@@ -681,6 +681,16 @@
   color: #475569;
 }
 
+select.ma-search-input {
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+select.ma-search-input option {
+  color: #0f172a;
+  background: #ffffff;
+}
+
 /* Comment input */
 .ma-comment-wrap {
   position: relative; display: flex; align-items: center;
@@ -716,7 +726,7 @@
 
 /* ──────────────────────────────── MISC ── */
 .ma-loading-msg { font-size: 13px; color: #334155; padding: 12px 0; }
-.ma-empty-msg   { font-size: 13px; color: #1e293b; padding: 10px 0; }
+.ma-empty-msg   { font-size: 13px; color: #64748b; padding: 10px 0; }
 
 /* ──────────────────────────────── CART BAR ── */
 .ma-cart-bar {

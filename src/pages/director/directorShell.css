@@ -4,14 +4,20 @@
   max-width: none;
   width: 100%;
   animation: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .director-page-inner {
   width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: clamp(20px, 3vw, 36px) clamp(16px, 3vw, 40px) 48px;
-  min-height: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
 }
 
@@ -23,10 +29,20 @@
 .director-page-inner > .dap-page,
 .director-page-inner > .cm-courses-page,
 .director-page-inner > .managerWorkloadPage,
-.director-page-inner > .tu-main {
+.director-page-inner > .tu-main,
+.director-page-inner > .ma-root {
   padding: 0;
   min-height: 0;
   background: transparent;
+}
+
+.director-page-inner > .ma-root {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  width: 100%;
+  display: flex;
+  overflow: hidden;
 }
 
 @media (max-width: 768px) {

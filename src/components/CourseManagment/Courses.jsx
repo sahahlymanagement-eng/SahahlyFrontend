@@ -50,7 +50,7 @@ export default function CreateCourse() {
   const handleCreate = async () => {
     if (!name) return toast.warn("Course name is required");
     if (!selectedGoogleAccountId) {
-      return toast.warn("Please select which Gmail account should own and send the invitation");
+      return toast.warn("Please select which Sahahly Gmail account owns this classroom");
     }
     if ((role === "manager" || role === "admin") && !selectedTeacherId) {
       return toast.warn("Please select a teacher");
@@ -75,18 +75,8 @@ export default function CreateCourse() {
             googleAccountId: selectedGoogleAccountId,
           };
 
-      const res = await api.post(url, payload);
-      const accountEmail =
-        res.data?.ownerGoogleAccountEmail ||
-        googleAccounts.find((a) => a._id === selectedGoogleAccountId)?.email;
-
-      if (res.data?.teacherInvitation?.sent) {
-        toast.success(`Course created. Teacher invitation sent from ${accountEmail}`);
-      } else if (res.data?.teacherInvitation?.reason === "already_invited") {
-        toast.success(`Course created. Teacher was already invited on ${accountEmail}`);
-      } else {
-        toast.success(`Course created using ${accountEmail}`);
-      }
+      await api.post(url, payload);
+      toast.success("Course created successfully");
 
       setName("");
       setSection("");
@@ -174,7 +164,7 @@ export default function CreateCourse() {
           </div>
 
           <div className="pm-input-group">
-            <label className="pm-input-label">Gmail account (invitation sender)</label>
+            <label className="pm-input-label">Gmail account (course owner)</label>
             <select
               className="pm-input"
               value={selectedGoogleAccountId}
@@ -188,14 +178,14 @@ export default function CreateCourse() {
               ))}
             </select>
             <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#6b7280" }}>
-              This account creates the classroom and sends the teacher invitation.
+              Sahahly Gmail from Director → Google Accounts. Only this account exists in Google Classroom.
             </p>
           </div>
 
           {/* Only show teacher dropdown for manager */}
           {(role === "manager" || role === "admin")&& (
             <div className="pm-input-group">
-              <label className="pm-input-label">Assign Teacher</label>
+              <label className="pm-input-label">Assign teacher (in Sahahly)</label>
               <select
                 className="pm-input"
                 value={selectedTeacherId}
@@ -204,10 +194,13 @@ export default function CreateCourse() {
                 <option value="">Select a teacher...</option>
                 {teachers.map((t) => (
                   <option key={t._id} value={t._id}>
-                    {t.name}
+                    {t.name}{t.email ? ` (${t.email})` : ""}
                   </option>
                 ))}
               </select>
+              <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#6b7280" }}>
+                Sahahly only — links this classroom to the teacher for reports, submissions, and workload. Not sent to Google.
+              </p>
             </div>
           )}
 

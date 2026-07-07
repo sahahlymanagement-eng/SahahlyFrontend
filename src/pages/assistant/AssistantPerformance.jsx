@@ -11,7 +11,6 @@ import {
   FiRefreshCw,
   FiUsers,
   FiFileText,
-  FiCpu,
 } from "react-icons/fi";
 import { AssistantPageHeader, AssistantLoading } from "./AssistantUI";
 
@@ -67,7 +66,6 @@ export default function AssistantPerformance() {
   if (!user) return null;
 
   const summary = data?.summary || {};
-  const tokenUsage = data?.tokenUsage || {};
   const teachers = data?.teachers || [];
   const classrooms = data?.classrooms || [];
 
@@ -105,16 +103,6 @@ export default function AssistantPerformance() {
                 value={formatNum(data.papersCorrected)}
               />
               <MetricCard
-                icon={<FiCpu />}
-                label="Tokens used"
-                value={formatNum(tokenUsage.totalTokens)}
-                sub={
-                  tokenUsage.requestCount
-                    ? `${formatNum(tokenUsage.requestCount)} marking requests`
-                    : null
-                }
-              />
-              <MetricCard
                 icon={<FiUsers />}
                 label="Teachers"
                 value={formatNum(summary.teacherCount)}
@@ -148,20 +136,6 @@ export default function AssistantPerformance() {
               />
             </div>
           </section>
-
-          {tokenUsage.totalTokens > 0 && (
-            <section className="ast-perf-section">
-              <h2>Token usage</h2>
-              <div className="ast-perf-token-row">
-                <span>Input: {formatNum(tokenUsage.inputTokens)}</span>
-                <span>Output: {formatNum(tokenUsage.outputTokens)}</span>
-                <span>Total: {formatNum(tokenUsage.totalTokens)}</span>
-                {tokenUsage.requestCount ? (
-                  <span>{formatNum(tokenUsage.requestCount)} marking requests</span>
-                ) : null}
-              </div>
-            </section>
-          )}
 
           <section className="ast-perf-section">
             <h2>Teachers ({teachers.length})</h2>

@@ -210,7 +210,7 @@ function App() {
           <Route path="feedback" element={<ManagerFeedback />} />
           <Route path="assignments" element={<ManagerAssignments />} />
           <Route path="students" element={<ManagerStudents />} />
-          <Route path="submissions" element={<ManagerSubmissionViewer />} />
+          <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
           <Route path="marking" element={<PaperMarking />} />
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="markingclaude" element={<PaperMarkingClaude />} />
@@ -272,6 +272,7 @@ function App() {
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />
+          <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
           <Route path="view-coursework/:courseId" element={<ViewCoursework />} />

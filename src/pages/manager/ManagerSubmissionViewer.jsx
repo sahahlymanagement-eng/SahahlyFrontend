@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import { promptToast } from "../../utils/confirmToast";
@@ -100,10 +100,12 @@ const CHECKLIST_CONFIG = [
   { key: "answerIsBlank",              label: "Answer is Blank",           passIsGood: false },
 ];
 
-export default function ManagerSubmissionViewer() {
+export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // const BATCH_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const PRIORITY_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const navigate   = useNavigate();
+  const [searchParams] = useSearchParams();
+  const deepLinkHandledRef = useRef(null);
   const msInputRef = useRef();
 
   const [user,               setUser]               = useState(null);
@@ -114,17 +116,49 @@ export default function ManagerSubmissionViewer() {
   const [studentSearch,      setStudentSearch]      = useState("");
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
 
-  const classroomParams = useMemo(() => ({
-    personId: user?.id,
-    search: classroomSearch,
-  }), [user?.id, classroomSearch]);
+  const isDirectorScope = scope === "director";
+  const dashboardPath = isDirectorScope ? "/director/dashboard" : "/manager/dashboard";
+  const [teacherFilter, setTeacherFilter] = useState("all");
+  const [allTeachers, setAllTeachers] = useState([]);
+
+  const classroomParams = useMemo(() => {
+    const params = { search: classroomSearch };
+    if (!isDirectorScope) params.personId = user?.id;
+    if (teacherFilter !== "all") params.teacherId = teacherFilter;
+    return params;
+  }, [user?.id, classroomSearch, isDirectorScope, teacherFilter]);
 
   const {
     data: classrooms,
     page: classroomPage,
     totalPages: classroomTotalPages,
     fetchPage: fetchClassroomPage,
-  } = usePagination("/students/my-classrooms", classroomParams, 20, "data", !!user?.id);
+    loading: loadingClassrooms,
+  } = usePagination(
+    isDirectorScope ? "/google-classroom/courses" : "/students/my-classrooms",
+    classroomParams,
+    isDirectorScope ? 50 : 20,
+    "data",
+    isDirectorScope ? true : !!user?.id
+  );
+  const teacherOptions = useMemo(() => {
+    if (isDirectorScope) {
+      return (allTeachers || [])
+        .map((t) => ({ id: String(t._id), name: t.name }))
+        .filter((t) => t.id && t.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const map = new Map();
+    for (const c of classrooms || []) {
+      const t = c?.teacherId;
+      const id = t?._id || t?.id;
+      const name = t?.name;
+      if (!id || !name) continue;
+      if (!map.has(String(id))) map.set(String(id), { id: String(id), name });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [isDirectorScope, allTeachers, classrooms]);
 
   const assignmentParams = useMemo(() => ({
     search: assignmentSearch,
@@ -778,6 +812,24 @@ useEffect(() => {
   }, [navigate]);
 
   useEffect(() => {
+    if (!isDirectorScope) return;
+    api.get("/people/teachers")
+      .then((r) => setAllTeachers(r.data || []))
+      .catch(() => {});
+  }, [isDirectorScope]);
+
+  useEffect(() => {
+    if (teacherFilter === "all" || !selectedClassroom) return;
+    const classroomTeacherId = String(
+      selectedClassroom?.teacherId?._id || selectedClassroom?.teacherId?.id || ""
+    );
+    if (classroomTeacherId && classroomTeacherId !== teacherFilter) {
+      setSelectedClassroom(null);
+      setSelectedAssignment(null);
+    }
+  }, [teacherFilter, selectedClassroom]);
+
+  useEffect(() => {
     if (!user?.id) return;
     api.get("/marking/prompts")
       .then(r => setSavedPrompts(r.data || []))
@@ -858,6 +910,75 @@ useEffect(() => {
     setShowExpectedPagesEdit(false);
   };
 
+  useEffect(() => {
+    if (!user) return;
+
+    const classroomId = searchParams.get("classroomId");
+    const assignmentId = searchParams.get("assignmentId");
+    if (!classroomId || !assignmentId) return;
+
+    const linkKey = `${classroomId}:${assignmentId}`;
+    if (deepLinkHandledRef.current === linkKey) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const classroomRes = await api.get(`/classrooms/${classroomId}`);
+        if (cancelled) return;
+
+        const classroom = classroomRes.data;
+        if (!classroom?._id) {
+          toast.warn("Classroom not found in submission viewer");
+          return;
+        }
+
+        const assignmentsRes = await api.get(
+          `/manager-assignments/classroom/${classroomId}/assignments`,
+          { params: { limit: 500, page: 1 } }
+        );
+        if (cancelled) return;
+
+        const assignment = (assignmentsRes.data?.data || []).find(
+          (item) => String(item._id) === String(assignmentId)
+        );
+
+        if (!assignment) {
+          toast.warn("Assignment not found in submission viewer");
+          return;
+        }
+
+        deepLinkHandledRef.current = linkKey;
+        setSelectedClassroom(classroom);
+        setSelectedAssignment(assignment);
+        setMsInfo(null);
+        setBulkProgress({});
+        setExpectedPages(assignment.expectedPages ?? null);
+        setExpectedPagesInput(
+          assignment.expectedPages != null ? String(assignment.expectedPages) : ""
+        );
+        setShowExpectedPagesEdit(false);
+
+        try {
+          const msRes = await api.get(`/manager-assignments/${assignment._id}/markscheme`);
+          if (!cancelled) {
+            setMsInfo(msRes.data.fileId ? msRes.data : null);
+          }
+        } catch {
+          if (!cancelled) setMsInfo(null);
+        }
+      } catch {
+        if (!cancelled) {
+          toast.error("Could not open this assignment in submission viewer");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, searchParams]);
+
   const setPercentOverride = (submissionId, percentage) => {
     if (!submissionId) return;
     setPercentOverrides((prev) => ({
@@ -906,7 +1027,7 @@ useEffect(() => {
       expandClassroomSection();
       return;
     }
-    navigate("/manager/dashboard");
+    navigate(dashboardPath);
   };
 
   const handleMsUpload = async (file) => {
@@ -2690,7 +2811,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     }).catch(() => toast.error("Failed to download PDF"));
   };
 
-  const filteredClassrooms  = classrooms;
   const filteredAssignments = assignments;
   const formatError = (err) => {
     if (!err) return "Unknown error";
@@ -2942,13 +3062,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       <main className="ma-main">
         <header className="ma-topbar">
           <div className="ma-topbar-left">
-            <h1 className="ma-topbar-title">Submission Viewer</h1>
+            <h1 className="ma-topbar-title">
+              {isDirectorScope ? "All Classrooms Submission Viewer" : "Submission Viewer"}
+            </h1>
             <span className="ma-topbar-sub">
               {selectedClassroom
                 ? selectedAssignment
                   ? `${selectedClassroom.name} — ${selectedAssignment.title}`
                   : `Select assignment from ${selectedClassroom.name}`
-                : `Welcome back, ${user.name}`}
+                : isDirectorScope
+                  ? "Browse submissions across all classrooms"
+                  : `Welcome back, ${user.name}`}
             </span>
           </div>
           <div className="ma-topbar-right">
@@ -2977,13 +3101,33 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               <div className="ma-column">
                 <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
                 <input className="ma-search-input" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
+                {(isDirectorScope || teacherOptions.length > 0) && (
+                  <select
+                    className="ma-search-input msv-teacher-filter"
+                    value={teacherFilter}
+                    onChange={(e) => setTeacherFilter(e.target.value)}
+                  >
+                    <option value="all">All teachers</option>
+                    {teacherOptions.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
                 <div className="ma-scroll-list">
-                  {filteredClassrooms.map(c => (
+                  {loadingClassrooms && !classrooms.length ? (
+                    <p className="ma-empty-msg">Loading classrooms…</p>
+                  ) : !classrooms.length ? (
+                    <p className="ma-empty-msg">No classrooms found</p>
+                  ) : null}
+                  {classrooms.map(c => (
                     <div key={c._id} className={`ma-classroom-card ${selectedClassroom?._id === c._id ? "ma-classroom-card--active" : ""}`} onClick={() => selectClassroom(c)}>
                       <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                       <div className="ma-classroom-info">
                         <span className="ma-classroom-name">{c.name}</span>
                         {c.section && <span className="ma-classroom-section">{c.section}</span>}
+                        {c.teacherId?.name && (
+                          <span className="msv-classroom-teacher">Teacher: {c.teacherId.name}</span>
+                        )}
                       </div>
                     </div>
                   ))}

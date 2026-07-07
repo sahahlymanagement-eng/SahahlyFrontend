@@ -332,6 +332,13 @@ const toggleRow = (id) => {
   }
 };
 
+const goToSubmissionViewer = (assignment) => {
+  if (!assignment?.classroomId || !assignment?._id) return;
+  navigate(
+    `/manager/submissions?classroomId=${assignment.classroomId}&assignmentId=${assignment._id}`
+  );
+};
+
 
   return (
     <div className="md-root">
@@ -573,6 +580,7 @@ const toggleRow = (id) => {
                                 <tr className="md-detail-row">
                                   <td colSpan={8} className="md-detail-cell">
                                     <div className="md-detail-panel">
+                                      <div className="md-detail-panel-top">
                                       <div className="md-detail-grid">
 
                                         <div className="md-detail-item">
@@ -621,6 +629,15 @@ const toggleRow = (id) => {
                                             </div>
                                           </>
                                         )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="md-submission-viewer-btn"
+                                        onClick={() => goToSubmissionViewer(a)}
+                                      >
+                                        <FiBarChart2 size={14} />
+                                        Go to submission viewer
+                                      </button>
                                       </div>
                                     </div>
                                   </td>

@@ -4,6 +4,28 @@
   margin: 0 auto;
   color: #e2e8f0;
   font-family: "Inter", "Plus Jakarta Sans", sans-serif;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.cm-courses-page::-webkit-scrollbar {
+  width: 10px;
+}
+
+.cm-courses-page::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-courses-page::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.cm-courses-page::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
 }
 
 .cm-courses-header {
