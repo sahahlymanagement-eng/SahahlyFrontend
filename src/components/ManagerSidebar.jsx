@@ -3,6 +3,7 @@ import {
   FiZap, FiEye, FiBarChart2, FiUploadCloud, FiMessageSquare
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
+import { useLoginCssNotifications } from "../context/LoginCssNotificationContext";
 
 const NAV_ITEMS = [
   { icon: <FiHome />,      label: "Dashboard",          path: "/manager/dashboard"      },
@@ -21,9 +22,16 @@ const NAV_ITEMS = [
 export default function ManagerSidebar() {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager01 = user?.email?.toLowerCase() === "manager01@manager";
-  const navItems = isManager01
+  const { newCount } = useLoginCssNotifications();
+
+  const navItems = (isManager01
     ? NAV_ITEMS
-    : NAV_ITEMS.filter((item) => item.path !== "/manager/logincss");
+    : NAV_ITEMS.filter((item) => item.path !== "/manager/logincss")
+  ).map((item) =>
+    item.path === "/manager/logincss" && newCount > 0
+      ? { ...item, badge: newCount }
+      : item
+  );
 
   return (
     <RoleSidebar
