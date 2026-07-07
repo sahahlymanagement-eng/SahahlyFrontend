@@ -177,3 +177,20 @@
 .directorGoogleFetchBtn {
   background: #2563eb !important;
 }
+
+.directorGoogleRefreshBtn {
+  background: #0f766e !important;
+}
+
+.directorGoogleSpin {
+  animation: directorGoogleSpin 0.9s linear infinite;
+}
+
+@keyframes directorGoogleSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

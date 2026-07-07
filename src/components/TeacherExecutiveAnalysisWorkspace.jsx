@@ -43,7 +43,6 @@ export default function TeacherExecutiveAnalysisWorkspace({
   const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendEmailToo, setSendEmailToo] = useState(false);
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -93,7 +92,6 @@ export default function TeacherExecutiveAnalysisWorkspace({
     }
 
     setLoadingReport(true);
-    setReviewConfirmed(false);
 
     api
       .get(`/reports/assignment-executive/preview/${selectedAssignment._id}`, {
@@ -228,7 +226,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   type="button"
                   className="mpr-btn mpr-btn--whatsapp"
                   onClick={sendToTeacher}
-                  disabled={sending || !report?.meta?.teacherPhone || !reviewConfirmed}
+                  disabled={sending || !report?.meta?.teacherPhone}
                   title={
                     report?.meta?.teacherPhone
                       ? `Send to ${report.meta.teacherPhone}`
@@ -446,14 +444,6 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   </label>
                 )}
 
-                <label className="mpr-review-check">
-                  <input
-                    type="checkbox"
-                    checked={reviewConfirmed}
-                    onChange={(e) => setReviewConfirmed(e.target.checked)}
-                  />
-                  I have reviewed the PDF preview and analysis above — ready to send
-                </label>
               </div>
             )}
           </section>

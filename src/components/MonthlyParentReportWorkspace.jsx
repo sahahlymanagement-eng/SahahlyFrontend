@@ -78,7 +78,6 @@ export default function MonthlyParentReportWorkspace({
 
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
   const [schoolSessions, setSchoolSessions] = useState(4);
   const [schoolAttendanceInfo, setSchoolAttendanceInfo] = useState(null);
@@ -197,7 +196,6 @@ export default function MonthlyParentReportWorkspace({
     }
 
     setLoadingReport(true);
-    setReviewConfirmed(false);
 
     api.get("/reports/monthly-parent/preview", {
 
@@ -646,7 +644,7 @@ export default function MonthlyParentReportWorkspace({
 
               onClick={sendBulkToParents}
 
-              disabled={sendingWhatsApp || selectedWithParentPhone === 0 || !reviewConfirmed}
+              disabled={sendingWhatsApp || selectedWithParentPhone === 0}
 
             >
 
@@ -706,7 +704,7 @@ export default function MonthlyParentReportWorkspace({
 
                 onClick={sendPreviewToParent}
 
-                disabled={sendingWhatsApp || !previewHasParentPhone || !reviewConfirmed}
+                disabled={sendingWhatsApp || !previewHasParentPhone}
 
                 title={previewHasParentPhone ? "Send PDF to parent WhatsApp" : "No parent phone on file"}
 
@@ -1485,17 +1483,6 @@ export default function MonthlyParentReportWorkspace({
                   </div>
 
                 </div>
-
-
-
-                <label className="mpr-review-check">
-                  <input
-                    type="checkbox"
-                    checked={reviewConfirmed}
-                    onChange={(e) => setReviewConfirmed(e.target.checked)}
-                  />
-                  I have reviewed the PDF preview and summary above — ready to send
-                </label>
 
 
 

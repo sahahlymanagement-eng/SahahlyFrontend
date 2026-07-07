@@ -1,7 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "../../api/api";
 import "./DirectorGoogleAccount.css";
-import { FiMail, FiBookOpen, FiDownloadCloud, FiPlus, FiTrash2 } from "react-icons/fi";
+import {
+  FiMail,
+  FiBookOpen,
+  FiDownloadCloud,
+  FiPlus,
+  FiRefreshCw,
+  FiTrash2,
+} from "react-icons/fi";
 import { toast } from "react-toastify";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:6001/api";
@@ -12,6 +19,7 @@ export default function DirectorGoogleAccountsPage() {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [loadingAccountId, setLoadingAccountId] = useState(null);
   const [syncingAccountId, setSyncingAccountId] = useState(null);
+  const [refreshingTokenId, setRefreshingTokenId] = useState(null);
   const [newEmail, setNewEmail] = useState("");
   const [connecting, setConnecting] = useState(false);
 
@@ -131,6 +139,25 @@ export default function DirectorGoogleAccountsPage() {
     }
   };
 
+  const refreshAccountToken = async (account) => {
+    if (refreshingTokenId) return;
+    try {
+      setRefreshingTokenId(account._id);
+      const { data } = await api.post(
+        `/director/google-accounts/${account._id}/refresh-token`
+      );
+      toast.success(data?.message || `Token refreshed for ${account.email}`);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          err.response?.data?.detail ||
+          "Failed to refresh token"
+      );
+    } finally {
+      setRefreshingTokenId(null);
+    }
+  };
+
   useEffect(() => {
     loadAccounts();
 
@@ -198,6 +225,7 @@ export default function DirectorGoogleAccountsPage() {
           {accounts.map((acc) => {
             const isSyncing = syncingAccountId === acc._id;
             const isLoading = loadingAccountId === acc._id;
+            const isRefreshing = refreshingTokenId === acc._id;
 
             return (
               <div key={acc._id} className="directorGoogleCard">
@@ -218,6 +246,15 @@ export default function DirectorGoogleAccountsPage() {
                 <h3>{acc.email}</h3>
 
                 <div className="directorGoogleActions">
+                  <button
+                    type="button"
+                    className="directorGoogleRefreshBtn"
+                    onClick={() => refreshAccountToken(acc)}
+                    disabled={!!refreshingTokenId}
+                  >
+                    <FiRefreshCw className={isRefreshing ? "directorGoogleSpin" : ""} />
+                    {isRefreshing ? "Refreshing…" : "Refresh Token"}
+                  </button>
                   <button
                     type="button"
                     className="directorGoogleFetchBtn"
