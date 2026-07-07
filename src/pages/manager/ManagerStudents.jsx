@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -14,6 +14,12 @@ import "react-international-phone/style.css";
 
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
+import {
+  useClassroomTeacherFilter,
+  useReportTeacherOptions,
+  useClearClassroomOnTeacherFilter,
+} from "../../hooks/useReportTeacherFilter";
 
 export default function ManagerStudents() {
   const navigate = useNavigate();
@@ -41,10 +47,17 @@ export default function ManagerStudents() {
     setUser(parsed);
   }, [navigate]);
 
-  const classroomParams = useMemo(() => ({
-    personId: user?.id,
-    search: classroomSearch,
-  }), [user?.id, classroomSearch]);
+  const {
+    teacherFilter,
+    setTeacherFilter,
+    allTeachers,
+    classroomParams,
+    showTeacherFilter,
+  } = useClassroomTeacherFilter({
+    isTeacher: false,
+    userId: user?.id,
+    classroomSearch,
+  });
 
   const {
     data: classrooms,
@@ -52,6 +65,16 @@ export default function ManagerStudents() {
     totalPages: classroomTotalPages,
     fetchPage: fetchClassroomPage,
   } = usePagination("/students/my-classrooms", classroomParams, 20, "data", !!user?.id);
+
+  const teacherOptions = useReportTeacherOptions(false, allTeachers, classrooms);
+
+  const clearClassroomSelection = useCallback(() => {
+    setSelectedClassroom(null);
+    setEditingId(null);
+    setSearch("");
+  }, []);
+
+  useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
   const studentParams = useMemo(() => ({
     search,
@@ -206,6 +229,14 @@ export default function ManagerStudents() {
                     )}
                     </div>
 
+                    <ReportTeacherFilterSelect
+                      show={showTeacherFilter}
+                      value={teacherFilter}
+                      onChange={setTeacherFilter}
+                      teachers={teacherOptions}
+                      className="ms-search-input ms-teacher-filter"
+                    />
+
                     <div className="ms-classroom-grid">
                     {classrooms.map((c) => (
                         <div
@@ -227,6 +258,9 @@ export default function ManagerStudents() {
                             <div className="ms-classroom-section">
                             {c.section}
                             </div>
+                        )}
+                        {c.teacherId?.name && (
+                            <div className="ms-classroom-teacher">Teacher: {c.teacherId.name}</div>
                         )}
                         </div>
                     ))}

@@ -424,6 +424,13 @@ input:checked + .slider:before {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
+.cm-teacher-filter {
+  flex: 0 0 200px;
+  min-width: 180px;
+  max-width: 240px;
+  cursor: pointer;
+}
+
 .cm-search-btn,
 .cm-search-clear {
   display: inline-flex;

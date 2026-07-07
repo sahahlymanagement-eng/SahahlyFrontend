@@ -41,8 +41,8 @@
 /* ─── ROOT ─────────────────────────────────────────────── */
 
 .qm2-root {
-  min-height: 100vh;
-  background: #000818;
+  min-height: 0;
+  background: transparent;
   color: #e2e8f0;
   font-family: 'Plus Jakarta Sans', sans-serif;
   display: flex;

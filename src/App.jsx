@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import "./styles/ui-polish.css";
 
 
 import GoogleConnectTest from "./pages/GoogleConnectTest";
@@ -261,6 +262,7 @@ function App() {
           <Route path="dashboard" element={<DirectorDashboard/>}/>
           <Route path="people" element={<DirectorPeople/>}/>
           <Route path="ClassroomManagers" element={<DirectorClassroomManagers/>}/>
+          <Route path="classroommanagers" element={<DirectorClassroomManagers/>}/>
           <Route path="quality-managers" element={<DirectorQualityManagers/>}/> 
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>

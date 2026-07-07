@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
 import { toast } from "react-toastify";
@@ -25,6 +25,12 @@ import { computeGradePercent, parsePercentInput, displayPercent } from "../utils
 import { usePagination } from "../hooks/usePagination";
 import { fetchAllPaginated } from "../utils/fetchAllStudents";
 import Pagination from "./Pagination";
+import ReportTeacherFilterSelect from "./ReportTeacherFilterSelect";
+import {
+  useReportTeacherFilter,
+  useReportTeacherOptions,
+  useClearClassroomOnTeacherFilter,
+} from "../hooks/useReportTeacherFilter";
 
 
 export default function ReportsWorkspace({ variant = "manager" }) {
@@ -47,15 +53,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [selectingAll, setSelectingAll] = useState(false);
   const [reportView, setReportView] = useState("assignment");
 
-  const classroomParams = useMemo(() => {
-    if (isTeacher) {
-      return { search: classroomSearch };
-    }
-    return {
-      personId: user?.id,
-      search: classroomSearch,
-    };
-  }, [isTeacher, user?.id, classroomSearch]);
+  const {
+    teacherFilter,
+    setTeacherFilter,
+    allTeachers,
+    classroomParams,
+    showTeacherFilter,
+  } = useReportTeacherFilter({
+    isTeacher,
+    userId: user?.id,
+    classroomSearch,
+  });
 
   const classroomsUrl = isTeacher
     ? user?.id
@@ -69,6 +77,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     totalPages: classroomTotalPages,
     fetchPage: fetchClassroomPage,
   } = usePagination(classroomsUrl, classroomParams, 20, "data", !!user?.id);
+
+  const teacherOptions = useReportTeacherOptions(isTeacher, allTeachers, classrooms);
+
+  const clearClassroomSelection = useCallback(() => {
+    setSelectedClassroom(null);
+    setSelectedAssignment(null);
+    setReportCart({});
+    setSummaryMap({});
+  }, []);
+
+  useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
   const assignmentParams = useMemo(() => ({
     search: assignmentSearch,
@@ -721,6 +740,13 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               onChange={(e) => setClassroomSearch(e.target.value)}
             />
 
+            <ReportTeacherFilterSelect
+              show={showTeacherFilter}
+              value={teacherFilter}
+              onChange={setTeacherFilter}
+              teachers={teacherOptions}
+            />
+
             <div className="ma-scroll-list">
               {filteredClassrooms.map(c => (
                 <div
@@ -739,6 +765,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                     <span className="ma-classroom-name">{c.name}</span>
                     {c.section && (
                       <span className="ma-classroom-section">{c.section}</span>
+                    )}
+                    {c.teacherId?.name && (
+                      <span className="msv-classroom-teacher">Teacher: {c.teacherId.name}</span>
                     )}
                   </div>
                 </div>

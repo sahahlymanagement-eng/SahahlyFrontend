@@ -112,6 +112,16 @@
   overflow: hidden;
 }
 
+.ast-main > .qt-root,
+.ast-main > .qm2-root {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
 .ast-page {
   padding: 32px 40px 48px;
   max-width: 1200px;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import api from "../api/api";
 import { toast } from "react-toastify";
 import {
@@ -20,6 +20,12 @@ import GradeDistributionPreview from "./GradeDistributionPreview";
 import TopicMasteryPreview from "./TopicMasteryPreview";
 import SmartRecommendationsPreview from "./SmartRecommendationsPreview";
 import "./MonthlyParentReport.css";
+import ReportTeacherFilterSelect from "./ReportTeacherFilterSelect";
+import {
+  useReportTeacherFilter,
+  useReportTeacherOptions,
+  useClearClassroomOnTeacherFilter,
+} from "../hooks/useReportTeacherFilter";
 
 const TRIGGERS = [
   { value: "assignment_done", label: "Assignment completed" },
@@ -49,10 +55,17 @@ export default function TeacherExecutiveAnalysisWorkspace({
     if (stored) setUser(JSON.parse(stored));
   }, []);
 
-  const classroomParams = useMemo(() => {
-    if (isTeacher) return { search: classroomSearch };
-    return { personId: user?.id, search: classroomSearch };
-  }, [isTeacher, user?.id, classroomSearch]);
+  const {
+    teacherFilter,
+    setTeacherFilter,
+    allTeachers,
+    classroomParams,
+    showTeacherFilter,
+  } = useReportTeacherFilter({
+    isTeacher,
+    userId: user?.id,
+    classroomSearch,
+  });
 
   const classroomsUrl = isTeacher
     ? user?.id
@@ -66,6 +79,16 @@ export default function TeacherExecutiveAnalysisWorkspace({
     totalPages: classroomTotalPages,
     fetchPage: fetchClassroomPage,
   } = usePagination(classroomsUrl, classroomParams, 20, "data", !!user?.id);
+
+  const teacherOptions = useReportTeacherOptions(isTeacher, allTeachers, classrooms);
+
+  const clearClassroomSelection = useCallback(() => {
+    setSelectedClassroom(null);
+    setSelectedAssignment(null);
+    setReport(null);
+  }, []);
+
+  useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
   const assignmentParams = useMemo(() => ({ search: assignmentSearch }), [assignmentSearch]);
 
@@ -248,6 +271,13 @@ export default function TeacherExecutiveAnalysisWorkspace({
             <p className="mpr-panel-label">
               <FiUsers size={13} /> Classroom
             </p>
+            <ReportTeacherFilterSelect
+              show={showTeacherFilter}
+              value={teacherFilter}
+              onChange={setTeacherFilter}
+              teachers={teacherOptions}
+              className="mpr-select"
+            />
             <input
               className="mpr-search"
               placeholder="Search classrooms…"
@@ -266,6 +296,9 @@ export default function TeacherExecutiveAnalysisWorkspace({
                 >
                   <span className="mpr-card-title">{c.name}</span>
                   {c.section && <span className="mpr-card-meta">{c.section}</span>}
+                  {c.teacherId?.name && (
+                    <span className="mpr-card-meta">Teacher: {c.teacherId.name}</span>
+                  )}
                 </button>
               ))}
             </div>

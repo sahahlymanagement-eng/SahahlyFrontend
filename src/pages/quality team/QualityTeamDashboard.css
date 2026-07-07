@@ -32,8 +32,8 @@
 }
 
 .qt-root {
-  min-height: 100vh;
-  background: #000828;
+  min-height: 0;
+  background: transparent;
   color: #e2e8f0;
   font-family: 'Plus Jakarta Sans', sans-serif;
   animation: qt-fade-in 0.25s ease;
@@ -51,6 +51,12 @@
   align-items: center;
   gap: 16px;
   margin-bottom: 28px;
+  padding: 18px 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 8, 24, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   animation: qt-fade-down 0.4s ease;
 }
 

@@ -127,19 +127,20 @@
 .login-submit-btn {
   width: 100%;
   padding: 14px;
-  background-color: #1d4ed8; /* Dark blue button */
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 18px;
+  border-radius: 10px;
+  font-size: 17px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.3s ease;
+  transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
   margin-top: 10px;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.3);
 }
 
-.login-submit-btn:hover {
-  background-color: #2563eb;
+.login-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
 }
 
 .login-submit-btn:disabled {

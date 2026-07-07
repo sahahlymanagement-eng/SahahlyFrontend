@@ -1,4 +1,5 @@
 import "../pages/assistant/assistant.css";
+import "../styles/ui-polish.css";
 
 export default function RoleShell({ sidebar, children }) {
   return (

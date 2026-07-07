@@ -1,0 +1,305 @@
+/**
+ * Global UI polish — shared across all roles.
+ * Enhances visuals/interaction only; does not hide or remove controls.
+ */
+
+:root {
+  --sah-brand: #7c3aed;
+  --sah-brand-2: #4f46e5;
+  --sah-surface: rgba(255, 255, 255, 0.04);
+  --sah-border: rgba(255, 255, 255, 0.1);
+  --sah-text: #e2e8f0;
+  --sah-muted: #94a3b8;
+  --sah-radius: 12px;
+  --sah-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  --sah-transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── Focus rings (keyboard accessibility) ─── */
+.ast-root button:focus-visible,
+.ast-root a:focus-visible,
+.ast-root select:focus-visible,
+.ast-root input:focus-visible,
+.ast-root textarea:focus-visible,
+.login-container button:focus-visible,
+.login-container input:focus-visible {
+  outline: 2px solid rgba(124, 58, 237, 0.65);
+  outline-offset: 2px;
+}
+
+/* ─── Unified dark-theme selects ─── */
+.ast-root select,
+.ast-root .ma-search-input,
+.ast-root .mpr-select,
+.ast-root .ms-search-input,
+.ast-root .pm-input,
+.ast-root .qt-select,
+.ast-root .qm2-select {
+  color-scheme: dark;
+}
+
+.ast-root select option,
+.ast-root .ma-search-input option,
+.ast-root .mpr-select option,
+.ast-root .ms-search-input option,
+.ast-root .qt-select option,
+.ast-root .qm2-select option {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+/* ─── Pagination (shared component) ─── */
+.sah-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.sah-pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  transition: background var(--sah-transition), border-color var(--sah-transition),
+    color var(--sah-transition), transform var(--sah-transition);
+}
+
+.sah-pagination-btn:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.14);
+  border-color: rgba(124, 58, 237, 0.35);
+  color: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+.sah-pagination-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sah-pagination-btn--active {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.35), rgba(79, 70, 229, 0.22));
+  border-color: rgba(124, 58, 237, 0.45);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.25);
+}
+
+.sah-pagination-gap {
+  opacity: 0.45;
+  padding: 0 4px;
+  font-size: 13px;
+  color: #64748b;
+  user-select: none;
+}
+
+/* ─── Interactive cards (manager reports, students, etc.) ─── */
+.ast-root .ma-classroom-card,
+.ast-root .ms-classroom-card,
+.ast-root .mpr-card,
+.ast-root .md-status-card,
+.ast-root .qt-stat-card,
+.ast-root .qm2-stat-card,
+.ast-root .directorDashStatCard {
+  transition: transform var(--sah-transition), border-color var(--sah-transition),
+    box-shadow var(--sah-transition), background var(--sah-transition);
+}
+
+.ast-root .ma-classroom-card:hover,
+.ast-root .ms-classroom-card:hover,
+.ast-root .mpr-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ─── Table row hover polish ─── */
+.ast-root table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.ast-root .ast-table tbody tr:hover,
+.ast-root .md-table tbody tr:hover,
+.ast-root .ms-table tbody tr:hover,
+.ast-root .qt-table tbody tr:hover,
+.ast-root .qm2-table tbody tr:hover,
+.ast-root .ma-student-row:hover {
+  background: rgba(124, 58, 237, 0.06);
+}
+
+/* ─── Quality dashboards inside RoleShell ─── */
+.ast-main > .qt-root,
+.ast-main > .qm2-root {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.qt-root,
+.qm2-root {
+  min-height: 0;
+  background: transparent;
+  animation: ast-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.qt-main,
+.qm2-main {
+  padding-top: 28px;
+}
+
+/* ─── Sidebar nav polish ─── */
+.ast-nav-item--active {
+  position: relative;
+}
+
+.ast-nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #a78bfa, #6366f1);
+  box-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
+}
+
+.ast-sidebar-toggle {
+  transition: background var(--sah-transition), color var(--sah-transition), transform var(--sah-transition);
+}
+
+.ast-sidebar-toggle:active {
+  transform: scale(0.96);
+}
+
+/* ─── Toast notifications ─── */
+.Toastify__toast {
+  border-radius: 12px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 14px !important;
+  box-shadow: var(--sah-shadow) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.Toastify__toast--success {
+  background: linear-gradient(135deg, #064e3b, #065f46) !important;
+}
+
+.Toastify__toast--error {
+  background: linear-gradient(135deg, #7f1d1d, #991b1b) !important;
+}
+
+.Toastify__toast--warning {
+  background: linear-gradient(135deg, #78350f, #92400e) !important;
+}
+
+.Toastify__toast--info {
+  background: linear-gradient(135deg, #1e3a5f, #1e40af) !important;
+}
+
+/* ─── Login page ─── */
+.login-container {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(124, 58, 237, 0.22), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(37, 99, 235, 0.12), transparent 50%),
+    #000828;
+}
+
+.login-box {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: border-color var(--sah-transition), box-shadow var(--sah-transition);
+}
+
+.login-box:hover {
+  border-color: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.login-button,
+.login-submit-btn {
+  transition: transform var(--sah-transition), box-shadow var(--sah-transition) !important;
+}
+
+.login-button:hover:not(:disabled),
+.login-submit-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+}
+
+/* ─── Report tabs ─── */
+.ma-report-tab {
+  transition: background var(--sah-transition), color var(--sah-transition), border-color var(--sah-transition);
+}
+
+.ma-report-tab:hover:not(.ma-report-tab--active) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+/* ─── Send / primary action buttons ─── */
+.ma-send-btn,
+.md-assign-btn,
+.qt-btn--primary,
+.qm2-btn--primary,
+.directorGooglePrimaryBtn {
+  transition: transform var(--sah-transition), box-shadow var(--sah-transition), opacity var(--sah-transition);
+}
+
+.ma-send-btn:hover:not(:disabled),
+.md-assign-btn:hover:not(:disabled),
+.qt-btn--primary:hover:not(:disabled),
+.qm2-btn--primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* ─── Loading states ─── */
+.ast-loading,
+.qt-loading,
+.qm2-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--sah-muted);
+  font-size: 14px;
+}
+
+@keyframes sah-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.sah-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: sah-shimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

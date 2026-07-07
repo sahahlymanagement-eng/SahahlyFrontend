@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 
 import api from "../api/api";
 
@@ -27,6 +27,12 @@ import {
 } from "../utils/attendanceExcel";
 
 import "./MonthlyParentReport.css";
+import ReportTeacherFilterSelect from "./ReportTeacherFilterSelect";
+import {
+  useReportTeacherFilter,
+  useReportTeacherOptions,
+  useClearClassroomOnTeacherFilter,
+} from "../hooks/useReportTeacherFilter";
 
 
 
@@ -117,15 +123,17 @@ export default function MonthlyParentReportWorkspace({
 
 
 
-  const classroomParams = useMemo(() => {
-
-    if (isTeacher) return { search: classroomSearch };
-
-    return { personId: user?.id, search: classroomSearch };
-
-  }, [isTeacher, user?.id, classroomSearch]);
-
-
+  const {
+    teacherFilter,
+    setTeacherFilter,
+    allTeachers,
+    classroomParams,
+    showTeacherFilter,
+  } = useReportTeacherFilter({
+    isTeacher,
+    userId: user?.id,
+    classroomSearch,
+  });
 
   const classroomsUrl = isTeacher
 
@@ -150,6 +158,17 @@ export default function MonthlyParentReportWorkspace({
     fetchPage: fetchClassroomPage,
 
   } = usePagination(classroomsUrl, classroomParams, 20, "data", !!user?.id);
+
+  const teacherOptions = useReportTeacherOptions(isTeacher, allTeachers, classrooms);
+
+  const clearClassroomSelection = useCallback(() => {
+    setSelectedClassroom(null);
+    setPreviewStudent(null);
+    setSelectedStudentIds(new Set());
+    setReport(null);
+  }, []);
+
+  useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
 
 
@@ -738,6 +757,14 @@ export default function MonthlyParentReportWorkspace({
 
               <>
 
+                <ReportTeacherFilterSelect
+                  show={showTeacherFilter}
+                  value={teacherFilter}
+                  onChange={setTeacherFilter}
+                  teachers={teacherOptions}
+                  className="mpr-select"
+                />
+
                 <input
 
                   className="mpr-search"
@@ -779,6 +806,10 @@ export default function MonthlyParentReportWorkspace({
                       <span className="mpr-card-title">{c.name}</span>
 
                       {c.section && <span className="mpr-card-meta">{c.section}</span>}
+
+                      {c.teacherId?.name && (
+                        <span className="mpr-card-meta">Teacher: {c.teacherId.name}</span>
+                      )}
 
                     </button>
 

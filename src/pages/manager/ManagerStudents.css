@@ -569,6 +569,19 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   cursor: pointer;
 }
 
+.ms-teacher-filter {
+  margin-bottom: 12px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.ms-classroom-teacher {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+}
+
 .ms-phone-input {
   min-width: 180px;
 }

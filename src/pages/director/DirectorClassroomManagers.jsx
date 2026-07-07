@@ -3,14 +3,28 @@ import api from "../../api/api";
 import "./DirectorClassroomManagers.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
+import { useReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
 import { toast } from "react-toastify";
 import { FiRefreshCw, FiSearch } from "react-icons/fi";
 
 export default function DirectorManagers() {
   const [search, setSearch] = useState("");
+  const [teacherFilter, setTeacherFilter] = useState("all");
+  const [allTeachers, setAllTeachers] = useState([]);
+
+  useEffect(() => {
+    api.get("/people/teachers")
+      .then((r) => setAllTeachers(r.data || []))
+      .catch(() => {});
+  }, []);
+
   const classroomParams = useMemo(
-    () => ({ search: search.trim() || undefined }),
-    [search]
+    () => ({
+      search: search.trim() || undefined,
+      ...(teacherFilter !== "all" ? { teacherId: teacherFilter } : {}),
+    }),
+    [search, teacherFilter]
   );
 
   const {
@@ -20,6 +34,9 @@ export default function DirectorManagers() {
     loading: loadingClassrooms,
     fetchPage: fetchClassroomsPage,
   } = usePagination("/classrooms", classroomParams, 10);
+
+  const teacherOptions = useReportTeacherOptions(false, allTeachers, classrooms);
+
   const [people, setPeople] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [selectedManagers, setSelectedManagers] = useState({});
@@ -131,6 +148,13 @@ export default function DirectorManagers() {
       <div className="dm-header">
         <h2 className="dm-title">Assign Managers to Classrooms</h2>
         <div className="dm-toolbar">
+          <ReportTeacherFilterSelect
+            show
+            value={teacherFilter}
+            onChange={setTeacherFilter}
+            teachers={teacherOptions}
+            className="dm-select dm-teacher-filter"
+          />
           <div className="dm-search">
             <FiSearch size={16} aria-hidden />
             <input

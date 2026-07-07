@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import api from "../../api/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -15,6 +15,8 @@ import {
 } from "react-icons/fi";
 import "./CourseManagement.css";
 import { usePagination } from "../../hooks/usePagination";
+import ReportTeacherFilterSelect from "../ReportTeacherFilterSelect";
+import { useReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
 
 const UNASSIGNED_KEY = "__unassigned__";
 
@@ -57,6 +59,8 @@ export default function CoursesList() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [expandedFolders, setExpandedFolders] = useState({});
+  const [teacherFilter, setTeacherFilter] = useState("all");
+  const [allTeachers, setAllTeachers] = useState([]);
 
   const storedUser = localStorage.getItem("user");
   const user = storedUser ? JSON.parse(storedUser) : null;
@@ -65,12 +69,20 @@ export default function CoursesList() {
   const isManager = role === "manager";
   const isFolderView = isAdmin || isManager;
 
+  useEffect(() => {
+    if (!isFolderView) return;
+    api.get("/people/teachers")
+      .then((r) => setAllTeachers(r.data || []))
+      .catch(() => {});
+  }, [isFolderView]);
+
   const listParams = useMemo(() => {
     const params = {};
     if (isManager && user?.id) params.personId = user.id;
     if (search) params.search = search;
+    if (teacherFilter !== "all") params.teacherId = teacherFilter;
     return params;
-  }, [isManager, user?.id, search]);
+  }, [isManager, user?.id, search, teacherFilter]);
 
   const url = isAdmin
     ? "/google-classroom/courses"
@@ -90,6 +102,8 @@ export default function CoursesList() {
     () => (isFolderView ? groupCoursesByTeacher(courses) : []),
     [courses, isFolderView]
   );
+
+  const teacherOptions = useReportTeacherOptions(isFolderView ? false : true, allTeachers, courses);
 
   const totalCourses = courses.length;
 
@@ -167,6 +181,13 @@ export default function CoursesList() {
 
       {isFolderView && (
         <div className="cm-search-bar">
+          <ReportTeacherFilterSelect
+            show
+            value={teacherFilter}
+            onChange={setTeacherFilter}
+            teachers={teacherOptions}
+            className="cm-search-input cm-teacher-filter"
+          />
           <FiSearch className="cm-search-icon" />
           <input
             className="cm-search-input"
