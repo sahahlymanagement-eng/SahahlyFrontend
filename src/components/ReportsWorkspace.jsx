@@ -330,21 +330,21 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   const currentAssignmentAttendance = useMemo(() => {
     const id = selectedAssignment?._id ? String(selectedAssignment._id) : null;
-    if (!id) return { enabled: false, map: {}, roster: [], fileName: "" };
+    if (!id) return { enabled: false, map: {}, roster: [], fileName: "", date: "" };
     return (
-      assignmentAttendance[id] || { enabled: false, map: {}, roster: [], fileName: "" }
+      assignmentAttendance[id] || { enabled: false, map: {}, roster: [], fileName: "", date: "" }
     );
   }, [assignmentAttendance, selectedAssignment?._id]);
 
   const handleAttendanceToggle = (assignmentId, checked) => {
     const key = String(assignmentId);
     setAssignmentAttendance((prev) => {
-      const current = prev[key] || { enabled: false, map: {}, roster: [], fileName: "" };
+      const current = prev[key] || { enabled: false, map: {}, roster: [], fileName: "", date: "" };
       return {
         ...prev,
         [key]: checked
           ? { ...current, enabled: true }
-          : { enabled: false, map: {}, roster: [], fileName: "" },
+          : { enabled: false, map: {}, roster: [], fileName: "", date: "" },
       };
     });
   };
@@ -362,12 +362,12 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     const assignmentId = String(selectedAssignment._id);
     setParsingAttendanceForAssignment(assignmentId);
     try {
-      const names = await parseAttendanceNamesFromFile(file);
+      const { names, date } = await parseAttendanceNamesFromFile(file);
       if (!names.length) {
         toast.warn("No student names found in that file");
         setAssignmentAttendance((prev) => ({
           ...prev,
-          [assignmentId]: { enabled: true, map: {}, roster: [], fileName: "" },
+          [assignmentId]: { enabled: true, map: {}, roster: [], fileName: "", date: date || "" },
         }));
         return;
       }
@@ -383,7 +383,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       const map = buildInitialAttendanceMap(roster, names, (s) => s._id);
       setAssignmentAttendance((prev) => ({
         ...prev,
-        [assignmentId]: { enabled: true, map, roster, fileName: file.name },
+        [assignmentId]: { enabled: true, map, roster, fileName: file.name, date: date || "" },
       }));
       const present = countPresentInMap(map);
       toast.success(
@@ -393,7 +393,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       toast.error(err?.message || "Failed to read attendance file");
       setAssignmentAttendance((prev) => ({
         ...prev,
-        [assignmentId]: { enabled: true, map: {}, roster: [], fileName: "" },
+        [assignmentId]: { enabled: true, map: {}, roster: [], fileName: "", date: "" },
       }));
     } finally {
       setParsingAttendanceForAssignment(null);
@@ -403,7 +403,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const setStudentAttendance = (assignmentId, studentId, present) => {
     const key = String(assignmentId);
     setAssignmentAttendance((prev) => {
-      const current = prev[key] || { enabled: true, map: {}, roster: [], fileName: "" };
+      const current = prev[key] || { enabled: true, map: {}, roster: [], fileName: "", date: "" };
       return {
         ...prev,
         [key]: {
@@ -412,6 +412,20 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             ...(current.map || {}),
             [String(studentId)]: present,
           },
+        },
+      };
+    });
+  };
+
+  const setAttendanceDate = (assignmentId, date) => {
+    const key = String(assignmentId);
+    setAssignmentAttendance((prev) => {
+      const current = prev[key] || { enabled: true, map: {}, roster: [], fileName: "", date: "" };
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          date,
         },
       };
     });
@@ -485,7 +499,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           (submissionId ? freshSummaryMap[submissionId] : "");
         const attendanceCfg =
           assignmentAttendance[String(item.assignmentId || selectedAssignment?._id)] ||
-          { enabled: false, map: {} };
+          { enabled: false, map: {}, date: "" };
         return {
           ...item,
           assignmentId: item.assignmentId || selectedAssignment._id,
@@ -503,6 +517,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           attendancePresent: attendanceCfg.enabled
             ? Boolean(attendanceCfg.map?.[String(entry.studentMeta._id)])
             : null,
+          attendanceDate: attendanceCfg.enabled ? (attendanceCfg.date || null) : null,
         };
       }),
     }));
@@ -994,6 +1009,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                             <th>Email</th>
                             <th>Status</th>
                             {showAttendanceColumn && <th>Attendance</th>}
+                            {showAttendanceColumn && <th>Date</th>}
                             <th>Submitted At</th>
                             <th>Grade</th>
                             <th>%</th>
@@ -1033,6 +1049,18 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                       present={!!currentAssignmentAttendance.map?.[stuId]}
                                       onChange={(present) =>
                                         setStudentAttendance(asgId, stuId, present)
+                                      }
+                                    />
+                                  </td>
+                                )}
+                                {showAttendanceColumn && (
+                                  <td onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="date"
+                                      className="ma-attendance-date"
+                                      value={currentAssignmentAttendance.date || ""}
+                                      onChange={(e) =>
+                                        setAttendanceDate(asgId, e.target.value)
                                       }
                                     />
                                   </td>

@@ -100,6 +100,14 @@ const CHECKLIST_CONFIG = [
   { key: "answerIsBlank",              label: "Answer is Blank",           passIsGood: false },
 ];
 
+function geminiDropdownLabel(model) {
+  const raw = String(model?.label || model?.id || "").trim();
+  if (!raw) return "Gemini model";
+  // Keep dropdown text compact/readable; preserve full label elsewhere.
+  const compact = raw.replace(/\s*\([^)]*\)\s*/g, "");
+  return compact || raw;
+}
+
 export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // const BATCH_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
   const PRIORITY_ALLOWED_IDS = ["69ce5f2a2e58ca2f4062ae15"];
@@ -3278,14 +3286,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         onChange={(e) => setGeminiModel(e.target.value)}
                         disabled={bulkMarking || batchStarting}
                         title="Gemini model for batch marking"
-                        style={{ minWidth: 210, maxWidth: 280 }}
+                        style={{ minWidth: 250, maxWidth: 420 }}
                       >
                         {(geminiModels.length
                           ? geminiModels
                           : [{ id: geminiModel, label: geminiModel }]
                         ).map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.label}
+                          <option key={m.id} value={m.id} title={m.label || m.id}>
+                            {geminiDropdownLabel(m)}
                           </option>
                         ))}
                       </select>
@@ -3969,7 +3977,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   onChange={e => setGeminiModel(e.target.value)}
                 >
                   {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
+                    <option key={m.id} value={m.id} title={m.label || m.id}>
+                      {geminiDropdownLabel(m)}
+                    </option>
                   ))}
                 </select>
                 <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>

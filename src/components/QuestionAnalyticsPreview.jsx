@@ -1,4 +1,4 @@
-import { FiAlertTriangle, FiHelpCircle } from "react-icons/fi";
+import { FiHelpCircle } from "react-icons/fi";
 
 function pctTone(percent) {
   if (percent >= 60) return "green";
@@ -13,10 +13,6 @@ export default function QuestionAnalyticsPreview({
   const items = analytics?.lowestScoring || [];
   if (!items.length) return null;
 
-  const extraIntervention = (analytics.requiringIntervention || []).filter(
-    (q) => !items.some((i) => i.questionLabel === q.questionLabel)
-  ).length;
-
   return (
     <div className="mpr-question-analytics">
       <div className="mpr-question-analytics-head">
@@ -24,8 +20,7 @@ export default function QuestionAnalyticsPreview({
         <span>Question-level analytics</span>
       </div>
       <p className="mpr-question-analytics-hint">
-        Lowest-scoring questions with class-wide % correct, common mistakes, and
-        intervention flags.
+        Lowest-scoring questions with common mistakes and misconceptions.
       </p>
 
       <ul className="mpr-question-list">
@@ -38,9 +33,6 @@ export default function QuestionAnalyticsPreview({
             >
               <div className="mpr-question-card-head">
                 <strong>{q.questionLabel || `Question ${q.questionNumber}`}</strong>
-                <span className={`mpr-question-pct mpr-question-pct--${tone}`}>
-                  {q.correctPercent}% correct
-                </span>
               </div>
 
               {includeStudentContext && q.studentMarks != null && (
@@ -61,23 +53,10 @@ export default function QuestionAnalyticsPreview({
                   </p>
                 )}
 
-              {q.requiresIntervention && (
-                <span className="mpr-question-flag">
-                  <FiAlertTriangle size={12} />
-                  Teacher intervention recommended
-                </span>
-              )}
             </li>
           );
         })}
       </ul>
-
-      {extraIntervention > 0 && (
-        <p className="mpr-question-more">
-          + {extraIntervention} more question{extraIntervention === 1 ? "" : "s"}{" "}
-          flagged for teacher follow-up
-        </p>
-      )}
     </div>
   );
 }

@@ -73,11 +73,11 @@ export default function CoursesList() {
   const isFolderView = isAdmin || isManager;
 
   useEffect(() => {
-    if (!isFolderView) return;
+    if (!isAdmin) return;
     api.get("/people/teachers")
       .then((r) => setAllTeachers(r.data || []))
       .catch(() => {});
-  }, [isFolderView]);
+  }, [isAdmin]);
 
   const listParams = useMemo(() => {
     const params = {};
@@ -106,7 +106,12 @@ export default function CoursesList() {
     [courses, isFolderView]
   );
 
-  const teacherOptions = useReportTeacherOptions(isFolderView ? false : true, allTeachers, courses);
+  const teacherOptions = useReportTeacherOptions(
+    isFolderView ? false : true,
+    allTeachers,
+    courses,
+    isAdmin
+  );
 
   const totalCourses = courses.length;
 

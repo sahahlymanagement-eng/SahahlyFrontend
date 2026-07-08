@@ -217,6 +217,8 @@
   font-size: 13px;
   outline: none;
   cursor: pointer;
+  text-align: left;
+  direction: ltr;
 }
 
 .msv-gemini-select:focus {

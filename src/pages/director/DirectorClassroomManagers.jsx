@@ -35,7 +35,7 @@ export default function DirectorManagers() {
     fetchPage: fetchClassroomsPage,
   } = usePagination("/classrooms", classroomParams, 10);
 
-  const teacherOptions = useReportTeacherOptions(false, allTeachers, classrooms);
+  const teacherOptions = useReportTeacherOptions(false, allTeachers, classrooms, true);
 
   const [people, setPeople] = useState([]);
   const [assignments, setAssignments] = useState([]);

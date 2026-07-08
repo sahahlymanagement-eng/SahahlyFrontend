@@ -370,7 +370,7 @@ export default function MonthlyParentReportWorkspace({
       return;
     }
     try {
-      const names = await parseAttendanceNamesFromFile(file);
+      const { names } = await parseAttendanceNamesFromFile(file);
       const map = buildInitialAttendanceMap(students, names, (s) => s._id);
       setAttendanceMap(map);
       setAttendanceFileName(file.name);

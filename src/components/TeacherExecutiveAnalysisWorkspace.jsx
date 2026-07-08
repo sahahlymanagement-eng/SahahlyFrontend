@@ -415,16 +415,6 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     <span>Papers marked</span>
                     <strong>{report.meta.papersMarked ?? "—"}</strong>
                   </div>
-                  <div className="tea-kpi">
-                    <span>Marking unchanged</span>
-                    <strong>
-                      {report.kpis.markingUnchangedRate != null
-                        ? `${report.kpis.markingUnchangedRate}%`
-                        : report.kpis.aiAgreementRate != null
-                          ? `${report.kpis.aiAgreementRate}%`
-                          : "—"}
-                    </strong>
-                  </div>
                 </div>
 
                 {report.executiveSummary?.length > 0 && (

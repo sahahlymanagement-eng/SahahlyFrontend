@@ -234,7 +234,7 @@ export default function AssistantReports() {
 
     setParsingAttendance(true);
     try {
-      const names = await parseAttendanceNamesFromFile(file);
+      const { names } = await parseAttendanceNamesFromFile(file);
       if (!names.length) {
         toast.warn("No student names found in that file");
         setAttendanceMap({});
