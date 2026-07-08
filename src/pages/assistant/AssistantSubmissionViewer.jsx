@@ -7,7 +7,9 @@ import { annotatePdf } from "../../utils/annotatePdf";
 
 import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
 import Pagination from "../../components/Pagination";
+import PageCountCheckModal from "../../components/PageCountCheckModal";
 
 import {
   FiEye,
@@ -446,6 +448,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
     return { allStudents, eligible };
   };
+
+  // Advisory pre-grading page-count check (shared hook + modal)
+  const { pageCheckModal, confirmPageCounts, resolvePageCheck } = usePageCountCheck();
+  // Per-submission page-count flags, populated as soon as the check runs so the
+  // row warnings update without waiting for grading.
+  const [pageCountFlags, setPageCountFlags] = useState({});
+  const applyPageCountReport = (report) =>
+    setPageCountFlags((prev) => ({ ...prev, ...buildPageCountFlagMap(report) }));
+  const pageCheckArgs = (students) => ({ assignmentId, classroomId, students, onReport: applyPageCountReport });
 
   const assignmentMaxPoints = useMemo(
     () => resolveAssignmentMaxPoints({ maxPoints: maxGrade }, savedResults),
@@ -964,6 +975,10 @@ const url = URL.createObjectURL(blob);
     modal?.originalAiResult?.questions || modal?.result?.questions || [];
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", markingProvider) => {
+    // Advisory page-count check before spending AI tokens on a possibly-wrong file.
+    const proceed = await confirmPageCounts(pageCheckArgs([student]));
+    if (!proceed) return;
+
     setMarkingStudentId(student.submissionId);
     setSingleProgress(prev => ({
       ...prev,
@@ -1105,6 +1120,11 @@ const url = URL.createObjectURL(blob);
     const loaded = await resolveEligibleForMarking(false);
     if (!loaded) return;
     const { eligible } = loaded;
+
+    // Advisory page-count check before spending AI tokens on possibly-wrong files.
+    const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+    if (!proceed) return;
+
     const guidanceValue = guidanceForForm(guidanceText);
 
     bulkStopRef.current = false;
@@ -1530,6 +1550,10 @@ const url = URL.createObjectURL(blob);
       toast.error(extractHumanError(err) || "Failed to check eligible students");
       return;
     }
+
+    // Advisory page-count check before spending AI tokens on possibly-wrong files.
+    const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+    if (!proceed) return;
 
     const guidanceValue = guidanceForForm(guidanceText);
 
@@ -2581,14 +2605,22 @@ return (
                     {(s.name || "?").charAt(0).toUpperCase()}
                   </div>
                   <span className="ma-cell-name">{s.name || "—"}</span>
-                                  {savedResults[s.submissionId]?.result?.fileWarning && (
-                                    <span
-                                      title="Submitted file may be wrong — page count differs from expected"
-                                      style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}
-                                    >
-                                      ⚠️ Review Submission
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const savedWarn = savedResults[s.submissionId]?.result?.fileWarning;
+                                    const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
+                                    if (!savedWarn && !flagText) return null;
+                                    const title = flagText
+                                      || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
+                                      || "Submitted file may be wrong — page count differs from expected";
+                                    return (
+                                      <span
+                                        title={title}
+                                        style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}
+                                      >
+                                        ⚠️ Review Submission
+                                      </span>
+                                    );
+                                  })()}
                 </div>
               </td>
 
@@ -2878,6 +2910,13 @@ return (
                   </div>
                 </div>
               )}
+
+      {/* ── PAGE-COUNT PRE-CHECK MODAL (advisory) ── */}
+      <PageCountCheckModal
+        state={pageCheckModal}
+        onResolve={resolvePageCheck}
+        onOpenPdf={(c) => openPdf({ submissionId: c.submissionId, name: c.student?.name })}
+      />
 
       {/* ── GUIDANCE MODAL ── */}
       {guidanceModal && (
