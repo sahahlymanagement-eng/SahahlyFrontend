@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -98,6 +98,9 @@ export default function Coursework() {
   const [newTopicName, setNewTopicName] = useState("");
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEditMode);
+  const [assignmentFile, setAssignmentFile] = useState(null);
+  const [existingWebLink, setExistingWebLink] = useState("");
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const fetchTopics = async () => {
@@ -128,6 +131,7 @@ export default function Coursework() {
         setIsUngraded(!cw.maxPoints);
         setMaxPoints(cw.maxPoints ? String(cw.maxPoints) : "");
         setTopicId(cw.topicId || "");
+        setExistingWebLink(cw.assignmentWebLink || "");
 
         const dueFields = googleDueToFormFields(cw.dueDate, cw.dueTime);
         setDueDate(dueFields.dueDate);
@@ -142,6 +146,27 @@ export default function Coursework() {
 
     loadCoursework();
   }, [isEditMode, courseId, courseWorkId, navigate]);
+
+  const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB, matches backend multer cap
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setAssignmentFile(null);
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      toast.warn("Only PDF files are allowed");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.warn("File must be 20 MB or smaller");
+      e.target.value = "";
+      return;
+    }
+    setAssignmentFile(file);
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -167,10 +192,17 @@ export default function Coursework() {
 
     try {
       if (isEditMode) {
-        await api.patch(`/google-classroom/coursework/${courseWorkId}`, {
-          courseId,
-          courseworkData,
-        });
+        const formData = new FormData();
+        formData.append("courseId", courseId);
+        formData.append("courseworkData", JSON.stringify(courseworkData));
+        if (assignmentFile) formData.append("assignmentFile", assignmentFile);
+
+        // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
+        const res = await api.patch(
+          `/google-classroom/coursework/${courseWorkId}`,
+          formData
+        );
+        if (res.data?.warning) toast.warn(res.data.warning);
         toast.success("Coursework updated successfully");
         const viewPath =
           role === "manager"
@@ -182,10 +214,13 @@ export default function Coursework() {
           state: { courseName: state?.courseName },
         });
       } else {
-        await api.post("/google-classroom/coursework", {
-          courseId,
-          courseworkData,
-        });
+        const formData = new FormData();
+        formData.append("courseId", courseId);
+        formData.append("courseworkData", JSON.stringify(courseworkData));
+        if (assignmentFile) formData.append("assignmentFile", assignmentFile);
+
+        // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
+        await api.post("/google-classroom/coursework", formData);
         toast.success("Coursework created successfully");
         setTitle("");
         setDescription("");
@@ -195,6 +230,8 @@ export default function Coursework() {
         setTopicId("");
         setNewTopicName("");
         setIsUngraded(false);
+        setAssignmentFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     } catch (err) {
       toast.error(
@@ -247,6 +284,49 @@ export default function Coursework() {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Instructions for students…"
         />
+      </div>
+
+      <div className={isTeacherShell ? "tch-field" : "pm-input-group"}>
+        <label className={isTeacherShell ? "tch-label" : "pm-input-label"}>
+          {isEditMode && existingWebLink
+            ? "Replace worksheet (PDF, optional)"
+            : "Worksheet (PDF, optional)"}
+        </label>
+
+        {isEditMode && existingWebLink && (
+          <a
+            href={existingWebLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-block", marginBottom: 8, fontSize: 13 }}
+          >
+            📄 View current worksheet
+          </a>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          className={isTeacherShell ? "tch-input" : "pm-input"}
+          onChange={handleFileChange}
+        />
+
+        {assignmentFile && (
+          <span style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+            Selected: {assignmentFile.name}
+          </span>
+        )}
+
+        {isEditMode && !existingWebLink && (
+          <span
+            style={{ fontSize: 12, opacity: 0.7, marginTop: 4, display: "block" }}
+          >
+            Note: Google Classroom can’t attach a worksheet to an assignment that
+            was created without one. To ensure students see the PDF, attach it when
+            creating the assignment.
+          </span>
+        )}
       </div>
 
       {isTeacherShell ? <div className="tch-form-section-title">Grading & schedule</div> : null}

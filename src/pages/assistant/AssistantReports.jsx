@@ -19,6 +19,7 @@ import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, attendedNamesF
 import ReportAttendanceSelect from "../../components/ReportAttendanceSelect";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import { usePagination } from "../../hooks/usePagination";
+import AssignmentReportPreviewModal from "../../components/AssignmentReportPreviewModal";
 
 import {
   FiSend,
@@ -33,6 +34,7 @@ export default function AssistantReports() {
 
   const [reportCart, setReportCart] = useState({});
   const [sending, setSending] = useState(false);
+  const [preview, setPreview] = useState({ open: false, loading: false, error: null, previews: [] });
 
   const [customPhone, setCustomPhone] = useState("");
   const [sendingCollective, setSendingCollective] = useState(false);
@@ -344,22 +346,24 @@ export default function AssistantReports() {
     }));
   };
 
-  const sendReport = async () => {
+  const validateBeforeSend = () => {
     if (!Object.keys(reportCart).length) {
       toast.warn("No students selected");
-      return;
+      return false;
     }
-
     if (!classroomId) {
       toast.error("Missing classroom for this assignment");
-      return;
+      return false;
     }
-
     if (includeAttendance && !Object.keys(attendanceMap).length) {
       toast.warn("Upload an attendance Excel file first");
-      return;
+      return false;
     }
+    return true;
+  };
 
+  /* Fetch fresh grades/summaries and build the identical body used by preview and send */
+  const resolveReports = async () => {
     let freshSummaryMap = summaryMap;
     let freshStudents = students;
     try {
@@ -370,8 +374,31 @@ export default function AssistantReports() {
     } catch {
       // use cached summaries if refresh fails
     }
+    return buildReportsPayload(freshSummaryMap, freshStudents);
+  };
 
-    const reports = buildReportsPayload(freshSummaryMap, freshStudents);
+  const previewReport = async () => {
+    if (!validateBeforeSend()) return;
+    setPreview({ open: true, loading: true, error: null, previews: [] });
+    try {
+      const reports = await resolveReports();
+      const res = await api.post("/manager-assignments/report-preview", {
+        reports,
+        classroomId,
+        attendance: buildAttendancePayload(),
+      });
+      setPreview({ open: true, loading: false, error: null, previews: res.data.previews || [] });
+    } catch {
+      setPreview({ open: true, loading: false, error: "Failed to generate preview", previews: [] });
+    }
+  };
+
+  const closePreview = () => setPreview({ open: false, loading: false, error: null, previews: [] });
+
+  const sendReport = async () => {
+    if (!validateBeforeSend()) return;
+
+    const reports = await resolveReports();
 
     setSending(true);
     try {
@@ -385,6 +412,7 @@ export default function AssistantReports() {
       const failed = summary.filter((r) => r.status === "rejected").length;
       toast.success(`Sent to ${succeeded} student(s)${failed ? `, ${failed} failed` : ""}`);
       setReportCart({});
+      closePreview();
     } catch {
       toast.error("Failed to send reports");
     } finally {
@@ -492,6 +520,15 @@ export default function AssistantReports() {
                   <FiCheckSquare size={13} />
                   <span>{cartSummary}</span>
                 </div>
+
+                <button
+                  className="ma-send-btn"
+                  onClick={previewReport}
+                  disabled={sending || preview.loading}
+                >
+                  <FiMessageSquare size={13} />
+                  {preview.loading ? "Loading…" : "Preview Report"}
+                </button>
 
                 <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
                   <FiSend size={13} />
@@ -774,10 +811,20 @@ export default function AssistantReports() {
                 </div>
               </div>
             </div>
-            <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
-              <FiSend size={18} />
-              {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
-            </button>
+            <div className="ma-cart-bar-actions">
+              <button
+                className="ma-send-btn"
+                onClick={previewReport}
+                disabled={sending || preview.loading}
+              >
+                <FiMessageSquare size={16} />
+                {preview.loading ? "Loading…" : "Preview"}
+              </button>
+              <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
+                <FiSend size={18} />
+                {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
+              </button>
+            </div>
           </div>
         )}
 
@@ -855,6 +902,16 @@ export default function AssistantReports() {
             </div>
           </div>
         )}
+
+        <AssignmentReportPreviewModal
+          open={preview.open}
+          loading={preview.loading}
+          error={preview.error}
+          previews={preview.previews}
+          sending={sending}
+          onClose={closePreview}
+          onConfirm={sendReport}
+        />
 
       </main>
     </div>

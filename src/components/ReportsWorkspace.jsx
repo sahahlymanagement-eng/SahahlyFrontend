@@ -17,6 +17,7 @@ import ReportAttendanceSelect from "./ReportAttendanceSelect";
 import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
 import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
 import TeacherExecutiveAnalysisWorkspace from "./TeacherExecutiveAnalysisWorkspace";
+import AssignmentReportPreviewModal from "./AssignmentReportPreviewModal";
 import {
   refreshAssignmentGrades,
   applyReportCartGradeSync,
@@ -52,6 +53,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [refreshingGrades, setRefreshingGrades] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
   const [reportView, setReportView] = useState("assignment");
+  const [preview, setPreview] = useState({ open: false, loading: false, error: null, previews: [] });
 
   const {
     teacherFilter,
@@ -443,10 +445,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
-  /* SEND */
-  const sendReport = async () => {
+  /* BUILD PAYLOAD — shared by preview and send so both produce the identical body */
+  const resolveReports = async () => {
     const cartEntries = Object.entries(reportCart);
-    if (cartEntries.length === 0) { toast.warn("No students selected"); return; }
+    if (cartEntries.length === 0) return null;
 
     let freshSummaryMap = summaryMap;
     let freshStudents = students;
@@ -465,10 +467,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       freshStudents.map((s) => [String(s._id), s])
     );
 
-    const assignmentMaxPoints =
+    const maxPointsForAssignment =
       selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
 
-    const reports = cartEntries.map(([, entry]) => ({
+    return cartEntries.map(([, entry]) => ({
       studentId: entry.studentMeta._id,
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
@@ -477,7 +479,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         const liveStudent = studentById[String(entry.studentMeta._id)] || entry.studentMeta;
         const submissionId = item.submissionId || liveStudent?.submissionId;
         const assignedGrade = liveStudent?.assignedGrade ?? item.assignedGrade;
-        const maxPoints = item.maxPoints ?? assignmentMaxPoints;
+        const maxPoints = item.maxPoints ?? maxPointsForAssignment;
         const savedSummary =
           liveStudent?.summary ||
           (submissionId ? freshSummaryMap[submissionId] : "");
@@ -504,6 +506,30 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         };
       }),
     }));
+  };
+
+  /* PREVIEW — returns the exact WhatsApp text per student without sending */
+  const previewReport = async () => {
+    if (Object.keys(reportCart).length === 0) { toast.warn("No students selected"); return; }
+    setPreview({ open: true, loading: true, error: null, previews: [] });
+    try {
+      const reports = await resolveReports();
+      const res = await api.post("/manager-assignments/report-preview", {
+        reports,
+        classroomId: selectedClassroom?._id,
+      });
+      setPreview({ open: true, loading: false, error: null, previews: res.data.previews || [] });
+    } catch {
+      setPreview({ open: true, loading: false, error: "Failed to generate preview", previews: [] });
+    }
+  };
+
+  const closePreview = () => setPreview({ open: false, loading: false, error: null, previews: [] });
+
+  /* SEND */
+  const sendReport = async () => {
+    const reports = await resolveReports();
+    if (!reports) { toast.warn("No students selected"); return; }
     setSending(true);
     try {
       const res = await api.post("/manager-assignments/send-report", {
@@ -515,6 +541,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       const failed = summary.filter(r => r.status === "rejected").length;
       toast.success(`✅ Sent to ${succeeded} student(s)${failed ? `, ${failed} failed` : ""}`);
       setReportCart({});
+      closePreview();
     } catch {
       toast.error("Failed to send reports");
     } finally {
@@ -682,6 +709,14 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                 <FiCheckSquare size={13} />
                 <span>{cartSummary}</span>
               </div>
+              <button
+                className="ma-send-btn"
+                onClick={previewReport}
+                disabled={sending || preview.loading}
+              >
+                <FiMessageSquare size={13} />
+                {preview.loading ? "Loading…" : "Preview Report"}
+              </button>
               <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
                 <FiSend size={13} />
                 {sending ? "Sending…" : `Send Report`}
@@ -1118,12 +1153,32 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                 </div>
               </div>
             </div>
-            <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
-              <FiSend size={18} />
-              {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
-            </button>
+            <div className="ma-cart-bar-actions">
+              <button
+                className="ma-send-btn"
+                onClick={previewReport}
+                disabled={sending || preview.loading}
+              >
+                <FiMessageSquare size={16} />
+                {preview.loading ? "Loading…" : "Preview"}
+              </button>
+              <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
+                <FiSend size={18} />
+                {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
+              </button>
+            </div>
           </div>
         )}
+
+        <AssignmentReportPreviewModal
+          open={preview.open}
+          loading={preview.loading}
+          error={preview.error}
+          previews={preview.previews}
+          sending={sending}
+          onClose={closePreview}
+          onConfirm={sendReport}
+        />
 
         {summaryViewer.open && (
           <div

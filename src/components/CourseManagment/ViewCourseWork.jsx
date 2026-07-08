@@ -247,6 +247,21 @@ export default function ViewCoursework() {
                       <p className="tch-assignment-desc">{cw.description}</p>
                     ) : null}
 
+                    {dbAssignment?.assignmentWebLink && (
+                      <a
+                        href={dbAssignment.assignmentWebLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-block",
+                          marginBottom: 8,
+                          fontSize: 13,
+                        }}
+                      >
+                        📄 View worksheet
+                      </a>
+                    )}
+
                     {dbLoading ? (
                       <p className="tch-stats-hint">Loading submission stats…</p>
                     ) : dbAssignment ? (
@@ -324,6 +339,19 @@ export default function ViewCoursework() {
                       {cw.maxPoints ? `Max Points: ${cw.maxPoints}` : "Ungraded"}
                       {cw.dueDate ? ` · Due: ${cw.dueDate.month}/${cw.dueDate.day}/${cw.dueDate.year}` : ""}
                     </p>
+
+                    {dbAssignment?.assignmentWebLink && (
+                      <p style={{ margin: "4px 0" }}>
+                        <a
+                          href={dbAssignment.assignmentWebLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontSize: 13 }}
+                        >
+                          📄 View worksheet
+                        </a>
+                      </p>
+                    )}
 
                     {showSubmissionStats && (
                       dbLoading ? (
