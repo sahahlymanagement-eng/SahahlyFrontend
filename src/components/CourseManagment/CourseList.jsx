@@ -12,11 +12,13 @@ import {
   FiArrowLeft,
   FiBookOpen,
   FiEye,
+  FiTrash2,
 } from "react-icons/fi";
 import "./CourseManagement.css";
 import { usePagination } from "../../hooks/usePagination";
 import ReportTeacherFilterSelect from "../ReportTeacherFilterSelect";
 import { useReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
+import { confirmToast } from "../../utils/confirmToast";
 
 const UNASSIGNED_KEY = "__unassigned__";
 
@@ -61,6 +63,7 @@ export default function CoursesList() {
   const [expandedFolders, setExpandedFolders] = useState({});
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [allTeachers, setAllTeachers] = useState([]);
+  const [deletingId, setDeletingId] = useState(null);
 
   const storedUser = localStorage.getItem("user");
   const user = storedUser ? JSON.parse(storedUser) : null;
@@ -131,6 +134,36 @@ export default function CoursesList() {
       fetchPage(page);
     } catch {
       toast.error("Failed to update course status");
+    }
+  };
+
+  const handleDeleteClassroom = async (course) => {
+    const mongoId = course._id;
+    if (!mongoId) {
+      toast.error("Cannot delete: missing classroom id");
+      return;
+    }
+
+    const confirmed = await confirmToast(
+      `Permanently delete "${course.name}" and all of its assignments, submissions, marking results, attendance, and manager assignments? This cannot be undone.`,
+      {
+        title: "Delete classroom",
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        danger: true,
+      }
+    );
+    if (!confirmed) return;
+
+    setDeletingId(mongoId);
+    try {
+      await api.delete(`/classrooms/${mongoId}`);
+      toast.success(`"${course.name}" and all related items were deleted`);
+      fetchPage(page);
+    } catch {
+      toast.error("Failed to delete classroom");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -299,6 +332,17 @@ export default function CoursesList() {
                               <FiEye />
                               View coursework
                             </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="cm-courses-btn cm-courses-btn--danger"
+                                onClick={() => handleDeleteClassroom(course)}
+                                disabled={deletingId === course._id}
+                              >
+                                <FiTrash2 />
+                                {deletingId === course._id ? "Deleting…" : "Delete classroom"}
+                              </button>
+                            )}
                           </div>
                         </article>
                       ))}

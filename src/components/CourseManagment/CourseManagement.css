@@ -111,6 +111,21 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+.cm-courses-btn--danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.cm-courses-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.cm-courses-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .cm-courses-summary {
   display: flex;
   gap: 16px;
