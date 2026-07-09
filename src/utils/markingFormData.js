@@ -50,6 +50,13 @@ export function guidanceForForm(value) {
 
 }
 
+/** Prefer explicit guidance; fall back to assignment-specific saved prompt. */
+export function resolveMarkingGuidanceText(userGuidance, assignmentPrompt) {
+  const explicit = normalizeGuidance(userGuidance);
+  if (explicit) return explicit;
+  return normalizeGuidance(assignmentPrompt);
+}
+
 
 
 /** Read a useful API error message (including JSON-in-blob error bodies). */

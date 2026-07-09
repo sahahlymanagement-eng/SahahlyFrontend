@@ -604,3 +604,26 @@ input:checked + .slider:before {
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+.cw-file-input-hidden {
+  display: none;
+}
+
+.cw-file-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.cw-file-upload-btn {
+  margin-top: 0 !important;
+  white-space: nowrap;
+}
+
+.cw-file-upload-hint {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+  word-break: break-word;
+}

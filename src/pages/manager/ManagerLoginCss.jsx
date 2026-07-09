@@ -16,6 +16,7 @@ import {
   getApiErrorMessage,
   getMarkingResultSummary,
   guidanceForForm,
+  resolveMarkingGuidanceText,
   normalizeGuidance,
   getOutOfScopeNotes,
   getTeacherAnnotations,
@@ -23,6 +24,7 @@ import {
   resolveTotalMarksFromResult,
   resolveDisplayMaxTotal,
   buildPriorityMarkingResult,
+  appendMarkingContext,
 } from "../../utils/markingFormData";
 import { parseGeminiModelsResponse, pickValidGeminiModel } from "../../utils/markingCost";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
@@ -43,6 +45,7 @@ import {
   isBatchStopped,
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
+import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 
 const PER_PAGE = 10;
 
@@ -78,6 +81,9 @@ export default function ManagerLoginCss() {
   const [search, setSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const assignmentPrompt = useAssignmentMarkingPrompt(
+    selectedAssignment?.id != null ? String(selectedAssignment.id) : null
+  );
   const [listTotal, setListTotal] = useState(0);
 
   // ── Guidance modal / marking config ──
@@ -421,19 +427,20 @@ export default function ManagerLoginCss() {
   }, []);
 
   const openGuidanceModal = (student, opts = {}) => {
-    setGuidance("");
+    setGuidance(resolveMarkingGuidanceText("", assignmentPrompt.content));
     setGuidanceModal({ student, ...opts });
   };
 
   const handleGuidanceConfirm = (provider = "gemini") => {
     const gm = guidanceModal;
+    const resolvedGuidance = resolveMarkingGuidanceText(guidance, assignmentPrompt.content);
     setGuidanceModal(null);
     if (!gm) return;
-    if (gm.batch) runBatchMark(guidance, markingModeModal);
-    else if (gm.priorityBulk) runBulkMark(guidance, markingModeModal, "priority");
-    else if (gm.bulk) runBulkMark(guidance, markingModeModal, provider);
-    else if (gm.priority) runMarkSubmission(gm.student, guidance, markingModeModal, "priority");
-    else runMarkSubmission(gm.student, guidance, markingModeModal, provider);
+    if (gm.batch) runBatchMark(resolvedGuidance, markingModeModal);
+    else if (gm.priorityBulk) runBulkMark(resolvedGuidance, markingModeModal, "priority");
+    else if (gm.bulk) runBulkMark(resolvedGuidance, markingModeModal, provider);
+    else if (gm.priority) runMarkSubmission(gm.student, resolvedGuidance, markingModeModal, "priority");
+    else runMarkSubmission(gm.student, resolvedGuidance, markingModeModal, provider);
   };
 
   // ── Marking core (shared by single + bulk) ──
@@ -451,6 +458,9 @@ export default function ManagerLoginCss() {
     fd.append("markingMode", mode);
     const guidanceValue = guidanceForForm(guidanceText);
     if (guidanceValue) fd.append("guidance", guidanceValue);
+    if (selectedAssignment?.id != null) {
+      appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
+    }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
 
     let endpoint = "/marking/mark";

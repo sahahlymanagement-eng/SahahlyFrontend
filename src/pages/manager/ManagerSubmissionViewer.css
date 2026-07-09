@@ -833,3 +833,223 @@
 .pdf-preview-status--error {
   color: #f87171;
 }
+
+/* Assignment prompt generation modal */
+.apg-modal {
+  max-width: 720px;
+  width: min(96vw, 720px);
+}
+
+.apg-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.apg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 12px 0 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.apg-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.apg-badge--active {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+
+.apg-help {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.apg-textarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  color: #f8fafc;
+  font-size: 13px;
+  line-height: 1.55;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.apg-textarea:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.apg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  align-items: center;
+}
+
+.apg-loading {
+  padding: 24px 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+}
+
+.msv-btn-prompt-gen {
+  background: rgba(168, 85, 247, 0.14);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #e9d5ff;
+}
+
+.msv-btn-verify {
+  background: rgba(14, 165, 233, 0.14);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  color: #bae6fd;
+}
+
+.msv-verify-modal {
+  max-width: 760px;
+}
+
+.msv-verify-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid transparent;
+}
+
+.msv-verify-banner strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.msv-verify-banner p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+
+.msv-verify-banner--pass {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #bbf7d0;
+}
+
+.msv-verify-banner--warning {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+
+.msv-verify-banner--fail {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+}
+
+.msv-verify-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.msv-verify-stats div {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.msv-verify-stats span {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+}
+
+.msv-verify-stats strong {
+  font-size: 18px;
+  color: #f8fafc;
+}
+
+.msv-verify-checks h4,
+.msv-verify-recommendations h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.msv-verify-checks ul,
+.msv-verify-recommendations ul {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.msv-verify-checks li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.msv-verify-checks li:last-child {
+  border-bottom: none;
+}
+
+.msv-verify-checks li p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.45;
+}
+
+.msv-verify-recommendations li {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 6px 0 6px 14px;
+  position: relative;
+  line-height: 1.45;
+}
+
+.msv-verify-recommendations li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #38bdf8;
+}
+
+.msv-verify-check--pass { color: #4ade80; flex-shrink: 0; margin-top: 2px; }
+.msv-verify-check--warning { color: #fbbf24; flex-shrink: 0; margin-top: 2px; }
+.msv-verify-check--fail { color: #f87171; flex-shrink: 0; margin-top: 2px; }
+
+.msv-verify-footnote {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}

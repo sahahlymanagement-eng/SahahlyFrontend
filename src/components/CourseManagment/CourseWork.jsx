@@ -6,6 +6,9 @@ import { toast } from "react-toastify";
 import "./CourseManagement.css";
 import "../../pages/teacher/teacher.css";
 import { TeacherPageHeader, TeacherLoading } from "../../pages/teacher/TeacherUI";
+import { isPdfFile } from "../../utils/isPdfFile";
+
+const COURSEWORK_UPLOAD_HEADERS = { "Content-Type": "multipart/form-data" };
 
 function googleDueToFormFields(dueDate, dueTime) {
   if (!dueDate?.year) {
@@ -155,17 +158,23 @@ export default function Coursework() {
       setAssignmentFile(null);
       return;
     }
-    if (file.type !== "application/pdf") {
+    if (!isPdfFile(file)) {
       toast.warn("Only PDF files are allowed");
       e.target.value = "";
+      setAssignmentFile(null);
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
       toast.warn("File must be 20 MB or smaller");
       e.target.value = "";
+      setAssignmentFile(null);
       return;
     }
     setAssignmentFile(file);
+  };
+
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
   };
 
   const handleSubmit = async () => {
@@ -200,7 +209,8 @@ export default function Coursework() {
         // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
         const res = await api.patch(
           `/google-classroom/coursework/${courseWorkId}`,
-          formData
+          formData,
+          { headers: COURSEWORK_UPLOAD_HEADERS }
         );
         if (res.data?.warning) toast.warn(res.data.warning);
         toast.success("Coursework updated successfully");
@@ -220,7 +230,9 @@ export default function Coursework() {
         if (assignmentFile) formData.append("assignmentFile", assignmentFile);
 
         // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
-        await api.post("/google-classroom/coursework", formData);
+        await api.post("/google-classroom/coursework", formData, {
+          headers: COURSEWORK_UPLOAD_HEADERS,
+        });
         toast.success("Coursework created successfully");
         setTitle("");
         setDescription("");
@@ -307,16 +319,25 @@ export default function Coursework() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="application/pdf"
-          className={isTeacherShell ? "tch-input" : "pm-input"}
+          accept=".pdf,application/pdf"
+          className="cw-file-input-hidden"
           onChange={handleFileChange}
         />
 
-        {assignmentFile && (
-          <span style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
-            Selected: {assignmentFile.name}
+        <div className="cw-file-upload-row">
+          <button
+            type="button"
+            className={isTeacherShell ? "tch-btn tch-btn--ghost cw-file-upload-btn" : "pm-mark-btn cw-file-upload-btn"}
+            onClick={openFilePicker}
+          >
+            Choose PDF
+          </button>
+          <span className="cw-file-upload-hint">
+            {assignmentFile
+              ? `Selected: ${assignmentFile.name}`
+              : "PDF up to 20 MB"}
           </span>
-        )}
+        </div>
 
         {isEditMode && !existingWebLink && (
           <span

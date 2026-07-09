@@ -21,6 +21,8 @@ import {
   FiX,
   FiLayers,
   FiCheck,
+  FiEdit3,
+  FiShield,
 } from "react-icons/fi";
 
 import "../manager/ManagerSubmissionViewer.css";
@@ -57,6 +59,7 @@ import {
   getMarkingResultSummary,
   rebuildMarkingSummary,
   guidanceForForm,
+  resolveMarkingGuidanceText,
   hasTeacherEdits,
   isStudentSubmitted,
   normalizeGuidance,
@@ -88,6 +91,11 @@ import {
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
+import MarkSchemeVerificationModal, {
+  runMarkSchemeVerification,
+} from "../../components/MarkSchemeVerificationModal";
+import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import {
   MARKING_MAX_ATTEMPTS,
   MARKING_MAX_RETRIES_MESSAGE,
@@ -113,6 +121,7 @@ const CHECKLIST_CONFIG = [
 export default function AssignmentSubmissionViewer() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
+  const assignmentPrompt = useAssignmentMarkingPrompt(assignmentId);
 
   // const [loading, setLoading] = useState(false);
   // const [students, setStudents] = useState([]);
@@ -150,6 +159,11 @@ export default function AssignmentSubmissionViewer() {
  
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
+  const [promptGenOpen,      setPromptGenOpen]      = useState(false);
+  const [promptDraft,        setPromptDraft]        = useState("");
+  const [msVerifyOpen,       setMsVerifyOpen]       = useState(false);
+  const [msVerifying,        setMsVerifying]        = useState(false);
+  const [msVerifyResult,     setMsVerifyResult]     = useState(null);
   const [savedPrompts,       setSavedPrompts]       = useState([]);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
 
@@ -945,9 +959,26 @@ const url = URL.createObjectURL(blob);
         : { bulk: true }
     );
 
-    setGuidance("");
+    setGuidance(resolveMarkingGuidanceText("", assignmentPrompt.content));
     setMarkingModeModal("normal");
     setPromptDropdownOpen(false);
+  };
+
+  const handleRunMsVerification = async () => {
+    if (!assignmentId) return;
+    setMsVerifying(true);
+    setMsVerifyResult(null);
+    try {
+      const result = await runMarkSchemeVerification(assignmentId);
+      setMsVerifyResult(result);
+      if (result.status === "pass") toast.success("Mark scheme verification passed");
+      else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
+      else toast.warn("Mark scheme verification completed with warnings");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Mark scheme verification failed");
+    } finally {
+      setMsVerifying(false);
+    }
   };
 
   const handleSetExpectedPages = async () => {
@@ -1696,10 +1727,11 @@ const url = URL.createObjectURL(blob);
 
   const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
-    if (markingModeModal === "criteria" && !normalizeGuidance(guidance)) {
+    const resolvedGuidance = resolveMarkingGuidanceText(guidance, assignmentPrompt.content);
+    if (markingModeModal === "criteria" && !resolvedGuidance) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
-    const g    = normalizeGuidance(guidance);
+    const g    = resolvedGuidance;
     const mode = markingModeModal;
     setMarkingProvider(provider);
     if (guidanceModal.bulk) {
@@ -2296,6 +2328,39 @@ return (
                   }}
                 >
                   View Mark Scheme
+    </button>
+  )}
+
+  {msInfo && assignmentId && (
+    <button
+      type="button"
+      className="msv-btn-ai msv-btn-prompt-gen"
+      onClick={() => {
+        setPromptDraft(assignmentPrompt.content || "");
+        setPromptGenOpen(true);
+      }}
+      style={{ marginLeft: 10 }}
+      title="Generate or edit assignment-specific marking prompt"
+    >
+      <FiEdit3 size={13} />
+      Prompt Generation
+      {assignmentPrompt.hasPrompt ? " ✓" : ""}
+    </button>
+  )}
+
+  {msInfo && assignmentId && (
+    <button
+      type="button"
+      className="msv-btn-ai msv-btn-verify"
+      onClick={() => {
+        setMsVerifyResult(null);
+        setMsVerifyOpen(true);
+      }}
+      style={{ marginLeft: 10 }}
+      title="Verify mark scheme against Classroom totals and sample submissions"
+    >
+      <FiShield size={13} />
+      Mark Scheme Verification
     </button>
   )}
 
@@ -3165,6 +3230,38 @@ return (
           </div>
         </div>
       )}
+
+      <AssignmentPromptGeneration
+        open={promptGenOpen}
+        onClose={() => setPromptGenOpen(false)}
+        assignmentTitle={assignmentTitle}
+        content={assignmentPrompt.content}
+        draft={promptDraft}
+        onDraftChange={setPromptDraft}
+        maxPoints={assignmentPrompt.maxPoints ?? maxGrade}
+        generatedAt={assignmentPrompt.generatedAt}
+        loading={assignmentPrompt.loading}
+        generating={assignmentPrompt.generating}
+        saving={assignmentPrompt.saving}
+        hasPrompt={assignmentPrompt.hasPrompt}
+        onGenerate={async () => {
+          const res = await assignmentPrompt.generate();
+          if (res?.content) setPromptDraft(res.content);
+        }}
+        onSave={async () => {
+          await assignmentPrompt.save(promptDraft);
+        }}
+      />
+
+      <MarkSchemeVerificationModal
+        open={msVerifyOpen}
+        onClose={() => setMsVerifyOpen(false)}
+        assignmentId={assignmentId}
+        assignmentTitle={assignmentTitle}
+        verifying={msVerifying}
+        result={msVerifyResult}
+        onRun={handleRunMsVerification}
+      />
 
       {/* ── RESULTS MODAL ── */}
             {resultModal && (
