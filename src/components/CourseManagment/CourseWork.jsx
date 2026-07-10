@@ -150,6 +150,36 @@ export default function Coursework() {
 
   const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB, matches backend multer cap
 
+  const fileToBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const comma = result.indexOf(",");
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = () => reject(new Error("Failed to read PDF"));
+      reader.readAsDataURL(file);
+    });
+
+  const buildCourseworkFormData = async (payload, file) => {
+    const formData = new FormData();
+    formData.append("courseId", courseId);
+    formData.append("courseworkData", JSON.stringify(payload));
+    if (file) {
+      formData.append("assignmentFile", file, file.name || "worksheet.pdf");
+      // Base64 backup — some proxies drop the multipart file part but keep text fields.
+      try {
+        const b64 = await fileToBase64(file);
+        formData.append("assignmentFileBase64", b64);
+        formData.append("assignmentFileName", file.name || "worksheet.pdf");
+      } catch (e) {
+        console.warn("Could not attach base64 PDF backup:", e);
+      }
+    }
+    return formData;
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) {
@@ -199,20 +229,14 @@ export default function Coursework() {
 
     try {
       if (isEditMode) {
-        const formData = new FormData();
-        formData.append("courseId", courseId);
-        formData.append("courseworkData", JSON.stringify(courseworkData));
-        if (assignmentFile) formData.append("assignmentFile", assignmentFile);
+        const formData = await buildCourseworkFormData(courseworkData, assignmentFile);
 
-        // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
         const res = await api.patch(
           `/google-classroom/coursework/${courseWorkId}`,
           formData
         );
         if (res.data?.warning) toast.warn(res.data.warning);
-        if (assignmentFile && !res.data?.assignmentFileId && !res.data?.assignmentWebLink) {
-          toast.warn("Worksheet may not have reached Google Classroom — try uploading again.");
-        }
+        if (res.data?.materialWarning) toast.warn(res.data.materialWarning);
         toast.success("Coursework updated successfully");
         const viewPath =
           role === "manager"
@@ -224,18 +248,29 @@ export default function Coursework() {
           state: { courseName: state?.courseName },
         });
       } else {
-        const formData = new FormData();
-        formData.append("courseId", courseId);
-        formData.append("courseworkData", JSON.stringify(courseworkData));
-        if (assignmentFile) formData.append("assignmentFile", assignmentFile);
+        const formData = await buildCourseworkFormData(courseworkData, assignmentFile);
 
         const res = await api.post("/google-classroom/coursework", formData);
-        if (assignmentFile && !res.data?.assignmentFileId) {
-          toast.warn(
-            "Assignment created, but the PDF was not attached in Google Classroom. Please try again or edit the assignment to re-upload the worksheet."
-          );
+
+        if (assignmentFile) {
+          if (!res.data?.assignmentFileId && !res.data?.assignmentWebLink) {
+            toast.error(
+              "Assignment created, but the PDF never reached Google. Check VPS logs for [coursework create] and try again."
+            );
+          } else if (res.data?.materialWarning) {
+            toast.warn(res.data.materialWarning);
+          } else if (res.data?.materialsAttached === false) {
+            toast.warn(
+              "Assignment created. If the PDF card is missing in Classroom, open the description — the worksheet link is there."
+            );
+          } else if (res.data?.materialsAttached === true) {
+            toast.success("Coursework created — PDF attached in Google Classroom");
+          } else {
+            toast.success("Coursework created with worksheet attached");
+          }
+        } else {
+          toast.success("Coursework created successfully");
         }
-        toast.success("Coursework created successfully");
         setTitle("");
         setDescription("");
         setMaxPoints("");

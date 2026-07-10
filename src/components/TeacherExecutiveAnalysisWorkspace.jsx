@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import api from "../api/api";
 import { toast } from "react-toastify";
 import {
@@ -49,6 +49,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendEmailToo, setSendEmailToo] = useState(false);
+  const previewSectionRef = useRef(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -148,9 +149,14 @@ export default function TeacherExecutiveAnalysisWorkspace({
   };
 
   const selectAssignment = (assignment) => {
-    setSelectedAssignment(
-      selectedAssignment?._id === assignment._id ? null : assignment
-    );
+    const next =
+      selectedAssignment?._id === assignment._id ? null : assignment;
+    setSelectedAssignment(next);
+    if (next) {
+      requestAnimationFrame(() => {
+        previewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   };
 
   const downloadPdf = async () => {
@@ -352,7 +358,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
 
           <section className="mpr-panel mpr-panel--students">
             <p className="mpr-panel-label">
-              <FiBarChart2 size={13} /> Executive preview
+              <FiBarChart2 size={13} /> Report options
             </p>
 
             {selectedAssignment && (
@@ -377,14 +383,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
             )}
 
             {selectedAssignment && !loadingReport && report && (
-              <div className="mpr-preview tea-preview">
-                <ReportPdfPreview
-                  fetchConfig={pdfPreviewConfig}
-                  title="Executive report PDF"
-                />
-
-                <ReportDecisionGuide guide={report.decisionGuide} />
-
+              <div className="tea-side-summary">
                 <h3 className="tea-preview-title">{report.meta.assignmentTitle}</h3>
                 <p className="tea-preview-meta">
                   {report.meta.classroomName} · {report.meta.subject}
@@ -395,7 +394,6 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     ? ` · WhatsApp: ${report.meta.teacherPhone}`
                     : " · No WhatsApp on file"}
                 </p>
-
                 <div className="tea-kpi-grid">
                   <div className="tea-kpi">
                     <span>Class average</span>
@@ -416,6 +414,43 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     <strong>{report.meta.papersMarked ?? "—"}</strong>
                   </div>
                 </div>
+                <p className="mpr-month-hint">Full PDF preview appears below.</p>
+                {!isTeacher && (
+                  <label className="tea-check">
+                    <input
+                      type="checkbox"
+                      checked={sendEmailToo}
+                      onChange={(e) => setSendEmailToo(e.target.checked)}
+                    />
+                    Also email PDF to teacher ({report.meta.teacherEmail || "no email on file"})
+                  </label>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+
+        {selectedAssignment && (
+          <section className="mpr-preview tea-full-preview" ref={previewSectionRef}>
+            <p className="mpr-preview-title">
+              Executive PDF preview — {selectedAssignment.title}
+            </p>
+
+            {loadingReport && <p className="mpr-muted">Generating executive report…</p>}
+
+            {!loadingReport && !report && (
+              <p className="mpr-muted">No executive report data for this assignment.</p>
+            )}
+
+            {report && (
+              <>
+                <ReportPdfPreview
+                  fetchConfig={pdfPreviewConfig}
+                  title="Executive report PDF"
+                  frameClassName="mpr-pdf-preview-frame--tall"
+                />
+
+                <ReportDecisionGuide guide={report.decisionGuide} />
 
                 {report.executiveSummary?.length > 0 && (
                   <div className="tea-block">
@@ -455,22 +490,10 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     </ul>
                   )}
                 </div>
-
-                {!isTeacher && (
-                  <label className="tea-check">
-                    <input
-                      type="checkbox"
-                      checked={sendEmailToo}
-                      onChange={(e) => setSendEmailToo(e.target.checked)}
-                    />
-                    Also email PDF to teacher ({report.meta.teacherEmail || "no email on file"})
-                  </label>
-                )}
-
-              </div>
+              </>
             )}
           </section>
-        </div>
+        )}
       </div>
     </div>
   );

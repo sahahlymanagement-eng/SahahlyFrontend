@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 
 import api from "../api/api";
 
@@ -90,8 +90,7 @@ export default function MonthlyParentReportWorkspace({
   const [attendanceMap, setAttendanceMap] = useState({});
   const [attendanceFileName, setAttendanceFileName] = useState("");
   const [savingSchoolAttendance, setSavingSchoolAttendance] = useState(false);
-
-
+  const previewSectionRef = useRef(null);
 
   useEffect(() => {
 
@@ -324,41 +323,52 @@ export default function MonthlyParentReportWorkspace({
 
 
 
-  const toggleStudentSelection = (studentId) => {
+  const openStudentPreview = useCallback((student, { scroll = true } = {}) => {
+    if (!student) return;
+    setPreviewStudent(student);
+    if (scroll) {
+      requestAnimationFrame(() => {
+        previewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, []);
 
-    const id = String(studentId);
+  // If students are selected but no preview target yet (e.g. Select all), open the first one.
+  useEffect(() => {
+    if (previewStudent || !selectedStudentIds.size || !students.length) return;
+    const firstId = [...selectedStudentIds][0];
+    const match = students.find((s) => String(s._id) === String(firstId));
+    if (match) openStudentPreview(match, { scroll: false });
+  }, [previewStudent, selectedStudentIds, students, openStudentPreview]);
+
+  const toggleStudentSelection = (student) => {
+    const studentObj =
+      typeof student === "object" && student?._id
+        ? student
+        : students.find((s) => String(s._id) === String(student));
+    const id = String(studentObj?._id || student);
 
     setSelectedStudentIds((prev) => {
-
       const next = new Set(prev);
-
       if (next.has(id)) next.delete(id);
-
-      else next.add(id);
-
+      else {
+        next.add(id);
+        if (studentObj) openStudentPreview(studentObj);
+      }
       return next;
-
     });
-
   };
-
-
 
   const selectAllFiltered = () => {
-
     setSelectedStudentIds((prev) => {
-
       const next = new Set(prev);
-
       filteredStudents.forEach((s) => next.add(String(s._id)));
-
       return next;
-
     });
-
+    const first =
+      filteredStudents.find((s) => s.parentPhone) || filteredStudents[0] || null;
+    if (first) openStudentPreview(first);
   };
-
-
 
   const clearSelection = () => setSelectedStudentIds(new Set());
 
@@ -652,6 +662,24 @@ export default function MonthlyParentReportWorkspace({
         </div>
 
         <div className="mpr-header-actions">
+
+          {selectedClassroom && previewStudent && (
+
+            <button
+
+              type="button"
+
+              className="mpr-btn mpr-btn--ghost"
+
+              onClick={() => openStudentPreview(previewStudent)}
+
+            >
+
+              <FiFileText size={14} /> Preview report
+
+            </button>
+
+          )}
 
           {selectedCount > 0 && (
 
@@ -953,7 +981,7 @@ export default function MonthlyParentReportWorkspace({
 
                         checked={isSelected}
 
-                        onChange={() => toggleStudentSelection(s._id)}
+                        onChange={() => toggleStudentSelection(s)}
 
                         aria-label={`Select ${s.name}`}
 
@@ -965,7 +993,7 @@ export default function MonthlyParentReportWorkspace({
 
                         className="mpr-student-name"
 
-                        onClick={() => setPreviewStudent(s)}
+                        onClick={() => openStudentPreview(s)}
 
                       >
 
@@ -1081,32 +1109,55 @@ export default function MonthlyParentReportWorkspace({
 
 
 
-        {previewStudent && (
+        {selectedClassroom && (
 
-          <section className="mpr-preview">
+          <section className="mpr-preview" ref={previewSectionRef}>
 
-            <p className="mpr-preview-title">
+            {!previewStudent ? (
 
-              Preview — {previewStudent.name} · {selectedMonthLabel}
+              <div className="mpr-preview-empty">
 
-            </p>
+                <p className="mpr-preview-title">Report preview</p>
 
-            {loadingReport && <p className="mpr-muted">Building report preview…</p>}
+                <p className="mpr-muted">
 
-            {!loadingReport && !report && (
+                  Select a student (checkbox or name) to preview the monthly parent PDF here.
 
-              <p className="mpr-muted">No report data for this month.</p>
+                </p>
 
-            )}
+              </div>
 
-            {report && (
+            ) : (
 
               <>
 
+                <p className="mpr-preview-title">
+
+                  Preview — {previewStudent.name} · {selectedMonthLabel}
+
+                </p>
+
                 <ReportPdfPreview
+
                   fetchConfig={pdfPreviewConfig}
+
                   title="Monthly parent report PDF"
+
+                  frameClassName="mpr-pdf-preview-frame--tall"
+
                 />
+
+                {loadingReport && <p className="mpr-muted">Building report summary…</p>}
+
+                {!loadingReport && !report && (
+
+                  <p className="mpr-muted">No report data for this month.</p>
+
+                )}
+
+                {report && (
+
+              <>
 
                 <ReportDecisionGuide guide={report.decisionGuide} />
 
@@ -1522,6 +1573,10 @@ export default function MonthlyParentReportWorkspace({
                   {report.assignmentCount} assignment(s) due in {selectedMonthLabel}.
 
                 </p>
+
+              </>
+
+            )}
 
               </>
 

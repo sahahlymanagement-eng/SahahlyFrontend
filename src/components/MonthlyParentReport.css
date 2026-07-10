@@ -386,6 +386,23 @@
   border-radius: 16px;
   padding: 24px;
   width: 100%;
+  scroll-margin-top: 16px;
+}
+
+.mpr-preview-empty {
+  padding: 8px 0 4px;
+}
+
+.tea-full-preview {
+  margin-top: 4px;
+}
+
+.tea-side-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .mpr-muted {
@@ -1289,10 +1306,14 @@
 
 .mpr-pdf-preview-frame {
   width: 100%;
-  height: 420px;
+  height: min(70vh, 720px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   background: #fff;
+}
+
+.mpr-pdf-preview-frame--tall {
+  height: min(80vh, 900px);
 }
 
 .mpr-review-check {

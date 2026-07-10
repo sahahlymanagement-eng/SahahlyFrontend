@@ -776,7 +776,7 @@ const refreshStudents = async () => {
     toast.error(detail.includes("refresh token")
       ? "Google sign-in expired for this classroom. Ask the director to reconnect the Gmail account under Google Accounts."
       : detail);
-  } finally {
+    } finally {
     setRefreshing(false);
   }
 };
@@ -2280,7 +2280,7 @@ return (
                   className="ma-send-btn"
                 >
                   <FiDownload /> {exportingGrades ? "Exporting…" : "Export Grades"}
-                </button>
+    </button>
 
                 <button onClick={() => navigate("/assistant/assignments")} className="msv-cancel-btn">
       Back
@@ -2449,7 +2449,7 @@ return (
                     {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
                     {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
                   </button>
-                </div>
+</div>
               )}
               {batchJob && batchJob.phase !== "done" && (
                 <div style={{
@@ -3050,7 +3050,7 @@ return (
                               ? "Used for the Gemini batch job (marks all students in one run)."
                               : "Used when you start marking with Gemini."}
                           </p>
-                        </div>
+              </div>
 
               {/* Saved prompt dropdown */}
               {savedPrompts.length > 0 && (
@@ -3352,7 +3352,7 @@ return (
                             <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
                               <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
                             </div>
-                          </div>
+                      </div>
                     </div>
                     </div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -3602,7 +3602,7 @@ return (
                                       )
                                     }
                                   />
-                                )}
+                            )}
       
                             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                               {isCriteria ? "Comment" : "Examiner Note"}
