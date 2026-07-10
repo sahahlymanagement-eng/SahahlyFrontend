@@ -698,6 +698,15 @@ select.ma-search-input option {
 
 .msv-teacher-filter {
   margin-top: 10px;
+  width: 100%;
+}
+
+.msv-teacher-filter .rtf__control {
+  min-height: 38px;
+}
+
+.msv-teacher-filter .rtf__value-container {
+  padding: 2px 8px;
 }
 
 .msv-classroom-teacher {

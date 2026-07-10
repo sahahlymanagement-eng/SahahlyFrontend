@@ -575,6 +575,10 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   cursor: pointer;
 }
 
+.ms-teacher-filter .rtf__control {
+  min-height: 38px;
+}
+
 .ms-classroom-teacher {
   margin-top: 4px;
   font-size: 11px;

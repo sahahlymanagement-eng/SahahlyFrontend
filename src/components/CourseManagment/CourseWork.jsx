@@ -8,8 +8,6 @@ import "../../pages/teacher/teacher.css";
 import { TeacherPageHeader, TeacherLoading } from "../../pages/teacher/TeacherUI";
 import { isPdfFile } from "../../utils/isPdfFile";
 
-const COURSEWORK_UPLOAD_HEADERS = { "Content-Type": "multipart/form-data" };
-
 function googleDueToFormFields(dueDate, dueTime) {
   if (!dueDate?.year) {
     return { dueDate: "", dueTime: "" };
@@ -209,10 +207,12 @@ export default function Coursework() {
         // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
         const res = await api.patch(
           `/google-classroom/coursework/${courseWorkId}`,
-          formData,
-          { headers: COURSEWORK_UPLOAD_HEADERS }
+          formData
         );
         if (res.data?.warning) toast.warn(res.data.warning);
+        if (assignmentFile && !res.data?.assignmentFileId && !res.data?.assignmentWebLink) {
+          toast.warn("Worksheet may not have reached Google Classroom — try uploading again.");
+        }
         toast.success("Coursework updated successfully");
         const viewPath =
           role === "manager"
@@ -229,10 +229,12 @@ export default function Coursework() {
         formData.append("courseworkData", JSON.stringify(courseworkData));
         if (assignmentFile) formData.append("assignmentFile", assignmentFile);
 
-        // No manual Content-Type: axios sets multipart/form-data + boundary for FormData.
-        await api.post("/google-classroom/coursework", formData, {
-          headers: COURSEWORK_UPLOAD_HEADERS,
-        });
+        const res = await api.post("/google-classroom/coursework", formData);
+        if (assignmentFile && !res.data?.assignmentFileId) {
+          toast.warn(
+            "Assignment created, but the PDF was not attached in Google Classroom. Please try again or edit the assignment to re-upload the worksheet."
+          );
+        }
         toast.success("Coursework created successfully");
         setTitle("");
         setDescription("");

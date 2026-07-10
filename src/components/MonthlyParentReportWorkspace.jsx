@@ -933,7 +933,7 @@ export default function MonthlyParentReportWorkspace({
 
                   const isSelected = selectedStudentIds.has(id);
 
-                  const isPreview = previewStudent?._id === s._id;
+                  const isPreview = String(previewStudent?._id) === String(s._id);
 
                   return (
 
@@ -1501,7 +1501,7 @@ export default function MonthlyParentReportWorkspace({
 
                     <h3>Strengths (% on marked work)</h3>
 
-                    <ul>{report.strengths.map((s) => <li key={s}>{s}</li>)}</ul>
+                    <ul>{(report.strengths || []).map((s) => <li key={s}>{s}</li>)}</ul>
 
                   </div>
 
@@ -1509,7 +1509,7 @@ export default function MonthlyParentReportWorkspace({
 
                     <h3>Areas for improvement</h3>
 
-                    <ul>{report.improvements.map((s) => <li key={s}>{s}</li>)}</ul>
+                    <ul>{(report.improvements || []).map((s) => <li key={s}>{s}</li>)}</ul>
 
                   </div>
 

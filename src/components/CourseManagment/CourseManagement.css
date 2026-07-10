@@ -446,6 +446,10 @@ input:checked + .slider:before {
   cursor: pointer;
 }
 
+.cm-teacher-filter .rtf__control {
+  min-height: 40px;
+}
+
 .cm-search-btn,
 .cm-search-clear {
   display: inline-flex;

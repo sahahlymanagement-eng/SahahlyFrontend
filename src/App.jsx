@@ -95,6 +95,7 @@ function App() {
           closeOnClick
           pauseOnHover
           draggable
+          theme="dark"
         />
       <Routes>
         

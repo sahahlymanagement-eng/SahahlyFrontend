@@ -63,6 +63,8 @@ import {
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
+import { buildReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
 import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
 import MarkSchemeVerificationModal, {
   runMarkSchemeVerification,
@@ -158,24 +160,10 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     "data",
     isDirectorScope ? true : !!user?.id
   );
-  const teacherOptions = useMemo(() => {
-    if (isDirectorScope) {
-      return (allTeachers || [])
-        .map((t) => ({ id: String(t._id), name: t.name }))
-        .filter((t) => t.id && t.name)
-        .sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    const map = new Map();
-    for (const c of classrooms || []) {
-      const t = c?.teacherId;
-      const id = t?._id || t?.id;
-      const name = t?.name;
-      if (!id || !name) continue;
-      if (!map.has(String(id))) map.set(String(id), { id: String(id), name });
-    }
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [isDirectorScope, allTeachers, classrooms]);
+  const teacherOptions = useMemo(
+    () => buildReportTeacherOptions(false, allTeachers, classrooms),
+    [allTeachers, classrooms]
+  );
 
   const assignmentParams = useMemo(() => ({
     search: assignmentSearch,
@@ -851,11 +839,19 @@ useEffect(() => {
   }, [navigate]);
 
   useEffect(() => {
-    if (!isDirectorScope) return;
-    api.get("/people/teachers")
+    if (isDirectorScope) {
+      api
+        .get("/people/teachers")
+        .then((r) => setAllTeachers(r.data || []))
+        .catch(() => {});
+      return;
+    }
+    if (!user?.id) return;
+    api
+      .get("/google-classroom/filter-teachers", { params: { personId: user.id } })
       .then((r) => setAllTeachers(r.data || []))
       .catch(() => {});
-  }, [isDirectorScope]);
+  }, [isDirectorScope, user?.id]);
 
   useEffect(() => {
     if (teacherFilter === "all" || !selectedClassroom) return;
@@ -3180,16 +3176,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
                 <input className="ma-search-input" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
                 {(isDirectorScope || teacherOptions.length > 0) && (
-                  <select
-                    className="ma-search-input msv-teacher-filter"
+                  <ReportTeacherFilterSelect
+                    show
                     value={teacherFilter}
-                    onChange={(e) => setTeacherFilter(e.target.value)}
-                  >
-                    <option value="all">All teachers</option>
-                    {teacherOptions.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
+                    onChange={setTeacherFilter}
+                    teachers={teacherOptions}
+                  />
                 )}
                 <div className="ma-scroll-list">
                   {loadingClassrooms && !classrooms.length ? (

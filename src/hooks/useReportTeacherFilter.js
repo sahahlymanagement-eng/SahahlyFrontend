@@ -7,26 +7,27 @@ export function getClassroomTeacherId(classroom) {
   return String(t?._id || t?.id || t || "");
 }
 
-export function buildReportTeacherOptions(isTeacher, allTeachers, classrooms, preferGlobal = false) {
+export function buildReportTeacherOptions(isTeacher, allTeachers, classrooms) {
   if (isTeacher) return [];
 
-  const fromApi = (allTeachers || [])
-    .map((t) => ({ id: String(t._id), name: t.name }))
-    .filter((t) => t.id && t.name);
-
   const map = new Map();
+
+  const addTeacher = (id, name) => {
+    const sid = String(id || "");
+    if (!sid || !name) return;
+    if (!map.has(sid)) map.set(sid, { id: sid, name });
+  };
+
+  for (const t of allTeachers || []) {
+    addTeacher(t._id || t.id, t.name);
+  }
+
   for (const c of classrooms || []) {
     const t = c?.teacherId;
-    const id = t?._id || t?.id;
-    const name = t?.name;
-    if (!id || !name) continue;
-    if (!map.has(String(id))) map.set(String(id), { id: String(id), name });
+    addTeacher(t?._id || t?.id, t?.name);
   }
-  const fromClassrooms = [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 
-  if (preferGlobal && fromApi.length) return fromApi.sort((a, b) => a.name.localeCompare(b.name));
-  if (fromClassrooms.length) return fromClassrooms;
-  return fromApi.sort((a, b) => a.name.localeCompare(b.name));
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function useReportTeacherFilter({
@@ -39,11 +40,23 @@ export function useReportTeacherFilter({
   const [allTeachers, setAllTeachers] = useState([]);
 
   useEffect(() => {
-    if (isTeacher || !loadGlobalTeachers) return;
-    api.get("/people/teachers")
+    if (isTeacher) return;
+
+    if (loadGlobalTeachers) {
+      api
+        .get("/people/teachers")
+        .then((r) => setAllTeachers(r.data || []))
+        .catch(() => {});
+      return;
+    }
+
+    if (!userId) return;
+
+    api
+      .get("/google-classroom/filter-teachers", { params: { personId: userId } })
       .then((r) => setAllTeachers(r.data || []))
       .catch(() => {});
-  }, [isTeacher, loadGlobalTeachers]);
+  }, [isTeacher, loadGlobalTeachers, userId]);
 
   const classroomParams = useMemo(() => {
     if (isTeacher) return { search: classroomSearch };
@@ -61,15 +74,10 @@ export function useReportTeacherFilter({
   };
 }
 
-export function useReportTeacherOptions(
-  isTeacher,
-  allTeachers,
-  classrooms,
-  preferGlobal = false
-) {
+export function useReportTeacherOptions(isTeacher, allTeachers, classrooms) {
   return useMemo(
-    () => buildReportTeacherOptions(isTeacher, allTeachers, classrooms, preferGlobal),
-    [isTeacher, allTeachers, classrooms, preferGlobal]
+    () => buildReportTeacherOptions(isTeacher, allTeachers, classrooms),
+    [isTeacher, allTeachers, classrooms]
   );
 }
 

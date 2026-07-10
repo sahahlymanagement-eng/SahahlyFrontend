@@ -73,11 +73,20 @@ export default function CoursesList() {
   const isFolderView = isAdmin || isManager;
 
   useEffect(() => {
-    if (!isAdmin) return;
-    api.get("/people/teachers")
-      .then((r) => setAllTeachers(r.data || []))
-      .catch(() => {});
-  }, [isAdmin]);
+    if (isAdmin) {
+      api
+        .get("/people/teachers")
+        .then((r) => setAllTeachers(r.data || []))
+        .catch(() => {});
+      return;
+    }
+    if (isManager && user?.id) {
+      api
+        .get("/google-classroom/filter-teachers", { params: { personId: user.id } })
+        .then((r) => setAllTeachers(r.data || []))
+        .catch(() => {});
+    }
+  }, [isAdmin, isManager, user?.id]);
 
   const listParams = useMemo(() => {
     const params = {};
@@ -109,8 +118,7 @@ export default function CoursesList() {
   const teacherOptions = useReportTeacherOptions(
     isFolderView ? false : true,
     allTeachers,
-    courses,
-    isAdmin
+    courses
   );
 
   const totalCourses = courses.length;

@@ -34,6 +34,10 @@ max-width:240px;
 cursor:pointer;
 }
 
+.dm-teacher-filter .rtf__control {
+min-height: 38px;
+}
+
 .dm-search{
 display:flex;
 align-items:center;

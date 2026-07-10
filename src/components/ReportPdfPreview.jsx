@@ -31,9 +31,23 @@ export default function ReportPdfPreview({ fetchConfig, title = "PDF preview" })
         );
         setPdfUrl(objectUrl);
       })
-      .catch(() => {
+      .catch(async (err) => {
         if (!active) return;
-        setError("Could not load PDF preview");
+        let message = "Could not load PDF preview";
+        const data = err.response?.data;
+        if (data instanceof Blob) {
+          try {
+            const parsed = JSON.parse(await data.text());
+            if (parsed?.message) message = parsed.message;
+          } catch {
+            // keep default
+          }
+        } else if (data?.message) {
+          message = data.message;
+        } else if (err.message) {
+          message = err.message;
+        }
+        setError(message);
         setPdfUrl(null);
       })
       .finally(() => {
