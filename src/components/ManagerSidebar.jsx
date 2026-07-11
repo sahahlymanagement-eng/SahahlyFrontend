@@ -22,14 +22,14 @@ const NAV_ITEMS = [
 export default function ManagerSidebar() {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isManager01 = user?.email?.toLowerCase() === "manager01@manager";
-  const { newCount } = useLoginCssNotifications();
+  const { ungradedTotal } = useLoginCssNotifications();
 
   const navItems = (isManager01
     ? NAV_ITEMS
     : NAV_ITEMS.filter((item) => item.path !== "/manager/logincss")
   ).map((item) =>
-    item.path === "/manager/logincss" && newCount > 0
-      ? { ...item, badge: newCount }
+    item.path === "/manager/logincss" && ungradedTotal > 0
+      ? { ...item, badge: ungradedTotal }
       : item
   );
 
