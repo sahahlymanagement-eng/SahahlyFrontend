@@ -1,13 +1,13 @@
 import {
   createContext, useContext, useState, useEffect, useCallback, useRef,
 } from "react";
+import { toast } from "react-toastify";
 import api from "../api/api";
 
 const LoginCssNotificationContext = createContext({
-  newCount: 0,
+  ungradedTotal: 0,
   pendingTotal: 0,
   refresh: () => {},
-  markSeen: () => {},
 });
 
 // Only this account sees LoginCSS today. To enable for all managers later,
@@ -24,41 +24,46 @@ function isLoginCssManager() {
 const POLL_MS = 60000;
 
 export function LoginCssNotificationProvider({ children }) {
-  const [newCount, setNewCount] = useState(0);
+  const [ungradedTotal, setUngradedTotal] = useState(0);
   const [pendingTotal, setPendingTotal] = useState(0);
   const enabled = useRef(isLoginCssManager());
+  // Previous ungraded count, to detect arrivals between polls.
+  // null until the first poll seeds it, so a standing backlog doesn't toast on load.
+  const prevUngraded = useRef(null);
 
   const refresh = useCallback(async () => {
     if (!enabled.current) return;
     try {
       const res = await api.get("/external-grading/notifications");
-      setNewCount(res.data?.newCount ?? 0);
+      const next = res.data?.ungradedTotal ?? 0;
+      setUngradedTotal(next);
       setPendingTotal(res.data?.pendingTotal ?? 0);
+      if (prevUngraded.current !== null && next > prevUngraded.current) {
+        toast.info("New LoginCSS submission pending grading");
+      }
+      prevUngraded.current = next;
     } catch {
       /* badge is non-critical — stay silent on errors */
     }
   }, []);
 
-  const markSeen = useCallback(async () => {
-    if (!enabled.current) return;
-    setNewCount(0); // optimistic — clear immediately
-    try {
-      await api.post("/external-grading/notifications/seen");
-    } catch {
-      refresh(); // reconcile if the call failed
-    }
-  }, [refresh]);
-
   useEffect(() => {
     if (!enabled.current) return;
     refresh();
     const id = setInterval(refresh, POLL_MS);
-    return () => clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   return (
     <LoginCssNotificationContext.Provider
-      value={{ newCount, pendingTotal, refresh, markSeen }}
+      value={{ ungradedTotal, pendingTotal, refresh }}
     >
       {children}
     </LoginCssNotificationContext.Provider>
