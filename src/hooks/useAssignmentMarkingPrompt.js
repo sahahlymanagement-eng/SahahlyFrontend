@@ -36,12 +36,12 @@ export function useAssignmentMarkingPrompt(assignmentId) {
     load();
   }, [load]);
 
-  const generate = useCallback(async (extraInstructions = "") => {
+  const generate = useCallback(async (masterPrompt = "") => {
     if (!assignmentId) return null;
     setGenerating(true);
     try {
       const res = await api.post(`/marking/assignment-prompt/${assignmentId}/generate`, {
-        extraInstructions: String(extraInstructions || "").trim(),
+        masterPrompt: String(masterPrompt || "").trim(),
       });
       setContent(res.data?.content || "");
       setMaxPoints(res.data?.maxPoints ?? null);

@@ -1,7 +1,6 @@
-import { useState } from "react";
-import { FiCheckCircle, FiAlertTriangle, FiX, FiXCircle, FiShield } from "react-icons/fi";
+import { useEffect, useState } from "react";
+import { FiCheckCircle, FiAlertTriangle, FiX, FiXCircle, FiShield, FiRotateCcw } from "react-icons/fi";
 import api from "../api/api";
-import { toast } from "react-toastify";
 
 const STATUS_META = {
   pass: {
@@ -36,7 +35,32 @@ export default function MarkSchemeVerificationModal({
   result,
   onRun,
 }) {
-  const [addToPrompt, setAddToPrompt] = useState("");
+  const [masterPrompt, setMasterPrompt] = useState("");
+  const [defaultMasterPrompt, setDefaultMasterPrompt] = useState("");
+  const [loadingMaster, setLoadingMaster] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingMaster(true);
+    api
+      .get("/marking/openai-master-prompts")
+      .then((res) => {
+        if (cancelled) return;
+        const text = res.data?.markSchemeVerification || "";
+        setDefaultMasterPrompt(text);
+        setMasterPrompt((prev) => (prev.trim() ? prev : text));
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultMasterPrompt("");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingMaster(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -61,30 +85,43 @@ export default function MarkSchemeVerificationModal({
         </div>
 
         <p className="apg-help">
-          Checks that your mark scheme covers the same questions as the student papers.
-          Mixed IGCSE quizzes with repeated question numbers are allowed — only a wrong /
-          mismatched mark scheme should fail.
+          Edit the OpenAI verification prompt, then run. Compares the uploaded mark scheme with three
+          sample student submissions. Verdicts: safe to use, required corrections, or rejected.
         </p>
 
-        <label className="apg-extra-label" htmlFor="msv-add-to-prompt">
-          Add to prompts
-        </label>
-        <textarea
-          id="msv-add-to-prompt"
-          className="apg-textarea apg-textarea--extra"
-          value={addToPrompt}
-          onChange={(e) => setAddToPrompt(e.target.value)}
-          placeholder="Optional notes for OpenAI when verifying (e.g. allow repeated Q numbers, focus on content match only)…"
-          rows={3}
-          disabled={verifying}
-        />
+        <div className="apg-master-row">
+          <label className="apg-extra-label" htmlFor="msv-master-prompt">
+            OpenAI prompt (editable)
+          </label>
+          <button
+            type="button"
+            className="apg-reset-btn"
+            onClick={() => setMasterPrompt(defaultMasterPrompt)}
+            disabled={loadingMaster || verifying || !defaultMasterPrompt}
+          >
+            <FiRotateCcw size={12} /> Reset to default
+          </button>
+        </div>
+        {loadingMaster ? (
+          <p className="apg-loading">Loading OpenAI prompt…</p>
+        ) : (
+          <textarea
+            id="msv-master-prompt"
+            className="apg-textarea apg-textarea--master"
+            value={masterPrompt}
+            onChange={(e) => setMasterPrompt(e.target.value)}
+            placeholder="OpenAI prompt used for mark scheme verification…"
+            rows={18}
+            disabled={verifying}
+          />
+        )}
 
-        <div className="apg-actions" style={{ marginTop: 0, marginBottom: 16 }}>
+        <div className="apg-actions" style={{ marginTop: 12, marginBottom: 16 }}>
           <button
             type="button"
             className="msv-btn-ai msv-btn-verify"
-            onClick={() => onRun?.(addToPrompt)}
-            disabled={verifying || !assignmentId}
+            onClick={() => onRun?.(masterPrompt)}
+            disabled={verifying || !assignmentId || loadingMaster || !masterPrompt.trim()}
           >
             {verifying ? (
               <>
@@ -103,7 +140,7 @@ export default function MarkSchemeVerificationModal({
             <div className={`msv-verify-banner ${meta.className}`}>
               {StatusIcon ? <StatusIcon size={20} /> : null}
               <div>
-                <strong>{meta.label}</strong>
+                <strong>{result.verdict || meta.label}</strong>
                 <p>{result.summary}</p>
               </div>
             </div>
@@ -155,6 +192,15 @@ export default function MarkSchemeVerificationModal({
               </div>
             )}
 
+            {result.fullReport ? (
+              <div className="msv-verify-recommendations">
+                <h4>Full verification report</h4>
+                <pre className="apg-textarea" style={{ whiteSpace: "pre-wrap", maxHeight: 320, overflow: "auto" }}>
+                  {result.fullReport}
+                </pre>
+              </div>
+            ) : null}
+
             {result.verifiedAt ? (
               <p className="msv-verify-footnote">
                 Verified {new Date(result.verifiedAt).toLocaleString()}
@@ -176,9 +222,9 @@ export default function MarkSchemeVerificationModal({
   );
 }
 
-export async function runMarkSchemeVerification(assignmentId, extraInstructions = "") {
+export async function runMarkSchemeVerification(assignmentId, masterPrompt = "") {
   const res = await api.post(`/marking/markscheme-verification/${assignmentId}`, {
-    extraInstructions: String(extraInstructions || "").trim(),
+    masterPrompt: String(masterPrompt || "").trim(),
   });
   return res.data;
 }

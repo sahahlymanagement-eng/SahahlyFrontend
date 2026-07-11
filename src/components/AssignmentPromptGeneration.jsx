@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { FiCpu, FiSave, FiX } from "react-icons/fi";
+import { useEffect, useState } from "react";
+import { FiCpu, FiSave, FiX, FiRotateCcw } from "react-icons/fi";
+import api from "../api/api";
 
 export default function AssignmentPromptGeneration({
   assignmentTitle,
@@ -17,7 +18,34 @@ export default function AssignmentPromptGeneration({
   onGenerate,
   onSave,
 }) {
-  const [addToPrompt, setAddToPrompt] = useState("");
+  const [masterPrompt, setMasterPrompt] = useState("");
+  const [defaultMasterPrompt, setDefaultMasterPrompt] = useState("");
+  const [loadingMaster, setLoadingMaster] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingMaster(true);
+    api
+      .get("/marking/openai-master-prompts")
+      .then((res) => {
+        if (cancelled) return;
+        const text = res.data?.promptGeneration || "";
+        setDefaultMasterPrompt(text);
+        setMasterPrompt((prev) => (prev.trim() ? prev : text));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDefaultMasterPrompt("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingMaster(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -54,41 +82,43 @@ export default function AssignmentPromptGeneration({
         </div>
 
         <p className="apg-help">
-          Uses up to 3 turned-in student submission PDFs and OpenAI to draft examiner guidance.
-          Once saved, single, bulk, batch, and priority marking on this assignment use this prompt
-          automatically (total marks are always passed to Gemini).
+          Edit the OpenAI prompt below, then generate. Uses the mark scheme (if uploaded) and up to 3
+          turned-in student PDFs. Once saved, marking on this assignment uses the generated guidance.
         </p>
 
-        <label className="apg-extra-label" htmlFor="apg-add-to-prompt">
-          Add to prompts
-        </label>
-        <textarea
-          id="apg-add-to-prompt"
-          className="apg-textarea apg-textarea--extra"
-          value={addToPrompt}
-          onChange={(e) => setAddToPrompt(e.target.value)}
-          placeholder="Optional notes for OpenAI when generating (e.g. board rules, how to treat repeated question numbers, MCQ policy)…"
-          rows={3}
-        />
-
-        {loading ? (
-          <p className="apg-loading">Loading saved prompt…</p>
+        <div className="apg-master-row">
+          <label className="apg-extra-label" htmlFor="apg-master-prompt">
+            OpenAI prompt (editable)
+          </label>
+          <button
+            type="button"
+            className="apg-reset-btn"
+            onClick={() => setMasterPrompt(defaultMasterPrompt)}
+            disabled={loadingMaster || generating || !defaultMasterPrompt}
+          >
+            <FiRotateCcw size={12} /> Reset to default
+          </button>
+        </div>
+        {loadingMaster ? (
+          <p className="apg-loading">Loading OpenAI prompt…</p>
         ) : (
           <textarea
-            className="apg-textarea"
-            value={draft}
-            onChange={(e) => onDraftChange(e.target.value)}
-            placeholder="Generate a prompt or write your own assignment-specific marking instructions…"
-            rows={14}
+            id="apg-master-prompt"
+            className="apg-textarea apg-textarea--master"
+            value={masterPrompt}
+            onChange={(e) => setMasterPrompt(e.target.value)}
+            placeholder="OpenAI prompt used to generate marking guidance…"
+            rows={16}
+            disabled={generating}
           />
         )}
 
-        <div className="apg-actions">
+        <div className="apg-actions" style={{ marginTop: 12, marginBottom: 16 }}>
           <button
             type="button"
             className="msv-btn-ai"
-            onClick={() => onGenerate?.(addToPrompt)}
-            disabled={generating || loading}
+            onClick={() => onGenerate?.(masterPrompt)}
+            disabled={generating || loading || loadingMaster || !masterPrompt.trim()}
           >
             {generating ? (
               <>
@@ -96,10 +126,29 @@ export default function AssignmentPromptGeneration({
               </>
             ) : (
               <>
-                <FiCpu size={13} /> Generate from 3 submissions
+                <FiCpu size={13} /> Generate from submissions
               </>
             )}
           </button>
+        </div>
+
+        <label className="apg-extra-label" htmlFor="apg-generated-draft">
+          Generated marking guidance (saved for Gemini)
+        </label>
+        {loading ? (
+          <p className="apg-loading">Loading saved prompt…</p>
+        ) : (
+          <textarea
+            id="apg-generated-draft"
+            className="apg-textarea"
+            value={draft}
+            onChange={(e) => onDraftChange(e.target.value)}
+            placeholder="Generate a prompt or write your own assignment-specific marking instructions…"
+            rows={12}
+          />
+        )}
+
+        <div className="apg-actions">
           <button
             type="button"
             className="msv-btn-ai"

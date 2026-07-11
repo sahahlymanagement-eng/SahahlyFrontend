@@ -836,8 +836,11 @@
 
 /* Assignment prompt generation modal */
 .apg-modal {
-  max-width: 720px;
-  width: min(96vw, 720px);
+  max-width: 920px;
+  width: min(96vw, 920px);
+  max-height: min(92vh, 980px);
+  overflow: auto;
+  padding: 20px 22px 18px;
 }
 
 .apg-subtitle {
@@ -905,8 +908,51 @@
   color: rgba(255, 255, 255, 0.65);
 }
 
+.apg-master-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.apg-master-row .apg-extra-label {
+  margin: 0;
+}
+
+.apg-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.75);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.apg-reset-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.apg-reset-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .apg-textarea--extra {
   min-height: 72px;
+  margin-bottom: 12px;
+}
+
+.apg-textarea--master {
+  min-height: 360px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   margin-bottom: 14px;
 }
 
