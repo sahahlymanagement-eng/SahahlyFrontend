@@ -1088,6 +1088,23 @@ select.ma-search-input option {
   word-break: break-word;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
+.arp-message--editable {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  resize: vertical;
+  min-height: 140px;
+  outline: none;
+}
+.arp-message--editable:focus {
+  border-color: rgba(99, 102, 241, 0.55);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.arp-message--editable:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 .arp-card-error {
   margin: 0;
   font-size: 12.5px;

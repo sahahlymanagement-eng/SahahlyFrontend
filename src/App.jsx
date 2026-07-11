@@ -190,8 +190,9 @@ function App() {
           <Route path="assignments/:assignmentId/students" element={<AssistantStudents />} />
           <Route
             path="assignments/:assignmentId/students/reports"
-            element={<AssistantReports />}
+            element={<Navigate to="/assistant/reports" replace />}
           />
+          <Route path="reports" element={<AssistantReports />} />
         </Route>
 
 

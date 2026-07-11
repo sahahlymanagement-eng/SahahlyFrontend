@@ -36,6 +36,7 @@ import {
 
 export default function ReportsWorkspace({ variant = "manager" }) {
   const isTeacher = variant === "teacher";
+  const isAssistant = variant === "assistant";
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
@@ -153,12 +154,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         navigate("/login", { replace: true });
         return;
       }
+    } else if (isAssistant) {
+      if (role !== "assistant") {
+        navigate("/login", { replace: true });
+        return;
+      }
     } else if (role !== "manager" && role !== "quality manager") {
       navigate("/login", { replace: true });
       return;
     }
     setUser(parsed);
-  }, [navigate, isTeacher]);
+  }, [navigate, isTeacher, isAssistant]);
 
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
@@ -541,16 +547,39 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   const closePreview = () => setPreview({ open: false, loading: false, error: null, previews: [] });
 
-  /* SEND */
-  const sendReport = async () => {
+  const updatePreviewMessage = (index, message) => {
+    setPreview((prev) => ({
+      ...prev,
+      previews: prev.previews.map((p, i) => (i === index ? { ...p, message } : p)),
+    }));
+  };
+
+  const buildMessageOverrides = () => {
+    const overrides = {};
+    for (const p of preview.previews || []) {
+      if (p?.error || !String(p?.message || "").trim()) continue;
+      const text = String(p.message).trim();
+      if (p.studentId != null) overrides[String(p.studentId)] = text;
+      if (p.name) overrides[p.name] = text;
+    }
+    return overrides;
+  };
+
+  /* SEND — from cart bar (no preview edits) or from preview confirm (with edits) */
+  const sendReport = async (options) => {
+    const fromPreview = options && options.fromPreview === true;
     const reports = await resolveReports();
     if (!reports) { toast.warn("No students selected"); return; }
     setSending(true);
     try {
-      const res = await api.post("/manager-assignments/send-report", {
+      const payload = {
         reports,
         classroomId: selectedClassroom?._id,
-      });
+      };
+      if (fromPreview) {
+        payload.messageOverrides = buildMessageOverrides();
+      }
+      const res = await api.post("/manager-assignments/send-report", payload);
       const summary = res.data.summary || [];
       const succeeded = summary.filter(r => r.status === "fulfilled").length;
       const failed = summary.filter(r => r.status === "rejected").length;
@@ -655,7 +684,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
-  const pageTitle = isTeacher ? "Reports" : "Assignments";
+  const pageTitle = isTeacher || isAssistant ? "Reports" : "Assignments";
 
   if (!user) return null;
 
@@ -1205,7 +1234,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           previews={preview.previews}
           sending={sending}
           onClose={closePreview}
-          onConfirm={sendReport}
+          onChangeMessage={updatePreviewMessage}
+          onConfirm={() => sendReport({ fromPreview: true })}
         />
 
         {summaryViewer.open && (
@@ -1294,7 +1324,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       </main>
   );
 
-  if (isTeacher) {
+  if (isTeacher || isAssistant) {
     return <div className="ma-root ma-root--embedded">{mainContent}</div>;
   }
 

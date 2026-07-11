@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FiCpu, FiSave, FiX } from "react-icons/fi";
 
 export default function AssignmentPromptGeneration({
@@ -16,6 +17,8 @@ export default function AssignmentPromptGeneration({
   onGenerate,
   onSave,
 }) {
+  const [addToPrompt, setAddToPrompt] = useState("");
+
   if (!open) return null;
 
   return (
@@ -56,6 +59,18 @@ export default function AssignmentPromptGeneration({
           automatically (total marks are always passed to Gemini).
         </p>
 
+        <label className="apg-extra-label" htmlFor="apg-add-to-prompt">
+          Add to prompts
+        </label>
+        <textarea
+          id="apg-add-to-prompt"
+          className="apg-textarea apg-textarea--extra"
+          value={addToPrompt}
+          onChange={(e) => setAddToPrompt(e.target.value)}
+          placeholder="Optional notes for OpenAI when generating (e.g. board rules, how to treat repeated question numbers, MCQ policy)…"
+          rows={3}
+        />
+
         {loading ? (
           <p className="apg-loading">Loading saved prompt…</p>
         ) : (
@@ -64,7 +79,7 @@ export default function AssignmentPromptGeneration({
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
             placeholder="Generate a prompt or write your own assignment-specific marking instructions…"
-            rows={16}
+            rows={14}
           />
         )}
 
@@ -72,7 +87,7 @@ export default function AssignmentPromptGeneration({
           <button
             type="button"
             className="msv-btn-ai"
-            onClick={onGenerate}
+            onClick={() => onGenerate?.(addToPrompt)}
             disabled={generating || loading}
           >
             {generating ? (

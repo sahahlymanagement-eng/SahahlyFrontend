@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FiCheckCircle, FiAlertTriangle, FiX, FiXCircle, FiShield } from "react-icons/fi";
 import api from "../api/api";
 import { toast } from "react-toastify";
@@ -35,6 +36,8 @@ export default function MarkSchemeVerificationModal({
   result,
   onRun,
 }) {
+  const [addToPrompt, setAddToPrompt] = useState("");
+
   if (!open) return null;
 
   const meta = result ? STATUS_META[result.status] || STATUS_META.warning : null;
@@ -63,11 +66,24 @@ export default function MarkSchemeVerificationModal({
           mismatched mark scheme should fail.
         </p>
 
+        <label className="apg-extra-label" htmlFor="msv-add-to-prompt">
+          Add to prompts
+        </label>
+        <textarea
+          id="msv-add-to-prompt"
+          className="apg-textarea apg-textarea--extra"
+          value={addToPrompt}
+          onChange={(e) => setAddToPrompt(e.target.value)}
+          placeholder="Optional notes for OpenAI when verifying (e.g. allow repeated Q numbers, focus on content match only)…"
+          rows={3}
+          disabled={verifying}
+        />
+
         <div className="apg-actions" style={{ marginTop: 0, marginBottom: 16 }}>
           <button
             type="button"
             className="msv-btn-ai msv-btn-verify"
-            onClick={onRun}
+            onClick={() => onRun?.(addToPrompt)}
             disabled={verifying || !assignmentId}
           >
             {verifying ? (
@@ -160,7 +176,9 @@ export default function MarkSchemeVerificationModal({
   );
 }
 
-export async function runMarkSchemeVerification(assignmentId) {
-  const res = await api.post(`/marking/markscheme-verification/${assignmentId}`);
+export async function runMarkSchemeVerification(assignmentId, extraInstructions = "") {
+  const res = await api.post(`/marking/markscheme-verification/${assignmentId}`, {
+    extraInstructions: String(extraInstructions || "").trim(),
+  });
   return res.data;
 }

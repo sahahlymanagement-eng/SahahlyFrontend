@@ -1111,12 +1111,15 @@ useEffect(() => {
     setPromptDropdownOpen(false);
   };
 
-  const handleRunMsVerification = async () => {
+  const handleRunMsVerification = async (extraInstructions = "") => {
     if (!selectedAssignment?._id) return;
     setMsVerifying(true);
     setMsVerifyResult(null);
     try {
-      const result = await runMarkSchemeVerification(selectedAssignment._id);
+      const result = await runMarkSchemeVerification(
+        selectedAssignment._id,
+        extraInstructions
+      );
       setMsVerifyResult(result);
       if (result.status === "pass") toast.success("Mark scheme verification passed");
       else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
@@ -4334,8 +4337,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         generating={assignmentPrompt.generating}
         saving={assignmentPrompt.saving}
         hasPrompt={assignmentPrompt.hasPrompt}
-        onGenerate={async () => {
-          const res = await assignmentPrompt.generate();
+        onGenerate={async (extraInstructions) => {
+          const res = await assignmentPrompt.generate(extraInstructions);
           if (res?.content) setPromptDraft(res.content);
         }}
         onSave={async () => {

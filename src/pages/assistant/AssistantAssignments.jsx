@@ -456,7 +456,7 @@ export default function AssistantAssignments() {
                           onClick={() =>
                             openWorkflowOrNotify(
                               assistantStatus,
-                              `/assistant/assignments/${assignment._id}/students/reports`
+                              "/assistant/reports"
                             )
                           }
                         >

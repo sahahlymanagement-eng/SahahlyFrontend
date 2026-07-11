@@ -1,16 +1,13 @@
 import { FiSend, FiX, FiUser, FiPhone } from "react-icons/fi";
 
 /**
- * Preview modal for Assignment Reports.
+ * Preview modal for Assignment Reports (manager / teacher / assistant).
  *
- * Mirrors the parent/teacher report flow: the dashboard first hits
- * POST /manager-assignments/report-preview to get the exact WhatsApp text
- * that will be sent (one message per student), renders it here, and only on
- * confirm does it POST /manager-assignments/send-report. The server rebuilds
- * the identical text from the same body — the previewed string is never sent
- * back.
+ * Loads exact WhatsApp text via POST /manager-assignments/report-preview,
+ * allows editing each message in place, then confirms with
+ * POST /manager-assignments/send-report (messageOverrides from edits).
  *
- * previews: [{ name, phone, parentPhone, message, error }]
+ * previews: [{ name, studentId, phone, parentPhone, message, error }]
  */
 export default function AssignmentReportPreviewModal({
   open,
@@ -20,10 +17,11 @@ export default function AssignmentReportPreviewModal({
   sending = false,
   onClose,
   onConfirm,
+  onChangeMessage,
 }) {
   if (!open) return null;
 
-  const sendable = previews.filter((p) => p && !p.error);
+  const sendable = previews.filter((p) => p && !p.error && String(p.message || "").trim());
   const failed = previews.filter((p) => p && p.error);
 
   return (
@@ -37,7 +35,7 @@ export default function AssignmentReportPreviewModal({
                 ? "Generating messages…"
                 : `${sendable.length} message${sendable.length !== 1 ? "s" : ""} ready to send${
                     failed.length ? ` · ${failed.length} skipped` : ""
-                  }`}
+                  } · edit text before sending`}
             </span>
           </div>
           <button type="button" className="arp-close" onClick={onClose} aria-label="Close">
@@ -58,7 +56,7 @@ export default function AssignmentReportPreviewModal({
             !error &&
             previews.map((p, i) => (
               <div
-                key={`${p.name || "student"}-${i}`}
+                key={`${p.studentId || p.name || "student"}-${i}`}
                 className={`arp-card ${p.error ? "arp-card--error" : ""}`}
               >
                 <div className="arp-card-head">
@@ -81,7 +79,15 @@ export default function AssignmentReportPreviewModal({
                 {p.error ? (
                   <p className="arp-card-error">⚠ {p.error}</p>
                 ) : (
-                  <pre className="arp-message">{p.message}</pre>
+                  <textarea
+                    className="arp-message arp-message--editable"
+                    value={p.message || ""}
+                    onChange={(e) => onChangeMessage?.(i, e.target.value)}
+                    rows={Math.min(24, Math.max(8, String(p.message || "").split("\n").length + 1))}
+                    spellCheck
+                    disabled={sending}
+                    aria-label={`Edit WhatsApp message for ${p.name || "student"}`}
+                  />
                 )}
               </div>
             ))}

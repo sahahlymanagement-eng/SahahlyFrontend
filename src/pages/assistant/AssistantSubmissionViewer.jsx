@@ -975,12 +975,12 @@ const url = URL.createObjectURL(blob);
     setPromptDropdownOpen(false);
   };
 
-  const handleRunMsVerification = async () => {
+  const handleRunMsVerification = async (extraInstructions = "") => {
     if (!assignmentId) return;
     setMsVerifying(true);
     setMsVerifyResult(null);
     try {
-      const result = await runMarkSchemeVerification(assignmentId);
+      const result = await runMarkSchemeVerification(assignmentId, extraInstructions);
       setMsVerifyResult(result);
       if (result.status === "pass") toast.success("Mark scheme verification passed");
       else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
@@ -3255,8 +3255,8 @@ return (
         generating={assignmentPrompt.generating}
         saving={assignmentPrompt.saving}
         hasPrompt={assignmentPrompt.hasPrompt}
-        onGenerate={async () => {
-          const res = await assignmentPrompt.generate();
+        onGenerate={async (extraInstructions) => {
+          const res = await assignmentPrompt.generate(extraInstructions);
           if (res?.content) setPromptDraft(res.content);
         }}
         onSave={async () => {

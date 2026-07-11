@@ -36,11 +36,13 @@ export function useAssignmentMarkingPrompt(assignmentId) {
     load();
   }, [load]);
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (extraInstructions = "") => {
     if (!assignmentId) return null;
     setGenerating(true);
     try {
-      const res = await api.post(`/marking/assignment-prompt/${assignmentId}/generate`);
+      const res = await api.post(`/marking/assignment-prompt/${assignmentId}/generate`, {
+        extraInstructions: String(extraInstructions || "").trim(),
+      });
       setContent(res.data?.content || "");
       setMaxPoints(res.data?.maxPoints ?? null);
       setGeneratedAt(res.data?.generatedAt || new Date().toISOString());
