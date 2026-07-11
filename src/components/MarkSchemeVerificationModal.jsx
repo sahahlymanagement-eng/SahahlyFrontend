@@ -58,9 +58,9 @@ export default function MarkSchemeVerificationModal({
         </div>
 
         <p className="apg-help">
-          Compares your uploaded mark scheme with up to 3 student submissions and Google Classroom
-          max points. Run this before marking to catch wrong PDFs, total mark mismatches, or misaligned
-          question papers.
+          Checks that your mark scheme covers the same questions as the student papers.
+          Mixed IGCSE quizzes with repeated question numbers are allowed — only a wrong /
+          mismatched mark scheme should fail.
         </p>
 
         <div className="apg-actions" style={{ marginTop: 0, marginBottom: 16 }}>

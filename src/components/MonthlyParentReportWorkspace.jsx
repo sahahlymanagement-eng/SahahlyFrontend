@@ -1525,7 +1525,7 @@ export default function MonthlyParentReportWorkspace({
                   recommendations={
                     report.teacherRecommendation ? [report.teacherRecommendation] : []
                   }
-                  title="Teacher & AI recommendation"
+                  title="Sahahly's Recommendation"
                 />
 
 

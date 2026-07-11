@@ -622,6 +622,11 @@ const refreshStudents = async () => {
       );
     }
     toast.success("Synced grades, max points, and percentages from Google Classroom");
+    try {
+      await assignmentPrompt.reload();
+    } catch {
+      // prompt reload optional
+    }
   } catch {
     toast.error("Failed to refresh from Google Classroom");
   } finally {

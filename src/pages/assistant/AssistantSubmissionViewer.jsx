@@ -192,6 +192,7 @@ export default function AssignmentSubmissionViewer() {
   const [percentOverrides, setPercentOverrides] = useState({});
   const [gradeOverrides, setGradeOverrides] = useState({});
   const [classroomSyncedGrades, setClassroomSyncedGrades] = useState({});
+  const [syncedClassroomMaxPoints, setSyncedClassroomMaxPoints] = useState(null);
 
   const [expectedPages, setExpectedPages] = useState(null);
   const [expectedPagesInput, setExpectedPagesInput] = useState("");
@@ -473,8 +474,12 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   const pageCheckArgs = (students) => ({ assignmentId, classroomId, students, onReport: applyPageCountReport });
 
   const assignmentMaxPoints = useMemo(
-    () => resolveAssignmentMaxPoints({ maxPoints: maxGrade }, savedResults),
-    [maxGrade, savedResults]
+    () =>
+      resolveAssignmentMaxPoints(
+        { maxPoints: syncedClassroomMaxPoints ?? maxGrade },
+        savedResults
+      ),
+    [syncedClassroomMaxPoints, maxGrade, savedResults]
   );
 
   const setPercentOverride = (submissionId, percentage) => {
@@ -674,6 +679,7 @@ const refreshStudents = async () => {
     );
     const syncedMaxPoints = maxPoints ?? maxGrade ?? null;
     if (syncedMaxPoints != null) {
+      setSyncedClassroomMaxPoints(syncedMaxPoints);
       setEditingMaxTotal(null);
     }
 
@@ -767,6 +773,11 @@ const refreshStudents = async () => {
       );
     }
     toast.success("Synced grades, max points, and percentages from Google Classroom");
+    try {
+      await assignmentPrompt.reload();
+    } catch {
+      // prompt reload optional
+    }
   } catch (err) {
     const detail =
       err?.response?.data?.error ||
