@@ -8,7 +8,7 @@ import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
-import { parseGeminiModelsResponse } from "../../utils/markingCost";
+import { parseGeminiModelsResponse, sahahlyModelLabel } from "../../utils/markingCost";
 
 export default function PaperMarking() {
   const navigate = useNavigate();
@@ -357,20 +357,20 @@ export default function PaperMarking() {
           ))}
         </div>
 
-        {/* ── GEMINI MODEL ── */}
+        {/* ── SAHAHLY MODEL ── */}
         <div className="pm-panel">
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>🤖 Gemini Model</div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Sahahly Model</div>
           <select
             className="pm-input"
             value={geminiModel}
             onChange={e => setGeminiModel(e.target.value)}
           >
             {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
-              <option key={m.id} value={m.id}>{m.label}</option>
+              <option key={m.id} value={m.id}>{sahahlyModelLabel(m)}</option>
             ))}
           </select>
           <p style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
-            Flash-Lite models are cheaper and faster — use this dropdown to compare marking quality.
+            Flash Lite models are cheaper and faster — use this dropdown to compare marking quality.
           </p>
         </div>
 

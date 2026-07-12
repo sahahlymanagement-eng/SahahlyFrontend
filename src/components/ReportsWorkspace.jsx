@@ -465,30 +465,52 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
-  /* BUILD PAYLOAD — shared by preview and send so both produce the identical body */
+  /* BUILD PAYLOAD — shared by preview and send so both produce the identical body.
+   * IMPORTANT: refresh live Classroom data per assignment in the cart.
+   * Never apply one assignment's student row (grade/status/time) onto other assignments. */
   const resolveReports = async () => {
     const cartEntries = Object.entries(reportCart);
     if (cartEntries.length === 0) return null;
 
-    let freshSummaryMap = summaryMap;
-    let freshStudents = students;
-    try {
-      const fresh = await api.get(`/manager-assignments/${selectedAssignment._id}/full`, {
-        params: { page: 1, limit: 5000 },
-      });
-      freshSummaryMap = fresh.data.summaryMap || summaryMap;
-      freshStudents = fresh.data.students || students;
-      setSummaryMap(freshSummaryMap);
-    } catch {
-      // use cached summaries if refresh fails
-    }
+    const assignmentIdsInCart = [
+      ...new Set(
+        cartEntries.flatMap(([, entry]) =>
+          Object.keys(entry.items || {}).filter(Boolean)
+        )
+      ),
+    ];
 
-    const studentById = Object.fromEntries(
-      freshStudents.map((s) => [String(s._id), s])
+    const liveByAssignmentId = {};
+    await Promise.all(
+      assignmentIdsInCart.map(async (asgId) => {
+        try {
+          const fresh = await api.get(`/manager-assignments/${asgId}/full`, {
+            params: { page: 1, limit: 5000 },
+          });
+          liveByAssignmentId[String(asgId)] = {
+            studentsById: Object.fromEntries(
+              (fresh.data.students || []).map((s) => [String(s._id), s])
+            ),
+            summaryMap: fresh.data.summaryMap || {},
+            maxPoints: fresh.data.assignment?.maxPoints ?? null,
+          };
+        } catch {
+          liveByAssignmentId[String(asgId)] = {
+            studentsById: {},
+            summaryMap: {},
+            maxPoints: null,
+          };
+        }
+      })
     );
 
-    const maxPointsForAssignment =
-      selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
+    // Keep UI summary map in sync for the currently open assignment (if any).
+    if (selectedAssignment?._id && liveByAssignmentId[String(selectedAssignment._id)]) {
+      const current = liveByAssignmentId[String(selectedAssignment._id)];
+      if (current.summaryMap && Object.keys(current.summaryMap).length) {
+        setSummaryMap((prev) => ({ ...prev, ...current.summaryMap }));
+      }
+    }
 
     return cartEntries.map(([, entry]) => ({
       studentId: entry.studentMeta._id,
@@ -496,28 +518,52 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
       items: Object.values(entry.items).map((item) => {
-        const liveStudent = studentById[String(entry.studentMeta._id)] || entry.studentMeta;
-        const submissionId = item.submissionId || liveStudent?.submissionId;
-        const assignedGrade = liveStudent?.assignedGrade ?? item.assignedGrade;
-        const maxPoints = item.maxPoints ?? maxPointsForAssignment;
+        const asgId = String(item.assignmentId || "");
+        const liveBundle = liveByAssignmentId[asgId];
+        const liveStudent =
+          liveBundle?.studentsById?.[String(entry.studentMeta._id)] || null;
+
+        // Prefer this assignment's live Classroom row; fall back to cart snapshot.
+        const submissionId = liveStudent?.submissionId || item.submissionId || null;
+        const assignedGrade =
+          liveStudent?.assignedGrade ?? item.assignedGrade ?? null;
+        const maxPoints =
+          item.maxPoints ??
+          liveBundle?.maxPoints ??
+          (asgId === String(selectedAssignment?._id)
+            ? studentExtra?.assignment?.maxPoints ?? selectedAssignment?.maxPoints
+            : null) ??
+          null;
+
         const savedSummary =
+          (submissionId && liveBundle?.summaryMap?.[submissionId]) ||
+          (submissionId && summaryMap[submissionId]) ||
           liveStudent?.summary ||
-          (submissionId ? freshSummaryMap[submissionId] : "");
+          "";
+
         const attendanceCfg =
-          assignmentAttendance[String(item.assignmentId || selectedAssignment?._id)] ||
+          assignmentAttendance[asgId] ||
           { enabled: false, map: {}, date: "" };
+
+        const percentageFromLive =
+          assignedGrade != null && maxPoints != null
+            ? computeGradePercent(assignedGrade, maxPoints) || null
+            : null;
+
         return {
           ...item,
-          assignmentId: item.assignmentId || selectedAssignment._id,
+          assignmentId: item.assignmentId || asgId || selectedAssignment?._id,
           submissionId,
           state: liveStudent?.state ?? item.state,
           submittedAt: liveStudent?.submittedAt ?? item.submittedAt,
           isLate: liveStudent?.isLate ?? item.isLate,
           isOnTime: liveStudent?.isOnTime ?? item.isOnTime,
           assignedGrade,
+          maxPoints,
           percentage:
             item.percentage ??
-            (computeGradePercent(assignedGrade, maxPoints) || null),
+            percentageFromLive ??
+            null,
           comment: (item.comment || savedSummary || "").trim(),
           includeAttendance: Boolean(attendanceCfg.enabled),
           attendancePresent: attendanceCfg.enabled

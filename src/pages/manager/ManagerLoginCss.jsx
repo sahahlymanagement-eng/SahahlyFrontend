@@ -25,7 +25,7 @@ import {
   buildPriorityMarkingResult,
   appendMarkingContext,
 } from "../../utils/markingFormData";
-import { parseGeminiModelsResponse, pickValidGeminiModel } from "../../utils/markingCost";
+import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
@@ -1293,12 +1293,12 @@ export default function ManagerLoginCss() {
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
                       onChange={(e) => setGeminiModel(e.target.value)}
                       disabled={bulkMarking || priorityBulkRunning}
-                      title="Gemini model for marking"
+                      title="Sahahly model for marking"
                       style={{ minWidth: 180, maxWidth: 260 }}
                     >
                       {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.label}
+                          {sahahlyModelLabel(m)}
                         </option>
                       ))}
                     </select>
@@ -1726,12 +1726,12 @@ export default function ManagerLoginCss() {
                 </div>
               </div>
 
-              {/* Gemini model */}
+              {/* Sahahly model */}
               <div style={{ marginBottom: 16 }}>
                 <label
                   style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}
                 >
-                  Gemini Model
+                  Sahahly Model
                 </label>
                 <select
                   className="msv-gemini-select"
@@ -1740,7 +1740,7 @@ export default function ManagerLoginCss() {
                 >
                   {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.label}
+                      {sahahlyModelLabel(m)}
                     </option>
                   ))}
                 </select>

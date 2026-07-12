@@ -52,6 +52,7 @@ import {
   pickValidGeminiModel,
   PRIORITY_RATE_FACTOR,
   resolveMarkingCost,
+  sahahlyModelLabel,
 } from "../../utils/markingCost";
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
@@ -111,11 +112,7 @@ const CHECKLIST_CONFIG = [
 ];
 
 function geminiDropdownLabel(model) {
-  const raw = String(model?.label || model?.id || "").trim();
-  if (!raw) return "Gemini model";
-  // Keep dropdown text compact/readable; preserve full label elsewhere.
-  const compact = raw.replace(/\s*\([^)]*\)\s*/g, "");
-  return compact || raw;
+  return sahahlyModelLabel(model);
 }
 
 export default function ManagerSubmissionViewer({ scope = "manager" }) {
@@ -3388,14 +3385,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         value={pickValidGeminiModel(geminiModels, geminiModel)}
                         onChange={(e) => setGeminiModel(e.target.value)}
                         disabled={bulkMarking || batchStarting}
-                        title="Gemini model for batch marking"
+                        title="Sahahly model for batch marking"
                         style={{ minWidth: 250, maxWidth: 420 }}
                       >
                         {(geminiModels.length
                           ? geminiModels
                           : [{ id: geminiModel, label: geminiModel }]
                         ).map((m) => (
-                          <option key={m.id} value={m.id} title={m.label || m.id}>
+                          <option key={m.id} value={m.id} title={sahahlyModelLabel(m)}>
                             {geminiDropdownLabel(m)}
                           </option>
                         ))}
@@ -4084,10 +4081,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
               </div>
 
-              {/* Gemini model (bulk, batch, and single mark) */}
+              {/* Sahahly model (bulk, batch, and single mark) */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
-                  Gemini Model
+                  Sahahly Model
                 </label>
                 <select
                   className="msv-gemini-select"
@@ -4095,15 +4092,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   onChange={e => setGeminiModel(e.target.value)}
                 >
                   {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
-                    <option key={m.id} value={m.id} title={m.label || m.id}>
+                    <option key={m.id} value={m.id} title={sahahlyModelLabel(m)}>
                       {geminiDropdownLabel(m)}
                     </option>
                   ))}
                 </select>
                 <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                   {guidanceModal.batch
-                    ? "Used for the Gemini batch job (~50% cheaper than sequential marking)."
-                    : "Used when you start marking with Gemini. Flash-Lite models are cheaper and faster."}
+                    ? "Used for the Sahahly batch job (~50% cheaper than sequential marking)."
+                    : "Used when you start marking with Sahahly. Flash Lite models are cheaper and faster."}
                 </p>
               </div>
 

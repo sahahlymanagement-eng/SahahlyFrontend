@@ -81,6 +81,7 @@ import {
   geminiModelLabel,
   parseGeminiModelsResponse,
   pickValidGeminiModel,
+  sahahlyModelLabel,
 } from "../../utils/markingCost";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import { buildReturnAllQueue } from "../../utils/returnAllQueue";
@@ -2425,7 +2426,7 @@ return (
                     value={pickValidGeminiModel(geminiModels, geminiModel)}
                     onChange={(e) => setGeminiModel(e.target.value)}
                     disabled={bulkMarking || batchStarting}
-                    title="Gemini model for batch marking"
+                    title="Sahahly model for batch marking"
                     style={{ minWidth: 210, maxWidth: 280 }}
                   >
                     {(geminiModels.length
@@ -2433,7 +2434,7 @@ return (
                       : [{ id: geminiModel, label: geminiModel }]
                     ).map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.label}
+                        {sahahlyModelLabel(m)}
                       </option>
                     ))}
                   </select>
@@ -3042,10 +3043,10 @@ return (
                 </div>
               </div>
 
-                        {/* Gemini model (bulk, batch, and single mark) */}
+                        {/* Sahahly model (bulk, batch, and single mark) */}
                         <div style={{ marginBottom: 16 }}>
                           <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
-                            Gemini Model
+                            Sahahly Model
                           </label>
                           <select
                             className="msv-gemini-select"
@@ -3053,13 +3054,13 @@ return (
                             onChange={e => setGeminiModel(e.target.value)}
                           >
                             {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
-                              <option key={m.id} value={m.id}>{m.label}</option>
+                              <option key={m.id} value={m.id}>{sahahlyModelLabel(m)}</option>
                             ))}
                           </select>
                           <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
                             {guidanceModal.batch
-                              ? "Used for the Gemini batch job (marks all students in one run)."
-                              : "Used when you start marking with Gemini."}
+                              ? "Used for the Sahahly batch job (marks all students in one run)."
+                              : "Used when you start marking with Sahahly."}
                           </p>
               </div>
 

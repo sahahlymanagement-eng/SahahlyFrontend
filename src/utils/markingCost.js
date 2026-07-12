@@ -7,6 +7,48 @@ export const MARKING_GEMINI_PRICING = [
   { id: "gemini-3.5-flash", inputPer1M: 1.5, outputPer1M: 9.0, cachedInputPer1M: 0.15 },
 ];
 
+/** Display names for marking model dropdowns (ids stay Gemini under the hood). */
+export const SAHAHLY_MODEL_LABELS = {
+  "gemini-3.1-flash-lite": "Sahahly 3.1 Flash Lite",
+  "gemini-2.5-flash-lite": "Sahahly 2.5 Flash Lite",
+  "gemini-2.5-flash": "Sahahly 2.5 Flash",
+  "gemini-3-flash-preview": "Sahahly 3 Flash Preview",
+  "gemini-3.5-flash": "Sahahly 3.5 Flash",
+};
+
+/**
+ * Convert a Gemini model id / API label into the Sahahly UI name.
+ * @param {string|{id?: string, label?: string}} modelOrId
+ */
+export function sahahlyModelLabel(modelOrId) {
+  if (modelOrId == null) return "Sahahly model";
+  if (typeof modelOrId === "object") {
+    const id = String(modelOrId.id || "").trim();
+    if (id && SAHAHLY_MODEL_LABELS[id]) return SAHAHLY_MODEL_LABELS[id];
+    const raw = String(modelOrId.label || id || "").trim();
+    return brandGeminiLabel(raw) || "Sahahly model";
+  }
+  const id = String(modelOrId).trim();
+  if (SAHAHLY_MODEL_LABELS[id]) return SAHAHLY_MODEL_LABELS[id];
+  return brandGeminiLabel(id) || id || "Sahahly model";
+}
+
+function brandGeminiLabel(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  // Strip parenthetical notes, then rename Gemini → Sahahly and normalize Flash-Lite.
+  let out = text.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  out = out.replace(/^gemini[\s_-]*/i, "");
+  out = out.replace(/flash[\s_-]*lite/gi, "Flash Lite");
+  out = out.replace(/flash/gi, "Flash");
+  out = out.replace(/\s+/g, " ").trim();
+  if (!out) return "Sahahly model";
+  if (/^sahahly\b/i.test(out)) {
+    return out.replace(/^sahahly\b/i, "Sahahly");
+  }
+  return `Sahahly ${out}`;
+}
+
 export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 export let USD_TO_EGP_RATE = 50;
 export let CACHED_INPUT_RATE_FACTOR = 0.25;
@@ -36,14 +78,17 @@ export function setPriorityRateFactor(factor) {
 export function parseGeminiModelsResponse(data) {
   if (Array.isArray(data)) {
     return {
-      models: data,
+      models: data.map((m) => ({ ...m, label: sahahlyModelLabel(m) })),
       usdToEgpRate: USD_TO_EGP_RATE,
       cachedInputRateFactor: CACHED_INPUT_RATE_FACTOR,
       batchRateFactor: BATCH_RATE_FACTOR,
       priorityRateFactor: PRIORITY_RATE_FACTOR,
     };
   }
-  const models = data?.models || [];
+  const models = (data?.models || []).map((m) => ({
+    ...m,
+    label: sahahlyModelLabel(m),
+  }));
   if (data?.usdToEgpRate) setUsdToEgpRate(data.usdToEgpRate);
   if (data?.cachedInputRateFactor) setCachedInputRateFactor(data.cachedInputRateFactor);
   if (data?.batchRateFactor) setBatchRateFactor(data.batchRateFactor);
@@ -71,7 +116,8 @@ export function pickValidGeminiModel(models, current) {
 
 export function geminiModelLabel(models, modelId) {
   const match = models?.find((m) => m.id === modelId);
-  return match?.label || modelId || DEFAULT_GEMINI_MODEL;
+  if (match) return sahahlyModelLabel(match);
+  return sahahlyModelLabel(modelId || DEFAULT_GEMINI_MODEL);
 }
 
 function cachedInputPer1M(meta) {
