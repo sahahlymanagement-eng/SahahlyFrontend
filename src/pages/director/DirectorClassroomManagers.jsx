@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import api from "../../api/api";
 import "./DirectorClassroomManagers.css";
 import { usePagination } from "../../hooks/usePagination";
@@ -31,6 +31,7 @@ export default function DirectorManagers() {
     data: classrooms,
     page,
     totalPages,
+    total,
     loading: loadingClassrooms,
     fetchPage: fetchClassroomsPage,
   } = usePagination("/classrooms", classroomParams, 10);
@@ -43,8 +44,15 @@ export default function DirectorManagers() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
 
   useEffect(() => { loadSupportData(); }, []);
+
+  // Clear selection when filters change
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [search, teacherFilter]);
 
   const loadSupportData = async () => {
     try {
@@ -89,6 +97,69 @@ export default function DirectorManagers() {
 
   const hasManager = (classroomId) =>
     assignments.some((a) => a.classroomId?._id === classroomId);
+
+  const pageIds = useMemo(
+    () => classrooms.map((c) => String(c._id)),
+    [classrooms]
+  );
+
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+
+  const somePageSelected =
+    pageIds.some((id) => selectedIds.has(id)) && !allPageSelected;
+
+  const selectedCount = selectedIds.size;
+
+  const toggleOne = useCallback((id) => {
+    const sid = String(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sid)) next.delete(sid);
+      else next.add(sid);
+      return next;
+    });
+  }, []);
+
+  const selectPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const clearPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      pageIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  };
+
+  const toggleSelectPage = () => {
+    if (allPageSelected) clearPage();
+    else selectPage();
+  };
+
+  const selectAllMatching = async () => {
+    setSelectingAll(true);
+    try {
+      const limit = Math.max(total || 0, 1);
+      const res = await api.get("/classrooms", {
+        params: { ...classroomParams, page: 1, limit },
+      });
+      const rows = res.data?.data || [];
+      setSelectedIds(new Set(rows.map((c) => String(c._id))));
+      toast.success(`Selected ${rows.length} classroom(s)`);
+    } catch {
+      toast.error("Failed to select all classrooms");
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
 
   const assignManager = async (classroomId) => {
     const personId = selectedManagers[classroomId];
@@ -156,6 +227,11 @@ export default function DirectorManagers() {
       setLoading(true);
       const res = await api.delete(`/classrooms/${room._id}`);
       const deletedAsg = res.data?.summary?.assignmentsDeleted ?? 0;
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(room._id));
+        return next;
+      });
       await reload();
       toast.success(
         deletedAsg
@@ -170,10 +246,55 @@ export default function DirectorManagers() {
     }
   };
 
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) {
+      toast.warn("No classrooms selected");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${ids.length} selected classroom(s) from Sahahly?\n\n` +
+        "This permanently removes each classroom and related data on our website " +
+        "(assignments, submissions, marking results, manager/quality links, attendance, reports usage, etc.).\n\n" +
+        "Student profiles are kept but unlinked.\n" +
+        "Google Classroom courses are NOT deleted.\n\n" +
+        "This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      setDeletingId("bulk");
+      const res = await api.post("/classrooms/bulk-delete", { ids });
+      const deleted = res.data?.deleted ?? 0;
+      const failed = res.data?.failed?.length ?? 0;
+      const asg = res.data?.assignmentsDeleted ?? 0;
+      clearSelection();
+      await reload();
+      if (failed) {
+        toast.warn(`Deleted ${deleted} classroom(s); ${failed} failed`);
+      } else {
+        toast.success(
+          asg
+            ? `Deleted ${deleted} classroom(s) and ${asg} assignment(s)`
+            : `Deleted ${deleted} classroom(s)`
+        );
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || "Bulk delete failed");
+    } finally {
+      setDeletingId(null);
+      setLoading(false);
+    }
+  };
+
   const managerName = (classroomId) => {
     const assignment = assignments.find((a) => a.classroomId?._id === classroomId);
     return assignment?.personId?.name || "None";
   };
+
+  const busy = loading || selectingAll || deletingId != null;
 
   return (
     <div className="dm-page">
@@ -201,7 +322,7 @@ export default function DirectorManagers() {
             type="button"
             className="dm-refresh"
             onClick={handleRefresh}
-            disabled={refreshing || loadingClassrooms}
+            disabled={refreshing || loadingClassrooms || busy}
             title="Refresh classroom list"
           >
             <FiRefreshCw size={15} className={refreshing ? "dm-spin" : ""} />
@@ -210,10 +331,63 @@ export default function DirectorManagers() {
         </div>
       </div>
 
+      <div className="dm-bulk-bar">
+        <div className="dm-bulk-left">
+          <button
+            type="button"
+            className="dm-bulk-btn"
+            onClick={selectPage}
+            disabled={busy || !pageIds.length}
+          >
+            Select page
+          </button>
+          <button
+            type="button"
+            className="dm-bulk-btn"
+            onClick={selectAllMatching}
+            disabled={busy || !total}
+          >
+            {selectingAll ? "Selecting…" : `Select all${total ? ` (${total})` : ""}`}
+          </button>
+          <button
+            type="button"
+            className="dm-bulk-btn"
+            onClick={clearSelection}
+            disabled={busy || selectedCount === 0}
+          >
+            Clear selection
+          </button>
+          <span className="dm-bulk-count">
+            {selectedCount} selected
+          </span>
+        </div>
+        <button
+          type="button"
+          className="dm-delete dm-delete--bulk"
+          onClick={deleteSelected}
+          disabled={busy || selectedCount === 0}
+        >
+          <FiTrash2 size={14} />
+          {deletingId === "bulk" ? "Deleting…" : `Delete selected (${selectedCount})`}
+        </button>
+      </div>
+
       <div className="dm-table-box">
         <table className="dm-table">
           <thead>
             <tr>
+              <th className="dm-check-col">
+                <input
+                  type="checkbox"
+                  checked={allPageSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = somePageSelected;
+                  }}
+                  onChange={toggleSelectPage}
+                  disabled={busy || !pageIds.length}
+                  aria-label="Select all on this page"
+                />
+              </th>
               <th>Classroom</th>
               <th>Teacher</th>
               <th>Current Manager</th>
@@ -224,20 +398,31 @@ export default function DirectorManagers() {
           <tbody>
             {loadingClassrooms && (
               <tr>
-                <td colSpan={5} className="dm-empty">Loading classrooms…</td>
+                <td colSpan={6} className="dm-empty">Loading classrooms…</td>
               </tr>
             )}
             {!loadingClassrooms && classrooms.length === 0 && (
               <tr>
-                <td colSpan={5} className="dm-empty">
+                <td colSpan={6} className="dm-empty">
                   {search.trim() ? `No classrooms match "${search.trim()}".` : "No classrooms found."}
                 </td>
               </tr>
             )}
             {!loadingClassrooms && classrooms.map((room) => {
               const alreadyAssigned = hasManager(room._id);
+              const sid = String(room._id);
+              const isChecked = selectedIds.has(sid);
               return (
-                <tr key={room._id}>
+                <tr key={room._id} className={isChecked ? "dm-row--selected" : undefined}>
+                  <td className="dm-check-col">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleOne(room._id)}
+                      disabled={busy}
+                      aria-label={`Select ${room.name}`}
+                    />
+                  </td>
                   <td>{room.name}{room.section && ` (${room.section})`}</td>
                   <td>{room.teacherName || room.teacherId?.name || "-"}</td>
                   <td className="dm-current">{managerName(room._id)}</td>
@@ -265,7 +450,7 @@ export default function DirectorManagers() {
                       <button
                         className="dm-assign"
                         onClick={() => assignManager(room._id)}
-                        disabled={loading || deletingId === room._id}
+                        disabled={busy}
                       >
                         Assign
                       </button>
@@ -274,14 +459,14 @@ export default function DirectorManagers() {
                         <button
                           className="dm-change"
                           onClick={() => changeManager(room._id)}
-                          disabled={loading || deletingId === room._id}
+                          disabled={busy}
                         >
                           Change
                         </button>
                         <button
                           className="dm-remove"
                           onClick={() => removeManager(room._id)}
-                          disabled={loading || deletingId === room._id}
+                          disabled={busy}
                         >
                           Remove
                         </button>
@@ -291,7 +476,7 @@ export default function DirectorManagers() {
                       type="button"
                       className="dm-delete"
                       onClick={() => deleteClassroom(room)}
-                      disabled={loading || deletingId === room._id}
+                      disabled={busy}
                       title="Delete classroom and all related Sahahly data"
                     >
                       <FiTrash2 size={14} />
