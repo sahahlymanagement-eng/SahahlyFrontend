@@ -736,15 +736,13 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               >
                 <FiCalendar size={12} /> Monthly Parent Reports
               </button>
-              {!isTeacher && (
-                <button
-                  type="button"
-                  className="ma-report-tab"
-                  onClick={() => setReportView("executive")}
-                >
-                  <FiBarChart2 size={12} /> Teacher Executive Analysis
-                </button>
-              )}
+              <button
+                type="button"
+                className="ma-report-tab"
+                onClick={() => setReportView("executive")}
+              >
+                <FiBarChart2 size={12} /> Teacher Executive Analysis
+              </button>
             </div>
           </div>
           {reportCount > 0 && (

@@ -250,22 +250,24 @@ export default function TeacherExecutiveAnalysisWorkspace({
                 <FiDownload size={14} />
                 {downloading ? "Generating…" : "Download PDF"}
               </button>
-              {!isTeacher && (
-                <button
-                  type="button"
-                  className="mpr-btn mpr-btn--whatsapp"
-                  onClick={sendToTeacher}
-                  disabled={sending || !report?.meta?.teacherPhone}
-                  title={
-                    report?.meta?.teacherPhone
-                      ? `Send to ${report.meta.teacherPhone}`
-                      : "No teacher phone on file"
-                  }
-                >
-                  <FiSend size={14} />
-                  {sending ? "Sending…" : "Send to Teacher (WhatsApp)"}
-                </button>
-              )}
+              <button
+                type="button"
+                className="mpr-btn mpr-btn--whatsapp"
+                onClick={sendToTeacher}
+                disabled={sending || !report?.meta?.teacherPhone}
+                title={
+                  report?.meta?.teacherPhone
+                    ? `Send to ${report.meta.teacherPhone}`
+                    : "No teacher phone on file"
+                }
+              >
+                <FiSend size={14} />
+                {sending
+                  ? "Sending…"
+                  : isTeacher
+                    ? "Send to me (WhatsApp)"
+                    : "Send to Teacher (WhatsApp)"}
+              </button>
             </>
           )}
         </div>
@@ -415,16 +417,16 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   </div>
                 </div>
                 <p className="mpr-month-hint">Full PDF preview appears below.</p>
-                {!isTeacher && (
-                  <label className="tea-check">
-                    <input
-                      type="checkbox"
-                      checked={sendEmailToo}
-                      onChange={(e) => setSendEmailToo(e.target.checked)}
-                    />
-                    Also email PDF to teacher ({report.meta.teacherEmail || "no email on file"})
-                  </label>
-                )}
+                <label className="tea-check">
+                  <input
+                    type="checkbox"
+                    checked={sendEmailToo}
+                    onChange={(e) => setSendEmailToo(e.target.checked)}
+                  />
+                  {isTeacher
+                    ? `Also email PDF to me (${report.meta.teacherEmail || "no email on file"})`
+                    : `Also email PDF to teacher (${report.meta.teacherEmail || "no email on file"})`}
+                </label>
               </div>
             )}
           </section>
