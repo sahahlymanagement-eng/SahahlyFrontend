@@ -194,6 +194,33 @@ transition:.2s;
 background:#dc2626;
 }
 
+.dm-delete{
+display:inline-flex;
+align-items:center;
+gap:6px;
+background:rgba(127,29,29,0.85);
+border:1px solid rgba(248,113,113,0.45);
+padding:8px 14px;
+border-radius:8px;
+color:#fecaca;
+cursor:pointer;
+font-weight:600;
+transition:.2s;
+}
+
+.dm-delete:hover:not(:disabled){
+background:#7f1d1d;
+color:#fff;
+}
+
+.dm-delete:disabled,
+.dm-assign:disabled,
+.dm-change:disabled,
+.dm-remove:disabled{
+opacity:0.55;
+cursor:not-allowed;
+}
+
 .dm-change {
   background: #3b82f6;
   border: none;

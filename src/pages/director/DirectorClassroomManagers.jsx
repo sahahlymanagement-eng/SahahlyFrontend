@@ -6,7 +6,7 @@ import Pagination from "../../components/Pagination";
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
 import { useReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
 import { toast } from "react-toastify";
-import { FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiRefreshCw, FiSearch, FiTrash2 } from "react-icons/fi";
 
 export default function DirectorManagers() {
   const [search, setSearch] = useState("");
@@ -42,6 +42,7 @@ export default function DirectorManagers() {
   const [selectedManagers, setSelectedManagers] = useState({});
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => { loadSupportData(); }, []);
 
@@ -134,6 +135,37 @@ export default function DirectorManagers() {
     } catch (err) {
       toast.error(err.response?.data?.message || "Remove failed");
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteClassroom = async (room) => {
+    const label = `${room.name}${room.section ? ` (${room.section})` : ""}`;
+    const confirmed = window.confirm(
+      `Delete "${label}" from Sahahly?\n\n` +
+        "This permanently removes the classroom and related data on our website " +
+        "(assignments, submissions, marking results, manager/quality links, attendance, reports usage, etc.).\n\n" +
+        "Student profiles are kept but unlinked from this classroom.\n" +
+        "The Google Classroom course itself is NOT deleted.\n\n" +
+        "This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(room._id);
+      setLoading(true);
+      const res = await api.delete(`/classrooms/${room._id}`);
+      const deletedAsg = res.data?.summary?.assignmentsDeleted ?? 0;
+      await reload();
+      toast.success(
+        deletedAsg
+          ? `Deleted classroom and ${deletedAsg} assignment(s)`
+          : "Classroom deleted from Sahahly"
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || "Delete failed");
+    } finally {
+      setDeletingId(null);
       setLoading(false);
     }
   };
@@ -233,6 +265,7 @@ export default function DirectorManagers() {
                       <button
                         className="dm-assign"
                         onClick={() => assignManager(room._id)}
+                        disabled={loading || deletingId === room._id}
                       >
                         Assign
                       </button>
@@ -241,17 +274,29 @@ export default function DirectorManagers() {
                         <button
                           className="dm-change"
                           onClick={() => changeManager(room._id)}
+                          disabled={loading || deletingId === room._id}
                         >
                           Change
                         </button>
                         <button
                           className="dm-remove"
                           onClick={() => removeManager(room._id)}
+                          disabled={loading || deletingId === room._id}
                         >
                           Remove
                         </button>
                       </>
                     )}
+                    <button
+                      type="button"
+                      className="dm-delete"
+                      onClick={() => deleteClassroom(room)}
+                      disabled={loading || deletingId === room._id}
+                      title="Delete classroom and all related Sahahly data"
+                    >
+                      <FiTrash2 size={14} />
+                      {deletingId === room._id ? "Deleting…" : "Delete"}
+                    </button>
                   </td>
                 </tr>
               );
