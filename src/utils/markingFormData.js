@@ -422,6 +422,8 @@ export function questionsHavePendingEdits(currentQuestions, confirmedSnapshot) {
     (q, i) =>
       Number(q.marksAwarded) !== Number(confirmed[i]?.marksAwarded) ||
       String(q.reason || "") !== String(confirmed[i]?.reason || "") ||
+      Number(q.yPercent) !== Number(confirmed[i]?.yPercent) ||
+      Number(q.pageNumber) !== Number(confirmed[i]?.pageNumber) ||
       normKw(q.markedKeywords) !== normKw(confirmed[i]?.markedKeywords) ||
       normKw(q.missingKeywords) !== normKw(confirmed[i]?.missingKeywords)
   );

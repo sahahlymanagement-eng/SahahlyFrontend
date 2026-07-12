@@ -8,7 +8,6 @@ import {
   getOutOfScopeNotes,
   getTeacherAnnotations,
   getApiErrorMessage,
-  rebuildMarkingSummary,
 } from "../utils/markingFormData";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 
@@ -57,6 +56,7 @@ export function useAnnotatedResultPreview({
   const [previewError, setPreviewError] = useState(null);
   const [confirmingEdits, setConfirmingEdits] = useState(false);
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
+  const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
@@ -104,7 +104,7 @@ export function useAnnotatedResultPreview({
   }, []);
 
   const generatePreview = useCallback(
-    async (snapshot) => {
+    async (snapshot, { lockPlacement = false } = {}) => {
       if (!assignmentId || !snapshot?.submissionId) return;
       const requestId = ++previewRequestRef.current;
       setPreviewLoading(true);
@@ -141,6 +141,7 @@ export function useAnnotatedResultPreview({
             outOfScopeNotes: snapshot.outOfScopeNotes,
             teacherAnnotations: snapshot.teacherAnnotations,
             skipCompress: true,
+            lockPlacement,
           }),
           PREVIEW_TIMEOUT_MS,
           "Building annotated preview"
@@ -153,6 +154,7 @@ export function useAnnotatedResultPreview({
         );
         previewUrlRef.current = url;
         setAnnotatedPreviewUrl(url);
+        setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
       } catch (err) {
         if (requestId === previewRequestRef.current) {
           const message = await getApiErrorMessage(err);
@@ -178,6 +180,7 @@ export function useAnnotatedResultPreview({
       setConfirmedSnapshot(null);
       setPreviewError(null);
       setPreviewLoading(false);
+      setReportPageCount(0);
       return;
     }
 
@@ -187,7 +190,7 @@ export function useAnnotatedResultPreview({
     if (!snapshot) return;
 
     setConfirmedSnapshot(snapshot);
-    generatePreview(snapshot);
+    generatePreview(snapshot, { lockPlacement: false });
   }, [
     openSubmissionId,
     assignmentId,
@@ -211,10 +214,12 @@ export function useAnnotatedResultPreview({
     if (questionsHavePendingEdits(editingQuestions, confirmedSnapshot)) {
       return true;
     }
-    if (annotationsHavePendingEdits(
-      editingAnnotations,
-      confirmedSnapshot.teacherAnnotations
-    )) {
+    if (
+      annotationsHavePendingEdits(
+        editingAnnotations,
+        confirmedSnapshot.teacherAnnotations
+      )
+    ) {
       return true;
     }
     const currentSummary = String(editingSummary ?? "").trim();
@@ -247,7 +252,8 @@ export function useAnnotatedResultPreview({
           teacherAnnotations,
           editingSummary
         );
-        const summary = finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
+        const summary =
+          finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
         const snapshot = {
           submissionId,
           questions,
@@ -258,11 +264,17 @@ export function useAnnotatedResultPreview({
         };
 
         if (onPersist) {
-          await onPersist({ finalResult, submissionId, questions, maxTotal, teacherAnnotations });
+          await onPersist({
+            finalResult,
+            submissionId,
+            questions,
+            maxTotal,
+            teacherAnnotations,
+          });
         }
 
         setConfirmedSnapshot(snapshot);
-        await generatePreview(snapshot);
+        await generatePreview(snapshot, { lockPlacement: true });
         return finalResult;
       } finally {
         setConfirmingEdits(false);
@@ -291,6 +303,37 @@ export function useAnnotatedResultPreview({
     };
   }, [confirmedSnapshot]);
 
+  /** After user drags a marking box — regenerate preview with locked positions. */
+  const refreshPreviewFromQuestions = useCallback(
+    async (questions) => {
+      if (!confirmedSnapshot) return;
+      const nextQuestions = (questions || []).map((q) => ({ ...q }));
+      const snapshot = {
+        ...confirmedSnapshot,
+        questions: nextQuestions,
+        summary:
+          String(editingSummary ?? "").trim() || confirmedSnapshot.summary || "",
+        teacherAnnotations: (
+          editingAnnotations ||
+          confirmedSnapshot.teacherAnnotations ||
+          []
+        ).map((a) => ({ ...a })),
+        maxTotal: Math.max(
+          1,
+          Number(effectiveMaxTotal) || confirmedSnapshot.maxTotal || 1
+        ),
+      };
+      await generatePreview(snapshot, { lockPlacement: true });
+    },
+    [
+      confirmedSnapshot,
+      editingSummary,
+      editingAnnotations,
+      effectiveMaxTotal,
+      generatePreview,
+    ]
+  );
+
   return {
     annotatedPreviewUrl,
     previewLoading,
@@ -300,5 +343,7 @@ export function useAnnotatedResultPreview({
     confirmedSnapshot,
     confirmEdits,
     resetToConfirmed,
+    reportPageCount,
+    refreshPreviewFromQuestions,
   };
 }

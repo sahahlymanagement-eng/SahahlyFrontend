@@ -57,6 +57,7 @@ export function useExternalAnnotatedPreview({
   const [previewError, setPreviewError] = useState(null);
   const [confirmingEdits, setConfirmingEdits] = useState(false);
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
+  const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
@@ -100,7 +101,7 @@ export function useExternalAnnotatedPreview({
     };
   }, []);
 
-  const generatePreview = useCallback(async (snapshot) => {
+  const generatePreview = useCallback(async (snapshot, { lockPlacement = false } = {}) => {
     if (!snapshot?.submissionId) return;
     const requestId = ++previewRequestRef.current;
     setPreviewLoading(true);
@@ -129,6 +130,7 @@ export function useExternalAnnotatedPreview({
           outOfScopeNotes: snapshot.outOfScopeNotes,
           teacherAnnotations: snapshot.teacherAnnotations,
           skipCompress: true,
+          lockPlacement,
         }),
         PREVIEW_TIMEOUT_MS,
         "Building annotated preview"
@@ -139,6 +141,7 @@ export function useExternalAnnotatedPreview({
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       previewUrlRef.current = url;
       setAnnotatedPreviewUrl(url);
+      setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
     } catch (err) {
       if (requestId === previewRequestRef.current) {
         const message = await getApiErrorMessage(err);
@@ -161,6 +164,7 @@ export function useExternalAnnotatedPreview({
       setConfirmedSnapshot(null);
       setPreviewError(null);
       setPreviewLoading(false);
+      setReportPageCount(0);
       return;
     }
 
@@ -239,7 +243,7 @@ export function useExternalAnnotatedPreview({
         }
 
         setConfirmedSnapshot(snapshot);
-        await generatePreview(snapshot);
+        await generatePreview(snapshot, { lockPlacement: true });
         return finalResult;
       } finally {
         setConfirmingEdits(false);
@@ -267,6 +271,37 @@ export function useExternalAnnotatedPreview({
     };
   }, [confirmedSnapshot]);
 
+  const refreshPreviewFromQuestions = useCallback(
+    async (questions) => {
+      if (!confirmedSnapshot) return;
+      const nextQuestions = (questions || []).map((q) => ({ ...q }));
+      const snapshot = {
+        ...confirmedSnapshot,
+        questions: nextQuestions,
+        summary:
+          String(editingSummary ?? "").trim() || confirmedSnapshot.summary || "",
+        teacherAnnotations: (
+          editingAnnotations ||
+          confirmedSnapshot.teacherAnnotations ||
+          []
+        ).map((a) => ({ ...a })),
+        maxTotal: Math.max(
+          1,
+          Number(effectiveMaxTotal) || confirmedSnapshot.maxTotal || 1
+        ),
+        studentFile: resultModalRef.current?.studentFile || confirmedSnapshot.studentFile || null,
+      };
+      await generatePreview(snapshot, { lockPlacement: true });
+    },
+    [
+      confirmedSnapshot,
+      editingSummary,
+      editingAnnotations,
+      effectiveMaxTotal,
+      generatePreview,
+    ]
+  );
+
   return {
     annotatedPreviewUrl,
     previewLoading,
@@ -276,5 +311,7 @@ export function useExternalAnnotatedPreview({
     confirmedSnapshot,
     confirmEdits,
     resetToConfirmed,
+    reportPageCount,
+    refreshPreviewFromQuestions,
   };
 }

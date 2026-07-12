@@ -736,6 +736,7 @@
 }
 
 .pdf-preview-page {
+  position: relative;
   margin-bottom: 8px;
   border-radius: 4px;
   overflow: hidden;
@@ -749,6 +750,79 @@
   display: block;
   width: 100%;
   height: auto;
+}
+
+.pdf-preview-place-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+}
+
+.pdf-preview-root--placeable .pdf-preview-scroll {
+  cursor: default;
+}
+
+.pdf-place-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pdf-place-handle {
+  position: absolute;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1.5px dashed rgba(57, 156, 242, 0.85);
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fafc;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: ns-resize;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  z-index: 3;
+}
+
+.pdf-place-handle--left {
+  justify-content: flex-start;
+}
+
+.pdf-place-handle--right {
+  justify-content: flex-start;
+  border-color: rgba(251, 146, 60, 0.9);
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.pdf-place-handle--active {
+  border-style: solid;
+  background: rgba(57, 156, 242, 0.45);
+  z-index: 4;
+}
+
+.pdf-place-handle--right.pdf-place-handle--active {
+  background: rgba(251, 146, 60, 0.4);
+}
+
+.pdf-place-handle__grip {
+  opacity: 0.75;
+  font-size: 11px;
+  letter-spacing: -1px;
+}
+
+.pdf-place-handle__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pdf-preview-status {

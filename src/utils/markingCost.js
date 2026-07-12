@@ -1,6 +1,5 @@
 /** Gemini pricing mirrors backend/src/utils/geminiModels.js */
 export const MARKING_GEMINI_PRICING = [
-  { id: "gemini-3.1-flash-lite", inputPer1M: 0.25, outputPer1M: 1.5 },
   { id: "gemini-2.5-flash-lite", inputPer1M: 0.1, outputPer1M: 0.4 },
   { id: "gemini-2.5-flash", inputPer1M: 0.3, outputPer1M: 2.5 },
   { id: "gemini-3-flash-preview", inputPer1M: 0.5, outputPer1M: 3.0 },
@@ -9,7 +8,6 @@ export const MARKING_GEMINI_PRICING = [
 
 /** Display names for marking model dropdowns (ids stay Gemini under the hood). */
 export const SAHAHLY_MODEL_LABELS = {
-  "gemini-3.1-flash-lite": "Sahahly 3.1 Flash Lite",
   "gemini-2.5-flash-lite": "Sahahly 2.5 Flash Lite",
   "gemini-2.5-flash": "Sahahly 2.5 Flash",
   "gemini-3-flash-preview": "Sahahly 3 Flash Preview",
@@ -49,7 +47,7 @@ function brandGeminiLabel(raw) {
   return `Sahahly ${out}`;
 }
 
-export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
 export let USD_TO_EGP_RATE = 50;
 export let CACHED_INPUT_RATE_FACTOR = 0.25;
 export let BATCH_RATE_FACTOR = 0.5;

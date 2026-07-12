@@ -91,7 +91,7 @@ export default function ManagerLoginCss() {
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
   const [geminiModels, setGeminiModels] = useState([]);
-  const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash-lite");
 
   // ── Marking progress / results ──
   const [markingStudentId, setMarkingStudentId] = useState(null);
@@ -242,6 +242,7 @@ export default function ManagerLoginCss() {
     hasPendingEdits,
     confirmEdits,
     resetToConfirmed,
+    reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
     editingQuestions,
@@ -252,6 +253,23 @@ export default function ManagerLoginCss() {
     resolvePdfSummary,
     getStudentFile,
   });
+
+  const handleAnnotationPlacementChange = useCallback(
+    ({ questionNumber, pageNumber, yPercent }) => {
+      setEditingQuestions((prev) =>
+        prev.map((q) =>
+          String(q.questionNumber) === String(questionNumber)
+            ? {
+                ...q,
+                pageNumber: Math.max(1, Number(pageNumber) || 1),
+                yPercent,
+              }
+            : q
+        )
+      );
+    },
+    []
+  );
 
   // Auto-rebuild the editable summary from current marks/feedback until the
   // teacher manually edits it (summaryTouched).
@@ -2629,7 +2647,12 @@ export default function ManagerLoginCss() {
                   <div style={{ color: "#f87171", fontSize: 13 }}>{previewError}</div>
                 ) : annotatedPreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                    <AnnotatedPdfPreview url={annotatedPreviewUrl} />
+                    <AnnotatedPdfPreview
+                      url={annotatedPreviewUrl}
+                      placementQuestions={editingQuestions}
+                      reportPageCount={reportPageCount}
+                      onPlacementChange={handleAnnotationPlacementChange}
+                    />
                   </div>
                 ) : (
                   <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>No preview available</div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
@@ -10,7 +10,62 @@ GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs
 const MAX_RENDER_WIDTH = 920;
 const PREVIEW_SCALE_CAP = 1.35;
 
-function LazyPdfPage({ pdf, pageNumber, containerWidth, scrollRoot }) {
+/** Examiner column is ~178pt on ~595pt paper → ~23% of annotated page width. */
+const RIGHT_COL_LEFT_PCT = 76;
+const LEFT_COL_WIDTH_PCT = 11;
+const RIGHT_COL_WIDTH_PCT = 23;
+
+function clampYPercent(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 30;
+  return Math.min(92, Math.max(5, Math.round(v * 10) / 10));
+}
+
+function questionKey(q) {
+  return String(q?.questionNumber ?? "");
+}
+
+function PlacementHandle({
+  q,
+  column,
+  yPercent,
+  active,
+  onPointerDown,
+}) {
+  const label =
+    column === "left"
+      ? `Q${q.questionNumber} ${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}`
+      : `Q${q.questionNumber}`;
+
+  return (
+    <div
+      className={`pdf-place-handle pdf-place-handle--${column}${active ? " pdf-place-handle--active" : ""}`}
+      style={{
+        top: `${yPercent}%`,
+        left: column === "left" ? "0.6%" : `${RIGHT_COL_LEFT_PCT}%`,
+        width: column === "left" ? `${LEFT_COL_WIDTH_PCT}%` : `${RIGHT_COL_WIDTH_PCT}%`,
+      }}
+      onPointerDown={(e) => onPointerDown(e, q, column)}
+      title="Drag to move this marking box (any page). Positions apply on Confirm Edits."
+    >
+      <span className="pdf-place-handle__grip" aria-hidden>
+        ⠿
+      </span>
+      <span className="pdf-place-handle__label">{label}</span>
+    </div>
+  );
+}
+
+function LazyPdfPage({
+  pdf,
+  pageNumber,
+  containerWidth,
+  scrollRoot,
+  studentPageNumber,
+  pageQuestions,
+  dragKey,
+  onHandlePointerDown,
+}) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
@@ -88,21 +143,97 @@ function LazyPdfPage({ pdf, pageNumber, containerWidth, scrollRoot }) {
     };
   }, [pdf, pageNumber, containerWidth, scrollRoot]);
 
+  const showHandles = Array.isArray(pageQuestions) && pageQuestions.length > 0;
+
   return (
     <div
       ref={wrapRef}
       className={`pdf-preview-page${rendered ? " pdf-preview-page--ready" : ""}`}
       data-page={pageNumber}
+      data-student-page={studentPageNumber > 0 ? studentPageNumber : undefined}
     >
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
+      {showHandles &&
+        pageQuestions.map((item) => {
+          const { q, yPercent } = item;
+          const key = questionKey(q);
+          return (
+            <div key={key} className="pdf-place-layer">
+              <PlacementHandle
+                q={q}
+                column="left"
+                yPercent={yPercent}
+                active={dragKey === `${key}:left`}
+                onPointerDown={onHandlePointerDown}
+              />
+              <PlacementHandle
+                q={q}
+                column="right"
+                yPercent={yPercent}
+                active={dragKey === `${key}:right`}
+                onPointerDown={onHandlePointerDown}
+              />
+            </div>
+          );
+        })}
     </div>
   );
 }
 
 /**
- * Lazy page-by-page PDF preview (replaces iframe for smoother scrolling on large scans).
+ * Resolve which student page the pointer is over (supports cross-page drag).
  */
-export default function AnnotatedPdfPreview({ url }) {
+function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
+  if (!scrollRoot) return null;
+  const pages = scrollRoot.querySelectorAll("[data-student-page]");
+  if (!pages.length) return null;
+
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const el of pages) {
+    const studentPage = Number(el.getAttribute("data-student-page"));
+    if (!Number.isFinite(studentPage) || studentPage < 1) continue;
+    const rect = el.getBoundingClientRect();
+    if (clientY >= rect.top && clientY <= rect.bottom) {
+      const yPercent = clampYPercent(((clientY - rect.top) / rect.height) * 100);
+      return { studentPage, yPercent, pageEl: el };
+    }
+    const dist =
+      clientY < rect.top ? rect.top - clientY : clientY - rect.bottom;
+    if (dist < bestDist) {
+      bestDist = dist;
+      const yPercent =
+        clientY < rect.top
+          ? 5
+          : clampYPercent(((clientY - rect.top) / rect.height) * 100);
+      best = {
+        studentPage,
+        yPercent: Math.min(92, Math.max(5, yPercent)),
+        pageEl: el,
+      };
+    }
+  }
+
+  if (best) return best;
+
+  // Fallback: first student page
+  const first = Math.max(1, 1);
+  void reportOffset;
+  return { studentPage: first, yPercent: 30, pageEl: null };
+}
+
+/**
+ * Lazy page-by-page PDF preview.
+ * Optional placementQuestions + onPlacementChange: drag boxes across pages;
+ * parent should apply pageNumber/yPercent and only regenerate on Confirm Edits.
+ */
+export default function AnnotatedPdfPreview({
+  url,
+  placementQuestions = null,
+  reportPageCount = 0,
+  onPlacementChange = null,
+}) {
   const scrollRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
   const [pdf, setPdf] = useState(null);
@@ -111,6 +242,17 @@ export default function AnnotatedPdfPreview({ url }) {
   const [error, setError] = useState(null);
   const [containerWidth, setContainerWidth] = useState(MAX_RENDER_WIDTH);
   const [currentPage, setCurrentPage] = useState(1);
+  /** Local drag overrides: { [questionNumber]: { pageNumber, yPercent } } */
+  const [localPlacement, setLocalPlacement] = useState({});
+  const [dragKey, setDragKey] = useState(null);
+  const dragRef = useRef(null);
+
+  const placementEnabled =
+    Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
+
+  useEffect(() => {
+    setLocalPlacement({});
+  }, [url]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -167,6 +309,126 @@ export default function AnnotatedPdfPreview({ url }) {
     };
   }, [url]);
 
+  const effectiveQuestions = useMemo(() => {
+    if (!placementEnabled) return [];
+    return placementQuestions.map((q) => {
+      const key = questionKey(q);
+      const override = localPlacement[key];
+      return {
+        ...q,
+        pageNumber: Math.max(
+          1,
+          Number(override?.pageNumber ?? q.pageNumber) || 1
+        ),
+        yPercent: clampYPercent(override?.yPercent ?? q.yPercent),
+      };
+    });
+  }, [placementEnabled, placementQuestions, localPlacement]);
+
+  const byStudentPage = useMemo(() => {
+    const map = new Map();
+    for (const q of effectiveQuestions) {
+      const p = Math.max(1, Number(q.pageNumber) || 1);
+      if (!map.has(p)) map.set(p, []);
+      map.get(p).push({ q, yPercent: clampYPercent(q.yPercent) });
+    }
+    return map;
+  }, [effectiveQuestions]);
+
+  const handlePointerDown = useCallback(
+    (e, q, column) => {
+      if (!placementEnabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const key = questionKey(q);
+      const studentPage = Math.max(1, Number(q.pageNumber) || 1);
+      const startY = clampYPercent(q.yPercent);
+
+      dragRef.current = {
+        key,
+        column,
+        questionNumber: q.questionNumber,
+        pageNumber: studentPage,
+        startY,
+      };
+      setDragKey(`${key}:${column}`);
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    [placementEnabled]
+  );
+
+  useEffect(() => {
+    if (!dragKey) return;
+
+    const onMove = (e) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const hit = resolveStudentPageUnderPointer(
+        scrollRef.current,
+        e.clientY,
+        Math.max(0, Number(reportPageCount) || 0)
+      );
+      if (!hit) return;
+
+      // Auto-scroll near edges while dragging across pages
+      const root = scrollRef.current;
+      if (root) {
+        const rootRect = root.getBoundingClientRect();
+        const edge = 48;
+        if (e.clientY < rootRect.top + edge) {
+          root.scrollTop -= 18;
+        } else if (e.clientY > rootRect.bottom - edge) {
+          root.scrollTop += 18;
+        }
+      }
+
+      setLocalPlacement((prev) => ({
+        ...prev,
+        [drag.key]: {
+          pageNumber: hit.studentPage,
+          yPercent: hit.yPercent,
+        },
+      }));
+      drag.pageNumber = hit.studentPage;
+      drag.startY = hit.yPercent;
+    };
+
+    const onUp = (e) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const hit = resolveStudentPageUnderPointer(
+        scrollRef.current,
+        e.clientY,
+        Math.max(0, Number(reportPageCount) || 0)
+      );
+      const pageNumber = hit?.studentPage ?? drag.pageNumber;
+      const yPercent = hit?.yPercent ?? drag.startY;
+
+      setLocalPlacement((prev) => ({
+        ...prev,
+        [drag.key]: { pageNumber, yPercent },
+      }));
+      dragRef.current = null;
+      setDragKey(null);
+      // Parent updates editingQuestions only — PDF regenerates on Confirm Edits
+      onPlacementChange?.({
+        questionNumber: drag.questionNumber,
+        pageNumber,
+        yPercent,
+      });
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [dragKey, onPlacementChange, reportPageCount]);
+
   const scrollToPage = useCallback((pageNum) => {
     const root = scrollRef.current;
     if (!root) return;
@@ -190,8 +452,10 @@ export default function AnnotatedPdfPreview({ url }) {
     return <div className="pdf-preview-status">No preview available</div>;
   }
 
+  const offset = Math.max(0, Number(reportPageCount) || 0);
+
   return (
-    <div className="pdf-preview-root">
+    <div className={`pdf-preview-root${placementEnabled ? " pdf-preview-root--placeable" : ""}`}>
       <div className="pdf-preview-toolbar">
         <button type="button" className="pdf-preview-nav" onClick={goPrev} disabled={currentPage <= 1}>
           <FiChevronLeft size={16} />
@@ -207,6 +471,11 @@ export default function AnnotatedPdfPreview({ url }) {
         >
           <FiChevronRight size={16} />
         </button>
+        {placementEnabled && (
+          <span className="pdf-preview-place-hint">
+            Drag boxes to any page — applies on Confirm Edits
+          </span>
+        )}
       </div>
       <div
         ref={(node) => {
@@ -230,15 +499,27 @@ export default function AnnotatedPdfPreview({ url }) {
           }
         }}
       >
-        {Array.from({ length: numPages }, (_, i) => (
-          <LazyPdfPage
-            key={`${url}-p${i + 1}`}
-            pdf={pdf}
-            pageNumber={i + 1}
-            containerWidth={containerWidth}
-            scrollRoot={scrollRoot}
-          />
-        ))}
+        {Array.from({ length: numPages }, (_, i) => {
+          const pageNumber = i + 1;
+          const studentPageNumber = pageNumber - offset;
+          const pageQuestions =
+            placementEnabled && studentPageNumber > 0
+              ? byStudentPage.get(studentPageNumber) || []
+              : null;
+          return (
+            <LazyPdfPage
+              key={`${url}-p${pageNumber}`}
+              pdf={pdf}
+              pageNumber={pageNumber}
+              containerWidth={containerWidth}
+              scrollRoot={scrollRoot}
+              studentPageNumber={studentPageNumber}
+              pageQuestions={pageQuestions}
+              dragKey={dragKey}
+              onHandlePointerDown={handlePointerDown}
+            />
+          );
+        })}
       </div>
     </div>
   );

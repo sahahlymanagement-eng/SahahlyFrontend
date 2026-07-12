@@ -1227,6 +1227,7 @@ export async function annotatePdf({
   outOfScopeNotes = [],
   teacherAnnotations = [],
   skipCompress = false,
+  lockPlacement = false,
 }) {
   const buf = await studentFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
@@ -1234,10 +1235,17 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
-  const enrichedQuestions = normalizeQuestionPlacement(
-    enrichMarkingQuestions(questions || []),
-    studentPageCount
-  );
+  const enrichedBase = enrichMarkingQuestions(questions || []);
+  const enrichedQuestions = lockPlacement
+    ? enrichedBase.map((q) => ({
+        ...q,
+        pageNumber: Math.max(
+          1,
+          Math.min(Number(q.pageNumber) || 1, studentPageCount)
+        ),
+        yPercent: Math.min(92, Math.max(5, Number(q.yPercent) || 30)),
+      }))
+    : normalizeQuestionPlacement(enrichedBase, studentPageCount);
 
   const byPage = {};
   for (const q of enrichedQuestions) {
@@ -1415,6 +1423,12 @@ export async function annotatePdf({
   }
 
   const rawBytes = await pdfDoc.save();
-  if (skipCompress) return rawBytes;
-  return await compressAnnotatedPdf(rawBytes);
+  const bytes = skipCompress
+    ? rawBytes
+    : await compressAnnotatedPdf(rawBytes);
+  // Preview overlays use this to map annotated pages → student pages.
+  if (bytes && typeof bytes === "object") {
+    bytes.reportPageCount = reportPageCount;
+  }
+  return bytes;
 }

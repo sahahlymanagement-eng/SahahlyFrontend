@@ -378,7 +378,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
 
   const [markingProvider, setMarkingProvider] = useState("gemini");
   const [geminiModels, setGeminiModels] = useState([]);
-  const [geminiModel, setGeminiModel] = useState("gemini-3.1-flash-lite");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash-lite");
   const [savedResults, setSavedResults] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [exportingGrades, setExportingGrades] = useState(false);
@@ -441,6 +441,7 @@ const resolvePdfSummary = (submissionId, result) =>
     hasPendingEdits,
     confirmEdits,
     resetToConfirmed,
+    reportPageCount,
   } = useAnnotatedResultPreview({
     api,
     assignmentId: selectedAssignment?._id,
@@ -453,6 +454,23 @@ const resolvePdfSummary = (submissionId, result) =>
     editingMaxTotal,
     resolvePdfSummary,
   });
+
+  const handleAnnotationPlacementChange = useCallback(
+    ({ questionNumber, pageNumber, yPercent }) => {
+      setEditingQuestions((prev) =>
+        prev.map((q) =>
+          String(q.questionNumber) === String(questionNumber)
+            ? {
+                ...q,
+                pageNumber: Math.max(1, Number(pageNumber) || 1),
+                yPercent,
+              }
+            : q
+        )
+      );
+    },
+    []
+  );
 
 useEffect(() => {
   if (!resultModal || summaryTouched) return;
@@ -4792,7 +4810,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             flexDirection: "column",
                           }}
                         >
-                          <AnnotatedPdfPreview url={annotatedPreviewUrl} />
+                          <AnnotatedPdfPreview
+                            url={annotatedPreviewUrl}
+                            placementQuestions={editingQuestions}
+                            reportPageCount={reportPageCount}
+                            onPlacementChange={handleAnnotationPlacementChange}
+                          />
                         </div>
                       ) : (
                         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
