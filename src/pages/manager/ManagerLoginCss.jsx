@@ -1461,7 +1461,7 @@ export default function ManagerLoginCss() {
                 {!loadingList && visibleSubmissions.length > 0 && (
                   <div className="ma-table-wrap">
                     <div className="ma-table-scroll">
-                      <table className="ma-table">
+                      <table className="ma-table ma-table--cards">
                         <thead>
                           <tr>
                             <th>Name</th>
@@ -1497,20 +1497,20 @@ export default function ManagerLoginCss() {
                                     <span className="ma-cell-name">{s.name || "—"}</span>
                                   </div>
                                 </td>
-                                <td>{statusBadge(s)}</td>
-                                <td>
+                                <td data-label="Status">{statusBadge(s)}</td>
+                                <td data-label="Submitted">
                                   <span className="ma-cell-muted">
                                     {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
                                   </span>
                                 </td>
-                                <td>
+                                <td data-label="Grade">
                                   {s.localGrade != null ? (
                                     <span className="ma-grade-pill">{s.localGrade}</span>
                                   ) : (
                                     <span className="ma-cell-empty">—</span>
                                   )}
                                 </td>
-                                <td>
+                                <td data-label="Feedback">
                                   {s.hasFeedbackPdf ? (
                                     <span className="ma-badge ma-badge--green">PDF</span>
                                   ) : (

@@ -603,3 +603,22 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   background: #020818 !important;
   border: 1px solid rgba(37,99,235,0.35) !important;
 }
+
+/* ─── Mobile: stack the split-pane workspace, let the page scroll (≤768px) ─── */
+@media (max-width: 768px) {
+  .ms-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: 14px;
+  }
+
+  .msv-collapsible-layout {
+    height: auto;
+  }
+
+  /* Bound the left roster so it doesn't push the detail panel far down. */
+  .ms-left-panel,
+  .ms-right-panel {
+    max-height: none;
+  }
+}

@@ -2625,7 +2625,7 @@ return (
   <div className="ma-table-wrap">
     <div className="ma-table-scroll">
 
-      <table className="ma-table">
+      <table className="ma-table ma-table--cards">
         <thead>
           <tr>
             <th style={{ width: 44 }} aria-label="Select for marking" />
@@ -2720,10 +2720,10 @@ return (
               </td>
 
               {/* STATUS */}
-              <td>{getStatusBadge(s)}</td>
+              <td data-label="Status">{getStatusBadge(s)}</td>
 
               {/* SUBMITTED AT */}
-              <td>
+              <td data-label="Submitted">
                 <span className="ma-cell-muted">
                   {s.submittedAt
                     ? new Date(s.submittedAt).toLocaleString()
@@ -2732,7 +2732,7 @@ return (
               </td>
 
               {/* GRADE */}
-              <td>
+              <td data-label="Grade">
                                 <SubmissionGradeInput
                                   student={s}
                                   submissionId={s.submissionId}
@@ -2745,7 +2745,7 @@ return (
                               </td>
 
                               {/* PERCENT */}
-                              <td>
+                              <td data-label="%">
                                 {resolveTableGrade(
                                   s.submissionId,
                                   s,
