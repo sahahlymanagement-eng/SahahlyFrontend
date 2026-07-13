@@ -1147,3 +1147,36 @@ select.ma-search-input option {
 .arp-btn--send:hover:not(:disabled) {
   filter: brightness(1.08);
 }
+/* Collective PDF preview (reuses MonthlyParentReport iframe styles) */
+.ma-collective-preview-section {
+  margin: 0 18px 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.ma-collective-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.ma-collective-preview-card {
+  min-width: 0;
+}
+
+.ma-collective-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ma-collective-preview-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e2e8f0;
+}

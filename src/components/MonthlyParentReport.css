@@ -1434,27 +1434,101 @@
   gap: 8px;
 }
 
-.mpr-school-attendance-sessions {
+.mpr-school-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mpr-school-session-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  color: #94a3b8;
-}
-
-.mpr-school-attendance-sessions input {
-  width: 56px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.5);
-  color: #e2e8f0;
+  color: #cbd5e1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .mpr-school-attendance-file input[type="file"] {
   font-size: 11px;
   color: #94a3b8;
+}
+
+.mpr-attendance-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.mpr-attendance-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.mpr-attendance-table th,
+.mpr-attendance-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.mpr-attendance-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #94a3b8;
+  position: sticky;
+  top: 0;
+  background: rgba(15, 23, 42, 0.95);
+  z-index: 1;
+}
+
+.mpr-attendance-table__check {
+  width: 28px;
+}
+
+.mpr-attendance-table__row--preview {
+  background: rgba(57, 156, 242, 0.08);
+}
+
+.mpr-attendance-date {
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.5);
+  color: #e2e8f0;
+  font-size: 11px;
+}
+
+/* Shared with ReportAttendanceSelect (class name from normal reports) */
+.mpr-attendance-table .ma-attendance-select,
+.ma-attendance-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ma-attendance-select:focus {
+  outline: none;
+  border-color: rgba(57, 156, 242, 0.65);
+}
+
+.ma-attendance-select option {
+  background: #0f172a;
+  color: #e2e8f0;
 }
 
 .mpr-school-attendance-summary {
@@ -1463,6 +1537,21 @@
   border-radius: 10px;
   background: rgba(30, 41, 59, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.mpr-school-attendance-lines {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mpr-school-attendance-summary-total {
+  margin-top: 4px;
+  font-weight: 600;
+  list-style: none;
+  margin-left: -18px;
 }
 
 .mpr-risk-desc {
