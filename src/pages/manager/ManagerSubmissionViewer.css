@@ -90,6 +90,15 @@
   border-radius: 12px;
   flex-wrap: wrap;
 }
+
+/* The markup peppers direct children with inline `marginLeft:10`, which stacks
+   on top of the flex `gap` and makes wrapped rows look ragged / overflow the
+   bar. Neutralise it and let the single `gap` control spacing everywhere. */
+.msv-ms-bar > button,
+.msv-ms-bar > div {
+  margin-left: 0 !important;
+}
+
 .msv-ms-info { flex: 1; }
 .msv-ms-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .msv-ms-status { font-size: 12px; color: rgba(255,255,255,0.35); }
@@ -1189,22 +1198,239 @@
   color: rgba(255, 255, 255, 0.45);
 }
 
-/* ─── Mobile: unfix the viewer height and tighten modal overlays (≤768px) ─── */
+/* ─── Mobile: unfix the viewer height + adapt the marking UI (≤768px) ─── */
 @media (max-width: 768px) {
   .msv-collapsible-layout {
     height: auto;
   }
 
-  /* Give the PDF/results panel a usable minimum so it isn't crushed when stacked. */
+  /* Give the PDF/results panel a usable minimum so it isn't crushed when stacked.
+     overflow-x:hidden stops any stray-wide child from making the whole panel
+     (and the cards inside it) scroll sideways — wide tables still scroll inside
+     their own .ma-table-scroll wrapper. */
   .msv-right-panel-full {
     min-height: 60vh;
+    overflow-x: hidden;
   }
 
+  /* Marking-actions bar: stack everything into one full-width column so buttons
+     are equal-width and can't spill outside the bar. */
+  .msv-ms-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Every direct child (buttons + the grouped batch/priority <div>s) spans the row. */
+  .msv-ms-bar > button,
+  .msv-ms-bar > div {
+    width: 100%;
+  }
+
+  /* Buttons — including those nested in the batch/priority groups — fill the row. */
+  .msv-ms-bar .msv-btn-ai,
+  .msv-ms-bar .ma-send-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Grouped controls (model select + batch button, priority + stop) stack too. */
+  .msv-ms-bar > div {
+    flex-wrap: wrap;
+  }
+
+  /* The batch model <select> ships inline minWidth:250/maxWidth:420 — let it fit. */
+  .msv-ms-bar .msv-gemini-select {
+    min-width: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Bulk selection bar: let the count drop to its own line instead of being pushed off-screen. */
+  .msv-mark-select-bar {
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+
+  .msv-mark-select-count {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+
+  /* Results modal overlay + body sizing on small screens. */
   .msv-overlay {
     padding: 16px 12px;
   }
 
   .msv-modal-body {
     max-height: 72vh;
+    padding: 18px 16px;
+  }
+
+  .msv-modal-header {
+    padding: 16px 18px;
+  }
+
+  /* Modal header action buttons span the row so they stay tappable. */
+  .msv-modal-header > div:last-child .msv-btn-ai,
+  .msv-modal-header > div:last-child .ma-send-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+/* ─── Mobile: submission table → stacked cards (≤641px) ─── */
+/* Scoped to .ma-table--cards so only the submission viewers convert; the
+   assignments list and other .ma-table uses keep horizontal scroll. */
+@media (max-width: 641px) {
+  .ma-table--cards {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Kill the horizontal scroll container in card mode — cards never need it. */
+  .ma-table-scroll:has(.ma-table--cards),
+  .ma-table-wrap:has(.ma-table--cards) {
+    overflow-x: hidden;
+  }
+
+  .ma-table--cards thead {
+    display: none;
+  }
+
+  .ma-table--cards,
+  .ma-table--cards tbody {
+    display: block;
+    width: 100%;
+  }
+
+  /* Card = a wrapping flex row: the checkbox + name share the top line, every
+     other field drops to its own full-width line below. No absolute positioning. */
+  .ma-table--cards tr.ma-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.025);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+
+  .ma-table--cards tr.ma-row:hover td {
+    background: transparent !important;
+  }
+
+  /* These viewers don't add a selected class — selection lives on the checkbox.
+     Light up the whole card when its checkbox is toggled on. */
+  .ma-table--cards tr.ma-row:has(.msv-mark-check--on) {
+    border-color: rgba(129, 140, 248, 0.7);
+    background: rgba(99, 102, 241, 0.14);
+  }
+
+  /* Every field = its own full-width line: "LABEL  value". */
+  .ma-table--cards td {
+    flex: 1 1 100%;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: none;
+    cursor: default;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+  }
+
+  .ma-table--cards td::before {
+    content: attr(data-label);
+    min-width: 84px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ma-table--cards td:not([data-label])::before {
+    content: none;
+  }
+
+  /* Keep grade / % inputs compact so they never widen the card. */
+  .ma-table--cards td input {
+    max-width: 110px;
+  }
+
+  /* Empty leading cell (no submissionId → no checkbox rendered) collapses. */
+  .ma-table--cards td:empty {
+    display: none;
+  }
+
+  /* ── Top line: the select checkbox sits inline, right next to the name,
+     aligned to the top so it lines up with the avatar (same size). ── */
+  .ma-table--cards td:has(.msv-mark-check) {
+    flex: 0 0 auto;
+    order: -2;
+    align-self: flex-start;
+    padding: 0;
+  }
+
+  .ma-table--cards td:has(.msv-mark-check) .msv-mark-check {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+    border: 2px solid rgba(129, 140, 248, 0.6);
+    background: rgba(99, 102, 241, 0.16);
+  }
+
+  .ma-table--cards td:has(.msv-mark-check) .msv-mark-check--on {
+    background: rgba(99, 102, 241, 0.6);
+    border-color: rgba(129, 140, 248, 0.95);
+  }
+
+  /* Name fills the rest of the top line, immediately after the checkbox. */
+  .ma-table--cards td:has(.ma-avatar-cell) {
+    flex: 1 1 auto;
+    order: -1;
+    min-width: 0;
+    padding: 0 0 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .ma-table--cards td:has(.ma-avatar-cell) .ma-cell-name {
+    font-size: 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .ma-table--cards td:has(.ma-avatar-cell) .ma-avatar-cell {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  /* ── Actions: two buttons per row, the rest wrap onto the line below. ── */
+  .ma-table--cards td:has(.msv-actions) {
+    display: block;
+    padding: 10px 0 0;
+  }
+
+  .ma-table--cards td:has(.msv-actions) .msv-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 88px));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .ma-table--cards td:has(.msv-actions) .msv-action-btn {
+    width: auto;
+    min-width: 0;
+    min-height: 40px;
+    padding: 9px 6px;
+    font-size: 12px;
+    gap: 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }

@@ -3634,7 +3634,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {!loadingStudents && students.length > 0 && (
                     <div className="ma-table-wrap">
                       <div className="ma-table-scroll">
-                        <table className="ma-table">
+                        <table className="ma-table ma-table--cards">
                           <thead>
                             <tr>
                               <th style={{ width: 44 }} aria-label="Select for marking" />
@@ -3731,9 +3731,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       })()}
                                     </div>
                                   </td>
-                                  <td>{statusBadge(s)}</td>
-                                  <td><span className="ma-cell-muted">{s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}</span></td>
-                                  <td>
+                                  <td data-label="Status">{statusBadge(s)}</td>
+                                  <td data-label="Submitted"><span className="ma-cell-muted">{s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}</span></td>
+                                  <td data-label="Grade">
                                     <SubmissionGradeInput
                                       student={s}
                                       submissionId={s.submissionId}
@@ -3744,7 +3744,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       onGradeChange={setGradeOverride}
                                     />
                                   </td>
-                                  <td>
+                                  <td data-label="%">
                                     {resolveTableGrade(
                                       s.submissionId,
                                       s,
