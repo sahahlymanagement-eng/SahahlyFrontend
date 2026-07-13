@@ -100,7 +100,7 @@ background:#1d4ed8;
 
 .peopleGrid{
 display:grid;
-grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
+grid-template-columns:repeat(auto-fill,minmax(min(100%, 300px),1fr));
 gap:22px;
 }
 

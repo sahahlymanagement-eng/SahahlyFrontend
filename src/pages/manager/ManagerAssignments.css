@@ -1147,3 +1147,18 @@ select.ma-search-input option {
 .arp-btn--send:hover:not(:disabled) {
   filter: brightness(1.08);
 }
+
+/* ─── Mobile: stack the 3-pane workspace, let the page scroll (≤768px) ─── */
+@media (max-width: 768px) {
+  .ma-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: 14px;
+  }
+
+  /* Each pane keeps its own scroll but is height-bounded so the page can scroll between panes. */
+  .ma-column,
+  .ma-left-panel {
+    max-height: 70vh;
+  }
+}

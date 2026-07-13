@@ -1188,3 +1188,23 @@
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
 }
+
+/* ─── Mobile: unfix the viewer height and tighten modal overlays (≤768px) ─── */
+@media (max-width: 768px) {
+  .msv-collapsible-layout {
+    height: auto;
+  }
+
+  /* Give the PDF/results panel a usable minimum so it isn't crushed when stacked. */
+  .msv-right-panel-full {
+    min-height: 60vh;
+  }
+
+  .msv-overlay {
+    padding: 16px 12px;
+  }
+
+  .msv-modal-body {
+    max-height: 72vh;
+  }
+}

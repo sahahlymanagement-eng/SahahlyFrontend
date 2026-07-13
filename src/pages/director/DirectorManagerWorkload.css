@@ -340,6 +340,17 @@ border:1px solid rgba(245,158,11,0.25);
 .statusGrid--four{
 grid-template-columns:1fr;
 }
+.metricsRow,
+.statusGrid{
+grid-template-columns:repeat(2,1fr);
+}
+}
+
+@media (max-width:480px){
+.metricsRow,
+.statusGrid{
+grid-template-columns:1fr;
+}
 }
 
 

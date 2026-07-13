@@ -1,7 +1,33 @@
 /**
  * Global UI polish — shared across all roles.
  * Enhances visuals/interaction only; does not hide or remove controls.
+ *
+ * ─── Responsive breakpoint conventions (project-wide) ───
+ * CSS custom properties can't drive media queries, so these are a written
+ * convention — use them consistently across every stylesheet:
+ *   mobile   @media (max-width: 640px)   phones — single column, drawer nav
+ *   tablet   @media (max-width: 1024px)  tablets/small laptops — drawer nav, 2-col grids
+ *   desktop  @media (min-width: 1025px)  default desktop layout (unchanged)
+ * The off-canvas sidebar drawer activates at ≤1024px (see assistant.css).
  */
+
+/* ─── Global overflow guardrails ─── */
+html,
+body {
+  overflow-x: hidden;
+}
+
+img,
+video,
+canvas,
+table {
+  max-width: 100%;
+}
+
+/* Body scroll lock while the mobile nav drawer is open (toggled by RoleShell). */
+body.ast-body--drawer-open {
+  overflow: hidden;
+}
 
 :root {
   --sah-brand: #7c3aed;
