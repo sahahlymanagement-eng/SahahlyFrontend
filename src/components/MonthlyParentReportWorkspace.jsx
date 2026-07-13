@@ -25,6 +25,7 @@ import {
   buildInitialAttendanceMap,
   countPresentInMap,
 } from "../utils/attendanceExcel";
+import ReportAttendanceSelect from "./ReportAttendanceSelect";
 
 import "./MonthlyParentReport.css";
 import ReportTeacherFilterSelect from "./ReportTeacherFilterSelect";
@@ -34,6 +35,9 @@ import {
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
 
+function newSchoolSessionId() {
+  return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 
 function currentYearMonth() {
@@ -85,10 +89,9 @@ export default function MonthlyParentReportWorkspace({
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
 
-  const [schoolSessions, setSchoolSessions] = useState(4);
+  const [schoolSessionList, setSchoolSessionList] = useState([]);
   const [schoolAttendanceInfo, setSchoolAttendanceInfo] = useState(null);
-  const [attendanceMap, setAttendanceMap] = useState({});
-  const [attendanceFileName, setAttendanceFileName] = useState("");
+  const [parsingSchoolAttendance, setParsingSchoolAttendance] = useState(false);
   const [savingSchoolAttendance, setSavingSchoolAttendance] = useState(false);
   const previewSectionRef = useRef(null);
 
@@ -250,8 +253,7 @@ export default function MonthlyParentReportWorkspace({
   useEffect(() => {
     if (!selectedClassroom?._id) {
       setSchoolAttendanceInfo(null);
-      setAttendanceMap({});
-      setAttendanceFileName("");
+      setSchoolSessionList([]);
       return;
     }
     api.get("/reports/monthly-parent/attendance", {
@@ -259,11 +261,24 @@ export default function MonthlyParentReportWorkspace({
     })
       .then(({ data }) => {
         setSchoolAttendanceInfo(data.attendance);
-        if (data.attendance?.totalSessions) {
-          setSchoolSessions(data.attendance.totalSessions);
+        const sessions = data.attendance?.sessions || [];
+        if (sessions.length) {
+          setSchoolSessionList(
+            sessions.map((s) => ({
+              id: newSchoolSessionId(),
+              map: s.map || {},
+              date: s.date || "",
+              fileName: s.sourceFileName || "",
+            }))
+          );
+        } else {
+          setSchoolSessionList([]);
         }
       })
-      .catch(() => setSchoolAttendanceInfo(null));
+      .catch(() => {
+        setSchoolAttendanceInfo(null);
+        setSchoolSessionList([]);
+      });
   }, [selectedClassroom?._id, year, month]);
 
 
@@ -372,45 +387,84 @@ export default function MonthlyParentReportWorkspace({
 
   const clearSelection = () => setSelectedStudentIds(new Set());
 
-  const handleSchoolAttendanceFile = async (e) => {
+  const handleAddSchoolAttendanceFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !students.length) {
       if (!students.length) toast.warn("Load students first");
       return;
     }
+    setParsingSchoolAttendance(true);
     try {
-      const { names } = await parseAttendanceNamesFromFile(file);
+      const { names, date } = await parseAttendanceNamesFromFile(file);
       const map = buildInitialAttendanceMap(students, names, (s) => s._id);
-      setAttendanceMap(map);
-      setAttendanceFileName(file.name);
-      toast.success(`Matched ${countPresentInMap(map)} present students`);
+      setSchoolSessionList((prev) => [
+        ...prev,
+        {
+          id: newSchoolSessionId(),
+          map,
+          date: date || "",
+          fileName: file.name,
+        },
+      ]);
+      toast.success(
+        `Attendance ${schoolSessionList.length + 1}: matched ${countPresentInMap(map)} present`
+      );
     } catch (err) {
       toast.error(err?.message || "Failed to read attendance file");
+    } finally {
+      setParsingSchoolAttendance(false);
     }
+  };
+
+  const removeSchoolSession = (sessionId) => {
+    setSchoolSessionList((prev) => prev.filter((s) => s.id !== sessionId));
+  };
+
+  const setSchoolStudentAttendance = (sessionId, studentId, present) => {
+    setSchoolSessionList((prev) =>
+      prev.map((session) => {
+        if (session.id !== sessionId) return session;
+        return {
+          ...session,
+          map: { ...session.map, [String(studentId)]: Boolean(present) },
+        };
+      })
+    );
+  };
+
+  const setSchoolSessionDate = (sessionId, date) => {
+    setSchoolSessionList((prev) =>
+      prev.map((session) =>
+        session.id === sessionId ? { ...session, date } : session
+      )
+    );
   };
 
   const saveSchoolAttendance = async () => {
     if (!selectedClassroom?._id) return;
-    if (!Object.keys(attendanceMap).length) {
-      toast.warn("Upload a school attendance file first");
+    if (!schoolSessionList.length) {
+      toast.warn("Upload at least one attendance Excel sheet first");
       return;
     }
-    const presentStudentIds = students
-      .filter((s) => attendanceMap[String(s._id)] === true)
-      .map((s) => s._id);
     setSavingSchoolAttendance(true);
     try {
+      const sessions = schoolSessionList.map((session) => ({
+        date: session.date || null,
+        sourceFileName: session.fileName || null,
+        map: session.map || {},
+        presentStudentIds: Object.entries(session.map || {})
+          .filter(([, present]) => present === true)
+          .map(([id]) => id),
+      }));
       const { data } = await api.post("/reports/monthly-parent/attendance", {
         classroomId: selectedClassroom._id,
         year,
         month,
-        totalSessions: schoolSessions,
-        presentStudentIds,
-        sourceFileName: attendanceFileName || null,
+        sessions,
       });
       setSchoolAttendanceInfo(data.attendance);
-      toast.success("School attendance saved for this month");
+      toast.success(`Saved ${sessions.length} attendance session(s) for this month`);
       if (previewStudent?._id) {
         const preview = await api.get("/reports/monthly-parent/preview", {
           params: {
@@ -954,65 +1008,108 @@ export default function MonthlyParentReportWorkspace({
               {loadingStudents && <p className="mpr-muted">Loading students…</p>}
 
               <div className="mpr-scroll">
-
-                {filteredStudents.map((s) => {
-
-                  const id = String(s._id);
-
-                  const isSelected = selectedStudentIds.has(id);
-
-                  const isPreview = String(previewStudent?._id) === String(s._id);
-
-                  return (
-
-                    <div
-
-                      key={s._id}
-
-                      className={`mpr-student-row ${isPreview ? "mpr-student-row--preview" : ""}`}
-
-                    >
-
-                      <input
-
-                        type="checkbox"
-
-                        className="mpr-student-check"
-
-                        checked={isSelected}
-
-                        onChange={() => toggleStudentSelection(s)}
-
-                        aria-label={`Select ${s.name}`}
-
-                      />
-
-                      <button
-
-                        type="button"
-
-                        className="mpr-student-name"
-
-                        onClick={() => openStudentPreview(s)}
-
+                {schoolSessionList.length > 0 ? (
+                  <div className="mpr-attendance-table-wrap">
+                    <table className="mpr-attendance-table">
+                      <thead>
+                        <tr>
+                          <th className="mpr-attendance-table__check" />
+                          <th>Student</th>
+                          {schoolSessionList.flatMap((session, idx) => [
+                            <th key={`${session.id}-att`}>Attendance {idx + 1}</th>,
+                            <th key={`${session.id}-date`}>Date {idx + 1}</th>,
+                          ])}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.map((s) => {
+                          const id = String(s._id);
+                          const isSelected = selectedStudentIds.has(id);
+                          const isPreview = String(previewStudent?._id) === String(s._id);
+                          return (
+                            <tr
+                              key={s._id}
+                              className={isPreview ? "mpr-attendance-table__row--preview" : undefined}
+                            >
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  className="mpr-student-check"
+                                  checked={isSelected}
+                                  onChange={() => toggleStudentSelection(s)}
+                                  aria-label={`Select ${s.name}`}
+                                />
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="mpr-student-name"
+                                  onClick={() => openStudentPreview(s)}
+                                >
+                                  <span>{s.name || "—"}</span>
+                                  {!s.parentPhone && (
+                                    <span className="mpr-student-warn">No parent phone</span>
+                                  )}
+                                </button>
+                              </td>
+                              {schoolSessionList.flatMap((session) => [
+                                <td key={`${session.id}-att-${id}`}>
+                                  <ReportAttendanceSelect
+                                    present={!!session.map?.[id]}
+                                    onChange={(present) =>
+                                      setSchoolStudentAttendance(session.id, id, present)
+                                    }
+                                  />
+                                </td>,
+                                <td key={`${session.id}-date-${id}`}>
+                                  <input
+                                    type="date"
+                                    className="mpr-attendance-date"
+                                    value={session.date || ""}
+                                    onChange={(e) =>
+                                      setSchoolSessionDate(session.id, e.target.value)
+                                    }
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </td>,
+                              ])}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  filteredStudents.map((s) => {
+                    const id = String(s._id);
+                    const isSelected = selectedStudentIds.has(id);
+                    const isPreview = String(previewStudent?._id) === String(s._id);
+                    return (
+                      <div
+                        key={s._id}
+                        className={`mpr-student-row ${isPreview ? "mpr-student-row--preview" : ""}`}
                       >
-
-                        <span>{s.name || "—"}</span>
-
-                        {!s.parentPhone && (
-
-                          <span className="mpr-student-warn">No parent phone</span>
-
-                        )}
-
-                      </button>
-
-                    </div>
-
-                  );
-
-                })}
-
+                        <input
+                          type="checkbox"
+                          className="mpr-student-check"
+                          checked={isSelected}
+                          onChange={() => toggleStudentSelection(s)}
+                          aria-label={`Select ${s.name}`}
+                        />
+                        <button
+                          type="button"
+                          className="mpr-student-name"
+                          onClick={() => openStudentPreview(s)}
+                        >
+                          <span>{s.name || "—"}</span>
+                          {!s.parentPhone && (
+                            <span className="mpr-student-warn">No parent phone</span>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
             </section>
@@ -1063,39 +1160,53 @@ export default function MonthlyParentReportWorkspace({
 
               <div className="mpr-school-attendance">
                 <p className="mpr-panel-label">School lesson attendance (optional)</p>
-                <label className="mpr-school-attendance-sessions">
-                  <span>Lessons this month</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={schoolSessions}
-                    onChange={(e) => setSchoolSessions(Number(e.target.value) || 1)}
-                  />
-                </label>
-                <label className="mpr-school-attendance-file">
+                <p className="mpr-month-hint">
+                  Upload one Excel per lesson. Each file adds Attendance N + Date N columns (same as normal reports).
+                </p>
+                <label className="mpr-school-attendance-file mpr-tool-btn" style={{ display: "inline-flex", cursor: "pointer" }}>
                   <input
                     type="file"
                     accept=".xlsx,.xls,.csv"
-                    onChange={handleSchoolAttendanceFile}
+                    onChange={handleAddSchoolAttendanceFile}
+                    disabled={parsingSchoolAttendance || !students.length}
+                    hidden
                   />
-                  Upload present list
+                  {parsingSchoolAttendance ? "Reading file…" : "Add attendance Excel"}
                 </label>
-                {attendanceFileName && (
-                  <p className="mpr-month-hint">
-                    {attendanceFileName} · {countPresentInMap(attendanceMap)} present
-                  </p>
+                {schoolSessionList.length > 0 && (
+                  <ul className="mpr-school-session-list">
+                    {schoolSessionList.map((session, idx) => (
+                      <li key={session.id} className="mpr-school-session-item">
+                        <span>
+                          Attendance {idx + 1}
+                          {session.fileName ? ` · ${session.fileName}` : ""}
+                          {" · "}
+                          {countPresentInMap(session.map)} present
+                        </span>
+                        <button
+                          type="button"
+                          className="mpr-tool-btn"
+                          onClick={() => removeSchoolSession(session.id)}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
                 {schoolAttendanceInfo && (
                   <p className="mpr-month-hint">
-                    Saved: {schoolAttendanceInfo.presentCount}/{schoolAttendanceInfo.studentsRecorded} students · {schoolAttendanceInfo.totalSessions} session(s)
+                    Saved: {schoolAttendanceInfo.totalSessions || 0} session(s)
+                    {schoolAttendanceInfo.presentCount != null
+                      ? ` · ${schoolAttendanceInfo.presentCount} students with ≥1 present`
+                      : ""}
                   </p>
                 )}
                 <button
                   type="button"
                   className="mpr-tool-btn"
                   onClick={saveSchoolAttendance}
-                  disabled={savingSchoolAttendance || !Object.keys(attendanceMap).length}
+                  disabled={savingSchoolAttendance || !schoolSessionList.length}
                 >
                   {savingSchoolAttendance ? "Saving…" : "Save school attendance"}
                 </button>
@@ -1493,7 +1604,19 @@ export default function MonthlyParentReportWorkspace({
                 {report.schoolAttendance?.hasData && (
                   <div className="mpr-school-attendance-summary">
                     <p className="mpr-attendance-title">School lesson attendance</p>
-                    <p className="mpr-muted">{report.schoolAttendance.display}</p>
+                    {Array.isArray(report.schoolAttendance.sessions) &&
+                    report.schoolAttendance.sessions.length > 0 ? (
+                      <ul className="mpr-school-attendance-lines">
+                        {report.schoolAttendance.sessions.map((s) => (
+                          <li key={s.index}>{s.line}</li>
+                        ))}
+                        <li className="mpr-school-attendance-summary-total">
+                          Summary: {report.schoolAttendance.display}
+                        </li>
+                      </ul>
+                    ) : (
+                      <p className="mpr-muted">{report.schoolAttendance.display}</p>
+                    )}
                   </div>
                 )}
 

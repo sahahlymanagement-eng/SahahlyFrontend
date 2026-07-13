@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { FiEye, FiFileText } from "react-icons/fi";
 import api from "../api/api";
 
+/**
+ * PDF iframe preview — same UX as monthly parent reports.
+ *
+ * fetchConfig:
+ *   { url, method?: "get"|"post", params?, data? }
+ */
 export default function ReportPdfPreview({
   fetchConfig,
   title = "PDF preview",
@@ -11,6 +17,14 @@ export default function ReportPdfPreview({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(true);
+
+  const method = String(fetchConfig?.method || "get").toLowerCase();
+  const depsKey = JSON.stringify({
+    url: fetchConfig?.url || null,
+    method,
+    params: fetchConfig?.params || {},
+    data: fetchConfig?.data || null,
+  });
 
   useEffect(() => {
     if (!fetchConfig?.url) {
@@ -26,11 +40,19 @@ export default function ReportPdfPreview({
     setError(null);
     setPdfUrl(null);
 
-    api
-      .get(fetchConfig.url, {
-        params: fetchConfig.params,
-        responseType: "blob",
-      })
+    const request =
+      method === "post"
+        ? api.post(fetchConfig.url, fetchConfig.data || {}, {
+            responseType: "blob",
+            timeout: 120_000,
+          })
+        : api.get(fetchConfig.url, {
+            params: fetchConfig.params,
+            responseType: "blob",
+            timeout: 120_000,
+          });
+
+    request
       .then((res) => {
         if (!active) return;
         const contentType = String(res.headers?.["content-type"] || "");
@@ -69,7 +91,8 @@ export default function ReportPdfPreview({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [fetchConfig?.url, JSON.stringify(fetchConfig?.params || {})]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depsKey]);
 
   if (!fetchConfig?.url) return null;
 
