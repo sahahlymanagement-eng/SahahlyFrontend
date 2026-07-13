@@ -46,6 +46,7 @@ import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
 import DirectorFeedback from "./pages/director/DirectorFeedback";
+import DirectorReports from "./pages/director/DirectorReports";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
 import ManagerFeedback from "./pages/manager/ManagerFeedback";
@@ -271,6 +272,7 @@ function App() {
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
+          <Route path="reports" element={<DirectorReports />} />
           <Route path="manage-teachers" element={<TeacherManager />} />
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />

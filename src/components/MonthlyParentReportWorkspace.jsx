@@ -39,6 +39,25 @@ function newSchoolSessionId() {
   return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const MULTI_PDF_PREVIEW_LIMIT = 8;
+
+function blankAttendanceMap(roster) {
+  const map = {};
+  for (const s of roster || []) {
+    if (s?._id != null) map[String(s._id)] = false;
+  }
+  return map;
+}
+
+function presentCountForStudent(sessionList, studentId) {
+  const id = String(studentId);
+  let present = 0;
+  for (const session of sessionList || []) {
+    if (session?.map?.[id]) present += 1;
+  }
+  return present;
+}
+
 
 function currentYearMonth() {
 
@@ -303,18 +322,23 @@ export default function MonthlyParentReportWorkspace({
 
   }, [monthOptions, year, month]);
 
-  const pdfPreviewConfig = useMemo(() => {
-    if (!selectedClassroom?._id || !previewStudent?._id) return null;
-    return {
-      url: "/reports/monthly-parent/pdf",
-      params: {
-        classroomId: selectedClassroom._id,
-        studentId: previewStudent._id,
-        year,
-        month,
-      },
-    };
-  }, [selectedClassroom?._id, previewStudent?._id, year, month]);
+  const selectedPreviewStudents = useMemo(() => {
+    if (!selectedStudentIds.size) {
+      return previewStudent ? [previewStudent] : [];
+    }
+    const byId = new Map(students.map((s) => [String(s._id), s]));
+    const ordered = [];
+    for (const id of selectedStudentIds) {
+      const s = byId.get(String(id));
+      if (s) ordered.push(s);
+    }
+    return ordered;
+  }, [selectedStudentIds, students, previewStudent]);
+
+  const multiPdfPreviewStudents = useMemo(
+    () => selectedPreviewStudents.slice(0, MULTI_PDF_PREVIEW_LIMIT),
+    [selectedPreviewStudents]
+  );
 
 
 
@@ -421,6 +445,43 @@ export default function MonthlyParentReportWorkspace({
     setSchoolSessionList((prev) => prev.filter((s) => s.id !== sessionId));
   };
 
+  const addBlankSchoolSession = () => {
+    if (!students.length) {
+      toast.warn("Load students first");
+      return;
+    }
+    setSchoolSessionList((prev) => [
+      ...prev,
+      {
+        id: newSchoolSessionId(),
+        map: blankAttendanceMap(students),
+        date: "",
+        fileName: "",
+      },
+    ]);
+  };
+
+  const setSchoolSessionCount = (rawCount) => {
+    if (!students.length) {
+      toast.warn("Load students first");
+      return;
+    }
+    const nextCount = Math.max(0, Math.min(40, Number(rawCount) || 0));
+    setSchoolSessionList((prev) => {
+      if (nextCount === prev.length) return prev;
+      if (nextCount > prev.length) {
+        const extras = Array.from({ length: nextCount - prev.length }, () => ({
+          id: newSchoolSessionId(),
+          map: blankAttendanceMap(students),
+          date: "",
+          fileName: "",
+        }));
+        return [...prev, ...extras];
+      }
+      return prev.slice(0, nextCount);
+    });
+  };
+
   const setSchoolStudentAttendance = (sessionId, studentId, present) => {
     setSchoolSessionList((prev) =>
       prev.map((session) => {
@@ -444,7 +505,7 @@ export default function MonthlyParentReportWorkspace({
   const saveSchoolAttendance = async () => {
     if (!selectedClassroom?._id) return;
     if (!schoolSessionList.length) {
-      toast.warn("Upload at least one attendance Excel sheet first");
+      toast.warn("Add at least one attendance session first");
       return;
     }
     setSavingSchoolAttendance(true);
@@ -1015,6 +1076,7 @@ export default function MonthlyParentReportWorkspace({
                         <tr>
                           <th className="mpr-attendance-table__check" />
                           <th>Student</th>
+                          <th title="Present sessions / total">Present</th>
                           {schoolSessionList.flatMap((session, idx) => [
                             <th key={`${session.id}-att`}>Attendance {idx + 1}</th>,
                             <th key={`${session.id}-date`}>Date {idx + 1}</th>,
@@ -1051,6 +1113,10 @@ export default function MonthlyParentReportWorkspace({
                                     <span className="mpr-student-warn">No parent phone</span>
                                   )}
                                 </button>
+                              </td>
+                              <td className="mpr-attendance-present-count">
+                                {presentCountForStudent(schoolSessionList, id)}/
+                                {schoolSessionList.length}
                               </td>
                               {schoolSessionList.flatMap((session) => [
                                 <td key={`${session.id}-att-${id}`}>
@@ -1161,8 +1227,31 @@ export default function MonthlyParentReportWorkspace({
               <div className="mpr-school-attendance">
                 <p className="mpr-panel-label">School lesson attendance (optional)</p>
                 <p className="mpr-month-hint">
-                  Upload one Excel per lesson. Each file adds Attendance N + Date N columns (same as normal reports).
+                  Set how many lessons this month, then mark Present/Absent — or upload one Excel per lesson.
                 </p>
+                <div className="mpr-session-count-row">
+                  <label className="mpr-session-count-label" htmlFor="mpr-session-count">
+                    Number of attendance sessions
+                  </label>
+                  <input
+                    id="mpr-session-count"
+                    type="number"
+                    min={0}
+                    max={40}
+                    className="mpr-session-count-input"
+                    value={schoolSessionList.length}
+                    onChange={(e) => setSchoolSessionCount(e.target.value)}
+                    disabled={!students.length}
+                  />
+                  <button
+                    type="button"
+                    className="mpr-tool-btn"
+                    onClick={addBlankSchoolSession}
+                    disabled={!students.length}
+                  >
+                    + Add session
+                  </button>
+                </div>
                 <label className="mpr-school-attendance-file mpr-tool-btn" style={{ display: "inline-flex", cursor: "pointer" }}>
                   <input
                     type="file"
@@ -1200,6 +1289,14 @@ export default function MonthlyParentReportWorkspace({
                     {schoolAttendanceInfo.presentCount != null
                       ? ` · ${schoolAttendanceInfo.presentCount} students with ≥1 present`
                       : ""}
+                    {schoolAttendanceInfo.legacyExpanded
+                      ? " · restored from older save"
+                      : ""}
+                  </p>
+                )}
+                {schoolSessionList.length > 1 && (
+                  <p className="mpr-month-hint">
+                    Scroll the student table sideways to see Attendance 2+
                   </p>
                 )}
                 <button
@@ -1224,7 +1321,7 @@ export default function MonthlyParentReportWorkspace({
 
           <section className="mpr-preview" ref={previewSectionRef}>
 
-            {!previewStudent ? (
+            {!multiPdfPreviewStudents.length ? (
 
               <div className="mpr-preview-empty">
 
@@ -1232,7 +1329,7 @@ export default function MonthlyParentReportWorkspace({
 
                 <p className="mpr-muted">
 
-                  Select a student (checkbox or name) to preview the monthly parent PDF here.
+                  Select one or more students to preview monthly parent PDF(s) here.
 
                 </p>
 
@@ -1243,30 +1340,78 @@ export default function MonthlyParentReportWorkspace({
               <>
 
                 <p className="mpr-preview-title">
-
-                  Preview — {previewStudent.name} · {selectedMonthLabel}
-
+                  {multiPdfPreviewStudents.length > 1
+                    ? `Preview — ${multiPdfPreviewStudents.length} student PDFs · ${selectedMonthLabel}`
+                    : `Preview — ${multiPdfPreviewStudents[0].name} · ${selectedMonthLabel}`}
                 </p>
+                {selectedPreviewStudents.length > MULTI_PDF_PREVIEW_LIMIT && (
+                  <p className="mpr-muted" style={{ marginBottom: 8 }}>
+                    Showing first {MULTI_PDF_PREVIEW_LIMIT} of{" "}
+                    {selectedPreviewStudents.length} selected students.
+                  </p>
+                )}
 
-                <ReportPdfPreview
+                <div
+                  className={
+                    multiPdfPreviewStudents.length > 1
+                      ? "mpr-multi-pdf-grid"
+                      : "mpr-multi-pdf-single"
+                  }
+                >
+                  {multiPdfPreviewStudents.map((student) => {
+                    const isFocused =
+                      String(previewStudent?._id) === String(student._id);
+                    return (
+                      <div
+                        key={student._id}
+                        className={`mpr-multi-pdf-card${isFocused ? " is-focused" : ""}`}
+                      >
+                        <div className="mpr-multi-pdf-card-head">
+                          <button
+                            type="button"
+                            className="mpr-student-name"
+                            onClick={() => openStudentPreview(student, { scroll: false })}
+                          >
+                            {student.name || "Student"}
+                          </button>
+                          {!student.parentPhone && (
+                            <span className="mpr-student-warn">No parent phone</span>
+                          )}
+                        </div>
+                        <ReportPdfPreview
+                          fetchConfig={{
+                            url: "/reports/monthly-parent/pdf",
+                            params: {
+                              classroomId: selectedClassroom._id,
+                              studentId: student._id,
+                              year,
+                              month,
+                            },
+                          }}
+                          title={`${student.name || "Student"} PDF`}
+                          frameClassName={
+                            multiPdfPreviewStudents.length > 1
+                              ? "mpr-pdf-preview-frame--multi"
+                              : "mpr-pdf-preview-frame--tall"
+                          }
+                          defaultExpanded
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  fetchConfig={pdfPreviewConfig}
+                {previewStudent && loadingReport && (
+                  <p className="mpr-muted">Building report summary…</p>
+                )}
 
-                  title="Monthly parent report PDF"
-
-                  frameClassName="mpr-pdf-preview-frame--tall"
-
-                />
-
-                {loadingReport && <p className="mpr-muted">Building report summary…</p>}
-
-                {!loadingReport && !report && (
+                {previewStudent && !loadingReport && !report && (
 
                   <p className="mpr-muted">No report data for this month.</p>
 
                 )}
 
-                {report && (
+                {previewStudent && report && (
 
               <>
 

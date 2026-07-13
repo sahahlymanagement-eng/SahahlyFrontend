@@ -12,11 +12,12 @@ export default function ReportPdfPreview({
   fetchConfig,
   title = "PDF preview",
   frameClassName = "",
+  defaultExpanded = true,
 }) {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   const method = String(fetchConfig?.method || "get").toLowerCase();
   const depsKey = JSON.stringify({

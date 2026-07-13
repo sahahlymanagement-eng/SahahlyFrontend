@@ -8,7 +8,7 @@ import "react-international-phone/style.css";
 import {
   FiClipboard, FiUsers, FiSend,
   FiCheckSquare, FiMessageSquare,   FiCalendar,
-  FiBarChart2, FiDownload,
+  FiBarChart2, FiDownload, FiEye,
 } from "react-icons/fi";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
@@ -690,6 +690,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   const [downloadingCollective, setDownloadingCollective] = useState(null);
 
+  const scrollToCollectivePreview = (kind = "teacher") => {
+    const id =
+      kind === "custom"
+        ? "custom-collective-preview"
+        : "teacher-collective-preview";
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   const downloadCollectivePdf = async (kind) => {
     const config =
       kind === "teacher" ? teacherCollectivePdfConfig : customCollectivePdfConfig;
@@ -896,67 +907,96 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                 <FiSend size={13} />
                 {sending ? "Sending…" : `Send Report`}
               </button>
-              {!isTeacher && (
+              <div className="ma-collective-toolbar">
+                <span className="ma-collective-toolbar-label">Teacher PDF</span>
                 <button
+                  type="button"
+                  className="ma-send-btn ma-send-btn--ghost"
+                  onClick={() => scrollToCollectivePreview("teacher")}
+                  disabled={!teacherCollectivePdfConfig}
+                  title="Scroll to teacher collective preview"
+                >
+                  <FiEye size={13} />
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  className="ma-send-btn ma-send-btn--ghost"
+                  onClick={() => downloadCollectivePdf("teacher")}
+                  disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
+                >
+                  <FiDownload size={13} />
+                  {downloadingCollective === "teacher"
+                    ? "Downloading…"
+                    : "Download"}
+                </button>
+                {!isTeacher && (
+                  <button
+                    type="button"
+                    className="ma-send-btn"
+                    onClick={sendTeacherCollectiveReport}
+                    disabled={sending}
+                  >
+                    <FiSend size={13} />
+                    {sending ? "Sending…" : "Send"}
+                  </button>
+                )}
+              </div>
+              <div className="ma-collective-toolbar">
+                <span className="ma-collective-toolbar-label">Custom PDF</span>
+                <div style={{ minWidth: "220px" }}>
+                  <PhoneInput
+                    defaultCountry="eg"
+                    value={`+${customPhone}`}
+                    onChange={(value) =>
+                      setCustomPhone(value.replace(/\D/g, ""))
+                    }
+                    className="tm-phone-input"
+                    countrySelectorStyleProps={{
+                      dropdownStyleProps: {
+                        style: {
+                          maxHeight: "350px",
+                          zIndex: 9999
+                        }
+                      }
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="ma-send-btn ma-send-btn--ghost"
+                  onClick={() => scrollToCollectivePreview("custom")}
+                  disabled={!customCollectivePdfConfig}
+                >
+                  <FiEye size={13} />
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  className="ma-send-btn ma-send-btn--ghost"
+                  onClick={() => downloadCollectivePdf("custom")}
+                  disabled={!!downloadingCollective || !customCollectivePdfConfig}
+                >
+                  <FiDownload size={13} />
+                  {downloadingCollective === "custom"
+                    ? "Downloading…"
+                    : "Download"}
+                </button>
+                <button
+                  type="button"
                   className="ma-send-btn"
-                  onClick={sendTeacherCollectiveReport}
+                  onClick={sendCustomCollectiveReport}
                   disabled={sending}
                 >
                   <FiSend size={13} />
-                  {sending ? "Sending…" : "Send Teacher Collective PDF"}
+                  {sending ? "Sending…" : "Send"}
                 </button>
-              )}
-              <button
-                className="ma-send-btn"
-                onClick={() => downloadCollectivePdf("teacher")}
-                disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
-              >
-                <FiDownload size={13} />
-                {downloadingCollective === "teacher"
-                  ? "Downloading…"
-                  : "Download Teacher Collective"}
-              </button>
-              <div style={{ minWidth: "260px" }}>
-                <PhoneInput
-                  defaultCountry="eg"
-                  value={`+${customPhone}`}
-                  onChange={(value) =>
-                    setCustomPhone(value.replace(/\D/g, ""))
-                  }
-                  className="tm-phone-input"
-                  countrySelectorStyleProps={{
-                    dropdownStyleProps: {
-                      style: {
-                        maxHeight: "350px",
-                        zIndex: 9999
-                      }
-                    }
-                  }}
-                />
               </div>
-              <button
-                className="ma-send-btn"
-                onClick={sendCustomCollectiveReport}
-                disabled={sending}
-              >
-                <FiSend size={13} />
-                {sending ? "Sending…" : "Send Custom Collective PDF"}
-              </button>
-              <button
-                className="ma-send-btn"
-                onClick={() => downloadCollectivePdf("custom")}
-                disabled={!!downloadingCollective || !customCollectivePdfConfig}
-              >
-                <FiDownload size={13} />
-                {downloadingCollective === "custom"
-                  ? "Downloading…"
-                  : "Download Custom Collective"}
-              </button>
             </div>
           )}
         </header>
 
-        <div className="ma-content">
+        <div className={`ma-content${reportCount > 0 ? " ma-content--with-cart" : ""}`}>
           <div className="ma-layout msv-collapsible-layout">
           {/* COLUMN 1 — CLASSROOMS */}
           {!selectedClassroom ? (
@@ -1337,23 +1377,38 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           </div>
           )}
         </div>
-        </div>
 
         {reportCount > 0 && selectedClassroom?._id && (
           <section className="ma-collective-preview-section">
             <div className="ma-collective-preview-grid">
-              <div className="ma-collective-preview-card">
+              <div
+                className="ma-collective-preview-card"
+                id="teacher-collective-preview"
+              >
                 <div className="ma-collective-preview-head">
                   <h3>Teacher collective PDF</h3>
-                  <button
-                    type="button"
-                    className="ma-send-btn"
-                    onClick={() => downloadCollectivePdf("teacher")}
-                    disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
-                  >
-                    <FiDownload size={13} />
-                    {downloadingCollective === "teacher" ? "Downloading…" : "Download"}
-                  </button>
+                  <div className="ma-collective-preview-actions">
+                    <button
+                      type="button"
+                      className="ma-send-btn ma-send-btn--ghost"
+                      onClick={() => downloadCollectivePdf("teacher")}
+                      disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
+                    >
+                      <FiDownload size={13} />
+                      {downloadingCollective === "teacher" ? "Downloading…" : "Download"}
+                    </button>
+                    {!isTeacher && (
+                      <button
+                        type="button"
+                        className="ma-send-btn"
+                        onClick={sendTeacherCollectiveReport}
+                        disabled={sending}
+                      >
+                        <FiSend size={13} />
+                        Send
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <ReportPdfPreview
                   fetchConfig={teacherCollectivePdfConfig}
@@ -1361,18 +1416,32 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   frameClassName="mpr-pdf-preview-frame--tall"
                 />
               </div>
-              <div className="ma-collective-preview-card">
+              <div
+                className="ma-collective-preview-card"
+                id="custom-collective-preview"
+              >
                 <div className="ma-collective-preview-head">
                   <h3>Custom collective PDF</h3>
-                  <button
-                    type="button"
-                    className="ma-send-btn"
-                    onClick={() => downloadCollectivePdf("custom")}
-                    disabled={!!downloadingCollective || !customCollectivePdfConfig}
-                  >
-                    <FiDownload size={13} />
-                    {downloadingCollective === "custom" ? "Downloading…" : "Download"}
-                  </button>
+                  <div className="ma-collective-preview-actions">
+                    <button
+                      type="button"
+                      className="ma-send-btn ma-send-btn--ghost"
+                      onClick={() => downloadCollectivePdf("custom")}
+                      disabled={!!downloadingCollective || !customCollectivePdfConfig}
+                    >
+                      <FiDownload size={13} />
+                      {downloadingCollective === "custom" ? "Downloading…" : "Download"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ma-send-btn"
+                      onClick={sendCustomCollectiveReport}
+                      disabled={sending}
+                    >
+                      <FiSend size={13} />
+                      Send
+                    </button>
+                  </div>
                 </div>
                 <ReportPdfPreview
                   fetchConfig={customCollectivePdfConfig}
@@ -1383,6 +1452,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             </div>
           </section>
         )}
+        </div>
 
         {/* CART BAR */}
         {reportCount > 0 && (
@@ -1418,6 +1488,26 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
                 <FiSend size={18} />
                 {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
+              </button>
+              <button
+                type="button"
+                className="ma-send-btn ma-send-btn--ghost"
+                onClick={() => scrollToCollectivePreview("teacher")}
+                disabled={!teacherCollectivePdfConfig}
+              >
+                <FiEye size={16} />
+                Teacher Preview
+              </button>
+              <button
+                type="button"
+                className="ma-send-btn ma-send-btn--ghost"
+                onClick={() => downloadCollectivePdf("teacher")}
+                disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
+              >
+                <FiDownload size={16} />
+                {downloadingCollective === "teacher"
+                  ? "Downloading…"
+                  : "Teacher Download"}
               </button>
             </div>
           </div>
