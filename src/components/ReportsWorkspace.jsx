@@ -8,7 +8,7 @@ import "react-international-phone/style.css";
 import {
   FiClipboard, FiUsers, FiSend,
   FiCheckSquare, FiMessageSquare,   FiCalendar,
-  FiBarChart2,
+  FiBarChart2, FiDownload,
 } from "react-icons/fi";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
@@ -18,6 +18,8 @@ import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
 import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
 import TeacherExecutiveAnalysisWorkspace from "./TeacherExecutiveAnalysisWorkspace";
 import AssignmentReportPreviewModal from "./AssignmentReportPreviewModal";
+import ReportPdfPreview from "./ReportPdfPreview";
+import "./MonthlyParentReport.css";
 import {
   refreshAssignmentGrades,
   applyReportCartGradeSync,
@@ -653,6 +655,91 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   ).size;
   const cartSummary = `${assignmentCount} assignment${assignmentCount !== 1 ? "s" : ""} and ${reportCount} report${reportCount !== 1 ? "s" : ""}`;
 
+  const collectiveReportsPayload = useMemo(() => {
+    if (!selectedClassroom?._id || reportCount === 0) return null;
+    return Object.values(reportCart).map((entry) => ({
+      name: entry.studentMeta?.name,
+      studentId: entry.studentMeta?._id || entry.studentMeta?.id,
+      items: Object.values(entry.items || {}),
+    }));
+  }, [reportCart, selectedClassroom?._id, reportCount]);
+
+  const teacherCollectivePdfConfig = useMemo(() => {
+    if (!collectiveReportsPayload?.length || !selectedClassroom?._id) return null;
+    return {
+      url: "/manager-assignments/teacher-collective-pdf",
+      method: "post",
+      data: {
+        reports: collectiveReportsPayload,
+        classroomId: selectedClassroom._id,
+      },
+    };
+  }, [collectiveReportsPayload, selectedClassroom?._id]);
+
+  const customCollectivePdfConfig = useMemo(() => {
+    if (!collectiveReportsPayload?.length || !selectedClassroom?._id) return null;
+    return {
+      url: "/manager-assignments/custom-collective-pdf",
+      method: "post",
+      data: {
+        reports: collectiveReportsPayload,
+        classroomId: selectedClassroom._id,
+      },
+    };
+  }, [collectiveReportsPayload, selectedClassroom?._id]);
+
+  const [downloadingCollective, setDownloadingCollective] = useState(null);
+
+  const downloadCollectivePdf = async (kind) => {
+    const config =
+      kind === "teacher" ? teacherCollectivePdfConfig : customCollectivePdfConfig;
+    if (!config) {
+      toast.warn("Select students/assignments first");
+      return;
+    }
+    setDownloadingCollective(kind);
+    try {
+      const res = await api.post(config.url, config.data, {
+        responseType: "blob",
+        timeout: 120_000,
+      });
+      const contentType = String(res.headers?.["content-type"] || "");
+      if (contentType.includes("application/json")) {
+        throw new Error("Server returned JSON instead of a PDF");
+      }
+      const fallback =
+        kind === "teacher"
+          ? "teacher_collective.pdf"
+          : "collective_report.pdf";
+      const disposition = String(res.headers?.["content-disposition"] || "");
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || fallback;
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      let message = "Failed to download PDF";
+      const data = err.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await data.text());
+          if (parsed?.message) message = parsed.message;
+        } catch {
+          // keep default
+        }
+      } else if (data?.message) {
+        message = data.message;
+      }
+      toast.error(message);
+    } finally {
+      setDownloadingCollective(null);
+    }
+  };
+
   const statusBadge = (student) => <SubmissionStatusBadge student={student} />;
 
   const filteredClassrooms = classrooms;
@@ -819,6 +906,16 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   {sending ? "Sending…" : "Send Teacher Collective PDF"}
                 </button>
               )}
+              <button
+                className="ma-send-btn"
+                onClick={() => downloadCollectivePdf("teacher")}
+                disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
+              >
+                <FiDownload size={13} />
+                {downloadingCollective === "teacher"
+                  ? "Downloading…"
+                  : "Download Teacher Collective"}
+              </button>
               <div style={{ minWidth: "260px" }}>
                 <PhoneInput
                   defaultCountry="eg"
@@ -844,6 +941,16 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               >
                 <FiSend size={13} />
                 {sending ? "Sending…" : "Send Custom Collective PDF"}
+              </button>
+              <button
+                className="ma-send-btn"
+                onClick={() => downloadCollectivePdf("custom")}
+                disabled={!!downloadingCollective || !customCollectivePdfConfig}
+              >
+                <FiDownload size={13} />
+                {downloadingCollective === "custom"
+                  ? "Downloading…"
+                  : "Download Custom Collective"}
               </button>
             </div>
           )}
@@ -1231,6 +1338,51 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           )}
         </div>
         </div>
+
+        {reportCount > 0 && selectedClassroom?._id && (
+          <section className="ma-collective-preview-section">
+            <div className="ma-collective-preview-grid">
+              <div className="ma-collective-preview-card">
+                <div className="ma-collective-preview-head">
+                  <h3>Teacher collective PDF</h3>
+                  <button
+                    type="button"
+                    className="ma-send-btn"
+                    onClick={() => downloadCollectivePdf("teacher")}
+                    disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
+                  >
+                    <FiDownload size={13} />
+                    {downloadingCollective === "teacher" ? "Downloading…" : "Download"}
+                  </button>
+                </div>
+                <ReportPdfPreview
+                  fetchConfig={teacherCollectivePdfConfig}
+                  title="Teacher collective report PDF"
+                  frameClassName="mpr-pdf-preview-frame--tall"
+                />
+              </div>
+              <div className="ma-collective-preview-card">
+                <div className="ma-collective-preview-head">
+                  <h3>Custom collective PDF</h3>
+                  <button
+                    type="button"
+                    className="ma-send-btn"
+                    onClick={() => downloadCollectivePdf("custom")}
+                    disabled={!!downloadingCollective || !customCollectivePdfConfig}
+                  >
+                    <FiDownload size={13} />
+                    {downloadingCollective === "custom" ? "Downloading…" : "Download"}
+                  </button>
+                </div>
+                <ReportPdfPreview
+                  fetchConfig={customCollectivePdfConfig}
+                  title="Custom collective report PDF"
+                  frameClassName="mpr-pdf-preview-frame--tall"
+                />
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* CART BAR */}
         {reportCount > 0 && (
