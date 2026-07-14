@@ -24,7 +24,7 @@ import {
   refreshAssignmentGrades,
   applyReportCartGradeSync,
 } from "../utils/refreshAssignmentFromClassroom";
-import { computeGradePercent, parsePercentInput, displayPercent } from "../utils/reportGradePercent";
+import { computeGradePercent, parsePercentInput, displayPercent, resolveReportDisplayPercent } from "../utils/reportGradePercent";
 import { usePagination } from "../hooks/usePagination";
 import { fetchAllPaginated } from "../utils/fetchAllStudents";
 import Pagination from "./Pagination";
@@ -562,10 +562,11 @@ export default function ReportsWorkspace({ variant = "manager" }) {
           isOnTime: liveStudent?.isOnTime ?? item.isOnTime,
           assignedGrade,
           maxPoints,
-          percentage:
-            item.percentage ??
-            percentageFromLive ??
-            null,
+          percentage: resolveReportDisplayPercent(
+            assignedGrade,
+            maxPoints,
+            item.percentage ?? percentageFromLive
+          ),
           comment: (item.comment || savedSummary || "").trim(),
           includeAttendance: Boolean(attendanceCfg.enabled),
           attendancePresent: attendanceCfg.enabled

@@ -7,24 +7,12 @@ import "./CourseManagement.css";
 import "../../pages/teacher/teacher.css";
 import { TeacherPageHeader, TeacherLoading } from "../../pages/teacher/TeacherUI";
 import { isPdfFile } from "../../utils/isPdfFile";
-
-function extractDriveFileId(input) {
-  const raw = String(input || "").trim();
-  if (!raw) return null;
-  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw) && !raw.includes("/") && !raw.includes(" ")) {
-    return raw;
-  }
-  const patterns = [
-    /\/file\/d\/([a-zA-Z0-9_-]+)/,
-    /[?&]id=([a-zA-Z0-9_-]+)/,
-    /\/open\?id=([a-zA-Z0-9_-]+)/,
-  ];
-  for (const re of patterns) {
-    const m = raw.match(re);
-    if (m?.[1]) return m[1];
-  }
-  return null;
-}
+import {
+  requestGoogleDriveAccessToken,
+  openGoogleDrivePdfPicker,
+  listPersonalDrivePdfs,
+  downloadDrivePdfAsFile,
+} from "../../utils/googleDrivePicker";
 
 function formatDriveModified(iso) {
   if (!iso) return "";
@@ -135,7 +123,9 @@ export default function Coursework() {
   const [driveFiles, setDriveFiles] = useState([]);
   const [driveNextPage, setDriveNextPage] = useState(null);
   const [driveLoading, setDriveLoading] = useState(false);
-  const [drivePaste, setDrivePaste] = useState("");
+  const [drivePickerOpening, setDrivePickerOpening] = useState(false);
+  const [driveAccessToken, setDriveAccessToken] = useState(null);
+  const [driveAccountLabel, setDriveAccountLabel] = useState("");
   const [existingWebLink, setExistingWebLink] = useState("");
   const fileInputRef = useRef(null);
 
@@ -202,11 +192,10 @@ export default function Coursework() {
     const formData = new FormData();
     formData.append("courseId", courseId);
     formData.append("courseworkData", JSON.stringify(payload));
-    if (driveSelected?.id) {
-      formData.append("assignmentDriveFileId", driveSelected.id);
-    } else if (file) {
+    // Prefer local/downloaded PDF bytes (personal Drive after Google sign-in).
+    // Only use Drive file id when no file bytes are available.
+    if (file) {
       formData.append("assignmentFile", file, file.name || "worksheet.pdf");
-      // Base64 backup — some proxies drop the multipart file part but keep text fields.
       try {
         const b64 = await fileToBase64(file);
         formData.append("assignmentFileBase64", b64);
@@ -214,6 +203,8 @@ export default function Coursework() {
       } catch (e) {
         console.warn("Could not attach base64 PDF backup:", e);
       }
+    } else if (driveSelected?.id) {
+      formData.append("assignmentDriveFileId", driveSelected.id);
     }
     return formData;
   };
@@ -253,68 +244,140 @@ export default function Coursework() {
   };
 
   const loadDrivePdfs = useCallback(
-    async ({ append = false, pageToken = null, search = driveSearch } = {}) => {
-      if (!courseId) return;
+    async ({
+      append = false,
+      pageToken = null,
+      search = driveSearch,
+      accessToken = driveAccessToken,
+    } = {}) => {
+      if (!accessToken) {
+        toast.error("Sign in to Google Drive first");
+        return;
+      }
       setDriveLoading(true);
       try {
-        const res = await api.get("/google-classroom/drive-pdfs", {
-          params: {
-            courseId,
-            q: search || undefined,
-            pageToken: pageToken || undefined,
-            pageSize: 25,
-          },
-        });
-        const files = res.data?.files || [];
+        const { files, nextPageToken } = await listPersonalDrivePdfs(
+          accessToken,
+          {
+            q: search || "",
+            pageToken: pageToken || null,
+          }
+        );
         setDriveFiles((prev) => (append ? [...prev, ...files] : files));
-        setDriveNextPage(res.data?.nextPageToken || null);
+        setDriveNextPage(nextPageToken || null);
       } catch (err) {
-        toast.error(err.response?.data?.error || "Failed to load Drive PDFs");
+        toast.error(err.message || "Failed to load Drive PDFs");
         if (!append) setDriveFiles([]);
         setDriveNextPage(null);
       } finally {
         setDriveLoading(false);
       }
     },
-    [courseId, driveSearch]
+    [driveAccessToken, driveSearch]
   );
 
-  const openDrivePicker = async () => {
+  const applyPickedDrivePdf = async (accessToken, picked) => {
+    if (!picked?.id) return;
+    const file = await downloadDrivePdfAsFile(accessToken, picked);
+    setAssignmentFile(file);
+    setDriveFile({
+      id: picked.id,
+      name: picked.name || file.name,
+      webViewLink: picked.url || picked.webViewLink || null,
+      fromPersonalDrive: true,
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setPdfSource("drive");
+    toast.success(`Selected: ${picked.name || file.name}`);
+  };
+
+  const openPersonalDriveBrowser = async (accessToken, accountLabel = "") => {
+    setDriveAccessToken(accessToken);
+    setDriveAccountLabel(accountLabel || "");
     setPdfSource("drive");
     setDrivePickerOpen(true);
-    setDrivePaste("");
     setDriveSearch("");
-    await loadDrivePdfs({ append: false, search: "" });
-  };
-
-  const selectDriveFile = (file) => {
-    setDriveFile({
-      id: file.id,
-      name: file.name,
-      webViewLink: file.webViewLink,
+    setDriveFiles([]);
+    setDriveNextPage(null);
+    await loadDrivePdfs({
+      append: false,
+      search: "",
+      accessToken,
     });
-    setAssignmentFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setPdfSource("drive");
-    setDrivePickerOpen(false);
   };
 
-  const applyDrivePaste = () => {
-    const id = extractDriveFileId(drivePaste);
-    if (!id) {
-      toast.warn("Paste a Google Drive PDF link or file ID");
+  const openDrivePicker = async () => {
+    if (!courseId) {
+      toast.warn("Course is required");
       return;
     }
-    const matched = driveFiles.find((f) => f.id === id);
-    setDriveFile({
-      id,
-      name: matched?.name || "Drive PDF",
-      webViewLink: matched?.webViewLink || `https://drive.google.com/file/d/${id}/view`,
-    });
-    setAssignmentFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
     setPdfSource("drive");
-    setDrivePickerOpen(false);
+    setDrivePickerOpening(true);
+    try {
+      const { data } = await api.get("/google-classroom/drive-picker-config", {
+        params: { courseId },
+      });
+
+      // Google account picker via backend OAuth popup (works without JS origins).
+      const signedIn = await requestGoogleDriveAccessToken({
+        hintEmail: data.accountEmail || undefined,
+      });
+      const accessToken = signedIn.accessToken;
+
+      setDriveAccessToken(accessToken);
+      setDriveAccountLabel(
+        signedIn.email || data.accountEmail || "Google Drive"
+      );
+
+      if (data.hasPickerApiKey && data.developerKey) {
+        try {
+          const picked = await openGoogleDrivePdfPicker({
+            accessToken,
+            developerKey: data.developerKey,
+            appId: data.appId || undefined,
+            title: "Choose a PDF from your Google Drive",
+          });
+          if (!picked?.id) return;
+          await applyPickedDrivePdf(accessToken, picked);
+          return;
+        } catch (pickerErr) {
+          console.warn(
+            "Google Picker unavailable, using Drive file list:",
+            pickerErr
+          );
+        }
+      }
+
+      await openPersonalDriveBrowser(
+        accessToken,
+        signedIn.email || data.accountEmail || "your Google account"
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err.response?.data?.error ||
+          err.message ||
+          "Could not open Google Drive"
+      );
+    } finally {
+      setDrivePickerOpening(false);
+    }
+  };
+
+  const selectDriveFile = async (file) => {
+    if (!driveAccessToken) {
+      toast.error("Sign in to Google Drive again");
+      return;
+    }
+    try {
+      setDriveLoading(true);
+      await applyPickedDrivePdf(driveAccessToken, file);
+      setDrivePickerOpen(false);
+    } catch (err) {
+      toast.error(err.message || "Could not use that Drive file");
+    } finally {
+      setDriveLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -499,8 +562,9 @@ export default function Coursework() {
               isTeacherShell ? "tch-btn tch-btn--ghost" : "pm-mark-btn"
             } cw-file-upload-btn${pdfSource === "drive" && driveFile ? " is-active" : ""}`}
             onClick={openDrivePicker}
+            disabled={drivePickerOpening}
           >
-            From Google Drive
+            {drivePickerOpening ? "Opening Drive…" : "From Google Drive"}
           </button>
         </div>
 
@@ -510,7 +574,7 @@ export default function Coursework() {
               ? `Drive: ${driveFile.name}`
               : assignmentFile
                 ? `Selected: ${assignmentFile.name}`
-                : "Choose a PDF from your computer or Google Drive (up to 20 MB)"}
+                : "Choose a PDF from your computer, or sign in to Google Drive to pick one"}
           </span>
           {(assignmentFile || driveFile) && (
             <button
@@ -548,7 +612,7 @@ export default function Coursework() {
             aria-label="Choose PDF from Google Drive"
           >
             <div className="cw-drive-modal-header">
-              <h3>Google Drive PDFs</h3>
+              <h3>Your Google Drive</h3>
               <button
                 type="button"
                 className="cw-drive-modal-close"
@@ -558,21 +622,11 @@ export default function Coursework() {
               </button>
             </div>
 
-            <div className="cw-drive-paste-row">
-              <input
-                className={isTeacherShell ? "tch-input" : "pm-input"}
-                value={drivePaste}
-                onChange={(e) => setDrivePaste(e.target.value)}
-                placeholder="Or paste Drive link / file ID"
-              />
-              <button
-                type="button"
-                className={isTeacherShell ? "tch-btn tch-btn--primary" : "pm-mark-btn"}
-                onClick={applyDrivePaste}
-              >
-                Use link
-              </button>
-            </div>
+            <p className="cw-drive-modal-hint">
+              Signed in to Google
+              {driveAccountLabel ? ` (${driveAccountLabel})` : ""}. Pick a PDF
+              from your personal Drive.
+            </p>
 
             <div className="cw-drive-search-row">
               <input

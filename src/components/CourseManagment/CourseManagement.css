@@ -646,7 +646,7 @@ input:checked + .slider:before {
 }
 
 .tch-page .cw-file-upload-hint {
-  color: rgba(15, 23, 42, 0.65);
+  color: rgba(226, 232, 240, 0.92);
 }
 
 .cw-file-clear-btn {
@@ -691,6 +691,83 @@ input:checked + .slider:before {
   background: #fff;
   border-color: #e2e8f0;
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+  color: #0f172a;
+}
+
+.tch-page .cw-drive-modal-header h3 {
+  color: #0f172a;
+}
+
+.tch-page .cw-drive-modal-hint {
+  color: #475569;
+  opacity: 1;
+}
+
+.tch-page .cw-drive-modal-close {
+  color: #334155;
+  opacity: 0.85;
+}
+
+.tch-page .cw-drive-empty {
+  color: #64748b;
+  opacity: 1;
+}
+
+.tch-page .cw-drive-item {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.tch-page .cw-drive-item:hover,
+.tch-page .cw-drive-item.is-selected {
+  background: #eff6ff;
+  color: #0f172a;
+}
+
+.tch-page .cw-drive-item-name {
+  color: #0f172a;
+}
+
+.tch-page .cw-drive-item-meta {
+  color: #64748b;
+  opacity: 1;
+}
+
+.tch-page .cw-drive-search-row input,
+.tch-page .cw-drive-paste-row input {
+  color: #0f172a;
+  background: #fff;
+  border-color: #cbd5e1;
+}
+
+.tch-page .cw-drive-search-row input::placeholder,
+.tch-page .cw-drive-paste-row input::placeholder {
+  color: #94a3b8;
+}
+
+.tch-page .cw-drive-list {
+  border-color: #e2e8f0;
+  background: #fff;
+}
+
+.tch-page .cw-drive-modal .tch-btn,
+.tch-page .cw-drive-modal .tch-btn--ghost {
+  color: #0f172a;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.tch-page .cw-drive-modal .tch-btn:hover:not(:disabled),
+.tch-page .cw-drive-modal .tch-btn--ghost:hover:not(:disabled) {
+  color: #0f172a;
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.tch-page .cw-drive-modal .tch-input {
+  color: #0f172a;
+  background: #fff;
+  border-color: #cbd5e1;
 }
 
 .cw-drive-modal-header {
@@ -704,6 +781,13 @@ input:checked + .slider:before {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+}
+
+.cw-drive-modal-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.4;
 }
 
 .cw-drive-modal-close {
@@ -747,10 +831,6 @@ input:checked + .slider:before {
   padding: 8px;
 }
 
-.tch-page .cw-drive-list {
-  border-color: #e2e8f0;
-}
-
 .cw-drive-empty {
   margin: 24px 8px;
   text-align: center;
@@ -780,15 +860,6 @@ input:checked + .slider:before {
 .cw-drive-item.is-selected {
   border-color: rgba(56, 189, 248, 0.55);
   background: rgba(56, 189, 248, 0.15);
-}
-
-.tch-page .cw-drive-item {
-  background: #f8fafc;
-}
-
-.tch-page .cw-drive-item:hover,
-.tch-page .cw-drive-item.is-selected {
-  background: #eff6ff;
 }
 
 .cw-drive-item-name {
