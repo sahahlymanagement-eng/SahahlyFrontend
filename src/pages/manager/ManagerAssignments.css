@@ -592,6 +592,9 @@
   display: flex; align-items: center; gap: 5px;
   font-size: 12px; color: #38bdf8;
 }
+.ma-panel-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+}
 
 /* TABLE */
 .ma-table-wrap {
@@ -1160,6 +1163,20 @@ select.ma-search-input option {
   .ma-column,
   .ma-left-panel {
     max-height: 70vh;
+  }
+
+  /* Refresh grades / Select All / Clear All: let them wrap onto their own
+     row and shrink instead of overflowing past the panel header. */
+  .ma-panel-actions {
+    width: 100%;
+  }
+
+  .ma-panel-actions .ma-grades-refresh-btn,
+  .ma-panel-actions .ma-send-btn {
+    flex: 1 1 auto;
+    padding: 8px 12px;
+    font-size: 12px;
+    justify-content: center;
   }
 }
 /* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */

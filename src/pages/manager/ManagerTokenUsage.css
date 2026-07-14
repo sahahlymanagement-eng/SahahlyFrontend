@@ -426,3 +426,82 @@
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.45;
 }
+
+@media (max-width: 640px) {
+  .tu-main {
+    padding: 18px 14px 32px;
+  }
+
+  /* Classrooms / Assistants / Assignments / Reports tabs: wrap and shrink
+     instead of overflowing the viewport. */
+  .tu-tabs {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .tu-tab {
+    flex: 1 1 auto;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    text-align: center;
+  }
+
+  .tu-date-selects {
+    gap: 8px;
+  }
+
+  .tu-date-field {
+    min-width: 0;
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  /* Summary cards (tokens / cost USD / cost EGP / requests): wrap two per
+     row instead of forcing a min-width: 160px row wider than the screen. */
+  .tu-summary {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .tu-summary-card {
+    min-width: 0;
+    flex: 1 1 calc(50% - 5px);
+    padding: 14px 16px;
+  }
+
+  .tu-summary-card h3 {
+    font-size: 1.25rem;
+    overflow-wrap: anywhere;
+  }
+
+  .tu-request-panel-header {
+    flex-wrap: wrap;
+  }
+
+  .tu-click-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tu-click-row-main {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .tu-click-row-main span {
+    overflow-wrap: anywhere;
+  }
+
+  /* Tokens / cost (USD, EGP) line: let it wrap onto its own full-width row
+     instead of clipping past the card edge. */
+  .tu-click-row-meta {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .tu-click-row-meta .tu-num {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}

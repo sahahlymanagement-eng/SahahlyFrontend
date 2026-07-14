@@ -172,4 +172,16 @@
   .fb-table.sah-table--cards td.fb-comment {
     max-width: none;
   }
+
+  /* Summary cards size to content on desktop, which reads fine wrapped
+     freely; on phones that leaves mismatched widths and a ragged 2nd row.
+     Force a consistent 2-up grid instead. */
+  .fb-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fb-summary-card {
+    min-width: 0;
+  }
 }

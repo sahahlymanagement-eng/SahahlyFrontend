@@ -494,6 +494,8 @@
 .msv-spin { animation: msv-spin 0.8s linear infinite; }
 @keyframes msv-spin { to { transform: rotate(360deg); } }
 
+.msv-review-warn-short { display: none; }
+
 /* ── DELETE CORRECTION BUTTON ── */
 .msv-action-btn--delete {
   background: rgba(239,68,68,0.12);
@@ -1432,5 +1434,43 @@
     gap: 4px;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  /* Informational blocks (token usage / cost / pdf-compression notes) are
+     plain <div>s dropped into the same grid as the action buttons — without
+     this they inherit the 88px button column and the cost/priority-pricing
+     text clips instead of wrapping. Let them span the full row. */
+  .ma-table--cards td:has(.msv-actions) .msv-actions > div {
+    grid-column: 1 / -1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Search + refresh: let them wrap instead of overflowing the panel header,
+     and shrink the search box so the refresh button always has room. */
+  .msv-panel-controls {
+    flex-wrap: wrap;
+  }
+
+  .msv-student-search {
+    width: 140px;
+  }
+
+  /* Refresh: icon only, no label. */
+  .msv-refresh-btn-label {
+    display: none;
+  }
+
+  .msv-refresh-btn {
+    padding: 6px 8px;
+  }
+
+  /* "Review Submission" → "Review" + icon only. */
+  .msv-review-warn-full {
+    display: none;
+  }
+
+  .msv-review-warn-short {
+    display: inline;
   }
 }

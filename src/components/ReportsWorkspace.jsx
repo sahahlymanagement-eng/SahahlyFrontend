@@ -990,7 +990,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                     <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                     <span className="ma-panel-count">{studentTotal ?? students.length} students</span>
                   </div>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <div className="ma-panel-actions">
                   <ReportGradesRefreshButton
                     onClick={refreshGrades}
                     loading={refreshingGrades}
