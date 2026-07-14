@@ -88,6 +88,8 @@ const NAV_SECTIONS = [
 
     items: [
 
+      { icon: <FiBarChart2 />, label: "Insights", path: "/director/insights" },
+
       { icon: <FiClipboard />, label: "Reports", path: "/director/reports" },
 
       { icon: <FiBarChart2 />, label: "Manager Workload", path: "/director/manager-workload" },

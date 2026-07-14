@@ -133,16 +133,32 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
 
   const isDirectorScope = scope === "director";
-  const dashboardPath = isDirectorScope ? "/director/dashboard" : "/manager/dashboard";
+  const isTeacherScope = scope === "teacher";
+  const showMarkingTools = !isTeacherScope;
+  const dashboardPath = isDirectorScope
+    ? "/director/dashboard"
+    : isTeacherScope
+      ? "/teacher/dashboard"
+      : "/manager/dashboard";
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [allTeachers, setAllTeachers] = useState([]);
 
   const classroomParams = useMemo(() => {
     const params = { search: classroomSearch };
-    if (!isDirectorScope) params.personId = user?.id;
-    if (teacherFilter !== "all") params.teacherId = teacherFilter;
+    if (!isDirectorScope && !isTeacherScope) params.personId = user?.id;
+    if (!isTeacherScope && teacherFilter !== "all") {
+      params.teacherId = teacherFilter;
+    }
     return params;
-  }, [user?.id, classroomSearch, isDirectorScope, teacherFilter]);
+  }, [user?.id, classroomSearch, isDirectorScope, isTeacherScope, teacherFilter]);
+
+  const classroomsUrl = isDirectorScope
+    ? "/google-classroom/courses"
+    : isTeacherScope
+      ? user?.id
+        ? `/google-classroom/teacher-courses/${user.id}`
+        : "/google-classroom/teacher-courses/_"
+      : "/students/my-classrooms";
 
   const {
     data: classrooms,
@@ -151,7 +167,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     fetchPage: fetchClassroomPage,
     loading: loadingClassrooms,
   } = usePagination(
-    isDirectorScope ? "/google-classroom/courses" : "/students/my-classrooms",
+    classroomsUrl,
     classroomParams,
     isDirectorScope ? 50 : 20,
     "data",
@@ -859,6 +875,7 @@ useEffect(() => {
   }, [navigate]);
 
   useEffect(() => {
+    if (isTeacherScope) return;
     if (isDirectorScope) {
       api
         .get("/people/teachers")
@@ -871,7 +888,7 @@ useEffect(() => {
       .get("/google-classroom/filter-teachers", { params: { personId: user.id } })
       .then((r) => setAllTeachers(r.data || []))
       .catch(() => {});
-  }, [isDirectorScope, user?.id]);
+  }, [isDirectorScope, isTeacherScope, user?.id]);
 
   useEffect(() => {
     if (teacherFilter === "all" || !selectedClassroom) return;
@@ -3160,7 +3177,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         <header className="ma-topbar">
           <div className="ma-topbar-left">
             <h1 className="ma-topbar-title">
-              {isDirectorScope ? "All Classrooms Submission Viewer" : "Submission Viewer"}
+              {isDirectorScope
+                ? "All Classrooms Submission Viewer"
+                : isTeacherScope
+                  ? "My Classrooms Submission Viewer"
+                  : "Submission Viewer"}
             </h1>
             <span className="ma-topbar-sub">
               {selectedClassroom
@@ -3169,11 +3190,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   : `Select assignment from ${selectedClassroom.name}`
                 : isDirectorScope
                   ? "Browse submissions across all classrooms"
-                  : `Welcome back, ${user.name}`}
+                  : isTeacherScope
+                    ? "Browse submissions for your classrooms"
+                    : `Welcome back, ${user.name}`}
             </span>
           </div>
           <div className="ma-topbar-right">
-            {selectedAssignment && (
+            {selectedAssignment && showMarkingTools && (
               <button
                 type="button"
                 onClick={handleExportGradesExcel}
@@ -3198,7 +3221,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               <div className="ma-column">
                 <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
                 <input className="ma-search-input" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
-                {(isDirectorScope || teacherOptions.length > 0) && (
+                {!isTeacherScope && (isDirectorScope || teacherOptions.length > 0) && (
                   <ReportTeacherFilterSelect
                     show
                     value={teacherFilter}
@@ -3293,6 +3316,26 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             {selectedAssignment && (
             <div className="ma-right-panel msv-right-panel-full">
                 <div className="ma-panel">
+                  {isTeacherScope ? (
+                  <div className="msv-ms-bar">
+                    <div className="msv-ms-info">
+                      <div className="msv-ms-title">📋 Student submissions</div>
+                      <div className="msv-ms-status msv-ms-status--ok">
+                        View results and return graded papers to students
+                      </div>
+                    </div>
+                    {!bulkMarking && (
+                      <button
+                        className="msv-btn-ai"
+                        onClick={handleReturnAll}
+                        disabled={returning}
+                        style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
+                      >
+                        {returning ? "Returning…" : "Return All"}
+                      </button>
+                    )}
+                  </div>
+                  ) : (
                   <div className="msv-ms-bar">
                     <div className="msv-ms-info">
                       <div className="msv-ms-title">📋 Mark Scheme</div>
@@ -3536,8 +3579,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                                 </div> )}
                                           </div>
+                  )}
 
                   {/* Expected Pages */}
+                  {showMarkingTools && (
                   <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>📄 Expected Pages:</span>
                     {!showExpectedPagesEdit ? (
@@ -3581,6 +3626,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       </>
                     )}
                   </div>
+                  )}
 
                   <div className="ma-panel-header">
                     <div className="ma-panel-title-wrap">
@@ -3608,6 +3654,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
                   </div>
 
+                  {showMarkingTools && (
                   <MarkingSelectionBar
                     selectedCount={markingSelection.selectedCount}
                     pageSelectableCount={pageSelectableIds.length}
@@ -3617,6 +3664,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     onClear={markingSelection.clear}
                     selectingAll={selectingMarkingAll}
                   />
+                  )}
 
                   {loadingStudents && <p className="ma-loading-msg">Loading students…</p>}
                   {!loadingStudents && students.length === 0 && (
@@ -3637,7 +3685,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <table className="ma-table ma-table--cards">
                           <thead>
                             <tr>
-                              <th style={{ width: 44 }} aria-label="Select for marking" />
+                              {showMarkingTools && (
+                                <th style={{ width: 44 }} aria-label="Select for marking" />
+                              )}
                               <th>Name</th>
                               <th>Status</th>
                               <th>Submitted At</th>
@@ -3697,6 +3747,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                               return (
                                 <tr key={s._id || s.submissionId} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
+                                  {showMarkingTools && (
                                   <td>
                                     {s.submissionId ? (
                                       <button
@@ -3709,6 +3760,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       </button>
                                     ) : null}
                                   </td>
+                                  )}
                                   <td>
                                     <div className="ma-avatar-cell">
                                       <div className="ma-avatar">{(s.name || "?").charAt(0).toUpperCase()}</div>
@@ -3809,11 +3861,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           </button>
                                         )}
                                         
-                                        {msInfo && (
-                                         <>
-                                        
-                                        {/* Results button — show if any source has results */}
-                                        {(bulkDone || batchDone ||single?.status === "done" || db?.result) && (
+                                        {/* Results — teachers and managers when any source has marks */}
+                                        {(bulkDone || batchDone || single?.status === "done" || db?.result) && (
                                           <button
                                             className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
                                             title="View Results"
@@ -3864,7 +3913,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           </button>
                                         )}
 
-                                        {/* Mark button — always shown */}
+                                        {showMarkingTools && msInfo && (
+                                         <>
+                                        {/* Mark button — always shown when MS ready */}
                                         <button
                                           className={`msv-action-btn msv-action-btn--ai ${markingError ? "msv-action-btn--error" : ""}`}
                                           title="Mark with AI"
@@ -3914,10 +3965,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                             {aiReviewing ? "Reviewing…" : "AI Review"}
                                           </button>
                                         )}
-
-                                          {/* {bulkRetrying && (
-                                            <button onClick={stopBulkMark}>Stop</button>
-                                          )} */}
 
                                         {db?.result && (
                                           <button
@@ -4465,24 +4512,26 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="msv-btn-ai"
-                  onClick={() => setAnnotationsPanelOpen((open) => !open)}
-                  style={{
-                    fontSize: 12,
-                    background: annotationsPanelOpen
-                      ? "rgba(99,102,241,0.28)"
-                      : "rgba(99,102,241,0.12)",
-                    borderColor: "rgba(99,102,241,0.45)",
-                    color: "#c7d2fe",
-                  }}
-                  title="Add extra notes on the marked PDF preview"
-                >
-                  📝 Annotate
-                  {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
-                </button>
-                {hasPendingEdits && (
+                {showMarkingTools && (
+                  <button
+                    type="button"
+                    className="msv-btn-ai"
+                    onClick={() => setAnnotationsPanelOpen((open) => !open)}
+                    style={{
+                      fontSize: 12,
+                      background: annotationsPanelOpen
+                        ? "rgba(99,102,241,0.28)"
+                        : "rgba(99,102,241,0.12)",
+                      borderColor: "rgba(99,102,241,0.45)",
+                      color: "#c7d2fe",
+                    }}
+                    title="Add extra notes on the marked PDF preview"
+                  >
+                    📝 Annotate
+                    {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
+                  </button>
+                )}
+                {showMarkingTools && hasPendingEdits && (
                   <button
                     className="msv-btn-ai"
                     onClick={handleConfirmEdits}
@@ -4493,10 +4542,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     {confirmingEdits ? "Confirming…" : "Confirm Edits"}
                   </button>
                 )}
-                <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
+                <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || (showMarkingTools && hasPendingEdits)} style={{ fontSize: 12 }} title={showMarkingTools && hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
                 </button>
-                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : undefined}>
+                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || (showMarkingTools && hasPendingEdits)} title={showMarkingTools && hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
                 </button>
                 <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>

@@ -35,6 +35,8 @@ export function useReportTeacherFilter({
   userId,
   classroomSearch,
   loadGlobalTeachers = false,
+  /** Director sees all classrooms — do not scope by manager personId */
+  omitPersonId = false,
 }) {
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [allTeachers, setAllTeachers] = useState([]);
@@ -60,10 +62,11 @@ export function useReportTeacherFilter({
 
   const classroomParams = useMemo(() => {
     if (isTeacher) return { search: classroomSearch };
-    const params = { personId: userId, search: classroomSearch };
+    const params = { search: classroomSearch };
+    if (!omitPersonId && userId) params.personId = userId;
     if (teacherFilter !== "all") params.teacherId = teacherFilter;
     return params;
-  }, [isTeacher, userId, classroomSearch, teacherFilter]);
+  }, [isTeacher, omitPersonId, userId, classroomSearch, teacherFilter]);
 
   return {
     teacherFilter,

@@ -39,6 +39,7 @@ import {
 export default function ReportsWorkspace({ variant = "manager" }) {
   const isTeacher = variant === "teacher";
   const isAssistant = variant === "assistant";
+  const isDirector = variant === "director";
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
@@ -68,20 +69,30 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     isTeacher,
     userId: user?.id,
     classroomSearch,
+    loadGlobalTeachers: isDirector,
+    omitPersonId: isDirector,
   });
 
   const classroomsUrl = isTeacher
     ? user?.id
       ? `/google-classroom/teacher-courses/${user.id}`
       : "/google-classroom/teacher-courses/_"
-    : "/students/my-classrooms";
+    : isDirector
+      ? "/google-classroom/courses"
+      : "/students/my-classrooms";
 
   const {
     data: classrooms,
     page: classroomPage,
     totalPages: classroomTotalPages,
     fetchPage: fetchClassroomPage,
-  } = usePagination(classroomsUrl, classroomParams, 20, "data", !!user?.id);
+  } = usePagination(
+    classroomsUrl,
+    classroomParams,
+    isDirector ? 50 : 20,
+    "data",
+    isDirector ? true : !!user?.id
+  );
 
   const teacherOptions = useReportTeacherOptions(isTeacher, allTeachers, classrooms);
 
@@ -161,12 +172,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         navigate("/login", { replace: true });
         return;
       }
+    } else if (isDirector) {
+      if (role !== "admin" && role !== "director") {
+        navigate("/login", { replace: true });
+        return;
+      }
     } else if (role !== "manager" && role !== "quality manager") {
       navigate("/login", { replace: true });
       return;
     }
     setUser(parsed);
-  }, [navigate, isTeacher, isAssistant]);
+  }, [navigate, isTeacher, isAssistant, isDirector]);
 
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
@@ -829,7 +845,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
-  const pageTitle = isTeacher || isAssistant ? "Reports" : "Assignments";
+  const pageTitle =
+    isTeacher || isAssistant || isDirector ? "Reports" : "Assignments";
 
   if (!user) return null;
 

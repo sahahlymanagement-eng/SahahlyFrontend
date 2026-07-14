@@ -47,6 +47,7 @@ import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
 import DirectorFeedback from "./pages/director/DirectorFeedback";
 import DirectorReports from "./pages/director/DirectorReports";
+import DirectorAssignments from "./pages/director/DirectorAssignments";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
 import ManagerFeedback from "./pages/manager/ManagerFeedback";
@@ -168,6 +169,7 @@ function App() {
         }>
           <Route path="dashboard" element={<TeacherDashboard />} />
           <Route path="courses" element={<TeacherCourses />} />
+          <Route path="submissions" element={<ManagerSubmissionViewer scope="teacher" />} />
           <Route path="reports" element={<TeacherReports />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
@@ -272,7 +274,12 @@ function App() {
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
-          <Route path="reports" element={<DirectorReports />} />
+          <Route path="insights" element={<DirectorReports />} />
+          <Route path="reports" element={<DirectorAssignments />} />
+          <Route
+            path="org-reports"
+            element={<Navigate to="/director/insights" replace />}
+          />
           <Route path="manage-teachers" element={<TeacherManager />} />
           <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />

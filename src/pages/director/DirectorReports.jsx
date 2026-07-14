@@ -219,7 +219,7 @@ export default function DirectorReports() {
             <FiClipboard />
           </div>
           <div>
-            <h2>Reports</h2>
+            <h2>Insights</h2>
             <p>
               Organization-wide academic, attendance, pipeline, and report
               delivery insights

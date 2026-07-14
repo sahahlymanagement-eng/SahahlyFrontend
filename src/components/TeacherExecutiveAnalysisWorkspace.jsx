@@ -37,6 +37,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   onNavigate,
 }) {
   const isTeacher = variant === "teacher";
+  const isDirector = variant === "director";
   const [user, setUser] = useState(null);
   const [selectedClassroom, setSelectedClassroom] = useState(null);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
@@ -65,20 +66,30 @@ export default function TeacherExecutiveAnalysisWorkspace({
     isTeacher,
     userId: user?.id,
     classroomSearch,
+    loadGlobalTeachers: isDirector,
+    omitPersonId: isDirector,
   });
 
   const classroomsUrl = isTeacher
     ? user?.id
       ? `/google-classroom/teacher-courses/${user.id}`
       : "/google-classroom/teacher-courses/_"
-    : "/students/my-classrooms";
+    : isDirector
+      ? "/google-classroom/courses"
+      : "/students/my-classrooms";
 
   const {
     data: classrooms,
     page: classroomPage,
     totalPages: classroomTotalPages,
     fetchPage: fetchClassroomPage,
-  } = usePagination(classroomsUrl, classroomParams, 20, "data", !!user?.id);
+  } = usePagination(
+    classroomsUrl,
+    classroomParams,
+    isDirector ? 50 : 20,
+    "data",
+    isDirector ? true : !!user?.id
+  );
 
   const teacherOptions = useReportTeacherOptions(isTeacher, allTeachers, classrooms);
 
