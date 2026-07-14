@@ -22,6 +22,8 @@ import {
 
   FiMessageSquare,
 
+  FiClipboard,
+
 } from "react-icons/fi";
 
 import RoleSidebar from "../../components/RoleSidebar";
@@ -85,6 +87,8 @@ const NAV_SECTIONS = [
     label: "Insights",
 
     items: [
+
+      { icon: <FiClipboard />, label: "Reports", path: "/director/reports" },
 
       { icon: <FiBarChart2 />, label: "Manager Workload", path: "/director/manager-workload" },
 

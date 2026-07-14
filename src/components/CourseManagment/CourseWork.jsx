@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -7,7 +7,23 @@ import "./CourseManagement.css";
 import "../../pages/teacher/teacher.css";
 import { TeacherPageHeader, TeacherLoading } from "../../pages/teacher/TeacherUI";
 import { isPdfFile } from "../../utils/isPdfFile";
+import {
+  requestGoogleDriveAccessToken,
+  openGoogleDrivePdfPicker,
+  listPersonalDrivePdfs,
+  downloadDrivePdfAsFile,
+} from "../../utils/googleDrivePicker";
 
+function formatDriveModified(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 function googleDueToFormFields(dueDate, dueTime) {
   if (!dueDate?.year) {
     return { dueDate: "", dueTime: "" };
@@ -100,6 +116,16 @@ export default function Coursework() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEditMode);
   const [assignmentFile, setAssignmentFile] = useState(null);
+  const [pdfSource, setPdfSource] = useState("computer"); // computer | drive
+  const [driveFile, setDriveFile] = useState(null); // { id, name, webViewLink }
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [driveSearch, setDriveSearch] = useState("");
+  const [driveFiles, setDriveFiles] = useState([]);
+  const [driveNextPage, setDriveNextPage] = useState(null);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [drivePickerOpening, setDrivePickerOpening] = useState(false);
+  const [driveAccessToken, setDriveAccessToken] = useState(null);
+  const [driveAccountLabel, setDriveAccountLabel] = useState("");
   const [existingWebLink, setExistingWebLink] = useState("");
   const fileInputRef = useRef(null);
 
@@ -162,13 +188,14 @@ export default function Coursework() {
       reader.readAsDataURL(file);
     });
 
-  const buildCourseworkFormData = async (payload, file) => {
+  const buildCourseworkFormData = async (payload, file, driveSelected = null) => {
     const formData = new FormData();
     formData.append("courseId", courseId);
     formData.append("courseworkData", JSON.stringify(payload));
+    // Prefer local/downloaded PDF bytes (personal Drive after Google sign-in).
+    // Only use Drive file id when no file bytes are available.
     if (file) {
       formData.append("assignmentFile", file, file.name || "worksheet.pdf");
-      // Base64 backup — some proxies drop the multipart file part but keep text fields.
       try {
         const b64 = await fileToBase64(file);
         formData.append("assignmentFileBase64", b64);
@@ -176,6 +203,8 @@ export default function Coursework() {
       } catch (e) {
         console.warn("Could not attach base64 PDF backup:", e);
       }
+    } else if (driveSelected?.id) {
+      formData.append("assignmentDriveFileId", driveSelected.id);
     }
     return formData;
   };
@@ -199,10 +228,156 @@ export default function Coursework() {
       return;
     }
     setAssignmentFile(file);
+    setDriveFile(null);
+    setPdfSource("computer");
   };
 
   const openFilePicker = () => {
+    setPdfSource("computer");
     fileInputRef.current?.click();
+  };
+
+  const clearWorksheet = () => {
+    setAssignmentFile(null);
+    setDriveFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const loadDrivePdfs = useCallback(
+    async ({
+      append = false,
+      pageToken = null,
+      search = driveSearch,
+      accessToken = driveAccessToken,
+    } = {}) => {
+      if (!accessToken) {
+        toast.error("Sign in to Google Drive first");
+        return;
+      }
+      setDriveLoading(true);
+      try {
+        const { files, nextPageToken } = await listPersonalDrivePdfs(
+          accessToken,
+          {
+            q: search || "",
+            pageToken: pageToken || null,
+          }
+        );
+        setDriveFiles((prev) => (append ? [...prev, ...files] : files));
+        setDriveNextPage(nextPageToken || null);
+      } catch (err) {
+        toast.error(err.message || "Failed to load Drive PDFs");
+        if (!append) setDriveFiles([]);
+        setDriveNextPage(null);
+      } finally {
+        setDriveLoading(false);
+      }
+    },
+    [driveAccessToken, driveSearch]
+  );
+
+  const applyPickedDrivePdf = async (accessToken, picked) => {
+    if (!picked?.id) return;
+    const file = await downloadDrivePdfAsFile(accessToken, picked);
+    setAssignmentFile(file);
+    setDriveFile({
+      id: picked.id,
+      name: picked.name || file.name,
+      webViewLink: picked.url || picked.webViewLink || null,
+      fromPersonalDrive: true,
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setPdfSource("drive");
+    toast.success(`Selected: ${picked.name || file.name}`);
+  };
+
+  const openPersonalDriveBrowser = async (accessToken, accountLabel = "") => {
+    setDriveAccessToken(accessToken);
+    setDriveAccountLabel(accountLabel || "");
+    setPdfSource("drive");
+    setDrivePickerOpen(true);
+    setDriveSearch("");
+    setDriveFiles([]);
+    setDriveNextPage(null);
+    await loadDrivePdfs({
+      append: false,
+      search: "",
+      accessToken,
+    });
+  };
+
+  const openDrivePicker = async () => {
+    if (!courseId) {
+      toast.warn("Course is required");
+      return;
+    }
+    setPdfSource("drive");
+    setDrivePickerOpening(true);
+    try {
+      const { data } = await api.get("/google-classroom/drive-picker-config", {
+        params: { courseId },
+      });
+
+      // Google account picker via backend OAuth popup (works without JS origins).
+      const signedIn = await requestGoogleDriveAccessToken({
+        hintEmail: data.accountEmail || undefined,
+      });
+      const accessToken = signedIn.accessToken;
+
+      setDriveAccessToken(accessToken);
+      setDriveAccountLabel(
+        signedIn.email || data.accountEmail || "Google Drive"
+      );
+
+      if (data.hasPickerApiKey && data.developerKey) {
+        try {
+          const picked = await openGoogleDrivePdfPicker({
+            accessToken,
+            developerKey: data.developerKey,
+            appId: data.appId || undefined,
+            title: "Choose a PDF from your Google Drive",
+          });
+          if (!picked?.id) return;
+          await applyPickedDrivePdf(accessToken, picked);
+          return;
+        } catch (pickerErr) {
+          console.warn(
+            "Google Picker unavailable, using Drive file list:",
+            pickerErr
+          );
+        }
+      }
+
+      await openPersonalDriveBrowser(
+        accessToken,
+        signedIn.email || data.accountEmail || "your Google account"
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err.response?.data?.error ||
+          err.message ||
+          "Could not open Google Drive"
+      );
+    } finally {
+      setDrivePickerOpening(false);
+    }
+  };
+
+  const selectDriveFile = async (file) => {
+    if (!driveAccessToken) {
+      toast.error("Sign in to Google Drive again");
+      return;
+    }
+    try {
+      setDriveLoading(true);
+      await applyPickedDrivePdf(driveAccessToken, file);
+      setDrivePickerOpen(false);
+    } catch (err) {
+      toast.error(err.message || "Could not use that Drive file");
+    } finally {
+      setDriveLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -229,7 +404,11 @@ export default function Coursework() {
 
     try {
       if (isEditMode) {
-        const formData = await buildCourseworkFormData(courseworkData, assignmentFile);
+        const formData = await buildCourseworkFormData(
+          courseworkData,
+          assignmentFile,
+          driveFile
+        );
 
         const res = await api.patch(
           `/google-classroom/coursework/${courseWorkId}`,
@@ -248,11 +427,15 @@ export default function Coursework() {
           state: { courseName: state?.courseName },
         });
       } else {
-        const formData = await buildCourseworkFormData(courseworkData, assignmentFile);
+        const formData = await buildCourseworkFormData(
+          courseworkData,
+          assignmentFile,
+          driveFile
+        );
 
         const res = await api.post("/google-classroom/coursework", formData);
 
-        if (assignmentFile) {
+        if (assignmentFile || driveFile) {
           if (!res.data?.assignmentFileId && !res.data?.assignmentWebLink) {
             toast.error(
               "Assignment created, but the PDF never reached Google. Check VPS logs for [coursework create] and try again."
@@ -280,6 +463,8 @@ export default function Coursework() {
         setNewTopicName("");
         setIsUngraded(false);
         setAssignmentFile(null);
+        setDriveFile(null);
+        setPdfSource("computer");
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     } catch (err) {
@@ -361,19 +546,45 @@ export default function Coursework() {
           onChange={handleFileChange}
         />
 
-        <div className="cw-file-upload-row">
+        <div className="cw-file-source-row">
           <button
             type="button"
-            className={isTeacherShell ? "tch-btn tch-btn--ghost cw-file-upload-btn" : "pm-mark-btn cw-file-upload-btn"}
+            className={`${
+              isTeacherShell ? "tch-btn tch-btn--ghost" : "pm-mark-btn"
+            } cw-file-upload-btn${pdfSource === "computer" && assignmentFile ? " is-active" : ""}`}
             onClick={openFilePicker}
           >
-            Choose PDF
+            From computer
           </button>
+          <button
+            type="button"
+            className={`${
+              isTeacherShell ? "tch-btn tch-btn--ghost" : "pm-mark-btn"
+            } cw-file-upload-btn${pdfSource === "drive" && driveFile ? " is-active" : ""}`}
+            onClick={openDrivePicker}
+            disabled={drivePickerOpening}
+          >
+            {drivePickerOpening ? "Opening Drive…" : "From Google Drive"}
+          </button>
+        </div>
+
+        <div className="cw-file-upload-row">
           <span className="cw-file-upload-hint">
-            {assignmentFile
-              ? `Selected: ${assignmentFile.name}`
-              : "PDF up to 20 MB"}
+            {driveFile
+              ? `Drive: ${driveFile.name}`
+              : assignmentFile
+                ? `Selected: ${assignmentFile.name}`
+                : "Choose a PDF from your computer, or sign in to Google Drive to pick one"}
           </span>
+          {(assignmentFile || driveFile) && (
+            <button
+              type="button"
+              className="cw-file-clear-btn"
+              onClick={clearWorksheet}
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         {isEditMode && !existingWebLink && (
@@ -386,6 +597,103 @@ export default function Coursework() {
           </span>
         )}
       </div>
+
+      {drivePickerOpen && (
+        <div
+          className="cw-drive-modal-backdrop"
+          onClick={() => setDrivePickerOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="cw-drive-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose PDF from Google Drive"
+          >
+            <div className="cw-drive-modal-header">
+              <h3>Your Google Drive</h3>
+              <button
+                type="button"
+                className="cw-drive-modal-close"
+                onClick={() => setDrivePickerOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="cw-drive-modal-hint">
+              Signed in to Google
+              {driveAccountLabel ? ` (${driveAccountLabel})` : ""}. Pick a PDF
+              from your personal Drive.
+            </p>
+
+            <div className="cw-drive-search-row">
+              <input
+                className={isTeacherShell ? "tch-input" : "pm-input"}
+                value={driveSearch}
+                onChange={(e) => setDriveSearch(e.target.value)}
+                placeholder="Search PDFs…"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    loadDrivePdfs({ search: driveSearch });
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className={isTeacherShell ? "tch-btn tch-btn--ghost" : "pm-mark-btn"}
+                onClick={() => loadDrivePdfs({ search: driveSearch })}
+                disabled={driveLoading}
+              >
+                Search
+              </button>
+            </div>
+
+            <div className="cw-drive-list">
+              {driveLoading && driveFiles.length === 0 ? (
+                <p className="cw-drive-empty">Loading PDFs…</p>
+              ) : driveFiles.length === 0 ? (
+                <p className="cw-drive-empty">No PDFs found in Drive</p>
+              ) : (
+                driveFiles.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`cw-drive-item${driveFile?.id === f.id ? " is-selected" : ""}`}
+                    onClick={() => selectDriveFile(f)}
+                  >
+                    <span className="cw-drive-item-name">{f.name}</span>
+                    <span className="cw-drive-item-meta">
+                      {formatDriveModified(f.modifiedTime)}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {driveNextPage && (
+              <button
+                type="button"
+                className={`${
+                  isTeacherShell ? "tch-btn tch-btn--ghost" : "pm-mark-btn"
+                } cw-drive-load-more`}
+                onClick={() =>
+                  loadDrivePdfs({
+                    append: true,
+                    pageToken: driveNextPage,
+                    search: driveSearch,
+                  })
+                }
+                disabled={driveLoading}
+              >
+                {driveLoading ? "Loading…" : "Load more"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {isTeacherShell ? <div className="tch-form-section-title">Grading & schedule</div> : null}
 

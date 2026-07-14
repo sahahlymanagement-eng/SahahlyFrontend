@@ -14,7 +14,6 @@ import Pagination from "./Pagination";
 import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
 import MarksLostBreakdownPreview from "./MarksLostBreakdownPreview";
 import StudentWatchlistsPreview from "./StudentWatchlistsPreview";
-import ReportDecisionGuide from "./ReportDecisionGuide";
 import ReportPdfPreview from "./ReportPdfPreview";
 import GradeDistributionPreview from "./GradeDistributionPreview";
 import TopicMasteryPreview from "./TopicMasteryPreview";
@@ -451,8 +450,6 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   title="Executive report PDF"
                   frameClassName="mpr-pdf-preview-frame--tall"
                 />
-
-                <ReportDecisionGuide guide={report.decisionGuide} />
 
                 {report.executiveSummary?.length > 0 && (
                   <div className="tea-block">
