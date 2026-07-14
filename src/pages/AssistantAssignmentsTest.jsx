@@ -144,6 +144,7 @@ export default function AssistantAssignmentsTest() {
 
                 {a.qualityFeedback.items?.length > 0 && (
                   <table
+                    className="sah-table--cards"
                     border="1"
                     cellPadding="6"
                     style={{
@@ -164,10 +165,10 @@ export default function AssistantAssignmentsTest() {
                       {a.qualityFeedback.items.map(
                         (item, index) => (
                           <tr key={index}>
-                            <td>{item.title}</td>
-                            <td>{item.fullScore}</td>
-                            <td>{item.selected}</td>
-                            <td>{item.awardedScore}</td>
+                            <td data-label="Item">{item.title}</td>
+                            <td data-label="Full Score">{item.fullScore}</td>
+                            <td data-label="Selected">{item.selected}</td>
+                            <td data-label="Awarded">{item.awardedScore}</td>
                           </tr>
                         )
                       )}

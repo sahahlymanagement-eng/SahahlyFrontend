@@ -1590,7 +1590,7 @@ export default function MonthlyParentReportWorkspace({
 
                     </div>
 
-                    <table className="mpr-trend-table">
+                    <table className="mpr-trend-table sah-table--cards">
 
                       <thead>
 
@@ -1612,11 +1612,11 @@ export default function MonthlyParentReportWorkspace({
 
                           <tr key={`${row.label}-${row.score}`}>
 
-                            <td>{row.label}</td>
+                            <td data-label="Assignment">{row.label}</td>
 
-                            <td>{row.scoreDisplay || `${row.score}%`}</td>
+                            <td data-label="Score">{row.scoreDisplay || `${row.score}%`}</td>
 
-                            <td>{row.classAverage != null ? `${row.classAverage}%` : "—"}</td>
+                            <td data-label="Class avg">{row.classAverage != null ? `${row.classAverage}%` : "—"}</td>
 
                           </tr>
 

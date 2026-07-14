@@ -828,9 +828,9 @@ export default function Coursework() {
     <div className="pm-page">
       <div className="pm-shell">
         <header className="pm-header">
-          <h2>{isEditMode ? "Edit Coursework" : "Create Coursework"}</h2>
+          <h1>{isEditMode ? "Edit Coursework" : "Create Coursework"}</h1>
 
-          <div className="pm-header-right">
+          <div className="pm-header-actions">
             {state?.courseName && (
               <div className="pm-powered-by">{state.courseName}</div>
             )}

@@ -185,7 +185,7 @@ export default function QualityTeamAssignmentsTest() {
           {/* NORMAL REVIEW */}
           {selected.assignmentId.status !== "EMERGENCY" && (
             <>
-              <table border="1" width="100%">
+              <table className="sah-table--cards" border="1" width="100%">
                 <thead>
                   <tr>
                     <th>Item</th>
@@ -197,22 +197,22 @@ export default function QualityTeamAssignmentsTest() {
                 <tbody>
                   {checklistItems.map((item) => (
                     <tr key={item._id}>
-                      <td>{item.title}</td>
-                      <td>
+                      <td data-label="Item">{item.title}</td>
+                      <td data-label="Zero">
                         <input
                           type="radio"
                           name={item._id}
                           onChange={() => selectScore(item, "zero")}
                         />
                       </td>
-                      <td>
+                      <td data-label="Partial">
                         <input
                           type="radio"
                           name={item._id}
                           onChange={() => selectScore(item, "partial")}
                         />
                       </td>
-                      <td>
+                      <td data-label="Full">
                         <input
                           type="radio"
                           name={item._id}

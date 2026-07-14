@@ -311,7 +311,7 @@ export default function ViewCoursework() {
       <div className="pm-shell">
 
         <header className="pm-header">
-          <h2>Coursework</h2>
+          <h1>Coursework</h1>
           <div className="pm-header-actions">
             {state?.courseName && <div className="pm-powered-by">{state.courseName}</div>}
             <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>

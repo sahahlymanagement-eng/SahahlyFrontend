@@ -106,7 +106,10 @@ export default function DirectorQualityManagers() {
       <h2 className="dm-title">Assign Quality Managers to Classrooms</h2>
 
       <div className="dm-table-box">
-        <table className="dm-table">
+        {/* Scroller sits inside the rounded box: .dm-table-box uses
+            overflow:hidden to clip its radius and can't also scroll. */}
+        <div className="sah-table-scroll">
+        <table className="dm-table sah-table--cards">
           <thead>
             <tr>
               <th>Classroom</th>
@@ -121,11 +124,11 @@ export default function DirectorQualityManagers() {
               const alreadyAssigned = hasManager(room._id);
               return (
                 <tr key={room._id}>
-                  <td>{room.name}{room.section && ` (${room.section})`}</td>
-                  <td>{room.teacherName || room.teacherId?.name || "-"}</td>
-                  <td className="dm-current">{managerName(room._id)}</td>
+                  <td data-label="Classroom">{room.name}{room.section && ` (${room.section})`}</td>
+                  <td data-label="Teacher">{room.teacherName || room.teacherId?.name || "-"}</td>
+                  <td className="dm-current" data-label="Current QM">{managerName(room._id)}</td>
 
-                  <td>
+                  <td data-label="Assign to">
                     <select
                       className="dm-select"
                       value={selectedManagers[room._id] || ""}
@@ -173,6 +176,7 @@ export default function DirectorQualityManagers() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={totalPages} onPageChange={fetchClassroomsPage} />

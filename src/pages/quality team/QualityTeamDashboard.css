@@ -657,3 +657,37 @@ transform:translateY(-1px);
     align-items: stretch;
   }
 }
+
+/* Two stat cards side by side get cramped on a narrow phone. */
+@media (max-width: 480px) {
+  .qt-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Mobile: card-mode adjustments (tables → cards via .sah-table--cards) ─── */
+@media (max-width: 640px) {
+  /* Zero/Partial/Full is a rating scale, not three unrelated fields — keep the
+     options side by side so the card reads as one choice, not three lines. */
+  .qt-checklist-table.sah-table--cards td[data-label='Zero'],
+  .qt-checklist-table.sah-table--cards td[data-label='Partial'],
+  .qt-checklist-table.sah-table--cards td[data-label='Full'] {
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .qt-checklist-table.sah-table--cards td[data-label='Zero']::before,
+  .qt-checklist-table.sah-table--cards td[data-label='Partial']::before,
+  .qt-checklist-table.sah-table--cards td[data-label='Full']::before {
+    min-width: 0;
+  }
+
+  /* Bigger tap target than a default radio on a phone. */
+  .qt-checklist-table.sah-table--cards td input[type='radio'] {
+    width: 20px;
+    height: 20px;
+  }
+}

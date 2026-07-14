@@ -142,7 +142,7 @@ export default function DirectorAssistantPerformance() {
       {!loading && filtered.length > 0 && (
         <div className="dap-table-card">
           <div className="dap-table-wrap">
-            <table className="dap-table">
+            <table className="dap-table sah-table--cards">
               <thead>
                 <tr>
                   <th>Assistant</th>
@@ -159,13 +159,13 @@ export default function DirectorAssistantPerformance() {
               <tbody>
                 {filtered.map((a) => (
                   <tr key={a.personId}>
-                    <td>
+                    <td data-label="Assistant">
                       <strong>{a.name}</strong>
                       {a.email ? (
                         <span className="dap-muted"> · {a.email}</span>
                       ) : null}
                     </td>
-                    <td>
+                    <td data-label="Subjects">
                       {(a.subjects || []).length ? (
                         <div className="dap-subject-chips dap-subject-chips--sm">
                           {a.subjects.map((s) => (
@@ -178,12 +178,12 @@ export default function DirectorAssistantPerformance() {
                         <span className="dap-muted">—</span>
                       )}
                     </td>
-                    <td>{formatNum(a.papersCorrected)}</td>
-                    <td>{formatNum(a.summary?.totalAssignments)}</td>
-                    <td className="dap-good">{formatNum(a.summary?.onTime)}</td>
-                    <td className="dap-warn">{formatNum(a.summary?.missedDeadline)}</td>
-                    <td>{formatNum(a.summary?.pending)}</td>
-                    <td>{formatNum(a.tokenUsage?.totalTokens)}</td>
+                    <td data-label="Papers">{formatNum(a.papersCorrected)}</td>
+                    <td data-label="Assignments">{formatNum(a.summary?.totalAssignments)}</td>
+                    <td className="dap-good" data-label="On time">{formatNum(a.summary?.onTime)}</td>
+                    <td className="dap-warn" data-label="Passed deadline">{formatNum(a.summary?.missedDeadline)}</td>
+                    <td data-label="In progress">{formatNum(a.summary?.pending)}</td>
+                    <td data-label="Tokens">{formatNum(a.tokenUsage?.totalTokens)}</td>
                     <td>
                       <button
                         type="button"
@@ -298,7 +298,7 @@ export default function DirectorAssistantPerformance() {
                     <h2>By classroom</h2>
                     <div className="ast-table-card">
                       <div className="ast-table-wrap">
-                        <table className="ast-table">
+                        <table className="ast-table sah-table--cards">
                           <thead>
                             <tr>
                               <th>Classroom</th>
@@ -313,18 +313,18 @@ export default function DirectorAssistantPerformance() {
                           <tbody>
                             {detail.assistant.classrooms.map((c) => (
                               <tr key={c.classroomId}>
-                                <td>
+                                <td data-label="Classroom">
                                   <strong>{c.classroomName}</strong>
                                   {c.section ? (
                                     <span className="ast-muted"> · {c.section}</span>
                                   ) : null}
                                 </td>
-                                <td>{c.teacherName}</td>
-                                <td>{c.totalAssignments}</td>
-                                <td>{formatNum(c.papersCorrected)}</td>
-                                <td className="ast-perf-good">{c.onTime}</td>
-                                <td className="ast-perf-warn">{c.missedDeadline}</td>
-                                <td>{c.pending}</td>
+                                <td data-label="Teacher">{c.teacherName}</td>
+                                <td data-label="Assignments">{c.totalAssignments}</td>
+                                <td data-label="Papers">{formatNum(c.papersCorrected)}</td>
+                                <td className="ast-perf-good" data-label="On time">{c.onTime}</td>
+                                <td className="ast-perf-warn" data-label="Passed deadline">{c.missedDeadline}</td>
+                                <td data-label="In progress">{c.pending}</td>
                               </tr>
                             ))}
                           </tbody>

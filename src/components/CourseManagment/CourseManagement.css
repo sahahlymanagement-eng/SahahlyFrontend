@@ -1,12 +1,13 @@
 .cm-courses-page {
+  flex: 1;
+  min-height: 0;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   color: #e2e8f0;
   font-family: "Inter", "Plus Jakarta Sans", sans-serif;
-  max-height: calc(100vh - 120px);
   overflow-y: auto;
-  padding-right: 8px;
+  padding: 28px 32px 48px;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
 }
@@ -60,8 +61,8 @@
 
 .cm-courses-header-main h1 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 700;
 }
 
 .cm-courses-header-main p {
@@ -303,8 +304,14 @@
     flex-wrap: wrap;
   }
 
+  /* flex-basis pushes the pill onto its own row under the teacher name;
+     width stays content-sized (not 100%) so it doesn't stretch into a
+     giant oval, and max-width keeps the 52px indent from overflowing
+     the folder card, which clips (overflow: hidden) instead of scrolling. */
   .cm-folder-count {
-    width: 100%;
+    flex-basis: 100%;
+    width: fit-content;
+    max-width: calc(100% - 52px);
     margin-left: 52px;
   }
 
@@ -321,27 +328,66 @@
   }
 }
 
-.pm-panel {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 16px;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+@media (max-width: 640px) {
+  .cm-courses-page {
+    padding: 18px 14px 32px;
+  }
+
+  .pm-page {
+    padding: 18px 14px 32px;
+  }
+
+  .pm-header {
+    margin-bottom: 20px;
+  }
+
+  .pm-header-actions {
+    width: 100%;
+  }
+
+  .pm-header-actions .pm-back {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .pm-panel {
+    padding: 16px 18px;
+  }
+
+  .pm-questions {
+    grid-template-columns: 1fr;
+  }
 }
 
-
-/* Make dropdown options black */
-select.pm-input option {
-  color: rgb(255, 255, 255);
-  background-color: rgb(0, 0, 0);
+/* ─── Shared "pm-" page shell (Create/Edit Coursework, Coursework list,
+   Submission Actions) — mirrors the styling on the Gemini/Claude AI marking
+   pages so the whole Course Management flow reads as one consistent system. ─── */
+.pm-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 32px 48px;
+  color: #ffffff;
+  font-family: "Plus Jakarta Sans", sans-serif;
 }
+
+.pm-shell { max-width: 1100px; margin: 0 auto; }
 
 .pm-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.pm-header h1,
+.pm-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  color: #ffffff;
 }
 
 .pm-header-actions {
@@ -349,6 +395,151 @@ select.pm-input option {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap; /* prevents disappearing on small screens */
+}
+
+.pm-back {
+  background: #06173c;
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: #93c5fd;
+  cursor: pointer;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 13px;
+}
+
+.pm-back:hover { border-color: #3b82f6; }
+
+.pm-powered-by {
+  font-size: 12px;
+  color: #94a3b8;
+  background: #06173c;
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 6px 12px;
+  border-radius: 20px;
+}
+
+.pm-panel {
+  background: #06173c;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pm-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pm-input-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+}
+
+.pm-input {
+  background: #06173c;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: white;
+  font-size: 14px;
+  outline: none;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pm-input:focus { border-color: #3b82f6; }
+
+select.pm-input {
+  background: #06173c;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+select.pm-input option {
+  color: #ffffff;
+  background: #06173c;
+}
+
+.pm-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.pm-mark-btn {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: none;
+  color: white;
+  padding: 12px 28px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 12px rgba(37,99,235,0.3);
+}
+
+.pm-mark-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(37,99,235,0.45);
+}
+
+.pm-mark-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pm-loading-panel {
+  text-align: center;
+  padding: 60px 20px;
+  background: #06173c;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.pm-questions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.pm-question-card {
+  background: #06173c;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.pm-q-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+/* Long coursework titles are a flex item here; without min-width they
+   refuse to shrink and push past the card edge instead of wrapping. */
+.pm-q-number {
+  font-weight: 700;
+  font-size: 15px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Coursework description / due-date meta lines rendered directly in
+   .pm-question-card (ViewCourseWork) — wrap long text instead of
+   overflowing the card. */
+.pm-question-card p {
+  overflow-wrap: anywhere;
 }
 
 .course-toggle {

@@ -316,7 +316,10 @@ export default function TeacherCreation() {
             </div>
 
             <div className="tc-table-wrap">
-              <table className="tc-table">
+              {/* Scroller sits inside the rounded box: .tc-table-wrap uses
+                  overflow:hidden to clip its radius and can't also scroll. */}
+              <div className="sah-table-scroll">
+              <table className="tc-table sah-table--cards">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -332,16 +335,16 @@ export default function TeacherCreation() {
                       const disabled = t.status === "disabled";
                       return (
                         <tr key={t._id} className={`tc-row ${disabled ? "tc-row-disabled" : ""}`}>
-                          <td>
+                          <td data-label="Name">
                             <span className="tc-cell-primary">{t.name}</span>
                           </td>
-                          <td>
+                          <td data-label="Email">
                             <span className="tc-cell-muted">{t.email}</span>
                           </td>
-                          <td>
+                          <td data-label="Phone">
                             <span className="tc-cell-muted">+{t.phone}</span>
                           </td>
-                          <td>
+                          <td data-label="Status">
                             <span className={`tc-status-badge ${disabled ? "tc-badge-disabled" : "tc-badge-active"}`}>
                               {disabled ? "Disabled" : "Active"}
                             </span>
@@ -393,6 +396,7 @@ export default function TeacherCreation() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           </section>
 

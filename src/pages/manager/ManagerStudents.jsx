@@ -326,7 +326,7 @@ export default function ManagerStudents() {
                     {/* KEEP YOUR EXISTING TABLE HERE */}
                     <div className="ms-table-wrap">
                         <div className="ms-table-scroll">
-                      <table className="ms-table">
+                      <table className="ms-table sah-table--cards">
                         <thead>
                           <tr>
                             <th>#</th>
@@ -346,13 +346,13 @@ export default function ManagerStudents() {
                             const globalIndex = (page - 1) * 12 + i + 1;
                             return (
                               <tr key={s._id} className={`ms-row ${isEditing ? "ms-row--editing" : ""}`} style={{ animationDelay: `${i * 0.03}s` }}>
-                                <td><span className="ms-num">{globalIndex}</span></td>
+                                <td data-label="#"><span className="ms-num">{globalIndex}</span></td>
 
                                 {isEditing ? (
                                   <>
-                                    <td><input className="ms-edit-input" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" /></td>
-                                    <td><input className="ms-edit-input" value={editForm.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" /></td>
-                                    <td>
+                                    <td data-label="Name"><input className="ms-edit-input" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" /></td>
+                                    <td data-label="Email"><input className="ms-edit-input" value={editForm.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" /></td>
+                                    <td data-label="Phone">
                                     <PhoneInput
                                         defaultCountry="eg"
                                         value={editForm.phone}
@@ -365,8 +365,8 @@ export default function ManagerStudents() {
                                         className="ms-phone-input"
                                     />
                                     </td>
-                                    <td><input className="ms-edit-input" value={editForm.parentName} onChange={e => setEditForm(p => ({ ...p, parentName: e.target.value }))} placeholder="Parent Name" /></td>
-                                    <td>
+                                    <td data-label="Parent Name"><input className="ms-edit-input" value={editForm.parentName} onChange={e => setEditForm(p => ({ ...p, parentName: e.target.value }))} placeholder="Parent Name" /></td>
+                                    <td data-label="Parent Phone">
                                         <PhoneInput
                                             defaultCountry="eg"
                                             value={editForm.parentPhone}
@@ -388,28 +388,28 @@ export default function ManagerStudents() {
                                   </>
                                 ) : (
                                   <>
-                                    <td>
+                                    <td data-label="Name">
                                       <div className="ms-avatar-cell">
                                         <div className="ms-avatar">{(s.name || s.email || "?").charAt(0).toUpperCase()}</div>
                                         <span className="ms-cell-name">{s.name || <span className="ms-cell-empty">—</span>}</span>
                                       </div>
                                     </td>
-                                    <td>
+                                    <td data-label="Email">
                                       {s.email
                                         ? <span className="ms-icon-cell"><FiMail size={12} />{s.email}</span>
                                         : <span className="ms-cell-empty">—</span>}
                                     </td>
-                                    <td>
+                                    <td data-label="Phone">
                                       {s.phone
                                         ? <span className="ms-icon-cell"><FiPhone size={12} />{s.phone}</span>
                                         : <span className="ms-cell-empty">—</span>}
                                     </td>
-                                    <td>
+                                    <td data-label="Parent Name">
                                       {s.parentName
                                         ? <span className="ms-icon-cell"><FiUser size={12} />{s.parentName}</span>
                                         : <span className="ms-cell-empty">—</span>}
                                     </td>
-                                    <td>
+                                    <td data-label="Parent Phone">
                                       {s.parentPhone
                                         ? <span className="ms-icon-cell"><FiPhone size={12} />{s.parentPhone}</span>
                                         : <span className="ms-cell-empty">—</span>}

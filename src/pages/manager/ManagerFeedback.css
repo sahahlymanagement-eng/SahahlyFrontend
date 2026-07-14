@@ -157,3 +157,31 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
+@media (max-width: 640px) {
+  /* The shared card background outranks .fb-row--low, which would silently
+     drop the low-rating flag on phones. Re-apply it to the card itself. */
+  .fb-table.sah-table--cards tbody tr.fb-row--low {
+    background: rgba(251, 191, 36, 0.08);
+    border-color: rgba(251, 191, 36, 0.32);
+  }
+
+  /* Desktop caps the comment column to keep the table narrow; a card is
+     already full-width, so the cap only forces needless wrapping. */
+  .fb-table.sah-table--cards td.fb-comment {
+    max-width: none;
+  }
+
+  /* Summary cards size to content on desktop, which reads fine wrapped
+     freely; on phones that leaves mismatched widths and a ragged 2nd row.
+     Force a consistent 2-up grid instead. */
+  .fb-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fb-summary-card {
+    min-width: 0;
+  }
+}

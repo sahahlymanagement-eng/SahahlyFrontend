@@ -392,7 +392,7 @@ export default function QualityTeamDashboard() {
             ) : visibleDelegations.length === 0 ? (
               <div className="qt-empty">No assignments available.</div>
             ) : (
-              <table className="qt-table">
+              <table className="qt-table sah-table--cards">
                 <thead>
                   <tr>
                     <th>Classroom</th>
@@ -414,31 +414,31 @@ export default function QualityTeamDashboard() {
                         className="qt-row"
                         style={{ animationDelay: `${index * 0.04}s` }}
                       >
-                        <td>
+                        <td data-label="Classroom">
                           <span className="qt-cell-primary">
                             {classroomNameMap[classroomId] || "Unknown"}
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Teacher">
                           <span className="qt-cell-muted">
                             {classroomTeacherMap[classroomId] || "Not Assigned"}
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Assignment">
                           <span className="qt-assignment-title">
                             {d.assignmentId?.title}
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Status">
                           <span className={`qt-status ${d.assignmentId?.status}`}>
                             {formatStatus(d.assignmentId?.status)}
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Quality Deadline">
                           <span className="qt-cell-muted">
                             {d.qualityDeadline
                               ? formatDateTime(d.qualityDeadline)
@@ -446,7 +446,7 @@ export default function QualityTeamDashboard() {
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Open">
                           <button
                             className="qt-open-btn"
                             onClick={() => setSelected(d)}
@@ -490,7 +490,7 @@ export default function QualityTeamDashboard() {
             {selected.assignmentId?.status !== "EMERGENCY" && (
               <>
                 <div className="qt-checklist-wrap">
-                  <table className="qt-checklist-table">
+                  <table className="qt-checklist-table sah-table--cards">
                     <thead>
                       <tr>
                         <th>Checklist Item</th>
@@ -503,7 +503,7 @@ export default function QualityTeamDashboard() {
                     <tbody>
                       {checklistItems.map((item) => (
                         <tr key={item._id}>
-                          <td>
+                          <td data-label="Checklist Item">
                             <div className="qt-item-title-wrap">
                               <span className="qt-item-title">{item.title}</span>
                               <span className="qt-item-score">
@@ -512,7 +512,7 @@ export default function QualityTeamDashboard() {
                             </div>
                           </td>
 
-                          <td>
+                          <td data-label="Zero">
                             <input
                               type="radio"
                               name={item._id}
@@ -521,7 +521,7 @@ export default function QualityTeamDashboard() {
                             />
                           </td>
 
-                          <td>
+                          <td data-label="Partial">
                             <input
                               type="radio"
                               name={item._id}
@@ -530,7 +530,7 @@ export default function QualityTeamDashboard() {
                             />
                           </td>
 
-                          <td>
+                          <td data-label="Full">
                             <input
                               type="radio"
                               name={item._id}

@@ -306,3 +306,38 @@ cursor:not-allowed;
 margin-top:20px;
 color:#9ca3af;
 }
+
+/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
+/* These .dm-* rules are global, so they also style DirectorQualityManagers,
+   which reuses the same class names. */
+@media (max-width: 640px) {
+  /* The box's slab + radius exist to frame a table. In card mode the cards do
+     their own framing, and a background here just boxes them in flush. */
+  .dm-table-box:has(.sah-table--cards) {
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+    box-shadow: none;
+  }
+
+  /* The shared card background outranks .dm-row--selected, which would lose
+     the selection highlight on phones. Re-apply it to the card. */
+  .dm-table.sah-table--cards tbody tr.dm-row--selected {
+    background: rgba(59, 130, 246, 0.16);
+    border-color: rgba(59, 130, 246, 0.5);
+  }
+
+  /* Checkbox rides the top-left of the card instead of taking its own line. */
+  .dm-table.sah-table--cards td.dm-check-col {
+    flex: 0 0 auto;
+    order: -1;
+    width: auto;
+    padding: 0 0 6px;
+  }
+
+  /* Action buttons wrap instead of forcing the card wide. */
+  .dm-table.sah-table--cards .dm-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}

@@ -1138,7 +1138,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                     <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                     <span className="ma-panel-count">{studentTotal ?? students.length} students</span>
                   </div>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <div className="ma-panel-actions">
                   <ReportGradesRefreshButton
                     onClick={refreshGrades}
                     loading={refreshingGrades}
@@ -1222,7 +1222,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                 {!loadingStudents && students.length > 0 && (
                   <div className="ma-table-wrap">
                     <div className="ma-table-scroll">
-                      <table className="ma-table">
+                      <table className="ma-table sah-table--cards">
                         <thead>
                           <tr>
                             <th style={{ width: 44 }}></th>
@@ -1254,7 +1254,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                     {selected && "✓"}
                                   </div>
                                 </td>
-                                <td>
+                                <td data-label="Name">
                                   <div className="ma-avatar-cell">
                                     <div className="ma-avatar">
                                       {(s.name || s.email || "?").charAt(0).toUpperCase()}
@@ -1262,10 +1262,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                     <span className="ma-cell-name">{s.name || <span className="ma-cell-empty">—</span>}</span>
                                   </div>
                                 </td>
-                                <td><span className="ma-cell-muted">{s.email || "—"}</span></td>
-                                <td>{statusBadge(s)}</td>
+                                <td data-label="Email"><span className="ma-cell-muted">{s.email || "—"}</span></td>
+                                <td data-label="Status">{statusBadge(s)}</td>
                                 {showAttendanceColumn && (
-                                  <td onClick={(e) => e.stopPropagation()}>
+                                  <td data-label="Attendance" onClick={(e) => e.stopPropagation()}>
                                     <ReportAttendanceSelect
                                       present={!!currentAssignmentAttendance.map?.[stuId]}
                                       onChange={(present) =>
@@ -1275,7 +1275,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                   </td>
                                 )}
                                 {showAttendanceColumn && (
-                                  <td onClick={(e) => e.stopPropagation()}>
+                                  <td data-label="Date" onClick={(e) => e.stopPropagation()}>
                                     <input
                                       type="date"
                                       className="ma-attendance-date"
@@ -1286,17 +1286,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                     />
                                   </td>
                                 )}
-                                <td>
+                                <td data-label="Submitted At">
                                   <span className="ma-cell-muted">
                                     {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
                                   </span>
                                 </td>
-                                <td>
+                                <td data-label="Grade">
                                   {s.assignedGrade != null
                                     ? <span className="ma-grade-pill">{s.assignedGrade}</span>
                                     : <span className="ma-cell-empty">—</span>}
                                 </td>
-                                <td onClick={(e) => e.stopPropagation()}>
+                                <td data-label="%" onClick={(e) => e.stopPropagation()}>
                                   {s.assignedGrade != null && assignmentMaxPoints ? (
                                     selected ? (
                                       <div className="ma-percent-wrap">
@@ -1335,7 +1335,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                     <span className="ma-cell-empty">—</span>
                                   )}
                                 </td>
-                                <td onClick={e => e.stopPropagation()}>
+                                <td data-label="Comment" onClick={e => e.stopPropagation()}>
                                   {selected ? (
                                     <div className="ma-comment-wrap">
                                       <FiMessageSquare size={12} className="ma-comment-icon" />

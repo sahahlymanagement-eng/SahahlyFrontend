@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
@@ -7,7 +6,6 @@ import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
 
 export default function PaperMarkingClaude() {
-  const navigate = useNavigate();
   const studentRef    = useRef();
   const markSchemeRef = useRef();
 
@@ -117,10 +115,12 @@ export default function PaperMarkingClaude() {
       <div className="pm-shell">
 
         <header className="pm-header">
-          <h2>AI Paper Marking</h2>
-          <div className="pm-header-right">
+          <div>
+            <h1>Claude AI Marking</h1>
+            <p>Mark student answer sheets against a mark scheme using Claude.</p>
+          </div>
+          <div className="pm-header-actions">
             <span className="pm-powered-by">Powered by Claude</span>
-            <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>
           </div>
         </header>
 

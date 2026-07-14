@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
@@ -11,7 +10,6 @@ import TokenUsageStats from "../../components/TokenUsageStats";
 import { parseGeminiModelsResponse, sahahlyModelLabel } from "../../utils/markingCost";
 
 export default function PaperMarking() {
-  const navigate = useNavigate();
   const studentRef = useRef();
   const markSchemeRef = useRef();
 
@@ -240,17 +238,18 @@ export default function PaperMarking() {
     <div className="pm-page">
       <div className="pm-shell">
         <header className="pm-header">
-          <h2>AI Paper Marking</h2>
+          <div>
+            <h1>Gemini AI Marking</h1>
+            <p>Mark student answer sheets against a mark scheme using Gemini.</p>
+          </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="pm-header-actions">
             <button
               className="pm-back"
-              style={{ background: "rgba(57,156,242,0.15)", borderColor: "rgba(57,156,242,0.3)", color: "#399cf2" }}
               onClick={() => setShowPromptPanel(v => !v)}
             >
               📋 Saved Prompts
             </button>
-            <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>
           </div>
         </header>
 

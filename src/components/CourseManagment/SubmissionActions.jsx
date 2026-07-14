@@ -67,7 +67,7 @@ export default function SubmissionActions() {
       <div className="pm-shell">
 
         <header className="pm-header">
-          <h2>Submission Actions</h2>
+          <h1>Submission Actions</h1>
         </header>
 
         <div className="pm-panel">

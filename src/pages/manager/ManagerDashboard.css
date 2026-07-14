@@ -846,3 +846,31 @@
   .md-table-wrap  { overflow-x: auto; }
   .md-table       { min-width: 900px; }
 }
+
+/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
+@media (max-width: 640px) {
+  /* Expand toggle rides the top of the card instead of taking its own line. */
+  .md-table.sah-table--cards td:has(.md-expand-btn) {
+    flex: 0 0 auto;
+    order: -1;
+    padding: 0 0 6px;
+  }
+
+  /* Assign controls (react-select + datepicker + buttons) stack full-width. */
+  .md-table.sah-table--cards .md-assign-cell {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  /* The expanded detail row is a colspan filler, so it renders without card
+     chrome; keep its inner panel from inheriting the flex row's cramping. */
+  .md-table.sah-table--cards .md-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Two status cards side by side get cramped on a narrow phone. */
+@media (max-width: 480px) {
+  .md-status-grid { grid-template-columns: 1fr; }
+}

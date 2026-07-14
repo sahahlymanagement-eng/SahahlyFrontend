@@ -2599,7 +2599,7 @@ return (
                   title="Sync max points, grades, and resubmissions from Google Classroom"
                 >
                   <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
-                  {refreshing ? "Refreshing…" : "Refresh"}
+                  <span className="msv-refresh-btn-label">{refreshing ? "Refreshing…" : "Refresh"}</span>
                 </button>
 </div>
 
@@ -2710,9 +2710,12 @@ return (
                                     return (
                                       <span
                                         title={title}
-                                        style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}
+                                        className="msv-review-warn"
+                                        style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}
                                       >
-                                        ⚠️ Review Submission
+                                        ⚠️{" "}
+                                        <span className="msv-review-warn-full">Review Submission</span>
+                                        <span className="msv-review-warn-short">Review</span>
                                       </span>
                                     );
                                   })()}

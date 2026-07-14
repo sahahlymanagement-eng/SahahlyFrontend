@@ -168,7 +168,10 @@ export default function FeedbackView({ apiBase, scope }) {
 
       {!loading && sessions.length > 0 && (
         <>
-          <table className="fb-table">
+          {/* Scrolls between 641px and desktop, where 9 columns still overflow;
+              below 640px it becomes cards and the wrapper stops scrolling. */}
+          <div className="sah-table-scroll">
+          <table className="fb-table sah-table--cards">
             <thead>
               <tr>
                 <th>Date</th>
@@ -185,26 +188,35 @@ export default function FeedbackView({ apiBase, scope }) {
             <tbody>
               {sessions.map((s) => (
                 <tr key={s._id} className={s.rating != null && s.rating <= 3 ? "fb-row--low" : ""}>
-                  <td>{formatDate(s.createdAt)}</td>
-                  <td>{RECIPIENT_LABELS[s.recipientType] || s.recipientType}</td>
-                  <td>{s.reportStudentName || s.recipientName || "—"}</td>
-                  <td>{s.classroomName || "—"}</td>
-                  <td>
+                  <td data-label="Date">{formatDate(s.createdAt)}</td>
+                  <td data-label="Recipient">
+                    {RECIPIENT_LABELS[s.recipientType] || s.recipientType}
+                  </td>
+                  <td data-label="Student">
+                    {s.reportStudentName || s.recipientName || "—"}
+                  </td>
+                  <td data-label="Classroom">{s.classroomName || "—"}</td>
+                  <td data-label="Assignment">
                     {s.assignmentTitle ||
                       (s.reportAssignmentSnapshots?.length > 1
                         ? `${s.reportAssignmentSnapshots.length} assignments`
                         : "—")}
                   </td>
-                  <td className="fb-stars" title={s.rating != null ? `${s.rating}/5` : ""}>
+                  <td
+                    className="fb-stars"
+                    data-label="Rating"
+                    title={s.rating != null ? `${s.rating}/5` : ""}
+                  >
                     {stars(s.rating)}
                   </td>
-                  <td>{s.reasonLabel || "—"}</td>
-                  <td className="fb-comment">{s.comment || "—"}</td>
-                  <td>{STATE_LABELS[s.state] || s.state}</td>
+                  <td data-label="Reason">{s.reasonLabel || "—"}</td>
+                  <td className="fb-comment" data-label="Comment">{s.comment || "—"}</td>
+                  <td data-label="Status">{STATE_LABELS[s.state] || s.state}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
 
           <div className="fb-pagination">
             <button
