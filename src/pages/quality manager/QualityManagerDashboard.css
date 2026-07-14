@@ -834,3 +834,8 @@ font-weight:700;
   .qm2-filters-row { flex-direction: column; align-items: stretch; }
   .qm2-search-wrap { min-width: unset; }
 }
+
+/* Two stat cards side by side get cramped on a narrow phone. */
+@media (max-width: 480px) {
+  .qm2-stats { grid-template-columns: 1fr; }
+}

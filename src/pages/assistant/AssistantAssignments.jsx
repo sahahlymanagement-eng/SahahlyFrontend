@@ -307,7 +307,7 @@ export default function AssistantAssignments() {
 
       <div className="ast-table-card">
         <div className="ast-table-wrap">
-        <table className="ast-table">
+        <table className="ast-table sah-table--cards">
           <thead>
             <tr>
               <th>Title</th>
@@ -354,16 +354,16 @@ export default function AssistantAssignments() {
 
                 return (
                   <tr key={assignment._id}>
-                    <td>{assignment.title}</td>
+                    <td data-label="Title">{assignment.title}</td>
 
-                    <td>
+                    <td data-label="Classroom">
                       {assignment.classroomId?.name ||
                         "-"}
                     </td>
 
-                    <td>{teacher}</td>
+                    <td data-label="Teacher">{teacher}</td>
 
-                    <td>
+                    <td data-label="Your Deadline">
                       {assignment.assistantDeadline
                         ? new Date(
                             assignment.assistantDeadline
@@ -371,7 +371,7 @@ export default function AssistantAssignments() {
                         : "-"}
                     </td>
 
-                    <td>
+                    <td data-label="Due Date">
                       {assignment.dueDate
                         ? new Date(
                             assignment.dueDate
@@ -379,13 +379,13 @@ export default function AssistantAssignments() {
                         : "-"}
                     </td>
 
-                    <td>
+                    <td data-label="Status">
                       <span className={`ast-badge ${statusBadgeClass(assistantStatus)}`}>
                         {formatAssistantStatus(assistantStatus)}
                       </span>
                     </td>
 
-                    <td>
+                    <td data-label="Update Status">
                       {assistantStatus === "ASSIGNED" && (
                         <button
                           type="button"
@@ -413,7 +413,7 @@ export default function AssistantAssignments() {
                       )}
                     </td>
 
-                    <td>
+                    <td data-label="Submissions">
                       {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
@@ -431,7 +431,7 @@ export default function AssistantAssignments() {
                       )}
                     </td>
 
-                    <td>
+                    <td data-label="Students Data">
                       {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
@@ -448,7 +448,7 @@ export default function AssistantAssignments() {
                         </button>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Reports">
                       {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"

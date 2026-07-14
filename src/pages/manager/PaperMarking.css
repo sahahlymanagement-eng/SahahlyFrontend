@@ -608,3 +608,18 @@ select.pm-input option {
   white-space: nowrap;
 }
 .pm-annotate-link:hover { text-decoration: underline; }
+
+/* ─── Mobile ─── */
+@media (max-width: 640px) {
+  .pm-page {
+    padding: 16px;
+  }
+
+  /* Title + back button sit on one line at desktop width; let them stack
+     rather than squeeze once there's no room. */
+  .pm-header {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+}

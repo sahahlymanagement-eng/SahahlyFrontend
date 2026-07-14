@@ -160,7 +160,7 @@ export default function AssistantPerformance() {
             ) : (
               <div className="ast-table-card">
                 <div className="ast-table-wrap">
-                  <table className="ast-table">
+                  <table className="ast-table sah-table--cards">
                     <thead>
                       <tr>
                         <th>Classroom</th>
@@ -175,18 +175,18 @@ export default function AssistantPerformance() {
                     <tbody>
                       {classrooms.map((c) => (
                         <tr key={c.classroomId}>
-                          <td>
+                          <td data-label="Classroom">
                             <strong>{c.classroomName}</strong>
                             {c.section ? (
                               <span className="ast-muted"> · {c.section}</span>
                             ) : null}
                           </td>
-                          <td>{c.teacherName}</td>
-                          <td>{c.totalAssignments}</td>
-                          <td>{formatNum(c.papersCorrected)}</td>
-                          <td className="ast-perf-good">{c.onTime}</td>
-                          <td className="ast-perf-warn">{c.missedDeadline}</td>
-                          <td>{c.pending}</td>
+                          <td data-label="Teacher">{c.teacherName}</td>
+                          <td data-label="Assignments">{c.totalAssignments}</td>
+                          <td data-label="Papers corrected">{formatNum(c.papersCorrected)}</td>
+                          <td className="ast-perf-good" data-label="On time">{c.onTime}</td>
+                          <td className="ast-perf-warn" data-label="Passed deadline">{c.missedDeadline}</td>
+                          <td data-label="In progress">{c.pending}</td>
                         </tr>
                       ))}
                     </tbody>

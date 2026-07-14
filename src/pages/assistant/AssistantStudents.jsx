@@ -126,7 +126,8 @@ setStudents((prev) =>
               {loading ? (
                 <p className="ms-empty-state">Loading...</p>
               ) : (
-                <table className="ms-table">
+                <div className="sah-table-scroll">
+                <table className="ms-table sah-table--cards">
 
                   <thead>
                     <tr>
@@ -146,11 +147,11 @@ setStudents((prev) =>
                       return (
                         <tr key={s.studentId} className="ms-row">
 
-                          <td>{(page - 1) * 10 + i + 1}</td>
+                          <td data-label="#">{(page - 1) * 10 + i + 1}</td>
 
                           {isEditing ? (
                             <>
-                              <td>
+                              <td data-label="Name">
                                 <input
                                   className="ms-edit-input"
                                   value={editForm.name}
@@ -163,7 +164,7 @@ setStudents((prev) =>
                                 />
                               </td>
 
-                              <td>
+                              <td data-label="Phone">
                                 <input
                                   className="ms-edit-input"
                                   value={editForm.phone}
@@ -176,7 +177,7 @@ setStudents((prev) =>
                                 />
                               </td>
 
-                              <td>
+                              <td data-label="Parent Name">
                                 <input
                                   className="ms-edit-input"
                                   value={editForm.parentName}
@@ -189,7 +190,7 @@ setStudents((prev) =>
                                 />
                               </td>
 
-                              <td>
+                              <td data-label="Parent Phone">
                                 <input
                                   className="ms-edit-input"
                                   value={editForm.parentPhone}
@@ -201,7 +202,7 @@ setStudents((prev) =>
                                   }
                                 />
                                 </td>
-                                <td>
+                                <td data-label="Email">
                                  <input
                                   className="ms-edit-input"
                                   value={editForm.email}
@@ -234,7 +235,7 @@ setStudents((prev) =>
                             </>
                           ) : (
                             <>
-                              <td>
+                              <td data-label="Name">
                                 <div className="ms-avatar-cell">
                                   <div className="ms-avatar">
                                     {(s.name || "?").charAt(0).toUpperCase()}
@@ -245,10 +246,10 @@ setStudents((prev) =>
                                 </div>
                               </td>
 
-                            <td style={{ color: "white" }}>{s.phone || "—"}</td>
-                            <td style={{ color: "white" }}>{s.parentName || "—"}</td>
-                            <td style={{ color: "white" }}>{s.parentPhone || "—"}</td>
-                            <td style={{ color: "white" }}>{s.email || "—"}</td>
+                            <td data-label="Phone" style={{ color: "white" }}>{s.phone || "—"}</td>
+                            <td data-label="Parent Name" style={{ color: "white" }}>{s.parentName || "—"}</td>
+                            <td data-label="Parent Phone" style={{ color: "white" }}>{s.parentPhone || "—"}</td>
+                            <td data-label="Email" style={{ color: "white" }}>{s.email || "—"}</td>
 
                               <td>
                                 <div className="ms-action-wrap">
@@ -269,7 +270,8 @@ setStudents((prev) =>
                   </tbody>
 
                 </table>
-                
+                </div>
+
               )}
 <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
             </div>

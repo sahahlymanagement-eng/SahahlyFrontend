@@ -99,7 +99,8 @@ export default function OperationMetrics(){
 
       <h3>Failed Deadline Assistants</h3>
 
-      <table className="metricTable">
+      <div className="sah-table-scroll">
+      <table className="metricTable sah-table--cards">
         <thead>
           <tr>
             <th>Assistant</th>
@@ -115,25 +116,27 @@ export default function OperationMetrics(){
 
           {metrics.failedDeadlines.map((f,i)=>(
             <tr key={i}>
-              <td>{f.assistantName}</td>
-              <td>{f.assignmentTitle}</td>
-              <td>{f.classroomName}</td>
-              <td>{f.teacherName}</td>
-              <td>{new Date(f.deadline).toLocaleString()}</td>
-              <td className="danger">{f.status}</td>
+              <td data-label="Assistant">{f.assistantName}</td>
+              <td data-label="Assignment">{f.assignmentTitle}</td>
+              <td data-label="Classroom">{f.classroomName}</td>
+              <td data-label="Teacher">{f.teacherName}</td>
+              <td data-label="Deadline">{new Date(f.deadline).toLocaleString()}</td>
+              <td className="danger" data-label="Status">{f.status}</td>
             </tr>
           ))}
 
         </tbody>
 
       </table>
+      </div>
 
 
       {/* TURNAROUND */}
 
       <h3>Turnaround Time</h3>
 
-      <table className="metricTable">
+      <div className="sah-table-scroll">
+      <table className="metricTable sah-table--cards">
         <thead>
           <tr>
             <th>Assignment</th>
@@ -148,17 +151,18 @@ export default function OperationMetrics(){
 
           {metrics.turnaround.map((t,i)=>(
             <tr key={i}>
-              <td>{t.assignmentTitle}</td>
-              <td>{t.classroomName}</td>
-              <td>{new Date(t.dueDate).toLocaleDateString()}</td>
-              <td>{new Date(t.doneDate).toLocaleDateString()}</td>
-              <td>{t.turnaroundHours}</td>
+              <td data-label="Assignment">{t.assignmentTitle}</td>
+              <td data-label="Classroom">{t.classroomName}</td>
+              <td data-label="Due">{new Date(t.dueDate).toLocaleDateString()}</td>
+              <td data-label="Done">{new Date(t.doneDate).toLocaleDateString()}</td>
+              <td data-label="Turnaround (hrs)">{t.turnaroundHours}</td>
             </tr>
           ))}
 
         </tbody>
 
       </table>
+      </div>
 
     </div>
   );

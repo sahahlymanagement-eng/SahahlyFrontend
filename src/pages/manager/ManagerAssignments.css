@@ -1162,3 +1162,35 @@ select.ma-search-input option {
     max-height: 70vh;
   }
 }
+/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
+/* .ma-table is shared by ReportsWorkspace; the submission viewers use the
+   older .ma-table--cards pattern in ManagerSubmissionViewer.css instead. */
+@media (max-width: 640px) {
+  /* .ma-row--selected tints the <td>s with !important, which paints over the
+     card. Move the selected state onto the card and clear the cell tint. */
+  .ma-table.sah-table--cards tbody tr.ma-row--selected {
+    background: rgba(14, 165, 233, 0.14);
+    border-color: rgba(14, 165, 233, 0.55);
+  }
+
+  .ma-table.sah-table--cards tbody tr.ma-row--selected td {
+    background: transparent !important;
+  }
+
+  /* Checkbox + name share the top line of the card, as in the viewers. */
+  .ma-table.sah-table--cards td:has(.ma-check) {
+    flex: 0 0 auto;
+    order: -2;
+    align-self: flex-start;
+    padding: 0;
+  }
+
+  .ma-table.sah-table--cards td:has(.ma-avatar-cell) {
+    flex: 1 1 auto;
+    order: -1;
+    min-width: 0;
+    padding: 0 0 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+}

@@ -123,7 +123,7 @@ export default function ClassroomTeacherManager() {
         </div>
       ) : (
         <div className="ctmTableWrap">
-          <table className="ctmTable">
+          <table className="ctmTable sah-table--cards">
             <thead>
               <tr>
                 <th>Classroom Name</th>
@@ -140,19 +140,19 @@ export default function ClassroomTeacherManager() {
             <tbody>
               {classrooms.map((classroom) => (
                 <tr key={classroom._id} className="ctmRow">
-                  <td>
+                  <td data-label="Classroom">
                     <span className="ctmCellPrimary">
                       {classroom.name || "-"}
                     </span>
                   </td>
 
-                  <td>
+                  <td data-label="Section">
                     <span className="ctmCellMuted">
                       {classroom.section || "-"}
                     </span>
                   </td>
 
-                  <td>
+                  <td data-label="Subject">
                     <div className="ctmInlineCell">
                       <FiBookOpen className="ctmInlineIcon" size={14} />
                       <span className="ctmCellMuted">
@@ -161,7 +161,7 @@ export default function ClassroomTeacherManager() {
                     </div>
                   </td>
 
-                  <td>
+                  <td data-label="Teacher">
                     <div className="ctmInlineCell">
                       <FiUsers className="ctmInlineIcon" size={14} />
                       <span className="ctmCellPrimary">
@@ -170,7 +170,7 @@ export default function ClassroomTeacherManager() {
                     </div>
                   </td>
 
-                  <td>
+                  <td data-label="Phone">
                     <div className="ctmInlineCell">
                       <FiPhone className="ctmInlineIcon" size={14} />
                       <span className="ctmCellMuted">
@@ -179,7 +179,7 @@ export default function ClassroomTeacherManager() {
                     </div>
                   </td>
 
-                  <td>
+                  <td data-label="Email">
                     <div className="ctmInlineCell">
                       <FiMail className="ctmInlineIcon" size={14} />
                       <span className="ctmCellMuted">
@@ -188,7 +188,7 @@ export default function ClassroomTeacherManager() {
                     </div>
                   </td>
 
-                  <td>
+                  <td data-label="Assign to">
                     <select
                       className="ctmTeacherSelect"
                       value={selectedTeachers[classroom._id] || ""}

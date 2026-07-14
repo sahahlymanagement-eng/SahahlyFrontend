@@ -52,7 +52,9 @@ export default function AssignmentStudentsStatus() {
       )}
 
       {students.length > 0 && (
+        <div className="sah-table-scroll">
         <table
+          className="sah-table--cards"
           border="1"
           cellPadding="8"
           style={{ borderCollapse: "collapse", width: "100%" }}
@@ -69,25 +71,25 @@ export default function AssignmentStudentsStatus() {
           <tbody>
             {students.map((s, index) => (
               <tr key={index}>
-                <td>{s.studentId}</td>
+                <td data-label="Student ID">{s.studentId}</td>
 
-                <td>
+                <td data-label="Status">
                   {renderStatus(s.state, s.isLate, s.isOnTime)}
                 </td>
 
-                <td>
+                <td data-label="Submitted">
                   {s.submittedAt
                     ? new Date(s.submittedAt).toLocaleString()
                     : "—"}
                 </td>
 
-                <td>
+                <td data-label="Grade">
                   {s.assignedGrade !== null
                     ? `${s.assignedGrade} / ${maxGrade ?? "—"}`
                     : "—"}
                 </td>
 
-                <td>
+                <td data-label="Last update">
                   {s.updateTime
                     ? new Date(s.updateTime).toLocaleString()
                     : "—"}
@@ -96,6 +98,7 @@ export default function AssignmentStudentsStatus() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />

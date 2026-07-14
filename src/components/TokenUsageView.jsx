@@ -185,7 +185,8 @@ function RequestUsageBar({ used, limit, rangeLabel }) {
 
 function UsageTable({ columns, rows, rowKey }) {
   return (
-    <table className="tu-table">
+    <div className="sah-table-scroll">
+    <table className="tu-table sah-table--cards">
       <thead>
         <tr>
           {columns.map((col) => (
@@ -197,7 +198,11 @@ function UsageTable({ columns, rows, rowKey }) {
         {rows.map((row) => (
           <tr key={rowKey(row)}>
             {columns.map((col) => (
-              <td key={col.key} className={col.numeric ? "tu-num" : undefined}>
+              <td
+                key={col.key}
+                data-label={col.label}
+                className={col.numeric ? "tu-num" : undefined}
+              >
                 {col.render(row)}
               </td>
             ))}
@@ -205,6 +210,7 @@ function UsageTable({ columns, rows, rowKey }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 

@@ -373,7 +373,10 @@ export default function DirectorManagers() {
       </div>
 
       <div className="dm-table-box">
-        <table className="dm-table">
+        {/* Scroller sits inside the rounded box: .dm-table-box uses
+            overflow:hidden to clip its radius and can't also scroll. */}
+        <div className="sah-table-scroll">
+        <table className="dm-table sah-table--cards">
           <thead>
             <tr>
               <th className="dm-check-col">
@@ -423,11 +426,11 @@ export default function DirectorManagers() {
                       aria-label={`Select ${room.name}`}
                     />
                   </td>
-                  <td>{room.name}{room.section && ` (${room.section})`}</td>
-                  <td>{room.teacherName || room.teacherId?.name || "-"}</td>
-                  <td className="dm-current">{managerName(room._id)}</td>
+                  <td data-label="Classroom">{room.name}{room.section && ` (${room.section})`}</td>
+                  <td data-label="Teacher">{room.teacherName || room.teacherId?.name || "-"}</td>
+                  <td className="dm-current" data-label="Current">{managerName(room._id)}</td>
 
-                  <td>
+                  <td data-label="Assign to">
                     <select
                       className="dm-select"
                       value={selectedManagers[room._id] || ""}
@@ -488,6 +491,7 @@ export default function DirectorManagers() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={totalPages} onPageChange={fetchClassroomsPage} />

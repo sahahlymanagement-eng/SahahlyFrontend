@@ -273,7 +273,7 @@ export default function TeacherManager() {
             </div>
 
             <div className="tm-table-wrap">
-              <table className="tm-table">
+              <table className="tm-table sah-table--cards">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -287,13 +287,13 @@ export default function TeacherManager() {
                   {teachers.length > 0 ? (
                     teachers.map((t) => (
                       <tr key={t._id} className="tm-row">
-                        <td>
+                        <td data-label="Name">
                           <span className="tm-cell-primary">{t.name}</span>
                         </td>
-                        <td>
+                        <td data-label="Phone">
                           <span className="tm-cell-muted">{t.phone}</span>
                         </td>
-                        <td>
+                        <td data-label="Email">
                           <span className="tm-cell-muted">{t.email || "-"}</span>
                         </td>
                         <td>

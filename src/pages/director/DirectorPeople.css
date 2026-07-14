@@ -449,3 +449,20 @@ margin-top:26px;
 color:#9ca3af;
 text-align:center;
 }
+
+/* ─── Mobile ─── */
+@media (max-width: 640px) {
+  /* Title and actions sit on one line at desktop width; stack them instead of
+     letting the right-hand side get pushed off-screen. */
+  .peopleTopBar{
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:flex-start;
+  }
+
+  /* The fixed 320px dropdown overflows a 375px viewport once the field's own
+     padding is counted. */
+  .react-international-phone-country-selector-dropdown{
+  width:min(320px, calc(100vw - 32px)) !important;
+  }
+}

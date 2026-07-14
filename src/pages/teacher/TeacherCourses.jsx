@@ -321,7 +321,7 @@ export default function TeacherCourses() {
                         <p className="tch-stats-hint">No assignments in this classroom yet.</p>
                       ) : (
                         <div className="tch-assign-table-wrap">
-                          <table className="tch-assign-table">
+                          <table className="tch-assign-table sah-table--cards">
                             <thead>
                               <tr>
                                 <th style={{ width: 44 }} />
@@ -360,11 +360,11 @@ export default function TeacherCourses() {
                                           <FiChevronRight size={14} />
                                         </button>
                                       </td>
-                                      <td>
+                                      <td data-label="Assignment">
                                         <span className="tch-assign-title">{cw.title}</span>
                                       </td>
-                                      <td>{formatGoogleDue(cw)}</td>
-                                      <td>{cw.maxPoints ? cw.maxPoints : "Ungraded"}</td>
+                                      <td data-label="Due date">{formatGoogleDue(cw)}</td>
+                                      <td data-label="Points">{cw.maxPoints ? cw.maxPoints : "Ungraded"}</td>
                                     </tr>
 
                                     {isAssignExpanded && mongoId && (

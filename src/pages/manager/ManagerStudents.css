@@ -622,3 +622,27 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
     max-height: none;
   }
 }
+/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
+@media (max-width: 640px) {
+  /* .ms-row--editing tints the <td>s with !important, which paints over the
+     card. Move the editing state onto the card and clear the cell tint. */
+  .ms-table.sah-table--cards tbody tr.ms-row--editing {
+    background: rgba(37, 99, 235, 0.14);
+    border-color: rgba(37, 99, 235, 0.5);
+  }
+
+  .ms-table.sah-table--cards tbody tr.ms-row--editing td {
+    background: transparent !important;
+  }
+
+  /* The index reads as muted-on-dark at desktop; on a card it needs contrast. */
+  .ms-table.sah-table--cards .ms-num {
+    color: #94a3b8;
+  }
+
+  /* Edit/Save/Cancel span the card rather than crowding one line. */
+  .ms-table.sah-table--cards .ms-action-wrap {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}

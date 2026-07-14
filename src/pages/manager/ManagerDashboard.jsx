@@ -425,7 +425,7 @@ const goToSubmissionViewer = (assignment) => {
                     <span>Loading…</span>
                   </div>
                 ) : (
-                  <table className="md-table">
+                  <table className="md-table sah-table--cards">
                     <thead>
                       <tr>
                         <th style={{ width: 40 }} />
@@ -463,11 +463,11 @@ const goToSubmissionViewer = (assignment) => {
                                   </button>
                                 </td>
 
-                                <td><span className="md-cell-primary">{a.classroomName}</span></td>
-                                <td><span className="md-cell-muted">{a.teacherName}</span></td>
-                                <td><span className="md-cell-title">{a.title}</span></td>
+                                <td data-label="Classroom"><span className="md-cell-primary">{a.classroomName}</span></td>
+                                <td data-label="Teacher"><span className="md-cell-muted">{a.teacherName}</span></td>
+                                <td data-label="Assignment"><span className="md-cell-title">{a.title}</span></td>
 
-                                <td>
+                                <td data-label="Assistant(s)">
                                   {assistants.length ? (
                                     <div className="md-tags">
                                       {assistants.map((d) => (
@@ -477,7 +477,7 @@ const goToSubmissionViewer = (assignment) => {
                                   ) : <span className="md-cell-empty">Not Assigned</span>}
                                 </td>
 
-                                <td>
+                                <td data-label="Deadline">
                                   <span className="md-cell-muted">
                                     {assistants[0]?.assistantDeadline
                                       ? new Date(assistants[0].assistantDeadline).toLocaleString()
@@ -485,7 +485,7 @@ const goToSubmissionViewer = (assignment) => {
                                   </span>
                                 </td>
 
-                                <td>
+                                <td data-label="Quality Team">
                                   {qualityTeam.length ? (
                                     <div className="md-tags">
                                       {qualityTeam.map((d) => (
@@ -495,7 +495,7 @@ const goToSubmissionViewer = (assignment) => {
                                   ) : <span className="md-cell-empty">Not Assigned</span>}
                                 </td>
 
-                                <td>
+                                <td data-label="Action">
                                   {(() => {
                                     const isInitialAssign = selectedStatus === "UNASSIGNED" && !assistants.length;
                                     const canManage = ["ASSIGNED","FAILED_DEADLINE","IN_REVIEW","RECHECK_BY_ASSISTANT"].includes(selectedStatus);

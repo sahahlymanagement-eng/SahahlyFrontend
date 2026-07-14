@@ -294,7 +294,10 @@ export default function QualityManagerDashboard() {
           ) : filteredRows.length === 0 ? (
             <div className="qm2-empty">No assignments match your filters.</div>
           ) : (
-            <table className="qm2-table">
+            /* Scroller inside the rounded box: .qm2-table-wrap uses
+               overflow:hidden to clip its radius and can't also scroll. */
+            <div className="sah-table-scroll">
+            <table className="qm2-table sah-table--cards">
               <thead>
                 <tr>
                   <th style={{ width: 40 }} />
@@ -337,11 +340,11 @@ export default function QualityManagerDashboard() {
                           </button>
                         </td>
 
-                        <td><span className="qm2-bold">{a.classroomName}</span></td>
+                        <td data-label="Classroom"><span className="qm2-bold">{a.classroomName}</span></td>
 
-                        <td><span className="qm2-assignment-title">{a.title}</span></td>
+                        <td data-label="Assignment"><span className="qm2-assignment-title">{a.title}</span></td>
 
-                        <td>
+                        <td data-label="Assistant(s)">
                           {a.assistants.length ? (
                             <div className="qm2-tags">
                               {a.assistants.map((d) => (
@@ -353,7 +356,7 @@ export default function QualityManagerDashboard() {
                           ) : <span className="qm2-muted">Not Assigned</span>}
                         </td>
 
-                        <td>
+                        <td data-label="Quality Team">
                           {a.qualityTeam.length ? (
                             <div className="qm2-tags">
                               {a.qualityTeam.map((d) => (
@@ -365,13 +368,13 @@ export default function QualityManagerDashboard() {
                           ) : <span className="qm2-muted">Not Assigned</span>}
                         </td>
 
-                        <td>
+                        <td data-label="Status">
                           <span className={`qm2-badge qm2-badge--${a.status}`}>
                             {formatStatus(a.status)}
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Quality Action">
                           {isActioning ? (
                             <span className="qm2-muted">Saving…</span>
                           ) : !hasQualityAssigned ? (
@@ -538,6 +541,7 @@ export default function QualityManagerDashboard() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 
