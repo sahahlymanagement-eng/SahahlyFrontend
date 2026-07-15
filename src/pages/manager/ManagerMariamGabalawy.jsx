@@ -47,6 +47,16 @@ import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { isGradingManager } from "../../utils/gradingAccess";
 
+// Mariam Gabalawy is served by the provider-parameterized backend layer. LoginCSS
+// keeps its own /external-grading routes; the request/response shapes are identical.
+const BASE = "/grading/mariamgabalawy";
+
+// assignmentBatchJobStore is a module-level singleton shared with the LoginCSS and
+// internal viewers. Assignment ids are only unique *within* a company, so prefix the
+// store key — otherwise this company's assignment 12 and LoginCSS's assignment 12
+// would drive each other's batch-job panel. API calls still send the raw numeric id.
+const batchKey = (assignmentId) => `mariamgabalawy:${assignmentId}`;
+
 const PER_PAGE = 10;
 
 const CHECKLIST_CONFIG = [
@@ -68,12 +78,12 @@ const getScoreColor = (awarded, max) => {
   return "#ef4444";
 };
 
-export default function ManagerLoginCss() {
+export default function ManagerMariamGabalawy() {
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
 
-  // ── LoginCSS submissions list ──
+  // ── Mariam Gabalawy submissions list ──
   const [submissions, setSubmissions] = useState([]);
   const [page, setPage] = useState(1);
   const [loadingList, setLoadingList] = useState(true);
@@ -107,7 +117,7 @@ export default function ManagerLoginCss() {
   const bulkStopRef = useRef(false);
   const priorityStopRef = useRef(false);
 
-  // ── Server-side batch marking (Gemini batch API via external-grading) ──
+  // ── Server-side batch marking (Gemini batch API via the grading provider) ──
   const [batchJob, setBatchJob] = useState(null);
 
   const [resultModal, setResultModal] = useState(null);
@@ -123,7 +133,7 @@ export default function ManagerLoginCss() {
 
   const [errorViewer, setErrorViewer] = useState({ open: false, title: "", message: null });
 
-  // Cache of fetched PDFs per submission (avoids re-downloading base64 from LoginCSS).
+  // Cache of fetched PDFs per submission (avoids re-downloading base64 from Mariam Gabalawy).
   const pdfCacheRef = useRef({});
 
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
@@ -175,7 +185,7 @@ export default function ManagerLoginCss() {
   // Fallback when /pdfs is blocked (e.g. "already marked"): use fresh pre-signed
   // URLs from GET /submissions/:id and download the PDFs directly in the browser.
   const fetchPdfsViaSubmission = async (submissionId) => {
-    const res = await api.get(`/external-grading/submissions/${submissionId}`);
+    const res = await api.get(`${BASE}/submissions/${submissionId}`);
     const body = res.data?.data || res.data || {};
     let submissionUrl =
       body.submission?.url || body.submission?.presignedUrl || body.submissionUrl ||
@@ -203,7 +213,7 @@ export default function ManagerLoginCss() {
 
     let entry = null;
     try {
-      const res = await api.get(`/external-grading/submissions/${submissionId}/pdfs`, { timeout: 120000 });
+      const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs`, { timeout: 120000 });
       const data = res.data || {};
       if (!data.submission?.available || !data.submission?.base64) {
         throw new Error("Student submission PDF is not available for this entry");
@@ -287,7 +297,7 @@ export default function ManagerLoginCss() {
     );
   }, [resultModal, editingQuestions, effectiveMaxTotal, summaryTouched]);
 
-  // ── Defensive normalisation of the LoginCSS list envelope ──
+  // ── Defensive normalisation of the Mariam Gabalawy list envelope ──
   const normalizeItem = (raw) => {
     const id = raw.id ?? raw.submissionId ?? raw._id;
     const draftResult = raw.draftResult ?? null;
@@ -309,7 +319,7 @@ export default function ManagerLoginCss() {
     };
   };
 
-  // Load EVERY submission (paging through the LoginCSS list) so we can group by
+  // Load EVERY submission (paging through the Mariam Gabalawy list) so we can group by
   // assignment and let the manager drill into one assignment at a time. Drafts
   // are hydrated into React state so "✅ Results" + grades survive refresh.
   const loadAll = useCallback(async () => {
@@ -320,7 +330,7 @@ export default function ManagerLoginCss() {
       let p = 1;
       let tp = 1;
       do {
-        const res = await api.get("/external-grading/submissions", {
+        const res = await api.get(`${BASE}/submissions`, {
           params: { page: p, per_page: 50 },
         });
         const body = res.data || {};
@@ -497,10 +507,10 @@ export default function ManagerLoginCss() {
   };
 
   // ── Server-side draft persistence (survives refresh / other devices) ──
-  // Only the result JSON is stored; studentFile is always re-fetchable from LoginCSS.
+  // Only the result JSON is stored; studentFile is always re-fetchable from Mariam Gabalawy.
   const saveDraft = (submissionId, result, originalAiResult) => {
     api
-      .put(`/external-grading/submissions/${submissionId}/draft`, {
+      .put(`${BASE}/submissions/${submissionId}/draft`, {
         result,
         originalAiResult: originalAiResult || result,
       })
@@ -510,7 +520,7 @@ export default function ManagerLoginCss() {
   };
 
   const deleteDraft = (submissionId) =>
-    api.delete(`/external-grading/submissions/${submissionId}/draft`).catch(() => {});
+    api.delete(`${BASE}/submissions/${submissionId}/draft`).catch(() => {});
 
   const recordMarkResult = (submissionId, result, studentFile, { persist = true } = {}) => {
     const originalAiResult = JSON.parse(JSON.stringify(result));
@@ -627,14 +637,14 @@ export default function ManagerLoginCss() {
   };
 
   // ── Server-side batch marking (upload → submit → poll) ──
-  // Results are written to each submission's LoginCSS draft server-side, so on
+  // Results are written to each submission's Mariam Gabalawy draft server-side, so on
   // success we hydrate straight from the returned results (falling back to a full
   // re-fetch of the drafts). The per-assignment job lives in assignmentBatchJobStore
   // so it survives navigation between assignments and page reloads.
 
   const pollBatchJob = useCallback(
     (jobId, jobMeta = {}) => {
-      const assignId = jobMeta.assignmentId || (selectedAssignment?.id != null ? String(selectedAssignment.id) : null);
+      const assignId = jobMeta.assignmentId || (selectedAssignment?.id != null ? batchKey(selectedAssignment.id) : null);
       if (!assignId || !jobId) return;
       if (isBatchStopped(assignId)) return;
 
@@ -643,7 +653,7 @@ export default function ManagerLoginCss() {
       const doPoll = async () => {
         if (isBatchStopped(assignId)) return;
         try {
-          const { data } = await api.get(`/external-grading/mark-batch/status/${jobId}`);
+          const { data } = await api.get(`${BASE}/mark-batch/status/${jobId}`);
 
           if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
             patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
@@ -704,10 +714,10 @@ export default function ManagerLoginCss() {
 
   const runBatchMark = async (guidanceText, mode = "normal") => {
     if (!selectedAssignment || selectedAssignment.id == null) {
-      toast.warn("Batch marking needs a real assignment — pick an assignment with a LoginCSS id.");
+      toast.warn("Batch marking needs a real assignment — pick an assignment with a Mariam Gabalawy id.");
       return;
     }
-    const assignId = String(selectedAssignment.id);
+    const assignId = batchKey(selectedAssignment.id);
 
     const eligible = submissions.filter(
       (s) =>
@@ -738,7 +748,7 @@ export default function ManagerLoginCss() {
     let succeeded;
     let failed;
     try {
-      const res = await api.post("/external-grading/mark-batch/upload", {
+      const res = await api.post(`${BASE}/mark-batch/upload`, {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
@@ -777,7 +787,7 @@ export default function ManagerLoginCss() {
 
     let jobId;
     try {
-      const res = await api.post("/external-grading/mark-batch/submit", {
+      const res = await api.post(`${BASE}/mark-batch/submit`, {
         assignmentId: selectedAssignment.id,
         msUri,
         succeeded,
@@ -811,7 +821,7 @@ export default function ManagerLoginCss() {
 
   const stopBatchMark = async () => {
     if (!selectedAssignment || selectedAssignment.id == null) return;
-    const assignId = String(selectedAssignment.id);
+    const assignId = batchKey(selectedAssignment.id);
     setBatchStopped(assignId, true);
 
     const jobId = batchJob?.jobId;
@@ -820,7 +830,7 @@ export default function ManagerLoginCss() {
 
     if (jobId) {
       try {
-        await api.delete(`/external-grading/mark-batch/cancel/${jobId}`);
+        await api.delete(`${BASE}/mark-batch/cancel/${jobId}`);
         toast.info("Batch marking cancelled");
       } catch (err) {
         toast.warning(
@@ -834,9 +844,9 @@ export default function ManagerLoginCss() {
 
   const checkForActiveJob = useCallback(async () => {
     if (!selectedAssignment || selectedAssignment.id == null) return;
-    const assignId = String(selectedAssignment.id);
+    const assignId = batchKey(selectedAssignment.id);
     try {
-      const { data } = await api.get(`/external-grading/mark-batch/active/${selectedAssignment.id}`);
+      const { data } = await api.get(`${BASE}/mark-batch/active/${selectedAssignment.id}`);
       const active = data?.active;
       const jobId = active?.jobId || (data?.jobId && data?.active !== false ? data.jobId : null);
       if (active && jobId) {
@@ -860,7 +870,7 @@ export default function ManagerLoginCss() {
       setBatchJob(null);
       return;
     }
-    return subscribeBatchJob(String(selectedAssignment.id), setBatchJob);
+    return subscribeBatchJob(batchKey(selectedAssignment.id), setBatchJob);
   }, [selectedAssignment?.id]);
 
   // Resume polling a running job whenever an assignment is selected.
@@ -975,7 +985,7 @@ export default function ManagerLoginCss() {
     }
   };
 
-  const uploadToLoginCss = async () => {
+  const uploadToProvider = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
       toast.warn("Confirm your edits first so the uploaded PDF matches the preview");
@@ -985,7 +995,7 @@ export default function ManagerLoginCss() {
 
     if (resultModal.student?.localStatus === "done") {
       const ok = await confirmToast("This submission was already graded. Re-upload and overwrite?", {
-        title: "Re-upload to LoginCSS",
+        title: "Re-upload to Mariam Gabalawy",
         confirmLabel: "Re-upload",
       });
       if (!ok) return;
@@ -1013,13 +1023,13 @@ export default function ManagerLoginCss() {
       if (summary) fd.append("comments", summary);
       if (resultModal.student?.submittedAt) fd.append("submissionDate", resultModal.student.submittedAt);
 
-      await api.post("/external-grading/upload", fd, {
+      await api.post(`${BASE}/upload`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000,
       });
 
-      toast.success("Grade & feedback uploaded to LoginCSS");
-      // Published — free the draft (the annotated PDF now lives in LoginCSS).
+      toast.success("Grade & feedback uploaded to Mariam Gabalawy");
+      // Published — free the draft (the annotated PDF now lives in Mariam Gabalawy).
       deleteDraft(submissionId);
       setSubmissions((prev) =>
         prev.map((s) =>
@@ -1031,7 +1041,7 @@ export default function ManagerLoginCss() {
       setResultModal(null);
       loadAll();
     } catch (err) {
-      toast.error((await getApiErrorMessage(err)) || "Failed to upload to LoginCSS");
+      toast.error((await getApiErrorMessage(err)) || "Failed to upload to Mariam Gabalawy");
     } finally {
       setReturning(false);
     }
@@ -1070,13 +1080,13 @@ export default function ManagerLoginCss() {
     }
   };
 
-  // Re-view the annotated feedback PDF that was published to LoginCSS (any device).
+  // Re-view the annotated feedback PDF that was published to Mariam Gabalawy (any device).
   // Mirrors the /pdfs envelope: { feedback: { available, base64 } } — base64-only
   // (no presigned URL) to avoid the R2 CORS problem of fetching the URL in-browser.
   const viewFeedback = async (student) => {
     try {
       const res = await api.get(
-        `/external-grading/submissions/${student.submissionId}/feedback`,
+        `${BASE}/submissions/${student.submissionId}/feedback`,
         { timeout: 120000 }
       );
       const feedback = res.data?.feedback || {};
@@ -1188,7 +1198,7 @@ export default function ManagerLoginCss() {
       <main className="ma-main">
         <header className="ma-topbar">
           <div className="ma-topbar-left">
-            <h1 className="ma-topbar-title">LoginCSS Submissions</h1>
+            <h1 className="ma-topbar-title">Mariam Gabalawy Submissions</h1>
             <span className="ma-topbar-sub">Welcome back, {user.name}</span>
           </div>
           <div className="ma-topbar-right">
@@ -1392,7 +1402,7 @@ export default function ManagerLoginCss() {
                       }
                       title={
                         selectedAssignment.id == null
-                          ? "Batch marking needs an assignment with a LoginCSS id"
+                          ? "Batch marking needs an assignment with a Mariam Gabalawy id"
                           : "Submit one Gemini batch job for all unmarked submissions"
                       }
                       style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
@@ -1551,7 +1561,7 @@ export default function ManagerLoginCss() {
                                     {s.hasFeedbackPdf && (
                                       <button
                                         className="msv-action-btn"
-                                        title="View the final graded PDF published to LoginCSS"
+                                        title="View the final graded PDF published to Mariam Gabalawy"
                                         onClick={() => viewFeedback(s)}
                                       >
                                         <FiEye size={13} /> Published PDF
@@ -2151,12 +2161,12 @@ export default function ManagerLoginCss() {
                 </button>
                 <button
                   className="msv-btn-ai"
-                  onClick={uploadToLoginCss}
+                  onClick={uploadToProvider}
                   disabled={returning || hasPendingEdits}
                   title={hasPendingEdits ? "Confirm edits first" : undefined}
                 >
                   <FiSend size={13} />
-                  {returning ? "Uploading…" : "Upload to LoginCSS"}
+                  {returning ? "Uploading…" : "Upload to Mariam Gabalawy"}
                 </button>
                 <button className="msv-icon-btn" onClick={() => setResultModal(null)}>
                   <FiX size={16} />
