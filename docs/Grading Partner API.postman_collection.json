@@ -1,0 +1,328 @@
+{
+  "info": {
+    "name": "Grading Partner API — spec for Mariam Gabalawy",
+    "description": "The API your platform must EXPOSE so that Sahahly can pull submissions and post marks back.\n\nThis is the partner-side contract. All three endpoints are authenticated with a static `x-api-key` header holding the API key YOU generate and send to Sahahly.\n\nSeparately, your platform must CALL our webhook when a student submits. That direction is documented in `webhook-spec.md` — read both.\n\nSet the `BASE_URL` collection variable to your origin only (e.g. `https://portal.example.com`), with no `/api/grading` suffix. Sahahly's client appends `/api/grading` itself.\n\nField names, types and the response envelope below are read directly by Sahahly's client and must match exactly.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://portal.example.com",
+      "description": "Your origin. No trailing slash, no /api/grading suffix."
+    },
+    {
+      "key": "API_KEY",
+      "value": "",
+      "description": "The key you generate and send to Sahahly. Sahahly sends it back as x-api-key on every request below."
+    },
+    {
+      "key": "SUBMISSION_ID",
+      "value": "54",
+      "description": "Sample submission id used by the requests."
+    }
+  ],
+  "item": [
+    {
+      "name": "Index Submissions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{API_KEY}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/api/grading/submissions",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "grading", "submissions"],
+          "query": [
+            {
+              "key": "filter[created_at_from]",
+              "value": "2026-01-01",
+              "description": "Optional. Inclusive lower bound on creation date.",
+              "disabled": true
+            },
+            {
+              "key": "filter[created_at_to]",
+              "value": "2026-12-31",
+              "description": "Optional. Inclusive upper bound on creation date.",
+              "disabled": true
+            },
+            {
+              "key": "filter[updated_at_from]",
+              "value": "2026-01-01",
+              "description": "Optional. Inclusive lower bound on last-update date.",
+              "disabled": true
+            },
+            {
+              "key": "filter[updated_at_to]",
+              "value": "2026-12-31",
+              "description": "Optional. Inclusive upper bound on last-update date.",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "The COMPLETE list of submissions, newest first. NOT paginated.\n\nReturn every submission you hold that matches the `filter[...]` params (or every submission you hold at all, if no filter is sent). Do not cap the result and do not split it across pages.\n\nSahahly's client may still send `page` / `per_page` on some calls. IGNORE them: return the full list regardless. They are leftovers from the previous paginated contract and carry no meaning — never treat them as a request for a subset.\n\nThe response is a single JSON object with one required key, `data`, holding the array:\n`{ \"data\": [ …submission objects… ] }`\nSahahly reads `data[]` and nothing else. Extra top-level keys are ignored, so you may include a `total` if it is convenient, but it is not required and is not read.\n\nEach element of `data[]` is a submission object (see the example). `mark_scheme` MAY be null here for submissions that have no mark scheme yet — but see webhook-spec.md, where it may NOT be null.\n\nIMPORTANT — this endpoint must mint FRESH pre-signed file URLs on every call, exactly like `GET /submissions/{id}`. Every `mark_scheme` and `attachments[]` URL in the response must be valid and directly downloadable at the moment you reply. Sahahly may download from this response without re-fetching, so cached or already-expired URLs here will break grading.\n\nAs the collection grows, use the `filter[...]` params to bound what you return rather than introducing pagination. If the unbounded response ever gets large enough to be a problem, tell us before changing the shape."
+      },
+      "response": [
+        {
+          "name": "200 — Index Submissions",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{API_KEY}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/grading/submissions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "grading", "submissions"]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"data\": [\n        {\n            \"id\": 54,\n            \"submission_date\": \"2026-06-18\",\n            \"status\": \"Submitted\",\n            \"grade\": null,\n            \"marked\": false,\n            \"mark_scheme\": \"https://files.example.com/cloud_file/5388?signature=35e14058a1b484a2f6aa60eb748cea9b\",\n            \"attachments\": [\n                \"https://files.example.com/cloud_file/5389?signature=8b00341fe72e70d15aa8d56ffcc17da3\"\n            ],\n            \"assignment\": {\n                \"id\": 12,\n                \"name\": \"Unit 3 — Organic Chemistry\",\n                \"grade\": 50,\n                \"description\": \"Answer all questions. Show your working.\",\n                \"due_date\": \"2026-06-20\",\n                \"due_time\": \"23:59\"\n            }\n        },\n        {\n            \"id\": 53,\n            \"submission_date\": \"2026-06-18\",\n            \"status\": \"Marked\",\n            \"grade\": 70,\n            \"marked\": true,\n            \"mark_scheme\": \"https://files.example.com/cloud_file/5381?signature=cf4668d7beda47a29b91b5aa3638a465\",\n            \"attachments\": [\n                \"https://files.example.com/cloud_file/5382?signature=94f447baaeb98a6411b3fbc6247d50b9\"\n            ],\n            \"assignment\": {\n                \"id\": 12,\n                \"name\": \"Unit 3 — Organic Chemistry\",\n                \"grade\": 50,\n                \"description\": \"Answer all questions. Show your working.\",\n                \"due_date\": \"2026-06-20\",\n                \"due_time\": \"23:59\"\n            }\n        }\n    ]\n}"
+        },
+        {
+          "name": "401 — Bad or missing API key",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "wrong-key",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/grading/submissions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "grading", "submissions"]
+            }
+          },
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"message\": \"Unauthorized\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Get Submission",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{API_KEY}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/api/grading/submissions/:SubmissionId",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "grading", "submissions", ":SubmissionId"],
+          "variable": [
+            {
+              "key": "SubmissionId",
+              "value": "{{SUBMISSION_ID}}"
+            }
+          ]
+        },
+        "description": "A single submission object (NOT wrapped in a pagination envelope, NOT wrapped in `data`).\n\nIMPORTANT — this endpoint must mint FRESH pre-signed file URLs on every call. Sahahly calls it specifically to recover from expired URLs before downloading PDFs. Returning cached/expired URLs here will break grading.\n\nMust return 404 if the submission does not exist. Sahahly treats 404 as 'fall back to the payload you sent us on the webhook', so a 404 is safe but a 500 is not."
+      },
+      "response": [
+        {
+          "name": "200 — Before grading",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{API_KEY}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/grading/submissions/:SubmissionId",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "grading", "submissions", ":SubmissionId"],
+              "variable": [{ "key": "SubmissionId", "value": "54" }]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"id\": 54,\n    \"submission_date\": \"2026-06-18\",\n    \"status\": \"Submitted\",\n    \"grade\": null,\n    \"marked\": false,\n    \"mark_scheme\": \"https://files.example.com/cloud_file/5388?signature=35e14058a1b484a2f6aa60eb748cea9b\",\n    \"attachments\": [\n        \"https://files.example.com/cloud_file/5389?signature=8b00341fe72e70d15aa8d56ffcc17da3\"\n    ],\n    \"assignment\": {\n        \"id\": 12,\n        \"name\": \"Unit 3 — Organic Chemistry\",\n        \"grade\": 50,\n        \"description\": \"Answer all questions. Show your working.\",\n        \"due_date\": \"2026-06-20\",\n        \"due_time\": \"23:59\"\n    }\n}"
+        },
+        {
+          "name": "200 — After grading",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{API_KEY}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/grading/submissions/:SubmissionId",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "grading", "submissions", ":SubmissionId"],
+              "variable": [{ "key": "SubmissionId", "value": "54" }]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"id\": 54,\n    \"submission_date\": \"2026-06-18\",\n    \"status\": \"Marked\",\n    \"grade\": 70,\n    \"marked\": true,\n    \"mark_scheme\": \"https://files.example.com/cloud_file/5388?signature=60c9198a6cb051065cea151aa3c2b547\",\n    \"attachments\": [\n        \"https://files.example.com/cloud_file/5389?signature=8b00341fe72e70d15aa8d56ffcc17da3\"\n    ],\n    \"assignment\": {\n        \"id\": 12,\n        \"name\": \"Unit 3 — Organic Chemistry\",\n        \"grade\": 50,\n        \"description\": \"Answer all questions. Show your working.\",\n        \"due_date\": \"2026-06-20\",\n        \"due_time\": \"23:59\"\n    }\n}"
+        },
+        {
+          "name": "404 — Unknown submission",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{API_KEY}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/grading/submissions/:SubmissionId",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "grading", "submissions", ":SubmissionId"],
+              "variable": [{ "key": "SubmissionId", "value": "999999" }]
+            }
+          },
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"message\": \"Submission not found.\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Post Submission Grading",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "{{API_KEY}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"grade\": 70,\n    \"comments\": \"Good structure, lost marks on Q4 working.\",\n    \"attachments\": [\n        \"https://sahahly-r2.example.com/grading/mariamgabalawy/54/annotated_1750000000000.pdf?X-Amz-Signature=…\"\n    ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/grading/submissions/:SubmissionId/marks",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "grading", "submissions", ":SubmissionId", "marks"],
+          "variable": [
+            {
+              "key": "SubmissionId",
+              "value": "{{SUBMISSION_ID}}"
+            }
+          ]
+        },
+        "description": "Sahahly calls this once a submission has been marked.\n\nRequest body:\n- `grade`   — number, always sent.\n- `comments` — string, omitted entirely when empty (do not assume the key is present).\n- `attachments` — array of URLs to the marked/annotated PDF. Omitted entirely when empty.\n\nCRITICAL — the URL in `attachments` is a Cloudflare R2 pre-signed URL that EXPIRES AFTER 7 DAYS. You must download the file and store your own copy when you receive this request. Do not hotlink it or persist it as-is; it will 403 after a week.\n\nOn success, mark the submission as graded so that subsequent `marked: true` / `status: \"Marked\"` / `grade` values are reflected in the two GET endpoints.\n\nRespond 201 with the envelope in the example. Sahahly returns your response body to its dashboard verbatim but does not parse individual fields, so the `data` shape is advisory — the status code is what matters."
+      },
+      "response": [
+        {
+          "name": "201 — Mark created",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{API_KEY}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"grade\": 70,\n    \"comments\": \"Good structure, lost marks on Q4 working.\",\n    \"attachments\": [\n        \"https://sahahly-r2.example.com/grading/mariamgabalawy/54/annotated_1750000000000.pdf?X-Amz-Signature=…\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/grading/submissions/:SubmissionId/marks",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "grading", "submissions", ":SubmissionId", "marks"],
+              "variable": [{ "key": "SubmissionId", "value": "54" }]
+            }
+          },
+          "status": "Created",
+          "code": 201,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "content-type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"message\": \"Assignment mark created successfully.\",\n    \"data\": {\n        \"id\": 36,\n        \"submission_id\": 54,\n        \"grade\": 70,\n        \"comments\": \"Good structure, lost marks on Q4 working.\",\n        \"marking_attachments\": [\n            \"https://files.example.com/cloud_file/5390?signature=6e7e829bbe8a7e11351a9895c68b2af0\"\n        ],\n        \"submission_attachments\": [\n            \"https://files.example.com/cloud_file/5389?signature=8b00341fe72e70d15aa8d56ffcc17da3\"\n        ]\n    }\n}"
+        }
+      ]
+    }
+  ]
+}

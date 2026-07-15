@@ -1,14 +1,14 @@
 import { Outlet } from "react-router-dom";
 import ManagerSidebar from "../../components/ManagerSidebar";
 import RoleShell from "../../components/RoleShell";
-import { LoginCssNotificationProvider } from "../../context/LoginCssNotificationContext";
+import { GradingNotificationProvider } from "../../context/GradingNotificationContext";
 
 export default function ManagerLayout() {
   return (
-    <LoginCssNotificationProvider>
+    <GradingNotificationProvider>
       <RoleShell sidebar={<ManagerSidebar />}>
         <Outlet />
       </RoleShell>
-    </LoginCssNotificationProvider>
+    </GradingNotificationProvider>
   );
 }

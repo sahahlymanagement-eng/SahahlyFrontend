@@ -22,6 +22,7 @@ import QualityTeamAssignmentsTest from "./pages/QualityTeamAssignmentsTest";
 import QualityChecklistItemsTest from "./pages/QualityChecklistItemsTest";
 import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
 import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
+import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
 import Login from "./pages/Login";
 import LandingPage from "./pages/LandingPage";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -219,6 +220,7 @@ function App() {
           <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
           <Route path="marking" element={<PaperMarking />} />
           <Route path="logincss" element={<ManagerLoginCss />} />
+          <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="markingclaude" element={<PaperMarkingClaude />} />
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />

@@ -3,7 +3,15 @@ import {
   FiZap, FiEye, FiBarChart2, FiUploadCloud, FiMessageSquare
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
-import { useLoginCssNotifications } from "../context/LoginCssNotificationContext";
+import { useGradingNotifications } from "../context/GradingNotificationContext";
+import { isGradingManager } from "../utils/gradingAccess";
+
+// External grading company tabs — visible only to grading managers, each badged
+// with its own unread count. Keyed by provider slug (see GRADING_PROVIDERS).
+const GRADING_NAV_PATHS = {
+  "/manager/logincss": "logincss",
+  "/manager/mariamgabalawy": "mariamgabalawy",
+};
 
 const NAV_ITEMS = [
   { icon: <FiHome />,      label: "Dashboard",          path: "/manager/dashboard"      },
@@ -15,23 +23,23 @@ const NAV_ITEMS = [
   { icon: <FiFileText />,  label: "Gemini AI Marking",  path: "/manager/marking"        },
   { icon: <FiFileText />,  label: "Claude AI Marking",  path: "/manager/markingclaude"  },
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },
+  { icon: <FiUploadCloud />, label: "Mariam Gabalawy",  path: "/manager/mariamgabalawy" },
   { icon: <FiZap />,       label: "Question Bank",      path: "/questionbank/manage"    },
   { icon: <FiBookOpen />,  label: "Course Management",  path: "/manager/courses" },
 ];
 
 export default function ManagerSidebar() {
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
-  const isManager01 = user?.email?.toLowerCase() === "manager01@manager";
-  const { ungradedTotal } = useLoginCssNotifications();
+  const { counts } = useGradingNotifications();
+  const showGrading = isGradingManager();
 
-  const navItems = (isManager01
+  const navItems = (showGrading
     ? NAV_ITEMS
-    : NAV_ITEMS.filter((item) => item.path !== "/manager/logincss")
-  ).map((item) =>
-    item.path === "/manager/logincss" && ungradedTotal > 0
-      ? { ...item, badge: ungradedTotal }
-      : item
-  );
+    : NAV_ITEMS.filter((item) => !GRADING_NAV_PATHS[item.path])
+  ).map((item) => {
+    const slug = GRADING_NAV_PATHS[item.path];
+    const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;
+    return unread > 0 ? { ...item, badge: unread } : item;
+  });
 
   return (
     <RoleSidebar
