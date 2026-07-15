@@ -220,6 +220,20 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
 
   const summaryMap = studentExtra?.summaryMap || {};
 
+  // Batch polling runs on a setInterval that outlives the render it was created
+  // in, so anything it reads directly would be frozen at that moment. Keep the
+  // values it needs live here: fetchStudentPage is keyed on the assignment URL,
+  // so a stale one would overwrite the current list with another assignment's
+  // students. Updated every render on purpose (no dep array).
+  const pollCtxRef = useRef({ assignmentId: null, page: 1, fetchPage: null });
+  useEffect(() => {
+    pollCtxRef.current = {
+      assignmentId: selectedAssignment?._id ?? null,
+      page: studentPage,
+      fetchPage: fetchStudentPage,
+    };
+  });
+
   useEffect(() => {
     if (!selectedAssignment?._id || loadingStudents) return;
     if (studentFetchError) {
@@ -1605,7 +1619,7 @@ useEffect(() => {
         )
       );
 
-      setEditingQuestions(res.data.questions.map(q => ({ ...q })));
+      setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
       setEditingAnnotations(getTeacherAnnotations(res.data).map((a) => ({ ...a })));
       setEditingMaxTotal(null);
     } catch (err) {
@@ -1753,7 +1767,7 @@ useEffect(() => {
         );
       }
 
-      setEditingQuestions(enrichedResult.questions.map(q => ({ ...q })));
+      setEditingQuestions((enrichedResult.questions || []).map(q => ({ ...q })));
       setEditingAnnotations(getTeacherAnnotations(enrichedResult).map((a) => ({ ...a })));
       setEditingMaxTotal(null);
     } catch (err) {
@@ -2073,6 +2087,9 @@ useEffect(() => {
           geminiModel: jobModel,
         } = data.active;
         const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
+        // Preserve the mode the job was submitted with — hardcoding "normal" here
+        // made a resumed criteria batch save its results as normal marking.
+        const restoredMode = data.active.markingMode || data.active.mode || "normal";
         setBatchStopped(assignId, false);
         patchBatchJob(assignId, {
           phase: "processing",
@@ -2081,13 +2098,13 @@ useEffect(() => {
           submittedAt,
           skipped: {},
           results: {},
-          mode: "normal",
+          mode: restoredMode,
           geminiModel: restoredModel,
           batchStudents: studentOrder || [],
         });
         pollBatchJob(jobId, {
           assignmentId: assignId,
-          mode: "normal",
+          mode: restoredMode,
           geminiModel: restoredModel,
           batchStudents: studentOrder || [],
         });
@@ -2116,6 +2133,10 @@ useEffect(() => {
 
     clearBatchPoll(jobId);
 
+    // True only while the job's assignment is still the one on screen — read
+    // live, since this runs inside a long-lived interval.
+    const isViewingThisAssignment = () => assignId === pollCtxRef.current.assignmentId;
+
     const doPoll = async () => {
       if (isBatchStopped(assignId)) return;
       try {
@@ -2123,9 +2144,6 @@ useEffect(() => {
 
         if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
-          if (assignId === selectedAssignment?._id) {
-            toast.info("Still processing, check back soon…");
-          }
           return;
         }
 
@@ -2133,7 +2151,7 @@ useEffect(() => {
 
         if (data.state === "JOB_STATE_FAILED") {
           const message = "Batch marking job failed.";
-          if (assignId === selectedAssignment?._id) {
+          if (isViewingThisAssignment()) {
             recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
           }
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
@@ -2155,7 +2173,7 @@ useEffect(() => {
             ? { status: "done", result: enrichedResult, originalAiResult }
             : { status: "error", error };
 
-          if (!success && assignId === selectedAssignment?._id) {
+          if (!success && isViewingThisAssignment()) {
             const message =
               typeof error === "string"
                 ? error
@@ -2163,17 +2181,19 @@ useEffect(() => {
             recordStudentMarkingError(student.submissionId, message, error);
           }
 
-          if (success && assignId === selectedAssignment?._id) {
-            setStudents((prev) =>
-              prev.map((s) =>
-                s.submissionId === student.submissionId
-                  ? {
-                      ...s,
-                      assignedGrade: resolveTotalMarksFromResult(result),
-                    }
-                  : s
-              )
-            );
+          if (success) {
+            if (isViewingThisAssignment()) {
+              setStudents((prev) =>
+                prev.map((s) =>
+                  s.submissionId === student.submissionId
+                    ? {
+                        ...s,
+                        assignedGrade: resolveTotalMarksFromResult(result),
+                      }
+                    : s
+                )
+              );
+            }
 
             await api.post("/submission-files/save-results", {
               assignmentId: assignId,
@@ -2194,8 +2214,9 @@ useEffect(() => {
         }));
         const okCount = data.results.filter((r) => r.success).length;
         toast.success(`Batch complete — ${okCount} student${okCount === 1 ? "" : "s"} marked.`);
-        if (assignId === selectedAssignment?._id) {
-          fetchStudentPage(studentPage);
+        if (isViewingThisAssignment()) {
+          const { fetchPage, page } = pollCtxRef.current;
+          fetchPage?.(page);
         }
       } catch (err) {
         console.error("Poll error:", err);

@@ -356,6 +356,14 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable } = extra;
 
+  // Batch polling runs on a setInterval that outlives the render it was created
+  // in, so anything it reads directly would be frozen at that moment. Keep the
+  // values it needs live here. Updated every render on purpose (no dep array).
+  const pollCtxRef = useRef({ assignmentId: null, page: 1, fetchPage: null });
+  useEffect(() => {
+    pollCtxRef.current = { assignmentId, page, fetchPage };
+  });
+
   useEffect(() => {
     if (!assignmentId || loading) return;
     if (studentFetchError) {
@@ -1500,6 +1508,10 @@ const url = URL.createObjectURL(blob);
 
     clearBatchPoll(jobId);
 
+    // True only while the job's assignment is still the one on screen — read
+    // live, since this runs inside a long-lived interval.
+    const isViewingThisAssignment = () => assignId === pollCtxRef.current.assignmentId;
+
     const doPoll = async () => {
       if (isBatchStopped(assignId)) return;
       try {
@@ -1507,9 +1519,6 @@ const url = URL.createObjectURL(blob);
 
         if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
-          if (assignId === assignmentId) {
-            toast.info("Still processing, check back soon…");
-          }
           return;
         }
 
@@ -1517,7 +1526,7 @@ const url = URL.createObjectURL(blob);
 
         if (data.state === "JOB_STATE_FAILED") {
           const message = "Batch marking job failed.";
-          if (assignId === assignmentId) {
+          if (isViewingThisAssignment()) {
             recordMarkingErrorsForStudents(jobMeta.batchStudents, null, message);
           }
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
@@ -1539,7 +1548,7 @@ const url = URL.createObjectURL(blob);
             ? { status: "done", result: enrichedResult, originalAiResult }
             : { status: "error", error };
 
-          if (!success && assignId === assignmentId) {
+          if (!success && isViewingThisAssignment()) {
             const message =
               typeof error === "string"
                 ? error
@@ -1547,17 +1556,19 @@ const url = URL.createObjectURL(blob);
             recordStudentMarkingError(student.submissionId, message, error);
           }
 
-          if (success && assignId === assignmentId) {
-            setStudents((prev) =>
-              prev.map((s) =>
-                s.submissionId === student.submissionId
-                  ? {
-                      ...s,
-                      assignedGrade: resolveTotalMarksFromResult(result),
-                    }
-                  : s
-              )
-            );
+          if (success) {
+            if (isViewingThisAssignment()) {
+              setStudents((prev) =>
+                prev.map((s) =>
+                  s.submissionId === student.submissionId
+                    ? {
+                        ...s,
+                        assignedGrade: resolveTotalMarksFromResult(result),
+                      }
+                    : s
+                )
+              );
+            }
 
             await api.post("/submission-files/save-results", {
               assignmentId: assignId,
@@ -1578,8 +1589,9 @@ const url = URL.createObjectURL(blob);
         }));
         const okCount = data.results.filter((r) => r.success).length;
         toast.success(`Batch complete — ${okCount} student${okCount === 1 ? "" : "s"} marked.`);
-        if (assignId === assignmentId) {
-          fetchPage(page);
+        if (isViewingThisAssignment()) {
+          const { fetchPage: livePage, page: livePageNum } = pollCtxRef.current;
+          livePage?.(livePageNum);
         }
       } catch (err) {
         console.error("Poll error:", err);
