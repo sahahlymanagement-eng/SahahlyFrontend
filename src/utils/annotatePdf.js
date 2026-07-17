@@ -1342,7 +1342,7 @@ export async function annotatePdf({
         color: col,
       });
 
-      page.drawText(san(`Q${q.questionNumber}`).substring(0, 9), {
+      page.drawText(san(`Q${q.questionNumber}`).substring(0, 16), {
         x: badgeX,
         y: badgeY + badgeH + 3,
         size: 9,

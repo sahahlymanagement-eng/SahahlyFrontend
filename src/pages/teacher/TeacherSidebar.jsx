@@ -4,6 +4,7 @@ import {
   FiClipboard,
   FiBarChart2,
   FiMessageCircle,
+  FiCpu,
 } from "react-icons/fi";
 import RoleSidebar from "../../components/RoleSidebar";
 
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
   { icon: <FiBookOpen />, label: "My Courses", path: "/teacher/courses" },
   { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/teacher/submissions" },
   { icon: <FiClipboard />, label: "Reports", path: "/teacher/reports" },
+  { icon: <FiCpu />, label: "AI Agent", path: "/teacher/ai-agent" },
   { icon: <FiMessageCircle />, label: "Chatbot", path: "/teacher/chatbot" },
 ];
 

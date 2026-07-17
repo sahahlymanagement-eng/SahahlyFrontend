@@ -6,15 +6,16 @@ import "./teacher.css";
 import "./TeacherChatbot.css";
 
 const SUGGESTIONS = [
-  "Prepare a report on one of my classes",
+  "Give me today's briefing",
+  "How many submissions are still uncorrected?",
+  "Which assignments are delayed?",
   "Which students need the most support?",
-  "Summarize the latest assignment results",
-  "How is the attendance this month?",
+  "What topics are weakest right now?",
+  "Who improved this month?",
 ];
 
-const STORAGE_KEY = "sahahly-teacher-chatbot";
+const STORAGE_KEY = "sahahly-teacher-ai-agent";
 
-/** Minimal safe markdown → HTML (bold, bullets, headings, line breaks). */
 function renderMarkdown(text) {
   const escaped = String(text || "")
     .replace(/&/g, "&amp;")
@@ -66,17 +67,27 @@ export default function TeacherChatbot() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [lastMatched, setLastMatched] = useState(null);
+  const [briefing, setBriefing] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      setUser(parsed);
+      if (parsed?.id) {
+        api
+          .get("/teacher-chatbot/briefing", { params: { personId: parsed.id } })
+          .then((res) => setBriefing(res.data))
+          .catch(() => setBriefing(null));
+      }
+    }
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) setMessages(JSON.parse(saved));
     } catch {
-      /* ignore corrupted session state */
+      /* ignore */
     }
   }, []);
 
@@ -84,7 +95,7 @@ export default function TeacherChatbot() {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-40)));
     } catch {
-      /* ignore quota errors */
+      /* ignore */
     }
   }, [messages]);
 
@@ -154,8 +165,8 @@ export default function TeacherChatbot() {
     <div className="tch-page tch-page--wide tchat-page">
       <TeacherPageHeader
         eyebrow="AI Assistant"
-        title="Chatbot"
-        subtitle="Ask about your classes and students — reports, performance, attendance, and more."
+        title="AI Agent"
+        subtitle="Ask about correction status, weak students, class comparisons, topics, and attendance."
         actions={
           messages.length > 0 ? (
             <button type="button" className="tch-btn tch-btn--ghost" onClick={newChat}>
@@ -174,9 +185,29 @@ export default function TeacherChatbot() {
               </div>
               <h3>What would you like to know?</h3>
               <p>
-                I can see your classes, assignments, grades, and attendance.
-                Mention a class or student by name for detailed answers.
+                I can see your classes, correction workflow, grades, weak topics,
+                and attendance. Mention a class or student by name for detail.
               </p>
+              {briefing?.lines?.length ? (
+                <div className="tchat-briefing-card">
+                  <div className="tchat-briefing-card-title">
+                    {briefing.greeting || "Today's briefing"}
+                  </div>
+                  <ul>
+                    {briefing.lines.slice(0, 5).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    className="tchat-suggestion"
+                    onClick={() => send("Give me today's briefing")}
+                  >
+                    <FiZap size={13} />
+                    Explain this briefing
+                  </button>
+                </div>
+              ) : null}
               <div className="tchat-suggestions">
                 {SUGGESTIONS.map((s) => (
                   <button
@@ -195,7 +226,7 @@ export default function TeacherChatbot() {
             <div className="tchat-messages">
               {messages.map((m, i) => (
                 <div
-                  key={i}
+                  key={`${m.at || i}-${i}`}
                   className={`tchat-row ${m.role === "user" ? "tchat-row--user" : ""}`}
                 >
                   <div
@@ -213,7 +244,6 @@ export default function TeacherChatbot() {
                     {m.role === "assistant" ? (
                       <div
                         className="tchat-md"
-                        // renderMarkdown escapes HTML before adding formatting tags
                         dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }}
                       />
                     ) : (
@@ -263,7 +293,7 @@ export default function TeacherChatbot() {
           <textarea
             ref={inputRef}
             className="tchat-input"
-            placeholder='Ask anything — e.g. "How is Malak doing this year?" or "Prepare a report on AS Biology"'
+            placeholder='Ask — e.g. "Which assignments are delayed?" or "Weakest students in Class A"'
             value={input}
             rows={1}
             onChange={(e) => setInput(e.target.value)}

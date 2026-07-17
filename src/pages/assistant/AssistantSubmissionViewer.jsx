@@ -184,7 +184,7 @@ export default function AssignmentSubmissionViewer() {
 
   const [markingProvider, setMarkingProvider] = useState("gemini");
   const [geminiModels, setGeminiModels] = useState([]);
-  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash-lite");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
   const [savedResults, setSavedResults] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [exportingGrades, setExportingGrades] = useState(false);

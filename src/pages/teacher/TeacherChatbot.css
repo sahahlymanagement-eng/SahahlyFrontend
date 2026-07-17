@@ -57,6 +57,35 @@
   line-height: 1.55;
 }
 
+.tchat-briefing-card {
+  text-align: left;
+  max-width: 520px;
+  margin: 0 auto 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.tchat-briefing-card-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #e0f2fe;
+  margin-bottom: 8px;
+}
+
+.tchat-briefing-card ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tchat-briefing-card li {
+  margin-bottom: 3px;
+}
+
 .tchat-suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -258,6 +287,73 @@
   border-color: rgba(52, 211, 153, 0.3);
   background: rgba(52, 211, 153, 0.08);
   color: #a7f3d0;
+}
+
+/* Editable WhatsApp preview */
+.tchat-preview-editor {
+  max-width: 720px;
+  margin: 4px auto 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-sizing: border-box;
+}
+
+.tchat-preview-editor-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e0f2fe;
+  margin-bottom: 12px;
+}
+
+.tchat-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tchat-preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tchat-preview-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+.tchat-preview-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 88px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(3, 7, 18, 0.55);
+  color: #e2e8f0;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.45;
+  outline: none;
+}
+
+.tchat-preview-textarea:focus {
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.tchat-preview-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 /* ── Input bar ── */

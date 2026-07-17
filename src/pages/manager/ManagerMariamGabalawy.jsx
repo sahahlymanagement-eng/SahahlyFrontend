@@ -102,7 +102,7 @@ export default function ManagerMariamGabalawy() {
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
   const [geminiModels, setGeminiModels] = useState([]);
-  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash-lite");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
 
   // ── Marking progress / results ──
   const [markingStudentId, setMarkingStudentId] = useState(null);

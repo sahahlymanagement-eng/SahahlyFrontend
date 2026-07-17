@@ -47,7 +47,7 @@ function brandGeminiLabel(raw) {
   return `Sahahly ${out}`;
 }
 
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 export let USD_TO_EGP_RATE = 50;
 export let CACHED_INPUT_RATE_FACTOR = 0.25;
 export let BATCH_RATE_FACTOR = 0.5;
