@@ -4574,8 +4574,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             </div>
 
             {/* <div className="msv-modal-body"> */}
-            <div 
-                        className="msv-modal-body"
+            <div
+                        className="msv-modal-body msv-results-body"
                         style={{
                           display: "flex",
                           gap: 20,

@@ -2165,7 +2165,7 @@ export default function ManagerLoginCss() {
             </div>
 
             <div
-              className="msv-modal-body"
+              className="msv-modal-body msv-results-body"
               style={{ display: "flex", gap: 20, height: "80vh", overflow: "hidden" }}
             >
               {/* LEFT: results / editor */}
