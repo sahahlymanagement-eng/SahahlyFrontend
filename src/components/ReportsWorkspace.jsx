@@ -330,7 +330,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         ...prev[studentId],
         items: {
           ...prev[studentId].items,
-          [assignmentId]: { ...prev[studentId].items[assignmentId], comment }
+          // commentEdited makes the user's text (or deliberate clearing)
+          // authoritative — no AI-summary fallback may overwrite it.
+          [assignmentId]: { ...prev[studentId].items[assignmentId], comment, commentEdited: true }
         }
       }
     }));
@@ -583,7 +585,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             maxPoints,
             item.percentage ?? percentageFromLive
           ),
-          comment: (item.comment || savedSummary || "").trim(),
+          comment: item.commentEdited
+            ? (item.comment || "").trim()
+            : (item.comment || savedSummary || "").trim(),
+          commentEdited: Boolean(item.commentEdited),
           includeAttendance: Boolean(attendanceCfg.enabled),
           attendancePresent: attendanceCfg.enabled
             ? Boolean(attendanceCfg.map?.[String(entry.studentMeta._id)])

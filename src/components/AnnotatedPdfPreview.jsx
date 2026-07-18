@@ -18,7 +18,7 @@ const RIGHT_COL_WIDTH_PCT = 23;
 function clampYPercent(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return 30;
-  return Math.min(92, Math.max(5, Math.round(v * 10) / 10));
+  return Math.min(92, Math.max(5, Math.round(v * 100) / 100));
 }
 
 function questionKey(q) {
@@ -195,6 +195,7 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
     const studentPage = Number(el.getAttribute("data-student-page"));
     if (!Number.isFinite(studentPage) || studentPage < 1) continue;
     const rect = el.getBoundingClientRect();
+    if (rect.height <= 0) continue;
     if (clientY >= rect.top && clientY <= rect.bottom) {
       const yPercent = clampYPercent(((clientY - rect.top) / rect.height) * 100);
       return { studentPage, yPercent, pageEl: el };
@@ -203,15 +204,10 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
       clientY < rect.top ? rect.top - clientY : clientY - rect.bottom;
     if (dist < bestDist) {
       bestDist = dist;
-      const yPercent =
-        clientY < rect.top
-          ? 5
-          : clampYPercent(((clientY - rect.top) / rect.height) * 100);
-      best = {
-        studentPage,
-        yPercent: Math.min(92, Math.max(5, yPercent)),
-        pageEl: el,
-      };
+      // Pointer is between pages: snap to the nearest edge of this page
+      // instead of extrapolating a percentage past its bounds.
+      const yPercent = clientY < rect.top ? 5 : 92;
+      best = { studentPage, yPercent, pageEl: el };
     }
   }
 
@@ -345,12 +341,19 @@ export default function AnnotatedPdfPreview({
       const studentPage = Math.max(1, Number(q.pageNumber) || 1);
       const startY = clampYPercent(q.yPercent);
 
+      // The handle is centered on its anchor line (translateY(-50%)). Remember
+      // where inside the handle the user grabbed so the anchor doesn't snap to
+      // the cursor on the first move — that jump made drags land inaccurately.
+      const rect = e.currentTarget.getBoundingClientRect();
+      const grabOffsetY = e.clientY - (rect.top + rect.height / 2);
+
       dragRef.current = {
         key,
         column,
         questionNumber: q.questionNumber,
         pageNumber: studentPage,
         startY,
+        grabOffsetY,
       };
       setDragKey(`${key}:${column}`);
       e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -364,9 +367,10 @@ export default function AnnotatedPdfPreview({
     const onMove = (e) => {
       const drag = dragRef.current;
       if (!drag) return;
+      const anchorY = e.clientY - (drag.grabOffsetY || 0);
       const hit = resolveStudentPageUnderPointer(
         scrollRef.current,
-        e.clientY,
+        anchorY,
         Math.max(0, Number(reportPageCount) || 0)
       );
       if (!hit) return;
@@ -397,9 +401,10 @@ export default function AnnotatedPdfPreview({
     const onUp = (e) => {
       const drag = dragRef.current;
       if (!drag) return;
+      const anchorY = e.clientY - (drag.grabOffsetY || 0);
       const hit = resolveStudentPageUnderPointer(
         scrollRef.current,
-        e.clientY,
+        anchorY,
         Math.max(0, Number(reportPageCount) || 0)
       );
       const pageNumber = hit?.studentPage ?? drag.pageNumber;
