@@ -25,6 +25,41 @@ const GradingNotificationContext = createContext({
 
 const POLL_MS = 60000;
 
+// A submission is "published/graded" once the grade is pushed back to the partner
+// (marked) or our annotated feedback PDF has been uploaded (hasFeedbackPdf). Everything
+// else — new, failed, or AI-graded drafts not yet uploaded — is still outstanding.
+const isPublished = (s) => s?.marked === true || s?.hasFeedbackPdf === true;
+
+// Page through a provider's submissions list (mirrors the tabs' loadAll) and count the
+// submissions still outstanding, so the badge matches what the tab actually shows.
+async function countOutstanding(base) {
+  const collected = [];
+  let p = 1;
+  let tp = 1;
+  do {
+    const res = await api.get(`${base}/submissions`, { params: { page: p, per_page: 50 } });
+    const body = res.data || {};
+    const items =
+      body.data ||
+      body.submissions ||
+      body.items ||
+      body.results ||
+      body.rows ||
+      (Array.isArray(body) ? body : []);
+    const meta = body.meta || body.pagination || body;
+    const totalCount = meta.total ?? meta.totalItems ?? meta.count ?? items.length;
+    tp =
+      meta.totalPages ??
+      meta.total_pages ??
+      meta.last_page ??
+      (meta.per_page ? Math.ceil(totalCount / meta.per_page) : 1);
+    for (const raw of items) collected.push(raw);
+    p += 1;
+  } while (p <= tp && p <= 100);
+
+  return collected.filter((s) => !isPublished(s)).length;
+}
+
 export function GradingNotificationProvider({ children }) {
   const [counts, setCounts] = useState(emptyCounts);
   const enabled = useRef(isGradingManager());
@@ -37,11 +72,10 @@ export function GradingNotificationProvider({ children }) {
     await Promise.all(
       GRADING_PROVIDERS.map(async ({ slug, label, base }) => {
         try {
-          const res = await api.get(`${base}/notifications`);
-          const next = res.data?.ungradedTotal ?? 0;
+          const next = await countOutstanding(base);
           setCounts((prev) => ({
             ...prev,
-            [slug]: { ungradedTotal: next, pendingTotal: res.data?.pendingTotal ?? 0 },
+            [slug]: { ungradedTotal: next, pendingTotal: next },
           }));
           const prev = prevUngraded.current[slug] ?? null;
           if (prev !== null && next > prev) {
