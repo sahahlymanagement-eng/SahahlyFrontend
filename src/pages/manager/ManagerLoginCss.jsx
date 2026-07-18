@@ -48,6 +48,7 @@ import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingProm
 import { isGradingManager } from "../../utils/gradingAccess";
 
 const PER_PAGE = 10;
+const ASSIGNMENTS_PER_PAGE = 15;
 
 const CHECKLIST_CONFIG = [
   { key: "scanningClarity",            label: "Scanning Clarity",          passIsGood: true  },
@@ -76,6 +77,7 @@ export default function ManagerLoginCss() {
   // ── LoginCSS submissions list ──
   const [submissions, setSubmissions] = useState([]);
   const [page, setPage] = useState(1);
+  const [assignmentPage, setAssignmentPage] = useState(1);
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
@@ -1160,6 +1162,15 @@ export default function ManagerLoginCss() {
     ? assignments.filter((a) => (a.name || "").toLowerCase().includes(aq))
     : assignments;
 
+  // Client-side pagination of the assignment selection list (search filters the
+  // whole list first, then we slice into pages).
+  const assignmentTotalPages = Math.max(1, Math.ceil(filteredAssignments.length / ASSIGNMENTS_PER_PAGE));
+  const safeAssignmentPage = Math.min(assignmentPage, assignmentTotalPages);
+  const visibleAssignments = filteredAssignments.slice(
+    (safeAssignmentPage - 1) * ASSIGNMENTS_PER_PAGE,
+    safeAssignmentPage * ASSIGNMENTS_PER_PAGE
+  );
+
   // Submissions for the selected assignment, filtered by name search.
   const q = search.trim().toLowerCase();
   const assignmentSubmissions = selectedAssignment
@@ -1230,7 +1241,7 @@ export default function ManagerLoginCss() {
                   className="ma-search-input"
                   placeholder="Search assignments..."
                   value={assignmentSearch}
-                  onChange={(e) => setAssignmentSearch(e.target.value)}
+                  onChange={(e) => { setAssignmentSearch(e.target.value); setAssignmentPage(1); }}
                 />
                 <div className="ma-scroll-list">
                   {loadingList ? (
@@ -1240,7 +1251,7 @@ export default function ManagerLoginCss() {
                       {assignmentSearch ? "No assignments match your search." : "No assignments found."}
                     </p>
                   ) : (
-                    filteredAssignments.map((a) => (
+                    visibleAssignments.map((a) => (
                       <div
                         key={a.key}
                         className="ma-assignment-card"
@@ -1265,6 +1276,13 @@ export default function ManagerLoginCss() {
                     ))
                   )}
                 </div>
+                {!loadingList && filteredAssignments.length > ASSIGNMENTS_PER_PAGE && (
+                  <Pagination
+                    page={safeAssignmentPage}
+                    totalPages={assignmentTotalPages}
+                    onPageChange={(p) => setAssignmentPage(p)}
+                  />
+                )}
               </div>
             ) : (
               <div
