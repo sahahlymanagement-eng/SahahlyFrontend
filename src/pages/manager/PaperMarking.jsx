@@ -31,7 +31,7 @@ export default function PaperMarking() {
   const [savingRules,     setSavingRules]     = useState(false);
   const [markingMode, setMarkingMode] = useState("normal");
   const [geminiModels, setGeminiModels] = useState([]);
-  const [geminiModel, setGeminiModel] = useState("gemini-3-flash-preview");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
 
   // Saved prompts
   const [savedPrompts,    setSavedPrompts]    = useState([]);
