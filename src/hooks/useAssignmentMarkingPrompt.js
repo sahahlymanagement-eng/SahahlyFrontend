@@ -46,7 +46,20 @@ export function useAssignmentMarkingPrompt(assignmentId) {
       setContent(res.data?.content || "");
       setMaxPoints(res.data?.maxPoints ?? null);
       setGeneratedAt(res.data?.generatedAt || new Date().toISOString());
-      toast.success("Assignment prompt generated");
+      const lm = res.data?.labelMapping;
+      let detail = "";
+      if (lm?.applied && lm.count > 0) {
+        detail = ` — ${lm.count} printed→MS label mapping${lm.count === 1 ? "" : "s"} added automatically`;
+      } else if (lm?.count > 0) {
+        detail = ` — ${lm.count} label mapping${lm.count === 1 ? "" : "s"} in prompt`;
+      } else if (
+        lm?.reason === "no_page_local_renumbering" ||
+        lm?.reason === "sequence_table_labels_match_ms" ||
+        lm?.reason === "no_renumbering_declared_in_main_prompt"
+      ) {
+        detail = " — no page-local renumbering (mapping not needed)";
+      }
+      toast.success(`Assignment prompt generated${detail}`);
       return res.data;
     } catch (err) {
       toast.error(err.response?.data?.message || "Prompt generation failed");

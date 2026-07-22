@@ -84,6 +84,7 @@ import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
+import QuestionNumberBadge from "../../components/QuestionNumberBadge";
 import {
   geminiModelLabel,
   getDefaultMarkingModels,
@@ -3683,7 +3684,7 @@ return (
                         return (
                           <div key={idx} className="msv-q-card">
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 14, fontWeight: 700 }}>Q{q.questionNumber}</span>
+                              <QuestionNumberBadge question={q} />
                               {/* In criteria mode, scores are read-only feedback */}
                               {isCriteria ? (
                                 <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 13 }}>
