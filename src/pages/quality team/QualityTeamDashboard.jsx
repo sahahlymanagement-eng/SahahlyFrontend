@@ -333,7 +333,7 @@ export default function QualityTeamDashboard() {
         </header>
 
         <div className="qt-stats">
-          <div className="qt-stat-card" style={{ "--accent": "#2563eb" }}>
+          <div className="qt-stat-card" style={{ "--accent": "var(--primary)" }}>
             <div className="qt-stat-icon"><FiShield /></div>
             <div className="qt-stat-content">
               <span className="qt-stat-label">Total Active</span>
@@ -341,7 +341,7 @@ export default function QualityTeamDashboard() {
             </div>
           </div>
 
-          <div className="qt-stat-card" style={{ "--accent": "#22c55e" }}>
+          <div className="qt-stat-card" style={{ "--accent": "var(--success)" }}>
             <div className="qt-stat-icon"><FiCheckCircle /></div>
             <div className="qt-stat-content">
               <span className="qt-stat-label">In Review</span>
@@ -349,7 +349,7 @@ export default function QualityTeamDashboard() {
             </div>
           </div>
 
-          <div className="qt-stat-card" style={{ "--accent": "#f59e0b" }}>
+          <div className="qt-stat-card" style={{ "--accent": "var(--warning)" }}>
             <div className="qt-stat-icon"><FiAlertTriangle /></div>
             <div className="qt-stat-content">
               <span className="qt-stat-label">After Recheck</span>
@@ -357,7 +357,7 @@ export default function QualityTeamDashboard() {
             </div>
           </div>
 
-          <div className="qt-stat-card" style={{ "--accent": "#ef4444" }}>
+          <div className="qt-stat-card" style={{ "--accent": "var(--danger)" }}>
             <div className="qt-stat-icon"><FiClock /></div>
             <div className="qt-stat-content">
               <span className="qt-stat-label">Emergency</span>

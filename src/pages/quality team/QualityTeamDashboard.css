@@ -32,7 +32,7 @@
 .qt-root {
   min-height: 0;
   background: transparent;
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-family: 'Plus Jakarta Sans', sans-serif;
   animation: qt-fade-in 0.25s ease;
 }
@@ -51,8 +51,8 @@
   margin-bottom: 28px;
   padding: 18px 22px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(0, 8, 24, 0.55);
+  border: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   animation: qt-fade-down 0.4s ease;
@@ -68,12 +68,12 @@
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: linear-gradient(135deg, var(--primary), var(--primary-active));
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  box-shadow: 0 0 20px rgba(37, 99, 235, 0.28);
+  color: var(--primary-contrast);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .qt-title {
@@ -82,7 +82,7 @@
   font-size: 28px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  background: linear-gradient(120deg, #ffffff 35%, #93c5fd 100%);
+  background: linear-gradient(120deg, var(--text-primary) 35%, var(--primary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -90,18 +90,18 @@
 
 .qt-sub {
   font-size: 13px;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .qt-refresh-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.09);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 10px 14px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -110,7 +110,7 @@
 }
 
 .qt-refresh-btn:hover {
-  background: rgba(255,255,255,0.08);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   transform: translateY(-1px);
 }
 
@@ -130,9 +130,9 @@ gap:10px;
 display:flex;
 align-items:center;
 gap:7px;
-background:rgba(239,68,68,0.08);
-border:1px solid rgba(239,68,68,0.18);
-color:#fca5a5;
+background:color-mix(in srgb, var(--danger) 8%, transparent);
+border:1px solid color-mix(in srgb, var(--danger) 18%, transparent);
+color:var(--danger);
 padding:10px 14px;
 border-radius:10px;
 cursor:pointer;
@@ -143,9 +143,9 @@ transition:.2s;
 }
 
 .qt-logout-btn:hover{
-background:rgba(239,68,68,0.18);
-border-color:rgba(239,68,68,0.4);
-color:#fecaca;
+background:color-mix(in srgb, var(--danger) 18%, transparent);
+border-color:color-mix(in srgb, var(--danger) 40%, transparent);
+color:var(--danger);
 transform:translateY(-1px);
 }
 
@@ -157,8 +157,8 @@ transform:translateY(-1px);
 }
 
 .qt-stat-card {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.07);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 18px;
   padding: 20px;
   display: flex;
@@ -167,7 +167,7 @@ transform:translateY(-1px);
   position: relative;
   overflow: hidden;
   animation: qt-scale-in 0.45s ease both;
-  box-shadow: 0 10px 34px rgba(0,0,0,0.22);
+  box-shadow: var(--shadow-sm);
 }
 
 .qt-stat-card::before {
@@ -204,7 +204,7 @@ transform:translateY(-1px);
 
 .qt-stat-label {
   font-size: 11px;
-  color: #64748b;
+  color: var(--muted);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -213,16 +213,16 @@ transform:translateY(-1px);
 .qt-stat-value {
   font-size: 28px;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--text-primary);
   font-family: 'Outfit', sans-serif;
   line-height: 1;
 }
 
 .qt-card {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.07);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 18px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.24);
+  box-shadow: var(--shadow);
   animation: qt-fade-up 0.45s ease;
 }
 
@@ -244,14 +244,14 @@ transform:translateY(-1px);
   font-family: 'Outfit', sans-serif;
   font-size: 20px;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--text-primary);
   margin: 0 0 4px;
 }
 
 .qt-card-subtitle {
   margin: 0;
   font-size: 13px;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .qt-search-wrap {
@@ -266,17 +266,17 @@ transform:translateY(-1px);
   top: 50%;
   left: 12px;
   transform: translateY(-50%);
-  color: #475569;
+  color: var(--muted);
   pointer-events: none;
 }
 
 .qt-search-input {
   width: 100%;
-  background: #081c44;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
   border-radius: 11px;
   padding: 12px 14px 12px 38px;
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-size: 13px;
   outline: none;
   font-family: 'Plus Jakarta Sans', sans-serif;
@@ -284,12 +284,12 @@ transform:translateY(-1px);
 }
 
 .qt-search-input::placeholder {
-  color: #475569;
+  color: var(--muted);
 }
 
 .qt-search-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.14);
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 .qt-table-wrap {
@@ -304,7 +304,7 @@ transform:translateY(-1px);
 }
 
 .qt-table thead {
-  background: #0a2a66;
+  background: var(--surface-2);
 }
 
 .qt-table th {
@@ -314,15 +314,15 @@ transform:translateY(-1px);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 700;
-  color: #93c5fd;
+  color: var(--primary);
   white-space: nowrap;
 }
 
 .qt-table td {
   padding: 16px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--border-soft);
   font-size: 13px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   vertical-align: middle;
 }
 
@@ -331,16 +331,16 @@ transform:translateY(-1px);
 }
 
 .qt-row:hover td {
-  background: rgba(37,99,235,0.05);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 .qt-cell-primary {
   font-weight: 600;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .qt-cell-muted {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 12.5px;
 }
 
@@ -348,29 +348,30 @@ transform:translateY(-1px);
   display: block;
   max-width: 280px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .qt-open-btn {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: var(--primary-strong);
   border: none;
   padding: 9px 14px;
   border-radius: 10px;
-  color: white;
+  color: var(--primary-contrast);
   font-weight: 700;
   font-size: 12px;
   cursor: pointer;
   transition: 0.2s ease;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  box-shadow: 0 4px 16px rgba(37,99,235,0.22);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .qt-open-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(37,99,235,0.3);
+  background: var(--primary-active);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .qt-status {
@@ -384,21 +385,21 @@ transform:translateY(-1px);
 }
 
 .qt-status.IN_REVIEW {
-  background: rgba(37,99,235,0.14);
-  color: #93c5fd;
-  border: 1px solid rgba(37,99,235,0.24);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
 }
 
 .qt-status.IN_REVIEW_AFTER_RECHECK {
-  background: rgba(245,158,11,0.14);
-  color: #fcd34d;
-  border: 1px solid rgba(245,158,11,0.24);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
 }
 
 .qt-status.EMERGENCY {
-  background: rgba(239,68,68,0.14);
-  color: #fca5a5;
-  border: 1px solid rgba(239,68,68,0.24);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
 }
 
 .qt-review-panel {
@@ -419,7 +420,7 @@ transform:translateY(-1px);
   margin: 0 0 10px;
   font-size: 22px;
   font-family: 'Outfit', sans-serif;
-  color: #f8fafc;
+  color: var(--text-primary);
   font-weight: 700;
 }
 
@@ -432,16 +433,16 @@ transform:translateY(-1px);
 
 .qt-review-deadline {
   font-size: 12.5px;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .qt-close-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: #cbd5e1;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
   border-radius: 10px;
   padding: 10px 14px;
   cursor: pointer;
@@ -452,7 +453,7 @@ transform:translateY(-1px);
 }
 
 .qt-close-btn:hover {
-  background: rgba(255,255,255,0.08);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .qt-checklist-wrap {
@@ -468,13 +469,13 @@ transform:translateY(-1px);
 }
 
 .qt-checklist-table thead {
-  background: #0a2a66;
+  background: var(--surface-2);
 }
 
 .qt-checklist-table th {
   padding: 12px 14px;
   font-size: 11px;
-  color: #93c5fd;
+  color: var(--primary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   text-align: left;
@@ -482,8 +483,8 @@ transform:translateY(-1px);
 
 .qt-checklist-table td {
   padding: 14px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  color: #e2e8f0;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-primary);
   font-size: 13px;
 }
 
@@ -495,20 +496,20 @@ transform:translateY(-1px);
 
 .qt-item-title {
   font-weight: 600;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .qt-item-score {
   font-size: 12px;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .qt-score-box {
   margin-top: 18px;
   padding: 16px 18px;
   border-radius: 14px;
-  background: #081c44;
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -516,13 +517,13 @@ transform:translateY(-1px);
 }
 
 .qt-score-box span {
-  color: #93c5fd;
+  color: var(--primary);
   font-size: 13px;
   font-weight: 600;
 }
 
 .qt-score-box strong {
-  color: #fff;
+  color: var(--text-primary);
   font-size: 22px;
   font-family: 'Outfit', sans-serif;
 }
@@ -532,9 +533,9 @@ transform:translateY(-1px);
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: #081c44;
-  color: white;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--text-primary);
   min-height: 110px;
   resize: vertical;
   outline: none;
@@ -544,12 +545,12 @@ transform:translateY(-1px);
 }
 
 .qt-comment-box:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.14);
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 .qt-comment-box::placeholder {
-  color: #475569;
+  color: var(--muted);
 }
 
 .qt-action-buttons {
@@ -582,28 +583,28 @@ transform:translateY(-1px);
 }
 
 .qt-btn-success {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
+  background: linear-gradient(135deg, var(--success), color-mix(in srgb, var(--success) 72%, black));
 }
 
 .qt-btn-warning {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: linear-gradient(135deg, var(--warning), color-mix(in srgb, var(--warning) 72%, black));
 }
 
 .qt-btn-danger {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: linear-gradient(135deg, var(--danger), color-mix(in srgb, var(--danger) 72%, black));
 }
 
 .qt-btn-secondary {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 72%, black));
 }
 
 .qt-message-box {
   margin-top: 20px;
   padding: 14px 16px;
-  background: #0a2a66;
-  border: 1px solid rgba(37,99,235,0.18);
+  background: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
   border-radius: 12px;
-  color: #dbeafe;
+  color: var(--primary);
   font-size: 13px;
   font-weight: 600;
   animation: qt-fade-up 0.3s ease;
@@ -613,7 +614,7 @@ transform:translateY(-1px);
 .qt-empty {
   padding: 40px 20px;
   text-align: center;
-  color: #64748b;
+  color: var(--muted);
   font-size: 14px;
 }
 

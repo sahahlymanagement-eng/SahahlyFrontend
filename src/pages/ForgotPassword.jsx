@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiSun, FiMoon } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../api/api";
 import "./ForgotPassword.css";
+import { useTheme } from "../context/ThemeContext";
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,6 +48,14 @@ export default function ForgotPassword() {
 
   return (
     <div className="forgot-page">
+      <button
+        type="button"
+        className="forgot-theme-toggle"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />}
+      </button>
       <div className="forgot-cardWrap">
         <div className="forgot-card">
           <div className="forgot-brandRow">

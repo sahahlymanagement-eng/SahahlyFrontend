@@ -212,7 +212,7 @@ export default function QBBrowse() {
                     <div style={{ fontWeight: 700, fontSize: 14 }}>
                       {q.boardId?.name} · {q.subjectId?.name}
                     </div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 3 }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
                       {q.unitId?.name} → {q.chapterId?.name}
                     </div>
                   </div>
@@ -265,9 +265,9 @@ export default function QBBrowse() {
                       className={`qb-preview-tab ${previewFile === i ? "qb-preview-tab--active" : ""}`}
                       onClick={() => setPreviewFile(i)}
                       style={f.type === "markscheme" ? {
-                        borderColor: previewFile === i ? "#22c55e" : "rgba(34,197,94,0.4)",
-                        background:  previewFile === i ? "#22c55e" : "transparent",
-                        color:       previewFile === i ? "white"   : "#22c55e"
+                        borderColor: previewFile === i ? "var(--success)" : "color-mix(in srgb, var(--success) 40%, transparent)",
+                        background:  previewFile === i ? "var(--success)" : "transparent",
+                        color:       previewFile === i ? "var(--primary-contrast)" : "var(--success)"
                       } : {}}
                     >
                       {f.type === "markscheme" ? "📋 " : "📄 "}

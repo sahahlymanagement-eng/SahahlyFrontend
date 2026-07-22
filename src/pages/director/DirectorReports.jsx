@@ -106,8 +106,8 @@ function DataTable({ columns, rows, empty }) {
     return <p className="dr-empty">{empty || "No data."}</p>;
   }
   return (
-    <div className="dr-table-wrap">
-      <table className="dr-table">
+    <div className="dr-table-wrap sah-table-scroll">
+      <table className="dr-table sah-table--cards">
         <thead>
           <tr>
             {columns.map((c) => (
@@ -119,7 +119,9 @@ function DataTable({ columns, rows, empty }) {
           {rows.map((row, idx) => (
             <tr key={row.id || row.classroomId || row.teacherId || row.subjectId || idx}>
               {columns.map((c) => (
-                <td key={c.key}>{c.render ? c.render(row) : row[c.key]}</td>
+                <td key={c.key} data-label={c.label || undefined}>
+                  {c.render ? c.render(row) : row[c.key]}
+                </td>
               ))}
             </tr>
           ))}

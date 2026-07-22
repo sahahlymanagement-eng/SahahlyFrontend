@@ -170,9 +170,9 @@ export default function QBClassify() {
   };
 
   const getConfColor = (score) => {
-    if (score >= 80) return "#22c55e";
-    if (score >= 60) return "#f59e0b";
-    return "#ef4444";
+    if (score >= 80) return "var(--success)";
+    if (score >= 60) return "var(--warning)";
+    return "var(--danger)";
   };
 
   const selectedSubjectObj = subjects.find(s => s._id === selSubject);
@@ -189,21 +189,21 @@ export default function QBClassify() {
             }}>
               <div style={{
                 width: 32, height: 32, borderRadius: "50%",
-                background: i < step ? "#22c55e" : i === step ? "#399cf2" : "rgba(255,255,255,0.1)",
-                border: `2px solid ${i < step ? "#22c55e" : i === step ? "#399cf2" : "rgba(255,255,255,0.2)"}`,
+                background: i < step ? "var(--success)" : i === step ? "var(--primary)" : "color-mix(in srgb, var(--text-primary) 10%, transparent)",
+                border: `2px solid ${i < step ? "var(--success)" : i === step ? "var(--primary)" : "var(--border)"}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 13, fontWeight: 700, flexShrink: 0
               }}>
                 {i < step ? <FiCheck size={14} /> : i + 1}
               </div>
-              <span style={{ fontSize: 11, color: i === step ? "white" : "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 11, color: i === step ? "var(--primary-contrast)" : "var(--muted)", whiteSpace: "nowrap" }}>
                 {s}
               </span>
             </div>
             {i < STEPS.length - 1 && (
               <div style={{
                 flex: 1, height: 2, margin: "0 8px", marginBottom: 20,
-                background: i < step ? "#22c55e" : "rgba(255,255,255,0.1)"
+                background: i < step ? "var(--success)" : "color-mix(in srgb, var(--text-primary) 10%, transparent)"
               }} />
             )}
           </div>
@@ -318,11 +318,11 @@ export default function QBClassify() {
 
             <div className="qb-panel-title" style={{ marginBottom: 12 }}>
               📋 Mark Scheme PDF
-              <span style={{ fontSize: 12, fontWeight: 400, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>Optional</span>
+              <span style={{ fontSize: 12, fontWeight: 400, color: "var(--muted)", marginLeft: 8 }}>Optional</span>
             </div>
             <div
               className={`qb-dropzone ${msFile ? "qb-dropzone--active" : ""}`}
-              style={{ borderColor: msFile ? "rgba(34,197,94,0.4)" : undefined }}
+              style={{ borderColor: msFile ? "color-mix(in srgb, var(--success) 40%, transparent)" : undefined }}
               onClick={() => msRef.current.click()}
             >
               <input
@@ -349,7 +349,7 @@ export default function QBClassify() {
 
             {/* AI PROVIDER TOGGLE */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>AI Provider:</span>
+              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>AI Provider:</span>
               <div style={{ display: "flex", gap: 6 }}>
                 {["claude", "gemini"].map(p => (
                   <button
@@ -380,7 +380,7 @@ export default function QBClassify() {
             </div>
 
             {classifying && (
-              <div style={{ marginTop: 16, padding: "14px 18px", background: "rgba(57,156,242,0.08)", borderRadius: 10, border: "1px solid rgba(57,156,242,0.2)", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+              <div style={{ marginTop: 16, padding: "14px 18px", background: "color-mix(in srgb, var(--primary) 8%, transparent)", borderRadius: 10, border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)", fontSize: 13, color: "var(--text-secondary)" }}>
                 ⏳ {aiProvider === "claude" ? "Claude" : "Gemini"} is reading the exam, identifying question boundaries, and classifying each question. This may take 30–90 seconds depending on the exam length.
               </div>
             )}
@@ -396,7 +396,7 @@ export default function QBClassify() {
               <div style={{ fontSize: 15, fontWeight: 700 }}>
                 {questions.length} questions identified in {classifyResult.subject?.name}
               </div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
                 Review and correct the unit/chapter assignments below, then confirm upload
               </div>
             </div>
@@ -427,7 +427,7 @@ export default function QBClassify() {
                   key={idx}
                   className="qb-panel"
                   style={{
-                    borderColor: isComplete ? "rgba(255,255,255,0.1)" : "rgba(255,77,79,0.3)",
+                    borderColor: isComplete ? "var(--border)" : "color-mix(in srgb, var(--danger) 30%, transparent)",
                     padding: 20
                   }}
                 >
@@ -436,7 +436,7 @@ export default function QBClassify() {
                     {/* LEFT: preview thumbnails */}
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 180 }}>
                       <div
-                        style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)", height: 140, background: "#fff" }}
+                        style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", height: 140, background: "#fff" }}
                         onClick={() => { setPreviewQ(q); setPreviewMode("question"); }}
                       >
                         <iframe
@@ -455,7 +455,7 @@ export default function QBClassify() {
                       {q.msTempFile && (
                         <button
                           className="qb-btn qb-btn--ghost"
-                          style={{ fontSize: 12, padding: "6px 10px", borderColor: "rgba(34,197,94,0.4)", color: "#22c55e" }}
+                          style={{ fontSize: 12, padding: "6px 10px", borderColor: "color-mix(in srgb, var(--success) 40%, transparent)", color: "var(--success)" }}
                           onClick={() => { setPreviewQ(q); setPreviewMode("markscheme"); }}
                         >
                           📋 Preview Mark Scheme
@@ -464,7 +464,7 @@ export default function QBClassify() {
                       {fullMsTempFile && (
                       <button
                         className="qb-btn qb-btn--ghost"
-                        style={{ fontSize: 12, padding: "6px 10px", borderColor: "rgba(245,158,11,0.4)", color: "#f59e0b" }}
+                        style={{ fontSize: 12, padding: "6px 10px", borderColor: "color-mix(in srgb, var(--warning) 40%, transparent)", color: "var(--warning)" }}
                         onClick={() => {
                           setCropModal({ questionIdx: idx });
                           setCropPage(1);
@@ -487,20 +487,20 @@ export default function QBClassify() {
                         <span style={{
                           padding: "3px 10px", borderRadius: 20,
                           border: `1px solid ${confColor}`,
-                          background: `${confColor}15`,
+                          background: `color-mix(in srgb, ${confColor} 15%, transparent)`,
                           color: confColor, fontSize: 12, fontWeight: 700
                         }}>
                           {q.confidence}% confidence
                         </span>
                         {!isComplete && (
-                          <span style={{ padding: "3px 10px", borderRadius: 20, background: "rgba(255,77,79,0.15)", color: "#ff4d4f", fontSize: 12, fontWeight: 700 }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, background: "color-mix(in srgb, var(--danger) 15%, transparent)", color: "var(--danger)", fontSize: 12, fontWeight: 700 }}>
                             ⚠️ Needs assignment
                           </span>
                         )}
                       </div>
 
                       {q.topic && (
-                        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 12 }}>
+                        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
                           Topic: {q.topic}
                         </div>
                       )}
@@ -566,19 +566,19 @@ export default function QBClassify() {
           </div>
 
           <div style={{ display: "flex", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
-            <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 12, padding: "16px 24px", textAlign: "center" }}>
-              <div style={{ fontSize: 28, fontWeight: 700, color: "#22c55e" }}>{uploadResults.succeeded}</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Uploaded</div>
+            <div style={{ background: "color-mix(in srgb, var(--success) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--success) 30%, transparent)", borderRadius: 12, padding: "16px 24px", textAlign: "center" }}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: "var(--success)" }}>{uploadResults.succeeded}</div>
+              <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Uploaded</div>
             </div>
             {uploadResults.failed > 0 && (
-              <div style={{ background: "rgba(255,77,79,0.1)", border: "1px solid rgba(255,77,79,0.3)", borderRadius: 12, padding: "16px 24px", textAlign: "center" }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#ff4d4f" }}>{uploadResults.failed}</div>
-                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Failed</div>
+              <div style={{ background: "color-mix(in srgb, var(--danger) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--danger) 30%, transparent)", borderRadius: 12, padding: "16px 24px", textAlign: "center" }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--danger)" }}>{uploadResults.failed}</div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Failed</div>
               </div>
             )}
-            <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "16px 24px", textAlign: "center" }}>
+            <div style={{ background: "color-mix(in srgb, var(--text-primary) 5%, transparent)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 24px", textAlign: "center" }}>
               <div style={{ fontSize: 28, fontWeight: 700 }}>{uploadResults.total}</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Total</div>
+              <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Total</div>
             </div>
           </div>
 
@@ -589,16 +589,16 @@ export default function QBClassify() {
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 16px", borderRadius: 8,
-                  background: r.status === "success" ? "rgba(34,197,94,0.07)" : "rgba(255,77,79,0.07)",
-                  border: `1px solid ${r.status === "success" ? "rgba(34,197,94,0.2)" : "rgba(255,77,79,0.2)"}`
+                  background: r.status === "success" ? "color-mix(in srgb, var(--success) 7%, transparent)" : "color-mix(in srgb, var(--danger) 7%, transparent)",
+                  border: `1px solid ${r.status === "success" ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--danger) 20%, transparent)"}`
                 }}
               >
                 {r.status === "success"
-                  ? <FiCheck size={16} color="#22c55e" />
-                  : <FiAlertTriangle size={16} color="#ff4d4f" />
+                  ? <FiCheck size={16} color="var(--success)" />
+                  : <FiAlertTriangle size={16} color="var(--danger)" />
                 }
                 <span style={{ fontWeight: 600 }}>Question {r.questionNumber}</span>
-                {r.error && <span style={{ fontSize: 13, color: "#ff4d4f" }}> — {r.error}</span>}
+                {r.error && <span style={{ fontSize: 13, color: "var(--danger)" }}> — {r.error}</span>}
               </div>
             ))}
           </div>
@@ -634,7 +634,7 @@ export default function QBClassify() {
                     <button
                       className={`qb-preview-tab ${previewMode === "markscheme" ? "qb-preview-tab--active" : ""}`}
                       onClick={() => setPreviewMode("markscheme")}
-                      style={previewMode === "markscheme" ? { background: "#22c55e", borderColor: "#22c55e" } : { borderColor: "rgba(34,197,94,0.4)", color: "#22c55e" }}
+                      style={previewMode === "markscheme" ? { background: "var(--success)", borderColor: "var(--success)" } : { borderColor: "color-mix(in srgb, var(--success) 40%, transparent)", color: "var(--success)" }}
                     >
                       📋 Mark Scheme
                     </button>
@@ -668,19 +668,19 @@ export default function QBClassify() {
 
               {/* LEFT: full mark scheme */}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "rgba(255,255,255,0.6)" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "var(--text-secondary)" }}>
                   Full Mark Scheme — find the correct section
                 </div>
                 <iframe
                   src={`${BASE_URL}/qb-drive/temp/${fullMsTempFile}`}
-                  style={{ width: "100%", height: 520, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, background: "#fff" }}
+                  style={{ width: "100%", height: 520, border: "1px solid var(--border)", borderRadius: 8, background: "#fff" }}
                   title="Full Mark Scheme"
                 />
               </div>
 
               {/* RIGHT: crop controls + preview */}
               <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.6)" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>
                   Set crop boundaries
                 </div>
 
@@ -708,7 +708,7 @@ export default function QBClassify() {
                     type="range" min={0} max={1} step={0.01}
                     value={cropYStart}
                     onChange={e => setCropYStart(Number(e.target.value))}
-                    style={{ width: "100%", marginTop: 6, accentColor: "#399cf2" }}
+                    style={{ width: "100%", marginTop: 6, accentColor: "var(--primary)" }}
                   />
                 </div>
 
@@ -725,7 +725,7 @@ export default function QBClassify() {
                     type="range" min={0} max={1} step={0.01}
                     value={cropYEnd}
                     onChange={e => setCropYEnd(Number(e.target.value))}
-                    style={{ width: "100%", marginTop: 6, accentColor: "#399cf2" }}
+                    style={{ width: "100%", marginTop: 6, accentColor: "var(--primary)" }}
                   />
                 </div>
 
@@ -755,10 +755,10 @@ export default function QBClassify() {
 
                 {cropPreview && (
                   <>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Preview:</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Preview:</div>
                     <iframe
                       src={`${BASE_URL}/qb-drive/temp/${cropPreview}`}
-                      style={{ width: "100%", height: 200, border: "1px solid rgba(34,197,94,0.3)", borderRadius: 8, background: "#fff" }}
+                      style={{ width: "100%", height: 200, border: "1px solid color-mix(in srgb, var(--success) 30%, transparent)", borderRadius: 8, background: "#fff" }}
                       title="Crop Preview"
                     />
                     <button
