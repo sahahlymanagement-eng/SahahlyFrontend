@@ -243,6 +243,56 @@ export default function ManagerLoginCss() {
     [fetchPdfs]
   );
 
+  // Read-only mark scheme preview (right column of the results modal).
+  // Mark scheme is per-submission here; source it from the cached msFile.
+  const msPreviewRef = useRef({ submissionId: null, url: null });
+  const [markSchemePreviewUrl, setMarkSchemePreviewUrl] = useState(null);
+  const [markSchemeLoading, setMarkSchemeLoading] = useState(false);
+  const [markSchemeError, setMarkSchemeError] = useState(null);
+
+  useEffect(() => {
+    const sid = resultModal?.submissionId;
+    if (!sid) {
+      setMarkSchemePreviewUrl(null);
+      setMarkSchemeError(null);
+      return;
+    }
+    if (msPreviewRef.current.submissionId === sid && msPreviewRef.current.url) {
+      setMarkSchemePreviewUrl(msPreviewRef.current.url);
+      return;
+    }
+    let cancelled = false;
+    setMarkSchemeLoading(true);
+    setMarkSchemeError(null);
+    fetchPdfs(sid)
+      .then((entry) => {
+        if (cancelled) return;
+        if (!entry?.msFile) {
+          setMarkSchemePreviewUrl(null);
+          return;
+        }
+        const url = URL.createObjectURL(entry.msFile);
+        if (msPreviewRef.current.url && msPreviewRef.current.submissionId !== sid) {
+          URL.revokeObjectURL(msPreviewRef.current.url);
+        }
+        msPreviewRef.current = { submissionId: sid, url };
+        setMarkSchemePreviewUrl(url);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("[markscheme preview]", err);
+        setMarkSchemeError("Failed to load mark scheme");
+        setMarkSchemePreviewUrl(null);
+      })
+      .finally(() => { if (!cancelled) setMarkSchemeLoading(false); });
+    return () => { cancelled = true; };
+  }, [resultModal?.submissionId, fetchPdfs]);
+
+  // Revoke the cached mark scheme object URL on unmount.
+  useEffect(() => () => {
+    if (msPreviewRef.current.url) URL.revokeObjectURL(msPreviewRef.current.url);
+  }, []);
+
   const {
     annotatedPreviewUrl,
     previewLoading,
@@ -2221,7 +2271,7 @@ export default function ManagerLoginCss() {
               style={{ display: "flex", gap: 20, height: "80vh", overflow: "hidden" }}
             >
               {/* LEFT: results / editor */}
-              <div style={{ flex: "0 0 60%", overflowY: "auto", height: "100%", paddingRight: 8 }}>
+              <div style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
                 {resultModal.result.fileWarning && (
                   <div
                     style={{
@@ -2640,10 +2690,11 @@ export default function ManagerLoginCss() {
                 </div>
               </div>
 
-              {/* RIGHT: annotated preview */}
+              {/* MIDDLE: annotated preview */}
               <div
                 style={{
-                  flex: "0 0 40%",
+                  flex: "1 1 0",
+                  minWidth: 0,
                   height: "100%",
                   overflow: "hidden",
                   display: "flex",
@@ -2710,6 +2761,45 @@ export default function ManagerLoginCss() {
                   </div>
                 ) : (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>No preview available</div>
+                )}
+              </div>
+
+              {/* RIGHT: mark scheme (read-only) */}
+              <div
+                style={{
+                  flex: "1 1 0",
+                  minWidth: 0,
+                  height: "100%",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    marginBottom: 10,
+                    color: "var(--muted)",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  📘 Mark Scheme
+                </div>
+                {markSchemeLoading ? (
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>Loading mark scheme…</div>
+                ) : markSchemeError ? (
+                  <div style={{ color: "var(--danger)", fontSize: 13 }}>{markSchemeError}</div>
+                ) : markSchemePreviewUrl ? (
+                  <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                    <AnnotatedPdfPreview url={markSchemePreviewUrl} />
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>No mark scheme available</div>
                 )}
               </div>
             </div>

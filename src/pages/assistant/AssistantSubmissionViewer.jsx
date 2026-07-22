@@ -192,6 +192,52 @@ export default function AssignmentSubmissionViewer() {
 
   const [singleProgress, setSingleProgress] = useState({});
   const [resultModal, setResultModal] = useState(null);
+  // Read-only mark scheme preview (right column of the results modal)
+  const msPreviewRef = useRef({ assignmentId: null, url: null });
+  const [markSchemePreviewUrl, setMarkSchemePreviewUrl] = useState(null);
+  const [markSchemeLoading, setMarkSchemeLoading] = useState(false);
+  const [markSchemeError, setMarkSchemeError] = useState(null);
+
+  // Load the assignment's mark scheme as a blob object URL when the results modal opens.
+  // Cached per assignment (mark scheme is per-assignment, not per-submission).
+  useEffect(() => {
+    if (!resultModal) return;
+    if (!assignmentId || !msInfo?.fileId) {
+      setMarkSchemePreviewUrl(null);
+      setMarkSchemeError(null);
+      return;
+    }
+    if (msPreviewRef.current.assignmentId === assignmentId && msPreviewRef.current.url) {
+      setMarkSchemePreviewUrl(msPreviewRef.current.url);
+      return;
+    }
+    let cancelled = false;
+    setMarkSchemeLoading(true);
+    setMarkSchemeError(null);
+    api.get(`/manager-assignments/${assignmentId}/markscheme-file`, { responseType: "blob" })
+      .then((res) => {
+        if (cancelled) return;
+        const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+        if (msPreviewRef.current.url && msPreviewRef.current.assignmentId !== assignmentId) {
+          URL.revokeObjectURL(msPreviewRef.current.url);
+        }
+        msPreviewRef.current = { assignmentId, url };
+        setMarkSchemePreviewUrl(url);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("[markscheme preview]", err);
+        setMarkSchemeError("Failed to load mark scheme");
+        setMarkSchemePreviewUrl(null);
+      })
+      .finally(() => { if (!cancelled) setMarkSchemeLoading(false); });
+    return () => { cancelled = true; };
+  }, [resultModal, assignmentId, msInfo?.fileId]);
+
+  // Revoke the cached mark scheme object URL on unmount.
+  useEffect(() => () => {
+    if (msPreviewRef.current.url) URL.revokeObjectURL(msPreviewRef.current.url);
+  }, []);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingQuestions, setEditingQuestions] = useState([]);
   const [editingAnnotations, setEditingAnnotations] = useState([]);
@@ -3543,9 +3589,10 @@ return (
                         }}
                       >
                     {/* LEFT CARD (UNCHANGED - your current results UI) */}
-                    <div 
+                    <div
                       style={{
-                        flex: "0 0 60%",
+                        flex: "1 1 0",
+                        minWidth: 0,
                         overflowY: "auto",
                         height: "100%",
                         paddingRight: 8
@@ -3811,9 +3858,10 @@ return (
 
                   </div>
                     
-                    {/* RIGHT CARD (NEW - Annotated File) */}
+                    {/* MIDDLE CARD (Annotated File) */}
                     <div style={{
-                      flex: "0 0 40%",
+                      flex: "1 1 0",
+                      minWidth: 0,
                       height: "100%",
                       overflow: "hidden",
                       display: "flex",
@@ -3893,8 +3941,49 @@ return (
                       )}
                     </div>
 
+                    {/* RIGHT CARD (NEW - Mark Scheme, read-only) */}
+                    <div style={{
+                      flex: "1 1 0",
+                      minWidth: 0,
+                      height: "100%",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: 12
+                    }}>
+                      <div style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        marginBottom: 10,
+                        color: "var(--text-secondary)",
+                        textTransform: "uppercase",
+                      }}>
+                        📘 Mark Scheme
+                      </div>
+                      {markSchemeLoading ? (
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                          Loading mark scheme…
+                        </div>
+                      ) : markSchemeError ? (
+                        <div style={{ color: "var(--danger)", fontSize: 13 }}>
+                          {markSchemeError}
+                        </div>
+                      ) : markSchemePreviewUrl ? (
+                        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                          <AnnotatedPdfPreview url={markSchemePreviewUrl} />
+                        </div>
+                      ) : (
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                          No mark scheme available
+                        </div>
+                      )}
                     </div>
-                   
+
+                    </div>
+
                     </div>
                   </div>
                 

@@ -286,8 +286,8 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
-  width: 100%;
-  max-width: 860px;
+  width: 95vw;
+  max-width: 1600px;
   overflow: hidden;
   animation: ma-fade-up 0.3s cubic-bezier(0.22,1,0.36,1) both;
 }
@@ -1315,13 +1315,15 @@
   }
 }
 
-/* ─── Mobile: results modal → PDF preview on top, editable questions below (≤641px) ─── */
-/* The results modal body ships an inline 60/40 flex row (results | PDF preview). On a
-   phone both columns are unreadable, so stack them and put the PDF first via `order`.
+/* ─── Narrow screens: results modal → stack the three columns (≤900px) ─── */
+/* The results modal body ships an inline 3-equal-column flex row
+   (correction | annotated PDF | mark scheme). Three columns can't share even a wide
+   modal comfortably, so below 900px stack them: PDFs first (Annotated → Mark Scheme),
+   correction underneath, via `order`.
    Scoped to .msv-results-body so the AI Review modal (also .msv-modal-body) is untouched.
    Shared by ManagerSubmissionViewer (manager/teacher/director), ManagerLoginCss,
    ManagerMariamGabalawy, and AssistantSubmissionViewer. */
-@media (max-width: 641px) {
+@media (max-width: 900px) {
   .msv-results-body {
     flex-direction: column !important;
     height: auto !important;
@@ -1329,7 +1331,7 @@
     overflow: visible !important;  /* let .msv-overlay do the page scrolling */
   }
 
-  /* PDF preview (2nd DOM child) shows first, as a usable scrollable box. */
+  /* Annotated PDF preview (2nd DOM child) shows first, as a usable scrollable box. */
   .msv-results-body > div:nth-child(2) {
     order: 1;
     flex: 0 0 auto !important;
@@ -1337,9 +1339,17 @@
     height: 65vh !important;       /* internal .pdf-preview-scroll handles paging */
   }
 
+  /* Mark scheme preview (3rd DOM child) stacks under the annotated PDF. */
+  .msv-results-body > div:nth-child(3) {
+    order: 2;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    height: 65vh !important;
+  }
+
   /* Editable questions + comments (1st DOM child) flow underneath, full height. */
   .msv-results-body > div:nth-child(1) {
-    order: 2;
+    order: 3;
     flex: 0 0 auto !important;
     width: 100% !important;
     height: auto !important;
