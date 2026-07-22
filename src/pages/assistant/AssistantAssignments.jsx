@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../api/api";
 import { usePagination } from "../../hooks/usePagination";
+import usePersistedState, { readPersisted } from "../../hooks/usePersistedState";
 import Pagination from "../../components/Pagination";
 import { AssistantPageHeader } from "./AssistantUI";
 
@@ -15,10 +16,24 @@ export default function AssistantAssignments() {
   // const [assignments, setAssignments] = useState([]);
   // const [loading, setLoading] = useState(true);
 
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [classroomFilter, setClassroomFilter] = useState("ALL");
-  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = usePersistedState("assistant:assignments:status", "ALL");
+  const [classroomFilter, setClassroomFilter] = usePersistedState("assistant:assignments:classroom", "ALL");
+  const [search, setSearch] = usePersistedState("assistant:assignments:search", "");
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
+
+  // If the assistant was grading an assignment and switched tabs, reopen that
+  // assignment when they come back to the Assignments tab. The viewer's Back
+  // button clears this, so an explicit "up a level" still lands on the list.
+  const redirectedRef = useRef(false);
+  const [pendingRedirect] = useState(() => !!readPersisted("assistant:lastAssignmentId", null));
+  useEffect(() => {
+    if (redirectedRef.current) return;
+    const lastId = readPersisted("assistant:lastAssignmentId", null);
+    if (lastId) {
+      redirectedRef.current = true;
+      navigate(`/assistant/assignments/${lastId}`, { replace: true });
+    }
+  }, [navigate]);
 
   /* AUTH */
 
@@ -254,6 +269,7 @@ export default function AssistantAssignments() {
     return Array.from(classroomSet);
   }, [assignments]);
 
+  if (pendingRedirect) return null;
   if (!user) return null;
 
   return (

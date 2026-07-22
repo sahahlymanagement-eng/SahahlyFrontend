@@ -11,6 +11,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import { usePagination } from "../hooks/usePagination";
+import usePersistedState from "../hooks/usePersistedState";
 import Pagination from "./Pagination";
 import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
 import MarksLostBreakdownPreview from "./MarksLostBreakdownPreview";
@@ -40,8 +41,8 @@ export default function TeacherExecutiveAnalysisWorkspace({
   const isTeacher = variant === "teacher";
   const isDirector = variant === "director";
   const [user, setUser] = useState(null);
-  const [selectedClassroom, setSelectedClassroom] = useState(null);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [selectedClassroom, setSelectedClassroom] = usePersistedState(`reports:${variant}:exec:classroom`, null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState(`reports:${variant}:exec:assignment`, null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [trigger, setTrigger] = useState("assignment_done");

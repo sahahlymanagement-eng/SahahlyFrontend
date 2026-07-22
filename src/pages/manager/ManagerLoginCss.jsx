@@ -9,6 +9,7 @@ import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
+import usePersistedState from "../../hooks/usePersistedState";
 import {
   assertPdfBlob,
   sumQuestionMarks,
@@ -85,7 +86,7 @@ export default function ManagerLoginCss() {
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState("logincss:assignment", null);
   const assignmentPrompt = useAssignmentMarkingPrompt(
     selectedAssignment?.id != null ? String(selectedAssignment.id) : null
   );

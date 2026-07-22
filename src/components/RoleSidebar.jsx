@@ -9,6 +9,7 @@ import {
   FiMoon,
 } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
+import { clearPersistedUiState } from "../hooks/usePersistedState";
 import logo from "../assets/images/Logo-trimmed.png";
 import "./RoleSidebar.css";
 
@@ -34,6 +35,7 @@ export default function RoleSidebar({
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
+    clearPersistedUiState();
     navigate("/login", { replace: true });
   };
 

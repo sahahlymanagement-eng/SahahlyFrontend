@@ -4,6 +4,7 @@ import { FiArrowLeft, FiChevronRight } from "react-icons/fi";
 import api from "../api/api";
 import { toast } from "react-toastify";
 import { formatCostEgp, formatCostUsd } from "../utils/markingCost";
+import usePersistedState from "../hooks/usePersistedState";
 import "../pages/manager/ManagerTokenUsage.css";
 
 const MONTHS = [
@@ -285,7 +286,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const tabs = isDirector ? TABS : MANAGER_TABS;
   const personColumns = staffColumns(isDirector);
   const [user, setUser] = useState(null);
-  const [tab, setTab] = useState("classroom");
+  const [tab, setTab] = usePersistedState(`tokenusage:${scope}:tab`, "classroom");
   const [period, setPeriod] = useState("custom");
   const [year, setYear] = useState(String(now.getFullYear()));
   const [month, setMonth] = useState(String(now.getMonth() + 1));

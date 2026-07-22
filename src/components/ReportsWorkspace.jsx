@@ -27,6 +27,7 @@ import {
 } from "../utils/refreshAssignmentFromClassroom";
 import { computeGradePercent, parsePercentInput, displayPercent, resolveReportDisplayPercent } from "../utils/reportGradePercent";
 import { usePagination } from "../hooks/usePagination";
+import usePersistedState from "../hooks/usePersistedState";
 import { fetchAllPaginated } from "../utils/fetchAllStudents";
 import Pagination from "./Pagination";
 import ReportTeacherFilterSelect from "./ReportTeacherFilterSelect";
@@ -44,8 +45,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
-  const [selectedClassroom, setSelectedClassroom] = useState(null);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [selectedClassroom, setSelectedClassroom] = usePersistedState(`reports:${variant}:classroom`, null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState(`reports:${variant}:assignment`, null);
   const [summaryMap, setSummaryMap] = useState({});
   const [reportCart, setReportCart] = useState({});
   const [sending, setSending] = useState(false);
@@ -58,7 +59,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [parsingAttendanceForAssignment, setParsingAttendanceForAssignment] = useState(null);
   const [refreshingGrades, setRefreshingGrades] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
-  const [reportView, setReportView] = useState("assignment");
+  const [reportView, setReportView] = usePersistedState(`reports:${variant}:view`, "assignment");
   const [preview, setPreview] = useState({ open: false, loading: false, error: null, previews: [] });
   const [previewClassroomId, setPreviewClassroomId] = useState(null);
 

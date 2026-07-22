@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import api from "../../api/api";
 import "./ManagerDelegations.css";
 import { usePagination } from "../../hooks/usePagination";
+import usePersistedState from "../../hooks/usePersistedState";
 import Pagination from "../../components/Pagination";
 
 export default function ManagerDelegations() {
@@ -19,8 +20,8 @@ export default function ManagerDelegations() {
 
   const [assistants, setAssistants] = useState([]);
 
-  const [selectedClassroom, setSelectedClassroom] = useState(null);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [selectedClassroom, setSelectedClassroom] = usePersistedState("delegations:manager:classroom", null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState("delegations:manager:assignment", null);
   const [assistantDeadlines, setAssistantDeadlines] = useState({});
   const [loading, setLoading] = useState(false);
 

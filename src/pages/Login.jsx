@@ -6,6 +6,7 @@ import "./Login.css";
 import logo from "../assets/images/Logo-trimmed.png";
 import { useTheme } from "../context/ThemeContext";
 import { toast } from "react-toastify";
+import { clearPersistedUiState } from "../hooks/usePersistedState";
 
 // Icons (Lucide-react style or simple SVGs)
 const EmailIcon = () => (
@@ -37,6 +38,8 @@ export default function Login() {
 
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
+      // Drop any leftover tab-restore state so a new login starts clean.
+      clearPersistedUiState();
 
       const roleName = user?.roleId?.name?.toLowerCase();
       toast.success("Login successful");

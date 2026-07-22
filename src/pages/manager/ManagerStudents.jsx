@@ -13,6 +13,7 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
 import { usePagination } from "../../hooks/usePagination";
+import usePersistedState from "../../hooks/usePersistedState";
 import Pagination from "../../components/Pagination";
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
 import {
@@ -25,7 +26,7 @@ export default function ManagerStudents() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [selectedClassroom, setSelectedClassroom] = useState(null);
+  const [selectedClassroom, setSelectedClassroom] = usePersistedState("students:manager:classroom", null);
   const [syncing, setSyncing] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});

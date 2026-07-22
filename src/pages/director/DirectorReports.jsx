@@ -20,6 +20,7 @@ import {
   FiCalendar,
   FiLayers,
 } from "react-icons/fi";
+import usePersistedState from "../../hooks/usePersistedState";
 import "./DirectorReports.css";
 
 const TABS = [
@@ -132,7 +133,7 @@ function DataTable({ columns, rows, empty }) {
 }
 
 export default function DirectorReports() {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = usePersistedState("insights:tab", "overview");
   const [data, setData] = useState(null);
   const [delivery, setDelivery] = useState(null);
   const [feedback, setFeedback] = useState(null);

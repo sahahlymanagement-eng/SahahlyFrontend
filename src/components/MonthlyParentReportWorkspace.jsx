@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 
 import { usePagination } from "../hooks/usePagination";
+import usePersistedState from "../hooks/usePersistedState";
 
 import Pagination from "./Pagination";
 import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
@@ -84,7 +85,7 @@ export default function MonthlyParentReportWorkspace({
 
   const [user, setUser] = useState(null);
 
-  const [selectedClassroom, setSelectedClassroom] = useState(null);
+  const [selectedClassroom, setSelectedClassroom] = usePersistedState(`reports:${variant}:monthly:classroom`, null);
 
   const [previewStudent, setPreviewStudent] = useState(null);
 

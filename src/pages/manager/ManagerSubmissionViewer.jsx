@@ -10,6 +10,7 @@ import {
   FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3, FiShield
 } from "react-icons/fi";
 import { usePagination } from "../../hooks/usePagination";
+import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
 import Pagination from "../../components/Pagination";
@@ -132,8 +133,8 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const msInputRef = useRef();
 
   const [user,               setUser]               = useState(null);
-  const [selectedClassroom,  setSelectedClassroom]  = useState(null);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [selectedClassroom,  setSelectedClassroom]  = usePersistedState(`subviewer:${scope}:classroom`, null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState(`subviewer:${scope}:assignment`, null);
   const assignmentPrompt = useAssignmentMarkingPrompt(selectedAssignment?._id);
   const [classroomSearch,    setClassroomSearch]    = useState("");
   const [assignmentSearch,   setAssignmentSearch]   = useState("");
@@ -245,6 +246,10 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   useEffect(() => {
     if (!selectedAssignment?._id || loadingStudents) return;
     if (studentFetchError) {
+      // Restored assignment couldn't load (e.g. deleted) — forget the saved
+      // selection so a later tab-return doesn't re-restore this broken one.
+      // The current view is left intact; use Back to go up a level.
+      removePersisted(`subviewer:${scope}:assignment`);
       toast.error(`Could not load students: ${studentFetchError}`);
     } else if (studentExtra.googleUnavailable) {
       toast.warn("Google Classroom is unavailable — showing saved students without live submission status.");
