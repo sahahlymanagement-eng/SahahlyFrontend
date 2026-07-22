@@ -5,7 +5,7 @@ import "../pages/assistant/assistant.css";
 import "../styles/ui-polish.css";
 import { useIsMobileNav } from "../hooks/useMediaQuery";
 import { useTheme } from "../context/ThemeContext";
-import logo from "../assets/images/Logo-removebg-preview.png";
+import logo from "../assets/images/Logo-trimmed.png";
 
 export default function RoleShell({ sidebar, children }) {
   const isMobileNav = useIsMobileNav();

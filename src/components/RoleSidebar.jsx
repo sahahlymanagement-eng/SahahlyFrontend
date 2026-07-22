@@ -9,7 +9,7 @@ import {
   FiMoon,
 } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
-import logo from "../assets/images/Logo-removebg-preview.png";
+import logo from "../assets/images/Logo-trimmed.png";
 import "./RoleSidebar.css";
 
 /**
@@ -46,13 +46,9 @@ export default function RoleSidebar({
     <aside className={`ast-sidebar ${collapsed ? "ast-sidebar--collapsed" : ""}`}>
       <div className="ast-sidebar-top">
         <div className="ast-sidebar-brand">
+          <span className="ast-brand-spacer" aria-hidden="true" />
           {!collapsed && (
-            <div className="ast-brand-lockup">
-              <span className="ast-brand-logo-wrap">
-                <img src={logo} alt="Sahahly" className="ast-brand-logo" />
-              </span>
-              <span className="ast-brand-role">{roleLabel}</span>
-            </div>
+            <img src={logo} alt="Sahahly" className="ast-brand-logo" />
           )}
           <button
             type="button"
@@ -63,6 +59,7 @@ export default function RoleSidebar({
             {collapsed ? <FiMenu size={18} /> : <FiX size={18} />}
           </button>
         </div>
+
 
         {!collapsed ? (
           <div className="ast-user-card">

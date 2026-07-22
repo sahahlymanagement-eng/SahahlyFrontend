@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { FiSun, FiMoon } from "react-icons/fi";
-import logo from "../assets/images/Logo-removebg-preview.png";
+import logo from "../assets/images/Logo-trimmed.png";
 import { useTheme } from "../context/ThemeContext";
 import "./LandingPage.css";
 

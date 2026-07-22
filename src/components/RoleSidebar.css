@@ -27,47 +27,34 @@
 }
 
 .ast-sidebar-brand {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
   align-items: center;
-  justify-content: space-between;
+  column-gap: 8px;
   margin-bottom: 18px;
-  gap: 8px;
+  min-height: 34px;
 }
 
-.ast-brand-lockup {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* The logo is a blue/white wordmark — keep it on a fixed deep-navy plate so it
-   reads cleanly in both light and dark themes. */
-.ast-brand-logo-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--logo-backdrop);
-  box-shadow: var(--shadow-sm);
+.ast-brand-spacer {
+  width: 34px;
+  height: 1px;
 }
 
 .ast-brand-logo {
-  height: 26px;
-  width: auto;
+  width: 100%;
+  height: auto;
   display: block;
+  object-fit: contain;
+  transform: translateX(-10px);
 }
 
-.ast-brand-role {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  padding-left: 2px;
+.ast-sidebar--collapsed .ast-sidebar-brand {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.ast-sidebar--collapsed .ast-brand-spacer {
+  display: none;
 }
 
 .ast-sidebar-toggle {

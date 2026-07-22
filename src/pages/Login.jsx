@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FiSun, FiMoon } from "react-icons/fi";
 import api from "../api/api";
 import "./Login.css";
-import logo from "../assets/images/Logo-removebg-preview.png";
+import logo from "../assets/images/Logo-trimmed.png";
 import { useTheme } from "../context/ThemeContext";
 import { toast } from "react-toastify";
 

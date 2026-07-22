@@ -75,7 +75,6 @@
   border-radius: 16px;
   padding: 36px;
   box-shadow: var(--shadow);
-  transform: translateY(-70px);
 }
 
 .login-header {
