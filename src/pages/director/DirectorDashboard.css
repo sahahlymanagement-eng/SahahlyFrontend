@@ -1,6 +1,6 @@
 .directorDashboardPage {
   padding: 28px 36px 48px;
-  color: #e2e8f0;
+  color: var(--text-primary);
   min-height: 100%;
 }
 
@@ -27,7 +27,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2563eb;
+  background: var(--primary);
   flex-shrink: 0;
 }
 
@@ -35,7 +35,7 @@
   font-family: 'Outfit', sans-serif;
   font-size: 18px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--text-primary);
   letter-spacing: -0.01em;
   margin: 0;
 }
@@ -44,13 +44,13 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  background: rgba(37, 99, 235, 0.12);
-  border: 1px solid rgba(37, 99, 235, 0.22);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
   padding: 7px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  color: #93c5fd;
+  color: var(--primary);
 }
 
 .directorDashStatsGrid {
@@ -60,25 +60,25 @@
 }
 
 .directorDashStatCard {
-  background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
 .directorDashStatCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(37, 99, 235, 0.25);
+  border-color: color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 .directorDashIconWrap {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: rgba(37, 99, 235, 0.14);
-  border: 1px solid rgba(37, 99, 235, 0.2);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -86,7 +86,7 @@
 }
 
 .directorDashIcon {
-  color: #93c5fd;
+  color: var(--primary);
   font-size: 18px;
 }
 
@@ -94,23 +94,23 @@
   font-family: 'Outfit', sans-serif;
   font-size: 32px;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 0 6px 0;
 }
 
 .directorDashStatCard p {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 14px;
   font-weight: 500;
   margin: 0;
 }
 
 .directorDashSummaryCard {
-  background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 22px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
 }
 
 .directorDashSummaryRow {
@@ -118,7 +118,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-soft);
   gap: 16px;
 }
 
@@ -129,19 +129,19 @@
 
 .directorDashSummaryLabel {
   font-size: 14px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .directorDashSummaryValue {
   font-size: 15px;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .directorDashSummaryTotal .directorDashSummaryLabel,
 .directorDashSummaryTotal .directorDashSummaryValue {
-  color: #93c5fd;
+  color: var(--primary);
 }
 
 @media (max-width: 1100px) {

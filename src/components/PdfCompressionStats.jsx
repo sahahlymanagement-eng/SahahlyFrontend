@@ -36,7 +36,7 @@ export default function PdfCompressionStats({ pdfCompression }) {
         style={{
           fontSize: 12,
           fontWeight: 700,
-          color: "rgba(255,255,255,0.5)",
+          color: "var(--muted)",
           marginBottom: 6,
           textTransform: "uppercase",
           letterSpacing: "0.08em",
@@ -48,21 +48,21 @@ export default function PdfCompressionStats({ pdfCompression }) {
       {applied ? (
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
           <div>
-            <span style={{ color: "#94a3b8" }}>Before:</span> {originalSize || "—"}
+            <span style={{ color: "var(--muted)" }}>Before:</span> {originalSize || "—"}
           </div>
           <div>
-            <span style={{ color: "#94a3b8" }}>After:</span> {optimizedSize || "—"}
+            <span style={{ color: "var(--muted)" }}>After:</span> {optimizedSize || "—"}
           </div>
           <div>
-            <span style={{ color: "#22c55e", fontWeight: 700 }}>Saved:</span>{" "}
+            <span style={{ color: "var(--success)", fontWeight: 700 }}>Saved:</span>{" "}
             {savingsPercent != null ? `${savingsPercent}%` : "—"}
           </div>
           <div>
-            <span style={{ color: "#94a3b8" }}>DPI:</span> {dpi ?? "—"}
+            <span style={{ color: "var(--muted)" }}>DPI:</span> {dpi ?? "—"}
           </div>
         </div>
       ) : (
-        <div style={{ fontSize: 13, color: "#94a3b8" }}>
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>
           {student?.reason || markScheme?.reason || method || "Compression not applied"}
         </div>
       )}

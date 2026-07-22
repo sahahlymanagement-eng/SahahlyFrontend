@@ -50,7 +50,7 @@ body.ast-body--drawer-open {
 }
 
 .sah-table-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--border);
   border-radius: 99px;
 }
 
@@ -95,9 +95,9 @@ body.ast-body--drawer-open {
     flex-wrap: wrap;
     align-items: center;
     column-gap: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.025);
+    background: var(--surface);
     padding: 12px 14px;
     margin-bottom: 12px;
   }
@@ -126,7 +126,7 @@ body.ast-body--drawer-open {
     min-width: 84px;
     font-size: 11px;
     font-weight: 700;
-    color: #64748b;
+    color: var(--muted);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -163,17 +163,8 @@ body.ast-body--drawer-open {
   }
 }
 
-:root {
-  --sah-brand: #7c3aed;
-  --sah-brand-2: #4f46e5;
-  --sah-surface: rgba(255, 255, 255, 0.04);
-  --sah-border: rgba(255, 255, 255, 0.1);
-  --sah-text: #e2e8f0;
-  --sah-muted: #94a3b8;
-  --sah-radius: 12px;
-  --sah-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
-  --sah-transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
+/* Design tokens live in styles/theme.css (imported before this file);
+   the --sah-* aliases there keep the rules below working. */
 
 /* ─── Focus rings (keyboard accessibility) ─── */
 .ast-root button:focus-visible,
@@ -183,7 +174,7 @@ body.ast-body--drawer-open {
 .ast-root textarea:focus-visible,
 .login-container button:focus-visible,
 .login-container input:focus-visible {
-  outline: 2px solid rgba(124, 58, 237, 0.65);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -195,7 +186,7 @@ body.ast-body--drawer-open {
 .ast-root .pm-input,
 .ast-root .qt-select,
 .ast-root .qm2-select {
-  color-scheme: dark;
+  color-scheme: light dark; /* follows the active theme */
 }
 
 .ast-root select option,
@@ -204,8 +195,29 @@ body.ast-body--drawer-open {
 .ast-root .ms-search-input option,
 .ast-root .qt-select option,
 .ast-root .qm2-select option {
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+/* ─── Shared react-datepicker theme (moved from ManagerDashboard.css so every
+   future picker inherits it) ─── */
+.react-datepicker { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 12px !important; font-family: var(--font-body) !important; }
+.react-datepicker__header { background: var(--surface-2) !important; border-bottom: 1px solid var(--border) !important; }
+.react-datepicker__current-month,
+.react-datepicker__day-name,
+.react-datepicker-time__header { color: var(--text-primary) !important; }
+.react-datepicker__day { color: var(--text-secondary) !important; border-radius: 6px !important; }
+.react-datepicker__day:hover { background: color-mix(in srgb, var(--primary) 25%, transparent) !important; }
+.react-datepicker__day--selected { background: var(--primary) !important; color: var(--primary-contrast) !important; }
+.react-datepicker__time-container { border-left: 1px solid var(--border) !important; }
+.react-datepicker__time { background: var(--surface) !important; }
+.react-datepicker__time-list-item { color: var(--text-secondary) !important; }
+.react-datepicker__time-list-item:hover { background: color-mix(in srgb, var(--primary) 20%, transparent) !important; }
+.react-datepicker__time-list-item--selected { background: var(--primary) !important; color: var(--primary-contrast) !important; }
+.react-datepicker__navigation-icon::before { border-color: var(--muted) !important; }
+
+.react-datepicker-popper {
+  z-index: 9999 !important;
 }
 
 /* ─── Pagination (shared component) ─── */
@@ -225,21 +237,21 @@ body.ast-body--drawer-open {
   min-width: 36px;
   padding: 7px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: #cbd5e1;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-body);
   cursor: pointer;
   transition: background var(--sah-transition), border-color var(--sah-transition),
     color var(--sah-transition), transform var(--sah-transition);
 }
 
 .sah-pagination-btn:hover:not(:disabled) {
-  background: rgba(124, 58, 237, 0.14);
-  border-color: rgba(124, 58, 237, 0.35);
-  color: #f1f5f9;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-color: var(--primary);
+  color: var(--text-primary);
   transform: translateY(-1px);
 }
 
@@ -250,17 +262,17 @@ body.ast-body--drawer-open {
 }
 
 .sah-pagination-btn--active {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.35), rgba(79, 70, 229, 0.22));
-  border-color: rgba(124, 58, 237, 0.45);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.25);
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+  box-shadow: var(--shadow-sm);
 }
 
 .sah-pagination-gap {
-  opacity: 0.45;
+  opacity: 0.6;
   padding: 0 4px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--muted);
   user-select: none;
 }
 
@@ -293,7 +305,7 @@ body.ast-body--drawer-open {
 .ast-root .qt-table tbody tr:hover,
 .ast-root .qm2-table tbody tr:hover,
 .ast-root .ma-student-row:hover {
-  background: rgba(124, 58, 237, 0.06);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 /* ─── Quality dashboards inside RoleShell ─── */
@@ -319,22 +331,7 @@ body.ast-body--drawer-open {
 }
 
 /* ─── Sidebar nav polish ─── */
-.ast-nav-item--active {
-  position: relative;
-}
-
-.ast-nav-item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 60%;
-  border-radius: 0 4px 4px 0;
-  background: linear-gradient(180deg, #a78bfa, #6366f1);
-  box-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
-}
+/* (Active state is a filled pill defined in RoleSidebar.css — no left-bar here.) */
 
 .ast-sidebar-toggle {
   transition: background var(--sah-transition), color var(--sah-transition), transform var(--sah-transition);
@@ -434,9 +431,9 @@ body.ast-body--drawer-open {
 /* ─── Login page ─── */
 .login-container {
   background:
-    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(124, 58, 237, 0.22), transparent 55%),
-    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(37, 99, 235, 0.12), transparent 50%),
-    #000828;
+    radial-gradient(ellipse 70% 50% at 50% 0%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 100% 100%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 50%),
+    var(--background);
 }
 
 .login-box {
@@ -446,8 +443,8 @@ body.ast-body--drawer-open {
 }
 
 .login-box:hover {
-  border-color: rgba(124, 58, 237, 0.25);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  border-color: var(--primary);
+  box-shadow: var(--shadow);
 }
 
 .login-button,
@@ -458,7 +455,7 @@ body.ast-body--drawer-open {
 .login-button:hover:not(:disabled),
 .login-submit-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+  box-shadow: var(--shadow);
 }
 
 /* ─── Report tabs ─── */
@@ -467,8 +464,8 @@ body.ast-body--drawer-open {
 }
 
 .ma-report-tab:hover:not(.ma-report-tab--active) {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--text-primary);
 }
 
 /* ─── Send / primary action buttons ─── */
@@ -506,13 +503,132 @@ body.ast-body--drawer-open {
 .sah-skeleton {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.09) 50%,
-    rgba(255, 255, 255, 0.04) 100%
+    var(--surface) 0%,
+    var(--surface-2) 50%,
+    var(--surface) 100%
   );
   background-size: 200% 100%;
   animation: sah-shimmer 1.4s ease infinite;
   border-radius: 8px;
+}
+
+/* ─── Shared primitives (prefer these for new/updated UI) ───────────────────
+ * Token-based Button / Card / Input so roles stop reinventing their own.
+ * ui-polish.css loads before page stylesheets, so a bare `.sah-btn` can lose a
+ * specificity tie to an existing per-page rule — when adopting these, delete the
+ * page's competing `.xx-btn { }` declaration rather than layering on top.
+ * ------------------------------------------------------------------------- */
+.sah-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+    color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.sah-btn:disabled,
+.sah-btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sah-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.sah-btn--primary {
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
+  box-shadow: var(--shadow-sm);
+}
+
+.sah-btn--primary:hover:not(:disabled) {
+  background: var(--primary-active);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.sah-btn--secondary {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.sah-btn--secondary:hover:not(:disabled) {
+  background: var(--surface-secondary);
+  border-color: var(--primary);
+}
+
+.sah-btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.sah-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.sah-btn--danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.sah-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+  transform: translateY(-1px);
+}
+
+.sah-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+  transition: transform var(--transition), border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.sah-card--interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow);
+}
+
+.sah-input,
+.sah-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.sah-input::placeholder,
+.sah-textarea::placeholder {
+  color: var(--muted);
+}
+
+.sah-input:focus,
+.sah-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 /* ─── Reduced motion ─── */

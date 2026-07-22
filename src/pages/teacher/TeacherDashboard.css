@@ -1,38 +1,38 @@
 .teacher-layout {
   display: flex;
   min-height: 100vh;
-  background: #04091f;
+  background: var(--background);
 }
 
 .teacher-content {
   flex: 1;
   padding: 40px;
-  color: white;
+  color: var(--text-primary);
 
   background:
     radial-gradient(
       circle at top right,
-      rgba(37,99,235,0.12),
+      color-mix(in srgb, var(--primary) 12%, transparent),
       transparent 35%
     ),
-    #04091f;
+    var(--background);
 }
 
 .teacher-content h1 {
   font-size: 2.2rem;
   font-weight: 700;
   margin-bottom: 12px;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .teacher-content p {
   font-size: 1rem;
-  color: #94a3b8;
+  color: var(--muted);
 
 
 }.welcome-card {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border: 1px solid var(--border-soft);
   border-radius: 16px;
   padding: 32px;
   max-width: 800px;
@@ -47,7 +47,7 @@
 
 .welcome-card p {
   font-size: 15px;
-  color: #94a3b8;
+  color: var(--muted);
   line-height: 1.6;
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
@@ -57,13 +57,13 @@
   margin-top: 20px;
   padding: 14px 18px;
   border-radius: 12px;
-  background: rgba(37,99,235,0.12);
-  border: 1px solid rgba(37,99,235,0.2);
-  color: #cbd5e1;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  color: var(--text-secondary);
   font-size: 15px;
 }
 .teacher-name {
-  color: #fff;
+  color: var(--text-primary);
   font-weight: 800;
   font-family: 'Outfit', sans-serif;
 }

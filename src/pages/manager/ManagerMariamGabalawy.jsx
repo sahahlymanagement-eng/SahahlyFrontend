@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
+import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
 } from "react-icons/fi";
@@ -77,9 +78,9 @@ const submissionAssignmentKey = (s) =>
 
 const getScoreColor = (awarded, max) => {
   const pct = max > 0 ? awarded / max : 0;
-  if (pct >= 0.75) return "#22c55e";
-  if (pct >= 0.5) return "#f59e0b";
-  return "#ef4444";
+  if (pct >= 0.75) return "var(--success)";
+  if (pct >= 0.5) return "var(--warning)";
+  return "var(--danger)";
 };
 
 export default function ManagerMariamGabalawy() {
@@ -1015,12 +1016,7 @@ export default function ManagerMariamGabalawy() {
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
-      const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${resultModal.student.name || "submission"}_graded.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || "Failed to download PDF");
@@ -1113,12 +1109,7 @@ export default function ManagerMariamGabalawy() {
       const entry = await fetchPdfs(student.submissionId);
       const file = pickFile(entry, which);
       if (!file) return toast.error(`No ${label} available for this submission`);
-      const url = URL.createObjectURL(file);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${student.name || "submission"}${which === "ms" ? "_markscheme" : ""}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(file, `${student.name || "submission"}${which === "ms" ? "_markscheme" : ""}.pdf`);
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || `Failed to download ${label}`);
     }
@@ -1409,7 +1400,7 @@ export default function ManagerMariamGabalawy() {
                       <button
                         className="msv-btn-ai"
                         onClick={stopBulkMark}
-                        style={{ background: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.4)", color: "#f87171" }}
+                        style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
                       >
                         <FiX size={13} /> Stop
                       </button>
@@ -1418,7 +1409,7 @@ export default function ManagerMariamGabalawy() {
                       className="msv-btn-ai"
                       onClick={() => openGuidanceModal(null, { bulk: true, priorityBulk: true })}
                       disabled={bulkMarking || priorityBulkRunning}
-                      style={{ background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
+                      style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
                     >
                       {priorityBulkRunning ? (
                         <>
@@ -1434,7 +1425,7 @@ export default function ManagerMariamGabalawy() {
                       <button
                         className="msv-btn-ai"
                         onClick={stopPriorityBulk}
-                        style={{ background: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.4)", color: "#f87171" }}
+                        style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
                       >
                         <FiX size={13} /> Stop
                       </button>
@@ -1465,7 +1456,7 @@ export default function ManagerMariamGabalawy() {
                           ? "Batch marking needs an assignment with a Mariam Gabalawy id"
                           : "Submit one Gemini batch job for all unmarked submissions"
                       }
-                      style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                      style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                     >
                       {batchJob?.phase === "uploading" && <><span className="pm-spinner" /> Uploading…</>}
                       {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
@@ -1482,10 +1473,10 @@ export default function ManagerMariamGabalawy() {
                       marginTop: 8,
                       padding: "10px 14px",
                       borderRadius: 10,
-                      background: "rgba(99,102,241,0.08)",
-                      border: "1px solid rgba(99,102,241,0.2)",
+                      background: "color-mix(in srgb, var(--primary) 8%, transparent)",
+                      border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
                       fontSize: 12,
-                      color: "rgba(255,255,255,0.6)",
+                      color: "var(--muted)",
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
@@ -1505,9 +1496,9 @@ export default function ManagerMariamGabalawy() {
                         style={{
                           marginLeft: "auto",
                           fontSize: 11,
-                          color: "#f87171",
-                          background: "rgba(239,68,68,0.12)",
-                          border: "1px solid rgba(239,68,68,0.35)",
+                          color: "var(--danger)",
+                          background: "color-mix(in srgb, var(--danger) 12%, transparent)",
+                          border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
                           borderRadius: 6,
                           padding: "4px 10px",
                           cursor: "pointer",
@@ -1677,7 +1668,7 @@ export default function ManagerMariamGabalawy() {
                                       title="Mark on Gemini priority tier (fastest)"
                                       onClick={() => openGuidanceModal(s, { priority: true })}
                                       disabled={isMarking}
-                                      style={{ borderColor: "rgba(251,191,36,0.4)" }}
+                                      style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
                                     >
                                       <FiSend size={12} /> Priority
                                     </button>
@@ -1737,17 +1728,17 @@ export default function ManagerMariamGabalawy() {
               </button>
             </div>
             <div style={{ padding: "16px 20px" }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
                 Error Details
               </div>
               <div
                 style={{
-                  background: "rgba(255,0,0,0.08)",
-                  border: "1px solid rgba(255,0,0,0.2)",
+                  background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
                   padding: 12,
                   borderRadius: 10,
                   fontSize: 13,
-                  color: "#fca5a5",
+                  color: "var(--danger)",
                   whiteSpace: "pre-wrap",
                   maxHeight: 300,
                   overflowY: "auto",
@@ -1785,7 +1776,7 @@ export default function ManagerMariamGabalawy() {
               {/* Mode selector */}
               <div style={{ marginBottom: 16 }}>
                 <label
-                  style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 8 }}
+                  style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 8 }}
                 >
                   Marking Mode
                 </label>
@@ -1802,13 +1793,13 @@ export default function ManagerMariamGabalawy() {
                         padding: "10px 14px",
                         borderRadius: 10,
                         cursor: "pointer",
-                        border: `2px solid ${markingModeModal === m.value ? "#399cf2" : "rgba(255,255,255,0.1)"}`,
-                        background: markingModeModal === m.value ? "rgba(57,156,242,0.1)" : "rgba(255,255,255,0.03)",
+                        border: `2px solid ${markingModeModal === m.value ? "var(--primary)" : "var(--border)"}`,
+                        background: markingModeModal === m.value ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "var(--surface-2)",
                         transition: "all 0.18s ease",
                       }}
                     >
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{m.label}</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{m.desc}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.desc}</div>
                     </div>
                   ))}
                 </div>
@@ -1817,7 +1808,7 @@ export default function ManagerMariamGabalawy() {
               {/* Sahahly model */}
               <div style={{ marginBottom: 16 }}>
                 <label
-                  style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}
+                  style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}
                 >
                   Sahahly Model
                 </label>
@@ -1838,7 +1829,7 @@ export default function ManagerMariamGabalawy() {
               {savedPrompts.length > 0 && (
                 <div style={{ marginBottom: 14, position: "relative" }}>
                   <label
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}
+                    style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}
                   >
                     Load saved prompt
                   </label>
@@ -1847,9 +1838,9 @@ export default function ManagerMariamGabalawy() {
                       width: "100%",
                       padding: "9px 12px",
                       borderRadius: 8,
-                      border: `1px solid ${promptDropdownOpen ? "rgba(57,156,242,0.5)" : "rgba(255,255,255,0.1)"}`,
-                      background: "rgba(255,255,255,0.04)",
-                      color: guidance ? "white" : "rgba(255,255,255,0.35)",
+                      border: `1px solid ${promptDropdownOpen ? "var(--primary)" : "var(--border)"}`,
+                      background: "var(--surface-2)",
+                      color: guidance ? "var(--text-primary)" : "var(--muted)",
                       fontSize: 13,
                       cursor: "pointer",
                       display: "flex",
@@ -1870,7 +1861,7 @@ export default function ManagerMariamGabalawy() {
                     <span
                       style={{
                         fontSize: 10,
-                        color: "rgba(255,255,255,0.3)",
+                        color: "var(--muted)",
                         transform: promptDropdownOpen ? "rotate(180deg)" : "none",
                       }}
                     >
@@ -1884,14 +1875,14 @@ export default function ManagerMariamGabalawy() {
                         top: "calc(100% + 6px)",
                         left: 0,
                         right: 0,
-                        background: "#060f2e",
-                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
                         borderRadius: 10,
                         zIndex: 200,
                         maxHeight: 220,
                         overflowY: "auto",
                         overflowX: "hidden",
-                        boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                        boxShadow: "var(--shadow)",
                       }}
                     >
                       {savedPrompts.map((p, i) => (
@@ -1905,7 +1896,7 @@ export default function ManagerMariamGabalawy() {
                             gap: 10,
                             alignItems: "flex-start",
                             borderBottom:
-                              i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                              i < savedPrompts.length - 1 ? "1px solid var(--border)" : "none",
                           }}
                         >
                           <div
@@ -1917,7 +1908,7 @@ export default function ManagerMariamGabalawy() {
                             }}
                           >
                             <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                            <div style={{ fontSize: 11, color: "var(--muted)" }}>
                               {p.content.slice(0, 80)}...
                             </div>
                           </div>
@@ -1936,7 +1927,7 @@ export default function ManagerMariamGabalawy() {
                             style={{
                               background: "transparent",
                               border: "none",
-                              color: "#ef4444",
+                              color: "var(--danger)",
                               cursor: "pointer",
                               fontSize: 12,
                               padding: "4px 6px",
@@ -1952,17 +1943,17 @@ export default function ManagerMariamGabalawy() {
               )}
 
               <label
-                style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}
+                style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}
               >
                 {markingModeModal === "criteria" ? (
                   <>
-                    <span style={{ color: "#e2e8f0" }}>Criteria</span>{" "}
-                    <span style={{ color: "#ef4444" }}>*</span> — define the grading criteria and weights
+                    <span style={{ color: "var(--text-primary)" }}>Criteria</span>{" "}
+                    <span style={{ color: "var(--danger)" }}>*</span> — define the grading criteria and weights
                   </>
                 ) : (
                   <>
                     Additional Guidance{" "}
-                    <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span>
+                    <span style={{ color: "var(--muted)" }}>(optional)</span>
                   </>
                 )}
               </label>
@@ -1979,9 +1970,9 @@ export default function ManagerMariamGabalawy() {
                   width: "100%",
                   padding: "10px 12px",
                   borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  background: "rgba(255,255,255,0.04)",
-                  color: "rgba(255,255,255,0.85)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text-primary)",
                   fontSize: 13,
                   resize: "vertical",
                   fontFamily: "inherit",
@@ -2003,8 +1994,6 @@ export default function ManagerMariamGabalawy() {
                       flex: 1,
                       justifyContent: "center",
                       opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
-                      background: "rgba(99,102,241,0.15)",
-                      borderColor: "rgba(99,102,241,0.4)",
                     }}
                   >
                     <FiLayers size={14} />
@@ -2019,8 +2008,9 @@ export default function ManagerMariamGabalawy() {
                       flex: 1,
                       justifyContent: "center",
                       opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
-                      background: "rgba(251,191,36,0.15)",
-                      borderColor: "rgba(251,191,36,0.4)",
+                      background: "var(--warning)",
+                      borderColor: "var(--warning)",
+                      color: "#fff",
                     }}
                   >
                     <FiSend size={14} />
@@ -2079,9 +2069,9 @@ export default function ManagerMariamGabalawy() {
                       fontWeight: 600,
                       padding: "2px 8px",
                       borderRadius: 12,
-                      background: isCriteria ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
-                      color: isCriteria ? "#a78bfa" : "#399cf2",
-                      border: `1px solid ${isCriteria ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`,
+                      background: isCriteria ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "color-mix(in srgb, var(--primary) 15%, transparent)",
+                      color: isCriteria ? "var(--accent)" : "var(--primary)",
+                      border: `1px solid ${isCriteria ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "color-mix(in srgb, var(--primary) 30%, transparent)"}`,
                     }}
                   >
                     {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
@@ -2090,7 +2080,7 @@ export default function ManagerMariamGabalawy() {
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}
                 >
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>Final Grade:</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <input
                       readOnly
@@ -2103,7 +2093,7 @@ export default function ManagerMariamGabalawy() {
                         padding: "3px 8px",
                         borderRadius: 6,
                         border: `1px solid ${color}`,
-                        background: `${color}15`,
+                        background: `color-mix(in srgb, ${color} 15%, transparent)`,
                         color: color,
                         fontWeight: 700,
                         fontSize: 15,
@@ -2112,7 +2102,7 @@ export default function ManagerMariamGabalawy() {
                         cursor: "not-allowed",
                       }}
                     />
-                    <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>/</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)" }}>/</span>
                     <input
                       type="number"
                       min={1}
@@ -2122,18 +2112,18 @@ export default function ManagerMariamGabalawy() {
                         width: 56,
                         padding: "3px 8px",
                         borderRadius: 6,
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.7)",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface-2)",
+                        color: "var(--text-primary)",
                         fontWeight: 700,
                         fontSize: 15,
                         textAlign: "center",
                         outline: "none",
                       }}
                     />
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>({pct}%)</span>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>({pct}%)</span>
                     {hasPendingEdits && (
-                      <span style={{ fontSize: 11, color: "#fbbf24", fontWeight: 600 }}>Unsaved edits</span>
+                      <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 600 }}>Unsaved edits</span>
                     )}
                     {(hasPendingEdits || editingMaxTotal !== null) && (
                       <button
@@ -2156,9 +2146,9 @@ export default function ManagerMariamGabalawy() {
                           fontSize: 11,
                           padding: "2px 8px",
                           borderRadius: 6,
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          background: "rgba(255,255,255,0.05)",
-                          color: "rgba(255,255,255,0.5)",
+                          border: "1px solid var(--border)",
+                          background: "var(--surface-2)",
+                          color: "var(--muted)",
                           cursor: "pointer",
                         }}
                       >
@@ -2167,7 +2157,7 @@ export default function ManagerMariamGabalawy() {
                     )}
                   </div>
                   <div style={{ flex: "1 1 180px", minWidth: 140, maxWidth: 280 }}>
-                    <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                    <div style={{ height: 6, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
                       <div
                         style={{
                           width: `${pct}%`,
@@ -2189,10 +2179,10 @@ export default function ManagerMariamGabalawy() {
                   style={{
                     fontSize: 12,
                     background: annotationsPanelOpen
-                      ? "rgba(99,102,241,0.28)"
-                      : "rgba(99,102,241,0.12)",
-                    borderColor: "rgba(99,102,241,0.45)",
-                    color: "#c7d2fe",
+                      ? "color-mix(in srgb, var(--primary) 28%, transparent)"
+                      : "color-mix(in srgb, var(--primary) 12%, transparent)",
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
                   }}
                   title="Add extra notes on the marked PDF preview"
                 >
@@ -2204,7 +2194,7 @@ export default function ManagerMariamGabalawy() {
                     className="msv-btn-ai"
                     onClick={handleConfirmEdits}
                     disabled={confirmingEdits || previewLoading}
-                    style={{ background: "rgba(34,197,94,0.15)", borderColor: "rgba(34,197,94,0.4)" }}
+                    style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                   >
                     <FiCheck size={13} />
                     {confirmingEdits ? "Confirming…" : "Confirm Edits"}
@@ -2246,11 +2236,11 @@ export default function ManagerMariamGabalawy() {
                     style={{
                       marginBottom: 12,
                       padding: "10px 14px",
-                      background: "rgba(245,158,11,0.1)",
-                      border: "1px solid rgba(245,158,11,0.35)",
+                      background: "var(--warning-bg)",
+                      border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
                       borderRadius: 10,
                       fontSize: 13,
-                      color: "#fbbf24",
+                      color: "var(--warning)",
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
@@ -2294,8 +2284,8 @@ export default function ManagerMariamGabalawy() {
                     <div
                       style={{
                         padding: "16px 20px",
-                        background: "rgba(139,92,246,0.08)",
-                        border: "1px solid rgba(139,92,246,0.25)",
+                        background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
                         borderRadius: 12,
                         marginBottom: 14,
                       }}
@@ -2304,7 +2294,7 @@ export default function ManagerMariamGabalawy() {
                         style={{
                           fontSize: 12,
                           fontWeight: 700,
-                          color: "rgba(139,92,246,0.8)",
+                          color: "var(--accent)",
                           marginBottom: 10,
                           textTransform: "uppercase",
                           letterSpacing: "0.08em",
@@ -2332,9 +2322,9 @@ export default function ManagerMariamGabalawy() {
                               <div style={{ fontSize: 36, fontWeight: 800, color: cgColor, lineHeight: 1 }}>
                                 {cgTotal}
                               </div>
-                              <div style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/ {cgMax}</div>
+                              <div style={{ fontSize: 16, color: "var(--muted)" }}>/ {cgMax}</div>
                               <div style={{ flex: 1, minWidth: 100 }}>
-                                <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                                <div style={{ height: 8, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
                                   <div
                                     style={{
                                       width: `${cgPct}%`,
@@ -2344,7 +2334,7 @@ export default function ManagerMariamGabalawy() {
                                     }}
                                   />
                                 </div>
-                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+                                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
                                   {cgPct}%
                                 </div>
                               </div>
@@ -2359,7 +2349,7 @@ export default function ManagerMariamGabalawy() {
                                       alignItems: "center",
                                       gap: 12,
                                       padding: "8px 12px",
-                                      background: "rgba(255,255,255,0.03)",
+                                      background: "var(--surface-2)",
                                       borderRadius: 8,
                                       flexWrap: "wrap",
                                     }}
@@ -2377,7 +2367,7 @@ export default function ManagerMariamGabalawy() {
                                     >
                                       {row.marksAwarded} / {row.maxMarks}
                                     </div>
-                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", flex: 1 }}>
+                                    <div style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
                                       {row.reason}
                                     </div>
                                   </div>
@@ -2388,7 +2378,7 @@ export default function ManagerMariamGabalawy() {
                               <p
                                 style={{
                                   fontSize: 13,
-                                  color: "rgba(255,255,255,0.6)",
+                                  color: "var(--muted)",
                                   marginTop: 12,
                                   lineHeight: 1.6,
                                 }}
@@ -2401,11 +2391,11 @@ export default function ManagerMariamGabalawy() {
                       })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                       <span
                         style={{
                           fontSize: 11,
-                          color: "rgba(255,255,255,0.3)",
+                          color: "var(--muted)",
                           fontWeight: 600,
                           textTransform: "uppercase",
                           letterSpacing: "0.08em",
@@ -2413,7 +2403,7 @@ export default function ManagerMariamGabalawy() {
                       >
                         📝 Question Corrections (Feedback Only)
                       </span>
-                      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                     </div>
                   </div>
                 )}
@@ -2425,7 +2415,7 @@ export default function ManagerMariamGabalawy() {
                       style={{
                         fontSize: 12,
                         fontWeight: 700,
-                        color: "rgba(255,255,255,0.5)",
+                        color: "var(--muted)",
                         marginBottom: 6,
                         textTransform: "uppercase",
                         letterSpacing: "0.08em",
@@ -2445,9 +2435,9 @@ export default function ManagerMariamGabalawy() {
                         width: "100%",
                         padding: "8px 10px",
                         borderRadius: 8,
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        background: "rgba(255,255,255,0.03)",
-                        color: "rgba(255,255,255,0.75)",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface-2)",
+                        color: "var(--text-primary)",
                         fontSize: 13,
                         lineHeight: 1.6,
                         resize: "vertical",
@@ -2485,7 +2475,7 @@ export default function ManagerMariamGabalawy() {
                                 padding: "3px 10px",
                                 borderRadius: 6,
                                 border: `1px solid ${qColor}`,
-                                background: `${qColor}15`,
+                                background: `color-mix(in srgb, ${qColor} 15%, transparent)`,
                                 color: qColor,
                                 fontWeight: 700,
                                 fontSize: 13,
@@ -2520,7 +2510,7 @@ export default function ManagerMariamGabalawy() {
                                   padding: "4px 8px",
                                   borderRadius: 6,
                                   border: `1px solid ${qColor}`,
-                                  background: `${qColor}15`,
+                                  background: `color-mix(in srgb, ${qColor} 15%, transparent)`,
                                   color: qColor,
                                   fontWeight: 700,
                                   fontSize: 14,
@@ -2528,7 +2518,7 @@ export default function ManagerMariamGabalawy() {
                                   outline: "none",
                                 }}
                               />
-                              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
+                              <span style={{ color: "var(--muted)", fontSize: 13 }}>
                                 / {q.maxMarks}
                               </span>
                             </div>
@@ -2538,7 +2528,7 @@ export default function ManagerMariamGabalawy() {
                               flex: 1,
                               minWidth: 60,
                               height: 5,
-                              background: "rgba(255,255,255,0.08)",
+                              background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
                               borderRadius: 3,
                             }}
                           >
@@ -2546,7 +2536,7 @@ export default function ManagerMariamGabalawy() {
                               style={{ width: `${qPct}%`, height: "100%", background: qColor, borderRadius: 3 }}
                             />
                           </div>
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{qPct}%</span>
+                          <span style={{ fontSize: 11, color: "var(--muted)" }}>{qPct}%</span>
                         </div>
 
                         {q.checklist && (
@@ -2561,9 +2551,9 @@ export default function ManagerMariamGabalawy() {
                                     padding: "2px 8px",
                                     borderRadius: 12,
                                     fontSize: 11,
-                                    background: isGood ? "rgba(34,197,94,0.1)" : "rgba(255,77,79,0.1)",
-                                    color: isGood ? "#22c55e" : "#ff4d4f",
-                                    border: `1px solid ${isGood ? "rgba(34,197,94,0.2)" : "rgba(255,77,79,0.2)"}`,
+                                    background: isGood ? "var(--success-bg)" : "var(--danger-bg)",
+                                    color: isGood ? "var(--success)" : "var(--danger)",
+                                    border: `1px solid ${isGood ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--danger) 20%, transparent)"}`,
                                   }}
                                 >
                                   {isGood ? "✅" : "❌"} {label}
@@ -2574,13 +2564,13 @@ export default function ManagerMariamGabalawy() {
                         )}
 
                         {q.studentAnswer && !isBlankQuestion(q) && (
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
-                            <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+                            <span style={{ fontWeight: 600, color: "var(--muted)" }}>Student: </span>
                             {q.studentAnswer}
                           </div>
                         )}
                         {isBlankQuestion(q) && (
-                          <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                          <div style={{ fontSize: 12, color: "var(--warning)", marginBottom: 6, lineHeight: 1.5 }}>
                             📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
                           </div>
                         )}
@@ -2589,12 +2579,12 @@ export default function ManagerMariamGabalawy() {
                           <div
                             style={{
                               fontSize: 12,
-                              color: "rgba(34,197,94,0.8)",
+                              color: "var(--success)",
                               marginBottom: 6,
                               padding: "6px 10px",
-                              background: "rgba(34,197,94,0.07)",
+                              background: "color-mix(in srgb, var(--success) 7%, transparent)",
                               borderRadius: 6,
-                              border: "1px solid rgba(34,197,94,0.15)",
+                              border: "1px solid color-mix(in srgb, var(--success) 15%, transparent)",
                             }}
                           >
                             <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>
@@ -2616,7 +2606,7 @@ export default function ManagerMariamGabalawy() {
                         <div
                           style={{
                             fontSize: 11,
-                            color: "rgba(255,255,255,0.4)",
+                            color: "var(--muted)",
                             marginBottom: 4,
                             fontWeight: 600,
                             textTransform: "uppercase",
@@ -2626,7 +2616,7 @@ export default function ManagerMariamGabalawy() {
                           {isCriteria ? "Comment" : "Examiner Note"}
                         </div>
                         {isCriteria ? (
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>
+                          <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
                             {q.reason}
                           </p>
                         ) : (
@@ -2642,9 +2632,9 @@ export default function ManagerMariamGabalawy() {
                               width: "100%",
                               padding: "8px 10px",
                               borderRadius: 8,
-                              border: "1px solid rgba(255,255,255,0.08)",
-                              background: "rgba(255,255,255,0.03)",
-                              color: "rgba(255,255,255,0.75)",
+                              border: "1px solid var(--border)",
+                              background: "var(--surface-2)",
+                              color: "var(--text-primary)",
                               fontSize: 12,
                               resize: "vertical",
                               boxSizing: "border-box",
@@ -2667,8 +2657,8 @@ export default function ManagerMariamGabalawy() {
                   overflow: "hidden",
                   display: "flex",
                   flexDirection: "column",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
                   borderRadius: 12,
                   padding: 12,
                 }}
@@ -2678,7 +2668,7 @@ export default function ManagerMariamGabalawy() {
                     fontSize: 12,
                     fontWeight: 700,
                     marginBottom: 10,
-                    color: "rgba(255,255,255,0.6)",
+                    color: "var(--muted)",
                     textTransform: "uppercase",
                     display: "flex",
                     alignItems: "center",
@@ -2689,7 +2679,7 @@ export default function ManagerMariamGabalawy() {
                   <span>📄 Annotated PDF Preview</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {hasPendingEdits && (
-                      <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                      <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
                         Confirm edits to update preview
                       </span>
                     )}
@@ -2714,9 +2704,9 @@ export default function ManagerMariamGabalawy() {
                 )}
 
                 {previewLoading ? (
-                  <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Generating preview…</div>
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
                 ) : previewError ? (
-                  <div style={{ color: "#f87171", fontSize: 13 }}>{previewError}</div>
+                  <div style={{ color: "var(--danger)", fontSize: 13 }}>{previewError}</div>
                 ) : annotatedPreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     <AnnotatedPdfPreview
@@ -2728,7 +2718,7 @@ export default function ManagerMariamGabalawy() {
                     />
                   </div>
                 ) : (
-                  <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>No preview available</div>
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>No preview available</div>
                 )}
               </div>
             </div>

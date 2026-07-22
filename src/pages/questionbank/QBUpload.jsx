@@ -129,7 +129,7 @@ export default function QBUpload() {
   };
 
   const FileItem = ({ f, onRemove, isMs }) => (
-    <div className="qb-file-item" style={isMs ? { borderLeft: "3px solid #22c55e" } : {}}>
+    <div className="qb-file-item" style={isMs ? { borderLeft: "3px solid var(--success)" } : {}}>
       <div className="qb-file-item-left">
         <span className="qb-file-icon">{f.type === "application/pdf" ? "📄" : "🖼️"}</span>
         <div>
@@ -272,12 +272,12 @@ export default function QBUpload() {
         {/* Mark scheme section */}
         <div className="qb-panel-title" style={{ marginBottom: 12 }}>
           📋 Mark Scheme Files
-          <span style={{ fontSize: 12, fontWeight: 400, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>Optional</span>
+          <span style={{ fontSize: 12, fontWeight: 400, color: "var(--muted)", marginLeft: 8 }}>Optional</span>
         </div>
 
         <div
           className={`qb-dropzone ${msDragging ? "qb-dropzone--active" : ""}`}
-          style={{ borderColor: msFiles.length > 0 ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.2)", background: msFiles.length > 0 ? "rgba(34,197,94,0.04)" : undefined }}
+          style={{ borderColor: msFiles.length > 0 ? "color-mix(in srgb, var(--success) 40%, transparent)" : "var(--border)", background: msFiles.length > 0 ? "color-mix(in srgb, var(--success) 4%, transparent)" : undefined }}
           onDragOver={e => { e.preventDefault(); setMsDragging(true); }}
           onDragLeave={() => setMsDragging(false)}
           onDrop={handleMsDrop}

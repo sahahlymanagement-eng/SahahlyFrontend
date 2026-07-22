@@ -1,19 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap');
+/* Shared role sidebar — themed via tokens in styles/theme.css (fonts load in index.html). */
 
 .ast-sidebar {
   width: 252px;
-  background: linear-gradient(180deg, #050b1f 0%, #04091a 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    background var(--transition), border-color var(--transition);
   overflow: hidden;
   flex-shrink: 0;
   height: 100vh;
   min-height: 0;
   position: relative;
   z-index: 40;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
 }
 
 .ast-sidebar--collapsed {
@@ -22,7 +23,7 @@
 
 .ast-sidebar-top {
   padding: 20px 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .ast-sidebar-brand {
@@ -35,44 +36,44 @@
 
 .ast-brand-lockup {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
 }
 
-.ast-brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #7c3aed, #4f46e5);
-  display: flex;
+/* The logo is a blue/white wordmark — keep it on a fixed deep-navy plate so it
+   reads cleanly in both light and dark themes. */
+.ast-brand-logo-wrap {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  flex-shrink: 0;
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--logo-backdrop);
+  box-shadow: var(--shadow-sm);
 }
 
-.ast-brand-name {
+.ast-brand-logo {
+  height: 26px;
+  width: auto;
   display: block;
-  font-family: 'Outfit', sans-serif;
-  font-weight: 800;
-  font-size: 16px;
-  color: #f8fafc;
-  line-height: 1.2;
 }
 
 .ast-brand-role {
   display: block;
   font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-left: 2px;
 }
 
 .ast-sidebar-toggle {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #94a3b8;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
   width: 34px;
   height: 34px;
   border-radius: 9px;
@@ -81,19 +82,20 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
 }
 
 .ast-sidebar-toggle:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--primary);
+  color: var(--primary-contrast);
 }
 
 .ast-user-card {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 10px 12px;
 }
@@ -102,7 +104,7 @@
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #6d28d9, #4338ca);
+  background: var(--gradient);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -127,7 +129,7 @@
 .ast-user-name {
   font-size: 13px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -135,7 +137,7 @@
 
 .ast-user-role {
   font-size: 11px;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .ast-sidebar-nav {
@@ -148,7 +150,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  scrollbar-color: var(--border) transparent;
 }
 
 .ast-nav-section {
@@ -167,7 +169,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #475569;
+  color: var(--muted);
   padding: 10px 10px 6px;
   flex-shrink: 0;
 }
@@ -182,24 +184,27 @@
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-body);
   text-align: left;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
 }
 
 .ast-nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
-.ast-nav-item--active {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(79, 70, 229, 0.12));
-  color: #ddd6fe;
-  border-color: rgba(124, 58, 237, 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+/* Filled active pill (matches the reference mockup) */
+.ast-nav-item--active,
+.ast-nav-item--active:hover {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
 }
 
 .ast-nav-icon {
@@ -215,13 +220,41 @@
 }
 
 .ast-nav-arrow {
-  color: #8b5cf6;
-  opacity: 0.8;
+  color: var(--primary-contrast);
+  opacity: 0.85;
 }
 
 .ast-sidebar-bottom {
   padding: 14px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ast-theme-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+}
+
+.ast-theme-toggle:hover {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: transparent;
 }
 
 .ast-logout-btn {
@@ -231,19 +264,20 @@
   justify-content: center;
   gap: 9px;
   padding: 11px 12px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.18);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
   border-radius: 11px;
-  color: #fca5a5;
+  color: var(--danger);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-body);
+  transition: background var(--transition), border-color var(--transition);
 }
 
 .ast-logout-btn:hover {
-  background: rgba(239, 68, 68, 0.16);
-  border-color: rgba(239, 68, 68, 0.35);
+  background: var(--danger);
+  color: #fff;
 }
 
 .ast-nav-badge {
@@ -252,7 +286,7 @@
   height: 18px;
   padding: 0 6px;
   border-radius: 9px;
-  background: #dc2626;
+  background: var(--danger);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -266,5 +300,5 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #dc2626;
+  background: var(--danger);
 }

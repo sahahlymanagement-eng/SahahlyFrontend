@@ -1,10 +1,10 @@
 .confirm-toast-container {
   width: min(420px, calc(100vw - 32px)) !important;
   padding: 0 !important;
-  background: #0f172a !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 14px !important;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: var(--shadow) !important;
 }
 
 .confirm-toast-container .Toastify__toast-body {
@@ -14,21 +14,21 @@
 
 .confirm-toast {
   padding: 18px 20px 16px;
-  color: #e2e8f0;
-  font-family: "Plus Jakarta Sans", sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font-body);
 }
 
 .confirm-toast-title {
   font-size: 15px;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .confirm-toast-message {
   font-size: 14px;
   line-height: 1.55;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   white-space: pre-wrap;
 }
 
@@ -55,20 +55,20 @@
 }
 
 .confirm-toast-btn--cancel {
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
 }
 
 .confirm-toast-btn--confirm {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  color: #fff;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
 }
 
 .confirm-toast-btn--danger {
-  background: rgba(239, 68, 68, 0.18);
-  color: #fecaca;
-  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 .confirm-toast-input {
@@ -76,9 +76,9 @@
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.25);
-  color: #f8fafc;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--text-primary);
   font-size: 14px;
   font-family: inherit;
   box-sizing: border-box;
@@ -86,6 +86,6 @@
 
 .confirm-toast-input:focus {
   outline: none;
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }

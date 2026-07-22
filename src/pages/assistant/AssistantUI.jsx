@@ -60,7 +60,7 @@ export function AssistantLoading({ message = "Loading…" }) {
 export function AssistantEmpty({ title, description }) {
   return (
     <div className="ast-empty">
-      {title ? <strong style={{ display: "block", marginBottom: 6, color: "#e2e8f0" }}>{title}</strong> : null}
+      {title ? <strong style={{ display: "block", marginBottom: 6, color: "var(--text-primary)" }}>{title}</strong> : null}
       {description}
     </div>
   );

@@ -1,19 +1,38 @@
 import { FiPieChart } from "react-icons/fi";
 
+// Categorical data-viz palette (NOT semantic status colors — do not swap for
+// --success/--warning/--danger, that would make slices indistinguishable).
+// Chosen per the `dataviz` skill's categorical-palette method and validated
+// with scripts/validate_palette.js against BOTH themes' real chart surfaces:
+// light --surface #FFFFFF and dark --surface #3C5262. In this fixed order
+// (adjacent pairs, matching how the donut/list actually render) the palette
+// clears every hard gate in both modes: CVD separation >= 8.4 (target >= 8),
+// normal-vision floor >= 19.3 (target >= 15), chroma >= 0.1, lightness inside
+// each mode's band. Dark-mode contrast lands in the WARN band (surface
+// #3C5262 is a mid-lightness color, not near-black) — legal only because
+// every slice already ships secondary encoding (visible category label +
+// percentage text beside each swatch), which is the required relief.
+// Hues lean into the brand: slot 1 is a chambray-family blue, slot 6 a
+// terracotta-family burnt orange; the remaining four (green/magenta/amber/
+// teal) fill out the identity space these six fixed categories need.
+// This is the one place in the parent-report surface allowed to keep literal
+// hex per the theming migration brief — everywhere else uses theme.css tokens.
 const DEFAULT_COLORS = {
-  "Method marks": "#2563eb",
-  "Calculation mistakes": "#dc2626",
-  "Missing keywords": "#14b8a6",
-  "Missing units": "#7c3aed",
-  "Formula mistakes": "#0f2854",
-  "Careless errors": "#ea580c",
+  "Method marks": "#3d82be",
+  "Calculation mistakes": "#1f7a1f",
+  "Missing keywords": "#d55181",
+  "Missing units": "#c98500",
+  "Formula mistakes": "#159e78",
+  "Careless errors": "#b85c34",
 };
 
 function barColor(row) {
   if (row.color?.length === 3) {
     return `rgb(${row.color.join(",")})`;
   }
-  return DEFAULT_COLORS[row.category] || "#64748b";
+  // Fallback for an unrecognized category — a plain theme-aware neutral,
+  // not part of the validated 6-hue categorical set above.
+  return DEFAULT_COLORS[row.category] || "var(--muted)";
 }
 
 export default function MarksLostBreakdownPreview({ breakdown = [] }) {

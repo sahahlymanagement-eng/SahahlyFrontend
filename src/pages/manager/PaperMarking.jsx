@@ -5,6 +5,7 @@ import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
+import { downloadBlob } from "../../utils/downloadBlob";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import {
@@ -199,16 +200,10 @@ export default function PaperMarking() {
         outOfScopeNotes: getOutOfScopeNotes(result),
       });
 
-      const url = URL.createObjectURL(
-        new Blob([pdfBytes], { type: "application/pdf" })
+      downloadBlob(
+        new Blob([pdfBytes], { type: "application/pdf" }),
+        studentFile.name.replace(/\.pdf$/i, "") + "_graded.pdf"
       );
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = studentFile.name.replace(/\.pdf$/i, "") + "_graded.pdf";
-      a.click();
-
-      URL.revokeObjectURL(url);
       toast.success("Marked paper downloaded!");
     } catch (err) {
       toast.error(err.message || "Failed to generate marked paper");
@@ -220,9 +215,9 @@ export default function PaperMarking() {
   const getScoreColor = (awarded, max) => {
     const pct = awarded / max;
 
-    if (pct >= 0.75) return "#22c55e";
-    if (pct >= 0.5) return "#f59e0b";
-    return "#ef4444";
+    if (pct >= 0.75) return "var(--success)";
+    if (pct >= 0.5) return "var(--warning)";
+    return "var(--danger)";
   };
 
   const totalPct = result
@@ -274,8 +269,8 @@ export default function PaperMarking() {
             </div>
 
             {/* Create new */}
-            <div style={{ marginBottom: 20, padding: 16, background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "rgba(255,255,255,0.6)" }}>New Prompt</div>
+            <div style={{ marginBottom: 20, padding: 16, background: "var(--surface-2)", borderRadius: 10, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "var(--text-secondary)" }}>New Prompt</div>
               <input
                 className="pm-input"
                 placeholder="Prompt name (e.g. Cambridge Physics Strict)"
@@ -303,11 +298,11 @@ export default function PaperMarking() {
 
             {/* Saved list */}
             {savedPrompts.length === 0 && (
-              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>No saved prompts yet.</p>
+              <p style={{ color: "var(--text-disabled)", fontSize: 13 }}>No saved prompts yet.</p>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {savedPrompts.map(p => (
-                <div key={p._id} style={{ padding: 14, background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
+                <div key={p._id} style={{ padding: 14, background: "var(--surface-2)", borderRadius: 10, border: "1px solid var(--border)" }}>
                   {editingPrompt?._id === p._id ? (
                     <>
                       <input
@@ -331,17 +326,17 @@ export default function PaperMarking() {
                   ) : (
                     <>
                       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 10, whiteSpace: "pre-wrap" }}>{p.content}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, whiteSpace: "pre-wrap" }}>{p.content}</div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button
                           className="pm-mark-btn"
-                          style={{ fontSize: 12, padding: "6px 14px", background: "#22c55e" }}
+                          style={{ fontSize: 12, padding: "6px 14px", background: "var(--success)" }}
                           onClick={() => { setGuidance(p.content); setShowPromptPanel(false); toast.success(`"${p.name}" applied`); }}
                         >
                           ✅ Use This
                         </button>
                         <button className="pm-back" style={{ fontSize: 12 }} onClick={() => setEditingPrompt({ _id: p._id, name: p.name, content: p.content })}>✏️ Edit</button>
-                        <button className="pm-back" style={{ fontSize: 12, color: "#ff4d4f", borderColor: "rgba(255,77,79,0.3)" }} onClick={() => deletePrompt(p._id)}>🗑 Delete</button>
+                        <button className="pm-back" style={{ fontSize: 12, color: "var(--danger)", borderColor: "color-mix(in srgb, var(--danger) 30%, transparent)" }} onClick={() => deletePrompt(p._id)}>🗑 Delete</button>
                       </div>
                     </>
                   )}
@@ -380,7 +375,7 @@ export default function PaperMarking() {
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
-          <p style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
+          <p style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
             Flash Lite models are cheaper and faster — use this dropdown to compare marking quality.
           </p>
         </div>
@@ -432,11 +427,11 @@ export default function PaperMarking() {
               ) : (
                 <div style={{
                   padding: "10px 14px",
-                  background: "rgba(57,156,242,0.06)",
-                  border: "1px solid rgba(57,156,242,0.2)",
+                  background: "color-mix(in srgb, var(--primary) 6%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
                   borderRadius: 8,
                   fontSize: 13,
-                  color: subjectRules ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.25)",
+                  color: subjectRules ? "var(--text-secondary)" : "var(--text-disabled)",
                   whiteSpace: "pre-wrap",
                   minHeight: 48
                 }}>
@@ -511,7 +506,7 @@ export default function PaperMarking() {
               </label>
               {savedPrompts.length > 0 && (
                 <select
-                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 8, padding: "4px 10px", color: "white", fontSize: 12, cursor: "pointer" }}
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "4px 10px", color: "var(--text-primary)", fontSize: 12, cursor: "pointer" }}
                   value=""
                   onChange={e => { if (e.target.value) setGuidance(e.target.value); }}
                 >
@@ -534,7 +529,7 @@ export default function PaperMarking() {
             />
             {guidance && (
               <button
-                style={{ marginTop: 6, background: "none", border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", textAlign: "left" }}
+                style={{ marginTop: 6, background: "none", border: "none", color: "var(--muted)", fontSize: 12, cursor: "pointer", textAlign: "left" }}
                 onClick={async () => {
                   const name = await promptToast("Save this prompt as:", {
                     title: "Save prompt",
@@ -632,7 +627,7 @@ export default function PaperMarking() {
                           style={{
                             color,
                             borderColor: color,
-                            background: `${color}15`
+                            background: `color-mix(in srgb, ${color} 15%, transparent)`
                           }}
                         >
                           {q.marksAwarded} / {q.maxMarks}

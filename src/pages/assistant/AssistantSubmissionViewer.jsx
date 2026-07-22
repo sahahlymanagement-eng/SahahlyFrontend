@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
+import { downloadBlob } from "../../utils/downloadBlob";
 
 import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
@@ -986,13 +987,8 @@ window.open(url);
         responseType: "blob"
       });
 
-const blob = new Blob([res.data], { type: "application/pdf" });
-const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${student.name || "submission"}.pdf`;
-      a.click();
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      downloadBlob(blob, `${student.name || "submission"}.pdf`);
     } catch {
       toast.error("Download failed");
     }
@@ -1894,13 +1890,8 @@ const isUngraded =
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
 
-      const url = URL.createObjectURL(new Blob([pdfBytes]));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${resultModal.student.name}_graded.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("Downloaded");      
+      downloadBlob(new Blob([pdfBytes]), `${resultModal.student.name}_graded.pdf`);
+      toast.success("Downloaded");
     } catch (err) {
       toast.error(await getApiErrorMessage(err) || "Download failed");
     } finally {
@@ -1961,11 +1952,11 @@ const isUngraded =
   };
 
   const getScoreColor = (awarded, max) => {
-    if (!max) return "#399cf2";
+    if (!max) return "var(--primary)";
     const pct = awarded / max;
-    if (pct >= 0.75) return "#22c55e";
-    if (pct >= 0.5)  return "#f59e0b";
-    return "#ef4444";
+    if (pct >= 0.75) return "var(--success)";
+    if (pct >= 0.5)  return "var(--warning)";
+    return "var(--danger)";
   };
 
   const returnToStudent = async () => {
@@ -2453,8 +2444,8 @@ return (
                   onClick={() => openMarkScheme(msInfo)}
                   style={{
                     marginLeft: 10,
-                    background: "rgba(59,130,246,0.15)",
-                    border: "1px solid rgba(59,130,246,0.3)"
+                    background: "var(--primary)",
+                    border: "1px solid var(--primary)"
                   }}
                 >
                   View Mark Scheme
@@ -2515,9 +2506,9 @@ return (
                   onClick={stopBulkMark}
                   style={{
                     marginLeft: 10,
-                    background: "rgba(239,68,68,0.15)",
-                    borderColor: "rgba(239,68,68,0.4)",
-                    color: "#f87171",
+                    background: "var(--danger)",
+                    borderColor: "var(--danger)",
+                    color: "#fff",
                   }}
                 >
                   <FiX size={13} /> Stop
@@ -2530,7 +2521,7 @@ return (
                   className="msv-btn-ai"
                   onClick={handleReturnAll}
                   disabled={returning}
-                  style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
+                  style={{ marginLeft: 10, background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                 >
                   {returning ? "Returning…" : "Return All"}
                 </button>
@@ -2571,7 +2562,7 @@ return (
                       }
                     }}
                     disabled={bulkMarking || batchStarting}
-                    style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                    style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                   >
                     {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
                     {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
@@ -2584,9 +2575,9 @@ return (
               {batchJob && batchJob.phase !== "done" && (
                 <div style={{
                   marginTop: 8, padding: "10px 14px", borderRadius: 10,
-                  background: "rgba(99,102,241,0.08)",
-                  border: "1px solid rgba(99,102,241,0.2)",
-                  fontSize: 12, color: "rgba(255,255,255,0.6)",
+                  background: "color-mix(in srgb, var(--primary) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
+                  fontSize: 12, color: "var(--text-secondary)",
                   display: "flex", alignItems: "center", gap: 10
                 }}>
                   <span className="pm-spinner" style={{ width: 12, height: 12 }} />
@@ -2607,7 +2598,7 @@ return (
                         });
                       }}
                       style={{
-                        marginLeft: "auto", fontSize: 11, color: "#818cf8",
+                        marginLeft: "auto", fontSize: 11, color: "var(--primary)",
                         background: "none", border: "none", cursor: "pointer"
                       }}
                     >
@@ -2622,9 +2613,9 @@ return (
                       style={{
                         marginLeft: batchJob?.phase === "processing" ? 8 : "auto",
                         fontSize: 11,
-                        color: "#f87171",
-                        background: "rgba(239,68,68,0.12)",
-                        border: "1px solid rgba(239,68,68,0.35)",
+                        color: "var(--danger)",
+                        background: "color-mix(in srgb, var(--danger) 12%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
                         borderRadius: 6,
                         padding: "4px 10px",
                         cursor: "pointer",
@@ -2639,11 +2630,11 @@ return (
             </div>
 
               {/* Expected Pages */}
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>📄 Expected Pages:</span>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>📄 Expected Pages:</span>
                 {!showExpectedPagesEdit ? (
                   <>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: expectedPages != null ? "#22c55e" : "#ef4444" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: expectedPages != null ? "var(--success)" : "var(--danger)" }}>
                       {expectedPages != null ? `${expectedPages} pages` : "Not set — required before marking"}
                     </span>
                     <button
@@ -2662,7 +2653,7 @@ return (
                       placeholder="e.g. 8"
                       value={expectedPagesInput}
                       onChange={(e) => setExpectedPagesInput(e.target.value)}
-                      style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.07)", color: "white" }}
+                      style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)" }}
                     />
                     <button
                       className="ma-send-btn"
@@ -2811,7 +2802,7 @@ return (
                                       <span
                                         title={title}
                                         className="msv-review-warn"
-                                        style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}
+                                        style={{ color: "var(--warning)", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}
                                       >
                                         ⚠️{" "}
                                         <span className="msv-review-warn-full">Review Submission</span>
@@ -2976,11 +2967,11 @@ return (
                                         >
                                           {markingLoading 
                                             ? bulkRetrying
-                                            ? <span style={{ fontSize: 10, color: "#f59e0b" }}>
+                                            ? <span style={{ fontSize: 10, color: "var(--warning)" }}>
                                                 ⟳ Retry {bulk.attempt}/{bulk.maxAttempts}
                                               </span>
                                             : batchQueued
-                                            ? <span style={{ fontSize: 10, color: "#818cf8" }}>⚡ Batch…</span>
+                                            ? <span style={{ fontSize: 10, color: "var(--primary)" }}>⚡ Batch…</span>
                                             : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
@@ -3008,7 +2999,7 @@ return (
                                           <div style={{
                                             marginTop: 4,
                                             fontSize: 11,
-                                            color: "rgba(255,255,255,0.45)",
+                                            color: "var(--muted)",
                                           }}>
                                             {inlineMarkResult.pdfCompression.applied
                                               ? `PDF compressed — saved ${inlineMarkResult.pdfCompression.savingsPercent}%`
@@ -3022,14 +3013,14 @@ return (
                                           <div style={{
                                             marginTop: 6,
                                             fontSize: 11,
-                                            color: "#f59e0b",
+                                            color: "var(--warning)",
                                             display: "flex",
                                             alignItems: "center",
                                             gap: 6
                                           }}>
                                             <span className="pm-spinner" />
                                             Server busy — retrying in {bulk.delaySeconds}s
-                                            <span style={{ color: "rgba(255,255,255,0.4)" }}>
+                                            <span style={{ color: "var(--muted)" }}>
                                               ({bulk.attempt}/{bulk.maxAttempts})
                                             </span>
                                           </div>
@@ -3085,19 +3076,19 @@ return (
                     <div style={{ padding: "16px 20px" }}>
                       <div style={{
                         fontSize: 12,
-                        color: "rgba(255,255,255,0.5)",
+                        color: "var(--muted)",
                         marginBottom: 8
                       }}>
                         Error Details
                       </div>
 
                       <div style={{
-                        background: "rgba(255,0,0,0.08)",
-                        border: "1px solid rgba(255,0,0,0.2)",
+                        background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
                         padding: 12,
                         borderRadius: 10,
                         fontSize: 13,
-                        color: "#fca5a5",
+                        color: "var(--danger)",
                         whiteSpace: "pre-wrap",
                         maxHeight: 300,
                         overflowY: "auto"
@@ -3127,7 +3118,7 @@ return (
                             guidanceModal.bulk  ? "🤖 Mark All Students"           :
                                                   `🤖 Mark — ${guidanceModal.student?.name}`}
                 </div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
                             {guidanceModal.batch
                               ? `Submits all eligible students in this assignment via Gemini batch API — ${studentTotal} students in class`
                               : guidanceModal.bulk
@@ -3141,7 +3132,7 @@ return (
             <div style={{ padding: "20px 24px" }}>
               {/* Mode selector */}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 8 }}>Marking Mode</label>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 8 }}>Marking Mode</label>
                 <div style={{ display: "flex", gap: 10 }}>
                   {[
                     { value: "normal",   label: "📋 Normal Marking",  desc: "Marks against the mark scheme" },
@@ -3152,13 +3143,13 @@ return (
                       onClick={() => setMarkingModeModal(m.value)}
                       style={{
                         flex: 1, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                        border: `2px solid ${markingModeModal === m.value ? "#399cf2" : "rgba(255,255,255,0.1)"}`,
-                        background: markingModeModal === m.value ? "rgba(57,156,242,0.1)" : "rgba(255,255,255,0.03)",
+                        border: `2px solid ${markingModeModal === m.value ? "var(--primary)" : "var(--border)"}`,
+                        background: markingModeModal === m.value ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "var(--surface-2)",
                         transition: "all 0.18s ease"
                       }}
                     >
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{m.label}</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{m.desc}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.desc}</div>
                     </div>
                   ))}
                 </div>
@@ -3166,7 +3157,7 @@ return (
 
                         {/* Sahahly model (bulk, batch, and single mark) */}
                         <div style={{ marginBottom: 16 }}>
-                          <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+                          <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
                             Sahahly Model
                           </label>
                           <select
@@ -3178,7 +3169,7 @@ return (
                               <option key={m.id} value={m.id}>{sahahlyModelLabel(m)}</option>
                             ))}
                           </select>
-                          <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                          <p style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
                             {guidanceModal.batch
                               ? "Used for the Sahahly batch job (marks all students in one run)."
                               : "Used when you start marking with Sahahly."}
@@ -3188,12 +3179,12 @@ return (
               {/* Saved prompt dropdown */}
               {savedPrompts.length > 0 && (
                 <div style={{ marginBottom: 14, position: "relative" }}>
-                  <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
+                  <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
                   <div
                     style={{
                       width: "100%", padding: "9px 12px", borderRadius: 8,
-                      border: `1px solid ${promptDropdownOpen ? "rgba(57,156,242,0.5)" : "rgba(255,255,255,0.1)"}`,
-                      background: "rgba(255,255,255,0.04)", color: guidance ? "white" : "rgba(255,255,255,0.35)",
+                      border: `1px solid ${promptDropdownOpen ? "color-mix(in srgb, var(--primary) 50%, transparent)" : "var(--border)"}`,
+                      background: "var(--surface-2)", color: guidance ? "var(--text-primary)" : "var(--muted)",
                       fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
                       justifyContent: "space-between", userSelect: "none",
                       transition: "all 0.18s ease"
@@ -3203,7 +3194,7 @@ return (
                                 setPromptDropdownOpen(v => !v); }}
                   >
                     <span>{guidance ? (savedPrompts.find(p => p.content === guidance)?.name || "📋 Custom guidance entered") : "📋 Select a saved prompt…"}</span>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
+                    <span style={{ fontSize: 10, color: "var(--muted)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
                   </div>
                   {promptDropdownOpen && (
                               <div 
@@ -3212,14 +3203,14 @@ return (
                                 top: "calc(100% + 6px)", 
                                 left: 0, 
                                 right: 0, 
-                                background: "#060f2e", 
-                                border: "1px solid rgba(255,255,255,0.1)", 
-                                borderRadius: 10, 
-                                zIndex: 200, 
+                                background: "var(--surface)",
+                                border: "1px solid var(--border)",
+                                borderRadius: 10,
+                                zIndex: 200,
                                 maxHeight: 220,          // 👈 important
                                 overflowY: "auto",       // 👈 enables scroll
                                 overflowX: "hidden",
-                                boxShadow: "0 8px 32px rgba(0,0,0,0.5)" 
+                                boxShadow: "var(--shadow)"
                               }}>
                       {savedPrompts.map((p, i) => (
                         <div
@@ -3231,7 +3222,7 @@ return (
                                     justifyContent: "space-between",
                                     gap: 10,
                                     alignItems: "flex-start",
-                                    borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                                    borderBottom: i < savedPrompts.length - 1 ? "1px solid var(--border)" : "none",
                                   }}
                                 >
                                   {/* LEFT: prompt content (click to select) */}
@@ -3246,7 +3237,7 @@ return (
                                     <div style={{ fontSize: 13, fontWeight: 600 }}>
                                       {p.name}
                         </div>
-                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
                                       {p.content.slice(0, 80)}...
                                     </div>
                                   </div>
@@ -3269,7 +3260,7 @@ return (
                                     style={{
                                       background: "transparent",
                                       border: "none",
-                                      color: "#ef4444",
+                                      color: "var(--danger)",
                                       cursor: "pointer",
                                       fontSize: 12,
                                       padding: "4px 6px"
@@ -3285,10 +3276,10 @@ return (
                 </div>
               )}
 
-              <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
                 {markingModeModal === "criteria"
-                  ? <><span style={{ color: "#e2e8f0" }}>Criteria</span> <span style={{ color: "#ef4444" }}>*</span> — define the grading criteria and weights</>
-                  : <>Additional Guidance <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span></>
+                  ? <><span style={{ color: "var(--text-primary)" }}>Criteria</span> <span style={{ color: "var(--danger)" }}>*</span> — define the grading criteria and weights</>
+                  : <>Additional Guidance <span style={{ color: "var(--muted)" }}>(optional)</span></>
                 }
               </label>
               <textarea
@@ -3299,7 +3290,7 @@ return (
                   ? "Define criteria e.g:\nOn-Time Submission: 2 marks — full marks if submitted on time\nCompleteness: 2 marks — all questions attempted\nShowing Steps: 2 marks — working shown\nSelf-Correction: 2 marks — evidence of review\nBase Score: 2 marks — guaranteed minimum"
                   : "e.g. Be strict with units. Award method marks if working is shown..."
                 }
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
               />
                 <button
                   className="ma-send-btn"
@@ -3350,8 +3341,7 @@ return (
                                 onClick={() => handleGuidanceConfirm()}
                                 disabled={markingModeModal === "criteria" && !guidance.trim()}
                                 style={{ flex: 1, justifyContent: "center",
-                                  opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1,
-                                  background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}>
+                                  opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}>
                                 <FiLayers size={14} />
                                 {`Submit Batch — ${geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))}`}
                               </button>
@@ -3406,15 +3396,15 @@ return (
                         AI Marking Results — {resultModal.student.name}
                         <span style={{
                           fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
-                          background: isCriteria ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
-                          color: isCriteria ? "#a78bfa" : "#399cf2",
-                          border: `1px solid ${isCriteria ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`
+                          background: isCriteria ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "color-mix(in srgb, var(--primary) 15%, transparent)",
+                          color: isCriteria ? "var(--accent)" : "var(--primary)",
+                          border: `1px solid ${isCriteria ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "color-mix(in srgb, var(--primary) 30%, transparent)"}`
                         }}>
                           {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
                         </span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>Final Grade:</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
                               readOnly
@@ -3427,14 +3417,14 @@ return (
                           style={{
                             width: 56, padding: "3px 8px", borderRadius: 6,
                                 border: `1px solid ${color}`,
-                                background: `${color}15`,
+                                background: `color-mix(in srgb, ${color} 15%, transparent)`,
                                 color: color,
                             fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
                                 // readonly: true,
                             cursor: "not-allowed"  // optional: makes it visually clear
                           }}
                         />
-                        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>/</span>
+                        <span style={{ fontSize: 13, color: "var(--muted)" }}>/</span>
                         <input
                           type="number"
                           min={1}
@@ -3445,17 +3435,17 @@ return (
                           }}
                           style={{
                             width: 56, padding: "3px 8px", borderRadius: 6,
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            background: "rgba(255,255,255,0.06)",
-                            color: "rgba(255,255,255,0.7)",
+                            border: "1px solid var(--border)",
+                            background: "var(--surface-2)",
+                            color: "var(--text-primary)",
                             fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none"
                           }}
                         />
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                        <span style={{ fontSize: 12, color: "var(--muted)" }}>
                               ({pct}%)
                         </span>
                             {hasPendingEdits && (
-                              <span style={{ fontSize: 11, color: "#fbbf24", fontWeight: 600 }}>
+                              <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 600 }}>
                                 Unsaved edits
                               </span>
                             )}
@@ -3476,14 +3466,14 @@ return (
                                     setEditingMaxTotal(null);
                                   }
                                 }}
-                            style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
+                            style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--muted)", cursor: "pointer" }}
                           >
                             Reset
                           </button>
                         )}
                       </div>
                           <div style={{ flex: "1 1 180px", minWidth: 140, maxWidth: 280 }}>
-                            <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                            <div style={{ height: 6, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
                               <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
                             </div>
                       </div>
@@ -3497,10 +3487,10 @@ return (
                             style={{
                               fontSize: 12,
                               background: annotationsPanelOpen
-                                ? "rgba(99,102,241,0.28)"
-                                : "rgba(99,102,241,0.12)",
-                              borderColor: "rgba(99,102,241,0.45)",
-                              color: "#c7d2fe",
+                                ? "color-mix(in srgb, var(--primary) 28%, transparent)"
+                                : "color-mix(in srgb, var(--primary) 12%, transparent)",
+                              borderColor: "color-mix(in srgb, var(--primary) 45%, transparent)",
+                              color: "var(--primary)",
                             }}
                             title="Add extra notes on the marked PDF preview"
                           >
@@ -3512,7 +3502,7 @@ return (
                               className="msv-btn-ai"
                               onClick={handleConfirmEdits}
                               disabled={confirmingEdits || previewLoading}
-                              style={{ background: "rgba(34,197,94,0.15)", borderColor: "rgba(34,197,94,0.4)" }}
+                              style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                             >
                               <FiCheck size={13} />
                               {confirmingEdits ? "Confirming…" : "Confirm Edits"}
@@ -3551,11 +3541,11 @@ return (
                         <div style={{
                             marginBottom: 12,
                             padding: "10px 14px",
-                            background: "rgba(245,158,11,0.1)",
-                            border: "1px solid rgba(245,158,11,0.35)",
+                            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+                            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
                             borderRadius: 10,
                             fontSize: 13,
-                            color: "#fbbf24",
+                            color: "var(--warning)",
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
@@ -3588,8 +3578,8 @@ return (
                     {isCriteria && resultModal.result.criteriaGrade && (
                       <div style={{ marginBottom: 20 }}>
                         {/* Final grade card */}
-                        <div style={{ padding: "16px 20px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 12, marginBottom: 14 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(139,92,246,0.8)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
+                        <div style={{ padding: "16px 20px", background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)", borderRadius: 12, marginBottom: 14 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
                           {(() => {
                             const cg    = resultModal.result.criteriaGrade;
                             const total = cg.totalMarks || 0;
@@ -3600,30 +3590,30 @@ return (
                               <>
                                 <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
                                   <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{total}</div>
-                                  <div style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/ {max}</div>
+                                  <div style={{ fontSize: 16, color: "var(--muted)" }}>/ {max}</div>
                                   <div style={{ flex: 1, minWidth: 100 }}>
-                                    <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                                    <div style={{ height: 8, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
                                       <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
                                     </div>
-                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>{pct}%</div>
+                                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{pct}%</div>
                                   </div>
                                 </div>
                                 {/* Criteria breakdown table */}
                                 {cg.breakdown?.length > 0 && (
                                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                     {cg.breakdown.map((row, i) => (
-                                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, flexWrap: "wrap" }}>
+                                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, flexWrap: "wrap" }}>
                                         <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>{row.criterion}</div>
                                         <div style={{ fontWeight: 700, fontSize: 13, color: getScoreColor(row.marksAwarded, row.maxMarks), minWidth: 60 }}>
                                           {row.marksAwarded} / {row.maxMarks}
                                         </div>
-                                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", flex: 1 }}>{row.reason}</div>
+                                        <div style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>{row.reason}</div>
                                       </div>
                                     ))}
                                   </div>
                                 )}
                                 {cg.summary && (
-                                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
+                                  <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
                                     
                                     
                                     
@@ -3635,9 +3625,9 @@ return (
       
                         {/* Divider */}
                         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
-                          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                          <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
+                          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                         </div>
                       </div>
                     )}
@@ -3646,7 +3636,7 @@ return (
                     {!isCriteria && (
                       <>
                           <div className="msv-summary-box">
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
                               <textarea
                                 value={editingSummary}
                                 onChange={(e) => {
@@ -3655,7 +3645,7 @@ return (
                                 }}
                                 rows={4}
                                 placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
-                                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
                               />
                           </div>
                       </>
@@ -3687,7 +3677,7 @@ return (
                               <QuestionNumberBadge question={q} />
                               {/* In criteria mode, scores are read-only feedback */}
                               {isCriteria ? (
-                                <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 13 }}>
+                                <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 13 }}>
                                       {awarded} / {qMax}
                                 </span>
                               ) : (
@@ -3696,9 +3686,9 @@ return (
                                         type="number" min={0} max={qMax}
                                         value={awarded}
                                         onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(qMax, Math.max(0, Number(e.target.value) || 0)) } : x))}
-                                    style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
+                                    style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
                                   />
-                                  <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/</span>
+                                  <span style={{ color: "var(--muted)", fontSize: 13 }}>/</span>
                                   {(q._manual || q._backfilled) ? (
                                     <input
                                       type="number"
@@ -3723,23 +3713,23 @@ return (
                                         width: 44,
                                         padding: "4px 6px",
                                         borderRadius: 6,
-                                        border: "1px solid rgba(255,255,255,0.15)",
-                                        background: "rgba(255,255,255,0.05)",
-                                        color: "rgba(255,255,255,0.75)",
+                                        border: "1px solid var(--border)",
+                                        background: "var(--surface-2)",
+                                        color: "var(--text-primary)",
                                         fontSize: 13,
                                         textAlign: "center",
                                         outline: "none",
                                       }}
                                     />
                                   ) : (
-                                    <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>{qMax}</span>
+                                    <span style={{ color: "var(--muted)", fontSize: 13 }}>{qMax}</span>
                                   )}
                                 </div>
                               )}
-                              <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
+                              <div style={{ flex: 1, minWidth: 60, height: 5, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 3 }}>
                                     <div style={{ width: `${qPct}%`, height: "100%", background: color, borderRadius: 3 }} />
                               </div>
-                                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{qPct}%</span>
+                                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{qPct}%</span>
                             </div>
       
                             {q.checklist && (
@@ -3748,7 +3738,7 @@ return (
                                   const val    = q.checklist[key];
                                   const isGood = passIsGood ? val === true : val === false;
                                   return (
-                                    <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "rgba(34,197,94,0.1)" : "rgba(255,77,79,0.1)", color: isGood ? "#22c55e" : "#ff4d4f", border: `1px solid ${isGood ? "rgba(34,197,94,0.2)" : "rgba(255,77,79,0.2)"}` }}>
+                                    <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "color-mix(in srgb, var(--success) 10%, transparent)" : "color-mix(in srgb, var(--danger) 10%, transparent)", color: isGood ? "var(--success)" : "var(--danger)", border: `1px solid ${isGood ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--danger) 20%, transparent)"}` }}>
                                       {isGood ? "✅" : "❌"} {label}
                                     </span>
                                   );
@@ -3757,12 +3747,12 @@ return (
                             )}
       
                                 {q.studentAnswer && !isBlankQuestion(q) && (
-                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
-                                <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
+                              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+                                <span style={{ fontWeight: 600, color: "var(--muted)" }}>Student: </span>{q.studentAnswer}
                               </div>
                             )}
                                 {isBlankQuestion(q) && (
-                                  <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                                  <div style={{ fontSize: 12, color: "var(--warning)", marginBottom: 6, lineHeight: 1.5 }}>
                                     📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
                                   </div>
                             )}
@@ -3770,7 +3760,7 @@ return (
                             {/* Correct answer — shown in criteria mode */}
                                 {/* Correct answer — criteria mode or MCQ */}
                                 {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
-                              <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
+                              <div style={{ fontSize: 12, color: "var(--success)", marginBottom: 6, padding: "6px 10px", background: "color-mix(in srgb, var(--success) 7%, transparent)", borderRadius: 6, border: "1px solid color-mix(in srgb, var(--success) 15%, transparent)" }}>
                                 <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
                               </div>
                             )}
@@ -3786,17 +3776,17 @@ return (
                                   />
                             )}
       
-                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                               {isCriteria ? "Comment" : "Examiner Note"}
                             </div>
                             {isCriteria ? (
-                              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
+                              <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
                             ) : (
                               <textarea
                                 value={q.reason}
                                 onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
                                 rows={3}
-                                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
                               />
                             )}
                           </div>
@@ -3813,8 +3803,8 @@ return (
                       overflow: "hidden",
                       display: "flex",
                       flexDirection: "column",
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
                       borderRadius: 12,
                       padding: 12
                     }}>
@@ -3822,7 +3812,7 @@ return (
                         fontSize: 12,
                         fontWeight: 700,
                         marginBottom: 10,
-                        color: "rgba(255,255,255,0.6)",
+                        color: "var(--text-secondary)",
                         textTransform: "uppercase",
                         display: "flex",
                         alignItems: "center",
@@ -3832,7 +3822,7 @@ return (
                         <span>📄 Annotated PDF Preview</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {hasPendingEdits && (
-                            <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                            <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
                               Confirm edits to update preview
                             </span>
                           )}
@@ -3857,11 +3847,11 @@ return (
             )}
 
                       {previewLoading ? (
-                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
                           Generating preview…
                         </div>
                       ) : previewError ? (
-                        <div style={{ color: "#f87171", fontSize: 13 }}>
+                        <div style={{ color: "var(--danger)", fontSize: 13 }}>
                           {previewError}
                         </div>
                       ) : annotatedPreviewUrl ? (
@@ -3882,7 +3872,7 @@ return (
                           />
                         </div>
                       ) : (
-                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
                           No preview available
                         </div>
                       )}

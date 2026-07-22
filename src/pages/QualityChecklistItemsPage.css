@@ -1,8 +1,8 @@
 .qualityChecklistPage {
   padding: 28px 36px 48px;
-  color: #e2e8f0;
+  color: var(--text-primary);
   min-height: 100vh;
-  background: #020617;
+  background: var(--background);
 }
 
 .qualityChecklistSection {
@@ -23,22 +23,22 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2563eb;
+  background: var(--primary);
 }
 
 .qualityChecklistTitle {
   font-size: 18px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--text-primary);
 }
 
 .qualityChecklistFormCard,
 .qualityChecklistCard {
-  background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
 }
 
 .qualityChecklistFormGroup {
@@ -48,16 +48,16 @@
 .qualityChecklistFormGroup label {
   display: block;
   margin-bottom: 8px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .qualityChecklistFormGroup input {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: #0f172a;
-  color: white;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
 .qualityChecklistActions {
@@ -77,18 +77,18 @@
 }
 
 .qualityChecklistPrimaryBtn {
-  background: #2563eb;
-  color: white;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
 }
 
 .qualityChecklistSecondaryBtn {
-  background: #1e293b;
-  color: white;
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
 .qualityChecklistMessage {
   margin-top: 14px;
-  color: #93c5fd;
+  color: var(--primary);
 }
 
 .qualityChecklistGrid {
@@ -101,7 +101,7 @@
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: rgba(37, 99, 235, 0.14);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -109,13 +109,13 @@
 }
 
 .qualityChecklistIcon {
-  color: #93c5fd;
+  color: var(--primary);
   font-size: 18px;
 }
 
 .qualityChecklistCard h3 {
   margin-bottom: 10px;
-  color: white;
+  color: var(--text-primary);
 }
 
 .qualityChecklistStatus {
@@ -125,11 +125,11 @@
 }
 
 .qualityChecklistStatus.active {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .qualityChecklistStatus.inactive {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .qualityChecklistCardActions {
@@ -140,6 +140,6 @@
 }
 
 .qualityChecklistCardActions button {
-  background: #1e293b;
-  color: white;
+  background: var(--surface-2);
+  color: var(--text-primary);
 }

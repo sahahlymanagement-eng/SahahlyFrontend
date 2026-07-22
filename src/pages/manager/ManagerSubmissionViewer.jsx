@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
+import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
   FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3, FiShield
@@ -2754,12 +2755,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
       });
 
-      const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
-      const a   = document.createElement("a");
-      a.href     = url;
-      a.download = `${resultModal.student.name || "student"}_graded.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "student"}_graded.pdf`);
       toast.success("Downloaded");
     } catch (err) {
       toast.error(await getApiErrorMessage(err) || "Failed to download PDF");
@@ -2977,11 +2973,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   };
 
   const getScoreColor = (awarded, max) => {
-    if (!max) return "#399cf2";
+    if (!max) return "var(--primary)";
     const pct = awarded / max;
-    if (pct >= 0.75) return "#22c55e";
-    if (pct >= 0.5)  return "#f59e0b";
-    return "#ef4444";
+    if (pct >= 0.75) return "var(--success)";
+    if (pct >= 0.5)  return "var(--warning)";
+    return "var(--danger)";
   };
 
   const openPdf = (student) => {
@@ -2999,11 +2995,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
       responseType: "blob"
     }).then(res => {
-      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-      const a   = document.createElement("a");
-      a.href     = url;
-      a.download = `${student.name || "submission"}.pdf`;
-      a.click();
+      downloadBlob(new Blob([res.data], { type: "application/pdf" }), `${student.name || "submission"}.pdf`);
     }).catch(() => toast.error("Failed to download PDF"));
   };
 
@@ -3430,7 +3422,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         className="msv-btn-ai"
                         onClick={handleReturnAll}
                         disabled={returning}
-                        style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
+                        style={{ marginLeft: 10, background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                       >
                         {returning ? "Returning…" : "Return All"}
                       </button>
@@ -3457,8 +3449,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         onClick={() => openMarkScheme(msInfo)}
                         style={{
                           marginLeft: 10,
-                          background: "rgba(59,130,246,0.15)",
-                          border: "1px solid rgba(59,130,246,0.3)"
                         }}
                       >
                         View Mark Scheme
@@ -3517,9 +3507,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           className="msv-btn-ai"
                           onClick={stopBulkMark}
                           style={{
-                            background: "rgba(239,68,68,0.15)",
-                            borderColor: "rgba(239,68,68,0.4)",
-                            color: "#f87171",
+                            background: "var(--danger)",
+                            borderColor: "var(--danger)",
+                            color: "#fff",
                           }}
                         >
                           <FiX size={13} /> Stop
@@ -3533,7 +3523,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       className="msv-btn-ai"
                       onClick={handleReturnAll}
                       disabled={returning}
-                      style={{ marginLeft: 10, background: "rgba(34,197,94,0.15)" }}
+                      style={{ marginLeft: 10, background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                     >
                       {returning ? "Returning…" : "Return All"}
                     </button>
@@ -3575,7 +3565,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             }
                           }}
                           disabled={bulkMarking || batchStarting}
-                          style={{ background: "rgba(99,102,241,0.15)", borderColor: "rgba(99,102,241,0.4)" }}
+                          style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                         >
                           {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
                           {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
@@ -3594,7 +3584,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         onClick={() => openGuidanceModal(null, false,"priorityBulk")}
                         disabled={bulkMarking || priorityBulkRunning}
                         title="Mark whole class on Gemini priority tier (fastest, premium)"
-                        style={{ background: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.4)" }}
+                        style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
                       >
                         {priorityBulkRunning
                           ? <><span className="pm-spinner" /> Priority marking…</>
@@ -3605,9 +3595,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           className="msv-btn-ai"
                           onClick={stopPriorityBulk}
                           style={{
-                            background: "rgba(239,68,68,0.15)",
-                            borderColor: "rgba(239,68,68,0.4)",
-                            color: "#f87171",
+                            background: "var(--danger)",
+                            borderColor: "var(--danger)",
+                            color: "#fff",
                           }}
                         >
                           <FiX size={13} /> Stop
@@ -3618,9 +3608,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     {batchJob && batchJob.phase !== "done" && (
                       <div style={{
                         marginTop: 8, padding: "10px 14px", borderRadius: 10,
-                        background: "rgba(99,102,241,0.08)",
-                        border: "1px solid rgba(99,102,241,0.2)",
-                        fontSize: 12, color: "rgba(255,255,255,0.6)",
+                        background: "color-mix(in srgb, var(--primary) 8%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
+                        fontSize: 12, color: "var(--text-secondary)",
                         display: "flex", alignItems: "center", gap: 10
                       }}>
                         <span className="pm-spinner" style={{ width: 12, height: 12 }} />
@@ -3633,7 +3623,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     {/* {batchJob.phase === "processing" && (
       <button
         onClick={() => pollBatchJob(batchJob.jobId)}
-        style={{ marginLeft: "auto", fontSize: 11, color: "#818cf8",
+        style={{ marginLeft: "auto", fontSize: 11, color: "var(--primary)",
                  background: "none", border: "none", cursor: "pointer" }}
       >
         Check now
@@ -3651,7 +3641,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                   });
                                 }}
                                 style={{
-                                  marginLeft: "auto", fontSize: 11, color: "#818cf8",
+                                  marginLeft: "auto", fontSize: 11, color: "var(--primary)",
                                   background: "none", border: "none", cursor: "pointer"
                                 }}
                               >
@@ -3666,9 +3656,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                     style={{
                                       marginLeft: batchJob?.phase === "processing" ? 8 : "auto",
                                       fontSize: 11,
-                                      color: "#f87171",
-                                      background: "rgba(239,68,68,0.12)",
-                                      border: "1px solid rgba(239,68,68,0.35)",
+                                      color: "var(--danger)",
+                                      background: "color-mix(in srgb, var(--danger) 12%, transparent)",
+                                      border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
                                       borderRadius: 6,
                                       padding: "4px 10px",
                                       cursor: "pointer",
@@ -3684,11 +3674,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                   {/* Expected Pages */}
                   {showMarkingTools && (
-                  <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>📄 Expected Pages:</span>
+                  <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>📄 Expected Pages:</span>
                     {!showExpectedPagesEdit ? (
                       <>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: expectedPages != null ? "#22c55e" : "#ef4444" }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: expectedPages != null ? "var(--success)" : "var(--danger)" }}>
                           {expectedPages != null ? `${expectedPages} pages` : "Not set — required before marking"}
                         </span>
                         <button
@@ -3707,7 +3697,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           placeholder="e.g. 8"
                           value={expectedPagesInput}
                           onChange={(e) => setExpectedPagesInput(e.target.value)}
-                          style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.07)", color: "white" }}
+                          style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)" }}
                         />
                         <button
                           className="ma-send-btn"
@@ -3877,7 +3867,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           <span
                                             title={title}
                                             className="msv-review-warn"
-                                            style={{ color: "#f59e0b", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}
+                                            style={{ color: "var(--warning)", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}
                                           >
                                             ⚠️{" "}
                                             <span className="msv-review-warn-full">Review Submission</span>
@@ -4025,11 +4015,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                         >
                                           {markingLoading 
                                             ? bulkRetrying
-                                            ? <span style={{ fontSize: 10, color: "#f59e0b" }}>
+                                            ? <span style={{ fontSize: 10, color: "var(--warning)" }}>
                                                 ⟳ Retry {bulk.attempt}/{bulk.maxAttempts}
                                               </span>
                                             : batchQueued
-                                            ? <span style={{ fontSize: 10, color: "#818cf8" }}>⚡ Batch…</span>
+                                            ? <span style={{ fontSize: 10, color: "var(--primary)" }}>⚡ Batch…</span>
                                             : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
@@ -4043,7 +4033,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                             title="Mark on Gemini priority tier (fastest, premium)"
                                             onClick={() => openGuidanceModal(s,false, "priority")}
                                             disabled={markingLoading || priorityBulkRunning}
-                                            style={{ borderColor: "rgba(251,191,36,0.4)" }}
+                                            style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
                                           >
 
                                             <FiSend size={12} /> Mark (Priority)
@@ -4056,11 +4046,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                             onClick={() => runAiReview(s, rowMarkingCtx)}
                                             disabled={aiReviewing || markingLoading}
                                             style={{
-                                              background: aiReviewing
-                                                ? "rgba(234, 179, 8, 0.1)"
-                                                : "rgba(234, 179, 8, 0.2)",
-                                              borderColor: "rgba(234, 179, 8, 0.55)",
-                                              color: "#eab308",
+                                              background: "var(--warning)",
+                                              borderColor: "var(--warning)",
+                                              color: "#fff",
+                                              opacity: aiReviewing ? 0.7 : 1,
                                             }}
                                           >
                                             {aiReviewing ? "Reviewing…" : "AI Review"}
@@ -4086,7 +4075,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           <div style={{
                                             marginTop: 4,
                                             fontSize: 11,
-                                            color: "rgba(255,255,255,0.45)",
+                                            color: "var(--muted)",
                                           }}>
                                             {inlineMarkResult.pdfCompression.applied
                                               ? `PDF compressed — saved ${inlineMarkResult.pdfCompression.savingsPercent}%`
@@ -4100,14 +4089,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           <div style={{
                                             marginTop: 6,
                                             fontSize: 11,
-                                            color: "#f59e0b",
+                                            color: "var(--warning)",
                                             display: "flex",
                                             alignItems: "center",
                                             gap: 6
                                           }}>
                                             <span className="pm-spinner" />
                                             Server busy — retrying in {bulk.delaySeconds}s
-                                            <span style={{ color: "rgba(255,255,255,0.4)" }}>
+                                            <span style={{ color: "var(--muted)" }}>
                                               ({bulk.attempt}/{bulk.maxAttempts})
                                             </span>
                                           </div>
@@ -4165,19 +4154,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           <div style={{ padding: "16px 20px" }}>
                             <div style={{
                               fontSize: 12,
-                              color: "rgba(255,255,255,0.5)",
+                              color: "var(--muted)",
                               marginBottom: 8
                             }}>
                               Error Details
                             </div>
-      
+
                             <div style={{
-                              background: "rgba(255,0,0,0.08)",
-                              border: "1px solid rgba(255,0,0,0.2)",
+                              background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+                              border: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
                               padding: 12,
                               borderRadius: 10,
                               fontSize: 13,
-                              color: "#fca5a5",
+                              color: "var(--danger)",
                               whiteSpace: "pre-wrap",
                               maxHeight: 300,
                               overflowY: "auto"
@@ -4209,7 +4198,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             guidanceModal.bulk         ? "🤖 Mark All Students"           :
                                                           `🤖 Mark — ${guidanceModal.student?.name}`}
                           </div>
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
                             {guidanceModal.priorityBulk
                               ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
                               : guidanceModal.priority
@@ -4227,7 +4216,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             <div style={{ padding: "20px 24px" }}>
               {/* Mode selector */}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 8 }}>Marking Mode</label>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 8 }}>Marking Mode</label>
                 <div style={{ display: "flex", gap: 10 }}>
                   {[
                     { value: "normal",   label: "📋 Normal Marking",  desc: "Marks against the mark scheme" },
@@ -4238,13 +4227,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       onClick={() => setMarkingModeModal(m.value)}
                       style={{
                         flex: 1, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                        border: `2px solid ${markingModeModal === m.value ? "#399cf2" : "rgba(255,255,255,0.1)"}`,
-                        background: markingModeModal === m.value ? "rgba(57,156,242,0.1)" : "rgba(255,255,255,0.03)",
+                        border: `2px solid ${markingModeModal === m.value ? "var(--primary)" : "var(--border)"}`,
+                        background: markingModeModal === m.value ? "color-mix(in srgb, var(--primary) 10%, transparent)" : "var(--surface-2)",
                         transition: "all 0.18s ease"
                       }}
                     >
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{m.label}</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{m.desc}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.desc}</div>
                     </div>
                   ))}
                 </div>
@@ -4252,7 +4241,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
               {/* Sahahly model (bulk, batch, and single mark) */}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
                   Sahahly Model
                 </label>
                 <select
@@ -4266,7 +4255,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </option>
                   ))}
                 </select>
-                <p style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                <p style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
                   {guidanceModal.batch
                     ? "Used for the Sahahly batch job (~50% cheaper than sequential marking)."
                     : "Used when you start marking with Sahahly. Flash Lite models are cheaper and faster."}
@@ -4276,12 +4265,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               {/* Saved prompt dropdown */}
               {savedPrompts.length > 0 && (
                 <div style={{ marginBottom: 14, position: "relative" }}>
-                  <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
+                  <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>Load saved prompt</label>
                   <div
                     style={{
                       width: "100%", padding: "9px 12px", borderRadius: 8,
-                      border: `1px solid ${promptDropdownOpen ? "rgba(57,156,242,0.5)" : "rgba(255,255,255,0.1)"}`,
-                      background: "rgba(255,255,255,0.04)", color: guidance ? "white" : "rgba(255,255,255,0.35)",
+                      border: `1px solid ${promptDropdownOpen ? "color-mix(in srgb, var(--primary) 50%, transparent)" : "var(--border)"}`,
+                      background: "var(--surface-2)", color: guidance ? "var(--text-primary)" : "var(--muted)",
                       fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
                       justifyContent: "space-between", userSelect: "none",
                       transition: "all 0.18s ease"
@@ -4289,7 +4278,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     onClick={e => { e.stopPropagation(); setPromptDropdownOpen(v => !v); }}
                   >
                     <span>{guidance ? (savedPrompts.find(p => p.content === guidance)?.name || "📋 Custom guidance entered") : "📋 Select a saved prompt…"}</span>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
+                    <span style={{ fontSize: 10, color: "var(--muted)", transform: promptDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>▼</span>
                   </div>
                   {promptDropdownOpen && (
                     <div 
@@ -4298,14 +4287,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         top: "calc(100% + 6px)", 
                         left: 0, 
                         right: 0, 
-                        background: "#060f2e", 
-                        border: "1px solid rgba(255,255,255,0.1)", 
-                        borderRadius: 10, 
-                        zIndex: 200, 
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 10,
+                        zIndex: 200,
                         maxHeight: 220,          // 👈 important
                         overflowY: "auto",       // 👈 enables scroll
                         overflowX: "hidden",
-                        boxShadow: "0 8px 32px rgba(0,0,0,0.5)" 
+                        boxShadow: "var(--shadow)"
                       }}>
 
                       {savedPrompts.map((p, i) => (
@@ -4318,7 +4307,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                     justifyContent: "space-between",
                                     gap: 10,
                                     alignItems: "flex-start",
-                                    borderBottom: i < savedPrompts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                                    borderBottom: i < savedPrompts.length - 1 ? "1px solid var(--border)" : "none",
                                   }}
                                 >
                                   {/* LEFT: prompt content (click to select) */}
@@ -4333,7 +4322,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                     <div style={{ fontSize: 13, fontWeight: 600 }}>
                                       {p.name}
                                     </div>
-                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
                                       {p.content.slice(0, 80)}...
                                     </div>
                                   </div>
@@ -4356,7 +4345,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                     style={{
                                       background: "transparent",
                                       border: "none",
-                                      color: "#ef4444",
+                                      color: "var(--danger)",
                                       cursor: "pointer",
                                       fontSize: 12,
                                       padding: "4px 6px"
@@ -4371,10 +4360,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
               )}
 
-              <label style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", display: "block", marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
                 {markingModeModal === "criteria"
-                  ? <><span style={{ color: "#e2e8f0" }}>Criteria</span> <span style={{ color: "#ef4444" }}>*</span> — define the grading criteria and weights</>
-                  : <>Additional Guidance <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span></>
+                  ? <><span style={{ color: "var(--text-primary)" }}>Criteria</span> <span style={{ color: "var(--danger)" }}>*</span> — define the grading criteria and weights</>
+                  : <>Additional Guidance <span style={{ color: "var(--muted)" }}>(optional)</span></>
                 }
               </label>
               <textarea
@@ -4385,7 +4374,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   ? "Define criteria e.g:\nOn-Time Submission: 2 marks — full marks if submitted on time\nCompleteness: 2 marks — all questions attempted\nShowing Steps: 2 marks — working shown\nSelf-Correction: 2 marks — evidence of review\nBase Score: 2 marks — guaranteed minimum"
                   : "e.g. Be strict with units. Award method marks if working is shown..."
                 }
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 13, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}
               />
               <button
                   className="ma-send-btn"
@@ -4446,8 +4435,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     style={{
                       flex: 1, justifyContent: "center",
                       opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
-                      background: "rgba(99,102,241,0.15)",
-                      borderColor: "rgba(99,102,241,0.4)"
                     }}
                   >
                     <FiLayers size={14} />
@@ -4463,8 +4450,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     style={{
                       flex: 1, justifyContent: "center",
                       opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
-                      background: "rgba(251,191,36,0.15)",
-                      borderColor: "rgba(251,191,36,0.4)"
+                      background: "var(--warning)", borderColor: "var(--warning)", color: "#fff",
                     }}
                   >
                     <FiSend size={14} />
@@ -4532,15 +4518,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   AI Marking Results — {resultModal.student.name}
                   <span style={{
                     fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
-                    background: isCriteria ? "rgba(139,92,246,0.15)" : "rgba(57,156,242,0.15)",
-                    color: isCriteria ? "#a78bfa" : "#399cf2",
-                    border: `1px solid ${isCriteria ? "rgba(139,92,246,0.3)" : "rgba(57,156,242,0.3)"}`
+                    background: isCriteria ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "color-mix(in srgb, var(--primary) 15%, transparent)",
+                    color: isCriteria ? "var(--accent)" : "var(--primary)",
+                    border: `1px solid ${isCriteria ? "color-mix(in srgb, var(--accent) 30%, transparent)" : "color-mix(in srgb, var(--primary) 30%, transparent)"}`
                   }}>
                     {isCriteria ? "🎯 Criteria Marking" : "📋 Normal Marking"}
                   </span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Final Grade:</span>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>Final Grade:</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   <input
                     readOnly
@@ -4552,13 +4538,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
                       border: `1px solid ${color}`,
-                      background: `${color}15`,
+                      background: `color-mix(in srgb, ${color} 15%, transparent)`,
                       color: color,
                       fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
                       cursor:"not-allowed"
                     }}
                   />
-                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>/</span>
+                  <span style={{ fontSize: 13, color: "var(--muted)" }}>/</span>
                   <input
                     type="number"
                     min={1}
@@ -4569,17 +4555,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     }}
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "rgba(255,255,255,0.7)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--text-primary)",
                       fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none"
                     }}
                   />
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
                     ({pct}%)
                   </span>
                   {hasPendingEdits && (
-                    <span style={{ fontSize: 11, color: "#fbbf24", fontWeight: 600 }}>
+                    <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 600 }}>
                       Unsaved edits
                     </span>
                   )}
@@ -4600,14 +4586,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           setEditingMaxTotal(null);
                         }
                       }}
-                      style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
+                      style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--muted)", cursor: "pointer" }}
                     >
                       Reset
                     </button>
                   )}
                 </div>
                 <div style={{ flex: "1 1 180px", minWidth: 140, maxWidth: 280 }}>
-                  <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                  <div style={{ height: 6, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
                     <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
                   </div>
                 </div>
@@ -4622,10 +4608,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     style={{
                       fontSize: 12,
                       background: annotationsPanelOpen
-                        ? "rgba(99,102,241,0.28)"
-                        : "rgba(99,102,241,0.12)",
-                      borderColor: "rgba(99,102,241,0.45)",
-                      color: "#c7d2fe",
+                        ? "color-mix(in srgb, var(--primary) 28%, transparent)"
+                        : "color-mix(in srgb, var(--primary) 12%, transparent)",
+                      borderColor: "color-mix(in srgb, var(--primary) 45%, transparent)",
+                      color: "var(--primary)",
                     }}
                     title="Add extra notes on the marked PDF preview"
                   >
@@ -4638,7 +4624,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     className="msv-btn-ai"
                     onClick={handleConfirmEdits}
                     disabled={confirmingEdits || previewLoading}
-                    style={{ background: "rgba(34,197,94,0.15)", borderColor: "rgba(34,197,94,0.4)" }}
+                    style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                   >
                     <FiCheck size={13} />
                     {confirmingEdits ? "Confirming…" : "Confirm Edits"}
@@ -4677,11 +4663,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <div style={{
                   marginBottom: 12,
                   padding: "10px 14px",
-                  background: "rgba(245,158,11,0.1)",
-                  border: "1px solid rgba(245,158,11,0.35)",
+                  background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
                   borderRadius: 10,
                   fontSize: 13,
-                  color: "#fbbf24",
+                  color: "var(--warning)",
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
@@ -4693,16 +4679,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
               {/* ── TOKEN USAGE ── */}
               {/* {resultModal.result.tokenUsage && (
-                <div style={{ display: "flex", gap: 16, marginBottom: 18, padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginRight: 4, alignSelf: "center" }}>🔢 Tokens:</div>
+                <div style={{ display: "flex", gap: 16, marginBottom: 18, padding: "12px 16px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginRight: 4, alignSelf: "center" }}>🔢 Tokens:</div>
                   {[
                     { label: "Input",  value: resultModal.result.tokenUsage.inputTokens  },
                     { label: "Output", value: resultModal.result.tokenUsage.outputTokens },
                     { label: "Total",  value: resultModal.result.tokenUsage.totalTokens  },
                   ].map(t => (
                     <div key={t.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{t.label}</span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{t.value?.toLocaleString()}</span>
+                      <span style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{t.label}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{t.value?.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -4733,8 +4719,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               {isCriteria && resultModal.result.criteriaGrade && (
                 <div style={{ marginBottom: 20 }}>
                   {/* Final grade card */}
-                  <div style={{ padding: "16px 20px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.25)", borderRadius: 12, marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(139,92,246,0.8)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
+                  <div style={{ padding: "16px 20px", background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)", borderRadius: 12, marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
                     {(() => {
                       const cg    = resultModal.result.criteriaGrade;
                       const total = cg.totalMarks || 0;
@@ -4745,30 +4731,30 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <>
                           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
                             <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{total}</div>
-                            <div style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/ {max}</div>
+                            <div style={{ fontSize: 16, color: "var(--muted)" }}>/ {max}</div>
                             <div style={{ flex: 1, minWidth: 100 }}>
-                              <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4 }}>
+                              <div style={{ height: 8, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
                                 <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
                               </div>
-                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>{pct}%</div>
+                              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{pct}%</div>
                             </div>
                           </div>
                           {/* Criteria breakdown table */}
                           {cg.breakdown?.length > 0 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                               {cg.breakdown.map((row, i) => (
-                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, flexWrap: "wrap" }}>
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, flexWrap: "wrap" }}>
                                   <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>{row.criterion}</div>
                                   <div style={{ fontWeight: 700, fontSize: 13, color: getScoreColor(row.marksAwarded, row.maxMarks), minWidth: 60 }}>
                                     {row.marksAwarded} / {row.maxMarks}
                                   </div>
-                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", flex: 1 }}>{row.reason}</div>
+                                  <div style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>{row.reason}</div>
                                 </div>
                               ))}
                             </div>
                           )}
                           {cg.summary && (
-                            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
+                            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
                           )}
                         </>
                       );
@@ -4777,9 +4763,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                   {/* Divider */}
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                    <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
-                    <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                   </div>
                 </div>
               )}
@@ -4788,7 +4774,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               {!isCriteria && (
                 <>
                   <div className="msv-summary-box">
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
                     <textarea
                       value={editingSummary}
                       onChange={(e) => {
@@ -4797,7 +4783,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       }}
                       rows={4}
                       placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
-                      style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
                     />
                   </div>
                 </>
@@ -4829,7 +4815,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <QuestionNumberBadge question={q} />
                         {/* In criteria mode, scores are read-only feedback */}
                         {isCriteria ? (
-                          <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 13 }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 13 }}>
                             {q.marksAwarded} / {q.maxMarks}
                           </span>
                         ) : (
@@ -4838,9 +4824,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               type="number" min={0} max={q.maxMarks}
                               value={awarded}
                               onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(qMax, Math.max(0, Number(e.target.value) || 0)) } : x))}
-                              style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
+                              style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
                             />
-                            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/</span>
+                            <span style={{ color: "var(--muted)", fontSize: 13 }}>/</span>
                             {(q._manual || q._backfilled) ? (
                               <input
                                 type="number"
@@ -4865,23 +4851,23 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                   width: 44,
                                   padding: "4px 6px",
                                   borderRadius: 6,
-                                  border: "1px solid rgba(255,255,255,0.15)",
-                                  background: "rgba(255,255,255,0.05)",
-                                  color: "rgba(255,255,255,0.75)",
+                                  border: "1px solid var(--border)",
+                                  background: "var(--surface-2)",
+                                  color: "var(--text-primary)",
                                   fontSize: 13,
                                   textAlign: "center",
                                   outline: "none",
                                 }}
                               />
                             ) : (
-                              <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>{q.maxMarks}</span>
+                              <span style={{ color: "var(--muted)", fontSize: 13 }}>{q.maxMarks}</span>
                             )}
                           </div>
                         )}
-                        <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
+                        <div style={{ flex: 1, minWidth: 60, height: 5, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 3 }}>
                           <div style={{ width: `${qPct}%`, height: "100%", background: color, borderRadius: 3 }} />
                         </div>
-                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{qPct}%</span>
+                        <span style={{ fontSize: 11, color: "var(--muted)" }}>{qPct}%</span>
                       </div>
 
                       {q.checklist && (
@@ -4890,7 +4876,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             const val    = q.checklist[key];
                             const isGood = passIsGood ? val === true : val === false;
                             return (
-                              <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "rgba(34,197,94,0.1)" : "rgba(255,77,79,0.1)", color: isGood ? "#22c55e" : "#ff4d4f", border: `1px solid ${isGood ? "rgba(34,197,94,0.2)" : "rgba(255,77,79,0.2)"}` }}>
+                              <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "color-mix(in srgb, var(--success) 10%, transparent)" : "color-mix(in srgb, var(--danger) 10%, transparent)", color: isGood ? "var(--success)" : "var(--danger)", border: `1px solid ${isGood ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--danger) 20%, transparent)"}` }}>
                                 {isGood ? "✅" : "❌"} {label}
                               </span>
                             );
@@ -4899,19 +4885,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       )}
 
                       {q.studentAnswer && !isBlankQuestion(q) && (
-                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6 }}>
-                          <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>Student: </span>{q.studentAnswer}
+                        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+                          <span style={{ fontWeight: 600, color: "var(--muted)" }}>Student: </span>{q.studentAnswer}
                         </div>
                       )}
                       {isBlankQuestion(q) && (
-                        <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 6, lineHeight: 1.5 }}>
+                        <div style={{ fontSize: 12, color: "var(--warning)", marginBottom: 6, lineHeight: 1.5 }}>
                           📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
                         </div>
                       )}
 
                       {/* Correct answer — criteria mode or MCQ */}
                       {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
-                        <div style={{ fontSize: 12, color: "rgba(34,197,94,0.8)", marginBottom: 6, padding: "6px 10px", background: "rgba(34,197,94,0.07)", borderRadius: 6, border: "1px solid rgba(34,197,94,0.15)" }}>
+                        <div style={{ fontSize: 12, color: "var(--success)", marginBottom: 6, padding: "6px 10px", background: "color-mix(in srgb, var(--success) 7%, transparent)", borderRadius: 6, border: "1px solid color-mix(in srgb, var(--success) 15%, transparent)" }}>
                           <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
                         </div>
                       )}
@@ -4927,17 +4913,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         />
                       )}
 
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                         {isCriteria ? "Comment" : "Examiner Note"}
                       </div>
                       {isCriteria ? (
-                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
+                        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
                       ) : (
                         <textarea
                           value={q.reason}
                           onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
                           rows={3}
-                          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.75)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
                         />
                       )}
                     </div>
@@ -4952,8 +4938,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       overflow: "hidden",
                       display: "flex",
                       flexDirection: "column",
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
                       borderRadius: 12,
                       padding: 12
                     }}>
@@ -4961,7 +4947,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         fontSize: 12,
                         fontWeight: 700,
                         marginBottom: 10,
-                        color: "rgba(255,255,255,0.6)",
+                        color: "var(--text-secondary)",
                         textTransform: "uppercase",
                         display: "flex",
                         alignItems: "center",
@@ -4971,7 +4957,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <span>📄 Annotated PDF Preview</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {hasPendingEdits && (
-                            <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600, textTransform: "none" }}>
+                            <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
                               Confirm edits to update preview
                             </span>
                           )}
@@ -4996,11 +4982,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       )}
 
                       {previewLoading ? (
-                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
                           Generating preview…
                         </div>
                       ) : previewError ? (
-                        <div style={{ color: "#f87171", fontSize: 13 }}>
+                        <div style={{ color: "var(--danger)", fontSize: 13 }}>
                           {previewError}
                         </div>
                       ) : annotatedPreviewUrl ? (
@@ -5021,7 +5007,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           />
                         </div>
                       ) : (
-                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
                           No preview available
                         </div>
                       )}
@@ -5051,7 +5037,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <div style={{ fontSize: 16, fontWeight: 700 }}>
                   AI Review — {aiReviewModal.student.name}
                 </div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
                   {aiReviewModal.flagged.length} question{aiReviewModal.flagged.length !== 1 ? "s" : ""} with grade discrepancies
                 </div>
               </div>
@@ -5083,13 +5069,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
                           <QuestionNumberBadge question={item} />
                           {item.resolution == null && (
-                            <span style={{ fontSize: 11, color: "#f59e0b" }}>Unresolved</span>
+                            <span style={{ fontSize: 11, color: "var(--warning)" }}>Unresolved</span>
                           )}
                         </div>
 
                         <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
                           <div>
-                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
                               {providerDisplayLabel(aiReviewModal.provider)}
                             </div>
                             <span style={{ fontWeight: 700, fontSize: 15 }}>
@@ -5097,15 +5083,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             </span>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
                               AI Review
                             </div>
-                            <span style={{ fontWeight: 700, fontSize: 15, color: "#eab308" }}>
+                            <span style={{ fontWeight: 700, fontSize: 15, color: "var(--warning)" }}>
                               {item.qwenMarks ?? "—"}
                             </span>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
                               Resolved
                             </div>
                             <span style={{ fontWeight: 700, fontSize: 15, color }}>
@@ -5121,7 +5107,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               fontSize: 12,
                               padding: "6px 12px",
                               opacity: item.resolution === "keep" ? 1 : 0.65,
-                              borderColor: item.resolution === "keep" ? "#399cf2" : undefined,
+                              borderColor: item.resolution === "keep" ? "var(--primary)" : undefined,
                             }}
                             onClick={() =>
                               resolveFlaggedQuestion(
@@ -5138,9 +5124,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             style={{
                               fontSize: 12,
                               padding: "6px 12px",
-                              background: "rgba(234, 179, 8, 0.15)",
-                              borderColor: "rgba(234, 179, 8, 0.4)",
-                              color: "#eab308",
+                              background: "var(--warning)",
+                              borderColor: "var(--warning)",
+                              color: "#fff",
                               opacity: item.resolution === "qwen" ? 1 : 0.65,
                             }}
                             onClick={() =>
@@ -5177,7 +5163,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               padding: "6px 8px",
                               borderRadius: 6,
                               border: `1px solid ${color}`,
-                              background: `${color}15`,
+                              background: `color-mix(in srgb, ${color} 15%, transparent)`,
                               color,
                               fontWeight: 700,
                               fontSize: 13,
@@ -5221,8 +5207,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   overflow: "hidden",
                   display: "flex",
                   flexDirection: "column",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
                   borderRadius: 12,
                   padding: 12,
                 }}
@@ -5232,7 +5218,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     fontSize: 12,
                     fontWeight: 700,
                     marginBottom: 10,
-                    color: "rgba(255,255,255,0.6)",
+                    color: "var(--text-secondary)",
                     textTransform: "uppercase",
                   }}
                 >
@@ -5252,7 +5238,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     />
                   </div>
                 ) : (
-                  <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>
                     Loading PDF…
                   </div>
                 )}
@@ -5262,7 +5248,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             <div
               style={{
                 padding: "14px 20px",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
+                borderTop: "1px solid var(--border)",
                 display: "flex",
                 justifyContent: "flex-end",
               }}

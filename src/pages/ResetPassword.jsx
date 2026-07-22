@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { FiSun, FiMoon } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../api/api";
 import "./ResetPassword.css";
+import { useTheme } from "../context/ThemeContext";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [searchParams] = useSearchParams();
 
   const token = useMemo(() => (searchParams.get("token") || "").trim(), [searchParams]);
@@ -79,6 +82,14 @@ export default function ResetPassword() {
 
   return (
     <div className="reset-page">
+      <button
+        type="button"
+        className="reset-theme-toggle"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />}
+      </button>
       <div className="reset-cardWrap">
         <div className="reset-card">
           <div className="reset-brandRow">

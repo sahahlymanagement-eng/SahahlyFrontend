@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { ThemeProvider, useTheme } from "./context/ThemeContext";
+import "./styles/theme.css";
 import "./styles/ui-polish.css";
 
 
@@ -90,19 +92,27 @@ import TeacherChatbot from "./pages/teacher/TeacherChatbot";
 import TeacherActionsChatbot from "./pages/teacher/TeacherActionsChatbot";
 import ViewCoursework from "./components/CourseManagment/ViewCourseWork";
 
+function ThemedToaster() {
+  const { theme } = useTheme();
+  return (
+    <ToastContainer
+      position="bottom-right"
+      autoClose={3500}
+      hideProgressBar={false}
+      newestOnTop
+      closeOnClick
+      pauseOnHover
+      draggable
+      theme={theme}
+    />
+  );
+}
+
 function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
-      <ToastContainer
-          position="bottom-right"
-          autoClose={3500}
-          hideProgressBar={false}
-          newestOnTop
-          closeOnClick
-          pauseOnHover
-          draggable
-          theme="dark"
-        />
+      <ThemedToaster />
       <Routes>
         
         <Route path="/" element={<LandingPage />} />
@@ -308,6 +318,7 @@ function App() {
     
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

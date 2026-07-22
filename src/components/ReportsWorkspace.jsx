@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
 import { toast } from "react-toastify";
+import { downloadBlob } from "../utils/downloadBlob";
 import "../pages/manager/ManagerAssignments.css";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
@@ -789,12 +790,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       const disposition = String(res.headers?.["content-disposition"] || "");
       const match = disposition.match(/filename="?([^"]+)"?/i);
       const filename = match?.[1] || fallback;
-      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([res.data], { type: "application/pdf" }), filename);
       toast.success("PDF downloaded");
     } catch (err) {
       let message = "Failed to download PDF";

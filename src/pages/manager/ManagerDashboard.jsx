@@ -7,6 +7,7 @@ import Select from "react-select";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "./ManagerDashboard.css";
+import { selectStyles } from "../../utils/selectTheme";
 import {
   FiHome, FiList, FiBarChart2, FiMenu, FiX,
   FiLogOut, FiSearch, FiCalendar, FiChevronRight,
@@ -24,11 +25,13 @@ const DASHBOARD_STATUSES = [
   "DONE",
 ];
 
+// Palette-aligned status accents (kept as static hex so the `${accent}18`
+// alpha trick below still works; these read well on both themes).
 const STATUS_META = {
-  UNASSIGNED:     { icon: <FiClock />,        accent: "#64748b" },
-  ASSIGNED:       { icon: <FiUser />,          accent: "#2563eb" },
-  FAILED_DEADLINE:{ icon: <FiAlertTriangle />, accent: "#dc2626" },
-  DONE:           { icon: <FiCheckCircle />,   accent: "#22c55e" },
+  UNASSIGNED:     { icon: <FiClock />,         accent: "#8A94A6" },
+  ASSIGNED:       { icon: <FiUser />,          accent: "#7A9CB3" },
+  FAILED_DEADLINE:{ icon: <FiAlertTriangle />, accent: "#C15F52" },
+  DONE:           { icon: <FiCheckCircle />,   accent: "#5B9279" },
 };
 
 const formatStatus = (s) =>
@@ -200,13 +203,11 @@ export default function ManagerDashboard() {
     navigate("/login", { replace: true });
   };
 
+  // Shared token-based react-select styles (src/utils/selectTheme.js), with
+  // the 180px minWidth this page's assistant-picker control needs.
   const customSelectStyles = {
-    control: (base) => ({ ...base, backgroundColor: "#060f2e", borderColor: "rgba(255,255,255,0.12)", color: "white", minWidth: "180px", boxShadow: "none", borderRadius: "10px", fontSize: "13px" }),
-    singleValue: (base) => ({ ...base, color: "white" }),
-    input: (base) => ({ ...base, color: "white" }),
-    placeholder: (base) => ({ ...base, color: "rgba(255,255,255,0.4)" }),
-    menu: (base) => ({ ...base, backgroundColor: "#060f2e", zIndex: 50, border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px" }),
-    option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? "#0d2b63" : "#060f2e", color: "white", cursor: "pointer", fontSize: "13px" }),
+    ...selectStyles,
+    control: (base, state) => ({ ...selectStyles.control(base, state), minWidth: "180px" }),
   };
 
  const navItems = [

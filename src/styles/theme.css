@@ -1,0 +1,140 @@
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ *  Sahahly design tokens — single source of truth for color + theming.
+ * ─────────────────────────────────────────────────────────────────────────
+ *  Imported once in App.jsx BEFORE ui-polish.css and every page stylesheet.
+ *
+ *  Two themes:
+ *    • Dark  = the base :root (also the fallback when JS is off).
+ *    • Light = :root[data-theme="light"].
+ *  ThemeContext sets `data-theme` on <html>; a pre-hydration script in
+ *  index.html sets it before first paint (follows OS, falls back to dark).
+ *
+ *  MIGRATION CONVENTION (for the ~40 pages still on hardcoded colors):
+ *    page background / near-black navy .......... var(--background)
+ *    panel / card / raised surface .............. var(--surface) / --surface-2
+ *    primary body text .......................... var(--text-primary)
+ *    secondary / muted text ..................... var(--text-secondary) / --muted
+ *    hairlines, dividers, input borders ......... var(--border)
+ *    brand purple/indigo → chambray blue ........ var(--primary) (+ --primary-strong for filled buttons)
+ *    warm highlight / secondary accent .......... var(--accent)
+ *    success / warning / error / info ........... var(--success|--warning|--danger|--info) (+ *-bg tints)
+ *    radius / shadow / focus ring / motion ...... var(--radius|--shadow|--focus-ring|--transition)
+ *    heading font ............................... var(--font-display)  body font  var(--font-body)
+ *  Replace hardcoded hex/rgba with these; never introduce new literal colors.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Fonts */
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Fraunces', 'Outfit', Georgia, serif;
+
+  /* Brand */
+  --primary: #7A9CB3;          /* Chambray */
+  --primary-hover: #90AEC4;
+  --primary-active: #68889D;
+  --primary-strong: #90AEC4;   /* filled CTAs need contrast against dark surfaces */
+  --primary-contrast: #0F2027; /* text on a filled --primary-strong button */
+  --accent: #AD7556;           /* Terracotta */
+  --accent-soft: #C08E70;
+  --gradient: linear-gradient(135deg, #4A6172, #7A9CB3);
+
+  /* Fixed deep-navy plate the (blue/white) logo always sits on, both themes */
+  --logo-backdrop: #22323F;
+
+  /* Warm neutral seeds */
+  --sandstone: #DCCFB8;
+  --muslin: #F1EFE6;
+  --clove: #53443D;
+
+  /* Surfaces + text (DARK — base / fallback) */
+  --background: #2E4250;
+  --surface: #3C5262;
+  --surface-2: #4A6172;
+  --surface-secondary: #4A6172;
+  --text-primary: #F1EFE6;
+  --text-secondary: #DCCFB8;
+  --text-disabled: #AFA79D;
+  --muted: #AFA79D;
+  --border: #5C7383;
+  --border-soft: rgba(241, 239, 230, 0.08);
+  --overlay: rgba(9, 18, 24, 0.6);
+
+  /* Plumbing */
+  --radius: 12px;
+  --radius-lg: 18px;
+  --shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --focus-ring: 0 0 0 3px rgba(144, 174, 196, 0.5);
+  --transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Semantic status (muted but meaningful) */
+  --success: #6BA88C; --success-bg: rgba(107, 168, 140, 0.18);
+  --warning: #D6AB55; --warning-bg: rgba(214, 171, 85, 0.18);
+  --danger:  #D07666; --danger-bg:  rgba(208, 118, 102, 0.18);
+  --info:    #90AEC4; --info-bg:    rgba(144, 174, 196, 0.18);
+
+  color-scheme: dark;
+
+  /* ─── Legacy --sah-* aliases (keep existing ui-polish.css rules working) ─── */
+  --sah-brand: var(--primary);
+  --sah-brand-2: var(--primary-active);
+  --sah-surface: var(--surface);
+  --sah-border: var(--border);
+  --sah-text: var(--text-primary);
+  --sah-muted: var(--muted);
+  --sah-radius: var(--radius);
+  --sah-shadow: var(--shadow);
+  --sah-transition: var(--transition);
+}
+
+:root[data-theme="light"] {
+  /* Brand — logo azure (light mode overrides the dark base --primary) */
+  --primary:          #2E8BF0;   /* bright azure (logo glow) */
+  --primary-hover:    #4C9DF5;
+  --primary-active:   #1F73D6;
+  --primary-strong:   #1668C9;   /* darker azure so white text hits AA on white */
+  --primary-contrast: #FFFFFF;
+  --gradient: linear-gradient(135deg, #12224F, #2E8BF0); /* navy → azure, like the logo */
+
+  /* Surfaces + text (LIGHT) — cool neutrals */
+  --background:         #F4F7FC;  /* cool off-white */
+  --surface:           #FFFFFF;
+  --surface-2:         #EEF3FB;   /* faint blue-grey */
+  --surface-secondary: #DCE6F5;   /* pale azure */
+  --text-primary:      #12224F;   /* navy (from logo) */
+  --text-secondary:    #4A5A78;   /* slate */
+  --text-disabled:     #97A3B8;
+  --muted:             #4A5A78;
+  --border:            #D3DEEE;
+  --border-soft:       rgba(18, 34, 79, 0.1);
+  --overlay:           rgba(18, 34, 79, 0.35);
+
+  --shadow:    0 8px 28px rgba(18, 34, 79, 0.12);
+  --shadow-sm: 0 3px 12px rgba(18, 34, 79, 0.08);
+  --focus-ring: 0 0 0 3px rgba(46, 139, 240, 0.45);
+
+  --success: #5B9279; --success-bg: rgba(91, 146, 121, 0.14);
+  --warning: #C79A3E; --warning-bg: rgba(199, 154, 62, 0.14);
+  --danger:  #C15F52; --danger-bg:  rgba(193, 95, 82, 0.14);
+  --info:    #2E8BF0; --info-bg:    rgba(46, 139, 240, 0.14);
+
+  color-scheme: light;
+}
+
+/* ─── Shared base / reset (so pages stop re-declaring their own) ─── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background var(--transition), color var(--transition);
+}

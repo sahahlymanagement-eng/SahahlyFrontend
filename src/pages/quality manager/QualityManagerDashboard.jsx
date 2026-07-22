@@ -245,10 +245,10 @@ export default function QualityManagerDashboard() {
 
         {/* STATS */}
         <div className="qm2-stats">
-          <StatCard2 icon={<FiCheckCircle />} label="Done" value={stats.done} accent="#22c55e" />
-          <StatCard2 icon={<FiUserCheck />} label="Done by Quality" value={stats.doneByQuality} accent="#2563eb" />
-          <StatCard2 icon={<FiAlertTriangle />} label="Done by Quality Late" value={stats.doneByQualityLate} accent="#f59e0b" />
-          <StatCard2 icon={<FiClock />} label="Pending Quality" value={stats.pendingQuality} accent="#ef4444" />
+          <StatCard2 icon={<FiCheckCircle />} label="Done" value={stats.done} accent="var(--success)" />
+          <StatCard2 icon={<FiUserCheck />} label="Done by Quality" value={stats.doneByQuality} accent="var(--primary)" />
+          <StatCard2 icon={<FiAlertTriangle />} label="Done by Quality Late" value={stats.doneByQualityLate} accent="var(--warning)" />
+          <StatCard2 icon={<FiClock />} label="Pending Quality" value={stats.pendingQuality} accent="var(--danger)" />
         </div>
 
         {/* FILTERS */}
@@ -558,7 +558,10 @@ function StatCard2({ icon, label, value, accent }) {
   return (
     <div className="qm2-stat" style={{ "--accent": accent }}>
       <div className="qm2-stat-top">
-        <div className="qm2-stat-icon" style={{ color: accent, background: `${accent}18` }}>
+        <div
+          className="qm2-stat-icon"
+          style={{ color: accent, background: `color-mix(in srgb, ${accent} 18%, transparent)` }}
+        >
           {icon}
         </div>
         <span className="qm2-stat-label">{label}</span>

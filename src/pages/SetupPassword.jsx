@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { FiSun, FiMoon } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../api/api";
 import "./SetupPassword.css";
+import { useTheme } from "../context/ThemeContext";
 
 export default function SetupPassword() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -39,6 +42,14 @@ export default function SetupPassword() {
 
   return (
     <div className="setup-page">
+      <button
+        type="button"
+        className="setup-theme-toggle"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />}
+      </button>
       <div className="setup-cardWrap">
         <div className="setup-card">
 

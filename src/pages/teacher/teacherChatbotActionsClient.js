@@ -4,6 +4,7 @@
  */
 
 import api from "../../api/api";
+import { downloadBlob } from "../../utils/downloadBlob";
 
 export function formatNumberedList(items, labelFn) {
   return items.map((item, i) => `${i + 1}. ${labelFn(item)}`).join("\n");
@@ -113,14 +114,7 @@ export async function downloadGradesExcel(personId, assignmentId, targetMax) {
   const disposition = res.headers["content-disposition"] || "";
   const match = disposition.match(/filename="?([^"]+)"?/i);
   const filename = match?.[1] || "grades.xlsx";
-  const url = URL.createObjectURL(res.data);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  downloadBlob(res.data, filename);
   return filename;
 }
 
