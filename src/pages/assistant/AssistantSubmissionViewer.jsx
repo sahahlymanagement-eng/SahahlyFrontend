@@ -56,6 +56,7 @@ import {
   buildBatchMarkingResult,
   currentUserId,
   getApiErrorMessage,
+  formatGoogleOAuthError,
   getMarkingResultSummary,
   rebuildMarkingSummary,
   guidanceForForm,
@@ -66,6 +67,9 @@ import {
   getResultMaxTotal,
   resolveDisplayMaxTotal,
   sumQuestionMarks,
+  filterQuestionsPendingRemoval,
+  buildPlacementQuestions,
+  questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
   resolveSavedMarkingGrade,
@@ -76,9 +80,13 @@ import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor"
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import AddMarkingQuestionBar, {
+  MarkingCompletenessNotice,
+} from "../../components/AddMarkingQuestionBar";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import {
   geminiModelLabel,
+  getDefaultMarkingModels,
   parseGeminiModelsResponse,
   pickValidGeminiModel,
   sahahlyModelLabel,
@@ -179,6 +187,7 @@ export default function AssignmentSubmissionViewer() {
   const [returning,        setReturning]        = useState(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
+  const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
 
   const [studentErrors, setStudentErrors] = useState({});
 
@@ -563,6 +572,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     assignmentMaxPoints,
     editingMaxTotal,
     resolvePdfSummary,
+    pendingRemovedIndices,
   });
 
   const handleAnnotationPlacementChange = useCallback(
@@ -582,13 +592,42 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     []
   );
 
+  const handleQuestionRemove = useCallback((questionIndex) => {
+    setPendingRemovedIndices((prev) => {
+      const next = new Set(prev);
+      next.add(questionIndex);
+      return next;
+    });
+    const removed = editingQuestions[questionIndex];
+    if (removed != null) {
+      toast.info(`Q${removed.questionNumber} will be removed when you confirm edits`);
+    }
+  }, [editingQuestions]);
+
+  const resultModalSubmissionId =
+    resultModal?.submissionId || resultModal?.student?.submissionId || null;
+
+  useEffect(() => {
+    setPendingRemovedIndices(new Set());
+  }, [resultModalSubmissionId]);
+
+  const questionsForDisplay = useMemo(
+    () => filterQuestionsPendingRemoval(editingQuestions, pendingRemovedIndices),
+    [editingQuestions, pendingRemovedIndices]
+  );
+
+  const placementQuestions = useMemo(
+    () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
+    [editingQuestions, pendingRemovedIndices]
+  );
+
   useEffect(() => {
     if (!resultModal || summaryTouched) return;
     const submissionId =
       resultModal.submissionId || resultModal.student?.submissionId;
     setEditingSummary(
       rebuildMarkingSummary({
-        questions: editingQuestions,
+        questions: questionsForDisplay,
         maxTotalMarks: effectiveMaxTotal,
         previousSummary:
           resultModal.result?.summary ||
@@ -599,7 +638,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     );
   }, [
     resultModal,
-    editingQuestions,
+    questionsForDisplay,
     effectiveMaxTotal,
     summaryTouched,
     savedResults,
@@ -629,8 +668,16 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
     fetchPrompts();
     api.get("/marking/gemini-models")
-      .then(r => setGeminiModels(parseGeminiModelsResponse(r.data).models))
-      .catch(() => {});
+      .then((r) => {
+        const { models } = parseGeminiModelsResponse(r.data);
+        setGeminiModels(models);
+        setGeminiModel((prev) => pickValidGeminiModel(models, prev));
+      })
+      .catch(() => {
+        const models = getDefaultMarkingModels();
+        setGeminiModels(models);
+        setGeminiModel((prev) => pickValidGeminiModel(models, prev));
+      });
   }, []);
 
   // to upload mark scheme if it exists for the assignment
@@ -661,6 +708,9 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           totalMarks: resolveSavedMarkingGrade(r),
           classroomAssignedGrade: r.classroomAssignedGrade ?? null,
           summary: r.summary || getMarkingResultSummary(r.result) || "",
+          returnedAt: r.returnedAt ?? null,
+          updatedAt: r.updatedAt ?? null,
+          teacherEditedAt: r.teacherEditedAt ?? null,
         };
         if (r.classroomAssignedGrade != null) {
           synced[r.submissionId] = r.classroomAssignedGrade;
@@ -811,9 +861,7 @@ const refreshStudents = async () => {
       err?.response?.data?.message ||
       err?.message ||
       "Failed to refresh from Google Classroom";
-    toast.error(detail.includes("refresh token")
-      ? "Google sign-in expired for this classroom. Ask the director to reconnect the Gmail account under Google Accounts."
-      : detail);
+    toast.error(formatGoogleOAuthError(detail) || detail);
     } finally {
     setRefreshing(false);
   }
@@ -1869,6 +1917,10 @@ const isUngraded =
 
   const handleConfirmEdits = async () => {
     if (!resultModal || !assignmentId) return;
+    const appliedQuestions = questionsForConfirmEdits(
+      editingQuestions,
+      pendingRemovedIndices
+    ).map((q) => ({ ...q }));
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         await api.post("/submission-files/save-results", {
@@ -1898,6 +1950,8 @@ const isUngraded =
         await fetchSavedResults();
       });
       if (finalResult) {
+        setEditingQuestions(appliedQuestions);
+        setPendingRemovedIndices(new Set());
         toast.success("Edits confirmed — preview and grade updated");
       }
     } catch (err) {
@@ -2028,6 +2082,7 @@ const isUngraded =
       bulkProgress,
       batchJob,
       savedResults,
+      singleProgress,
       allStudents,
     });
 
@@ -2119,6 +2174,15 @@ const isUngraded =
           throw err;
         }
 
+        const returnedAt = new Date().toISOString();
+        setSavedResults((prev) => ({
+          ...prev,
+          [submissionId]: {
+            ...(prev[submissionId] || {}),
+            returnedAt,
+          },
+        }));
+
         setBulkProgress(p => ({
           ...p,
           [submissionId]: { ...bulk, returned: true }
@@ -2187,6 +2251,15 @@ const isUngraded =
           throw err;
         }
 
+        const returnedAt = new Date().toISOString();
+        setSavedResults((prev) => ({
+          ...prev,
+          [submissionId]: {
+            ...(prev[submissionId] || {}),
+            returnedAt,
+          },
+        }));
+
         patchBatchJob(assignmentId, (prev) => ({
           ...prev,
           results: {
@@ -2232,7 +2305,10 @@ const isUngraded =
   };
 
   const handleReturnAll = async () => {
-    if (!studentsMarkingUrl) return;
+    if (!studentsMarkingUrl) {
+      toast.error("Assignment not loaded");
+      return;
+    }
 
     try {
       const allStudents = await fetchAllPaginated(
@@ -2246,12 +2322,20 @@ const isUngraded =
         bulkProgress,
         batchJob,
         savedResults,
+        singleProgress,
         allStudents,
       });
 
       const returnCount = bulkQueue.length + batchQueue.length;
       if (returnCount === 0) {
-        toast.warn("No graded papers to return");
+        const gradedCount = Object.values(savedResults).filter((s) => s?.result).length;
+        if (gradedCount > 0) {
+          toast.warn(
+            "All graded papers were already returned. Re-mark a student to return updated papers."
+          );
+        } else {
+          toast.warn("No graded papers to return");
+        }
         return;
       }
 
@@ -2288,6 +2372,9 @@ const isUngraded =
       await Promise.all(saveRequests);
 
       await returnAllToStudents();
+    } catch (err) {
+      console.error("Return all failed:", err);
+      toast.error((await getApiErrorMessage(err)) || "Return all failed");
     } finally {
       setReturning(false);
     }
@@ -2295,7 +2382,7 @@ const isUngraded =
   
 const isCriteria = resultModal?.result?.markingMode === "criteria";
 
-  const total = sumQuestionMarks(editingQuestions);
+  const total = sumQuestionMarks(questionsForDisplay);
 const max   = effectiveMaxTotal;
   const pct   = gradeScorePercent(total, max);
 const color = getScoreColor(total, max);
@@ -3382,6 +3469,7 @@ return (
                                     setSummaryTouched(false);
                                     setEditingMaxTotal(null);
                                     setEditingTotal(null);
+                                    setPendingRemovedIndices(new Set());
                                   } else {
                                     setEditingTotal(null);
                                     setEditingMaxTotal(null);
@@ -3489,7 +3577,7 @@ return (
                               ...resultModal.result,
                               questions: editingQuestions,
                               summary: editingSummary,
-                              totalMarks: sumQuestionMarks(editingQuestions),
+                              totalMarks: sumQuestionMarks(questionsForDisplay),
                             }}
                             onApplyPatch={handleCorrectionPatch}
                           />
@@ -3573,8 +3661,21 @@ return (
                     )}
       
                     {/* ── QUESTIONS (both modes) ── */}
+                        <MarkingCompletenessNotice
+                          result={resultModal?.result}
+                          questionCount={questionsForDisplay.length}
+                        />
+                        {!isCriteria && (
+                          <AddMarkingQuestionBar
+                            onAdd={(q) => {
+                              setEditingQuestions((prev) => [...prev, q]);
+                              toast.success(`Added Q${q.questionNumber}`);
+                            }}
+                          />
+                        )}
                         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                       {editingQuestions.map((q, idx) => {
+                            if (pendingRemovedIndices.has(idx)) return null;
                             const awarded = Number(q.marksAwarded) || 0;
                             const qMax = Number(q.maxMarks) || 0;
                             const color = getScoreColor(awarded, qMax);
@@ -3596,7 +3697,42 @@ return (
                                         onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(qMax, Math.max(0, Number(e.target.value) || 0)) } : x))}
                                     style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `${color}15`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
                                   />
-                                      <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/ {qMax}</span>
+                                  <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>/</span>
+                                  {(q._manual || q._backfilled) ? (
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={50}
+                                      value={qMax}
+                                      onChange={(e) => {
+                                        const max = Math.max(1, Number(e.target.value) || 1);
+                                        setEditingQuestions((prev) =>
+                                          prev.map((x, i) =>
+                                            i === idx
+                                              ? {
+                                                  ...x,
+                                                  maxMarks: max,
+                                                  marksAwarded: Math.min(max, Number(x.marksAwarded) || 0),
+                                                }
+                                              : x
+                                          )
+                                        );
+                                      }}
+                                      style={{
+                                        width: 44,
+                                        padding: "4px 6px",
+                                        borderRadius: 6,
+                                        border: "1px solid rgba(255,255,255,0.15)",
+                                        background: "rgba(255,255,255,0.05)",
+                                        color: "rgba(255,255,255,0.75)",
+                                        fontSize: 13,
+                                        textAlign: "center",
+                                        outline: "none",
+                                      }}
+                                    />
+                                  ) : (
+                                    <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>{qMax}</span>
+                                  )}
                                 </div>
                               )}
                               <div style={{ flex: 1, minWidth: 60, height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3 }}>
@@ -3738,9 +3874,10 @@ return (
                         >
                           <AnnotatedPdfPreview
                             url={annotatedPreviewUrl}
-                            placementQuestions={editingQuestions}
+                            placementQuestions={placementQuestions}
                             reportPageCount={reportPageCount}
                             onPlacementChange={handleAnnotationPlacementChange}
+                            onQuestionRemove={handleQuestionRemove}
                           />
                         </div>
                       ) : (

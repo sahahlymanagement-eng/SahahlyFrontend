@@ -61,6 +61,22 @@ export function resolveMarkingGuidanceText(userGuidance, assignmentPrompt) {
 
 /** Read a useful API error message (including JSON-in-blob error bodies). */
 
+export function formatGoogleOAuthError(raw) {
+  const text = String(raw ?? "").trim();
+  const lower = text.toLowerCase();
+  if (
+    lower.includes("invalid_grant") ||
+    lower.includes("invalid_request") ||
+    lower.includes("token has been expired or revoked")
+  ) {
+    return "Google sign-in expired or was revoked. Ask the director to reconnect the Gmail account under Director → Google Accounts.";
+  }
+  if (lower.includes("refresh token")) {
+    return "Google sign-in expired for this classroom. Ask the director to reconnect the Gmail account under Google Accounts.";
+  }
+  return text;
+}
+
 export async function getApiErrorMessage(err) {
 
   const data = err?.response?.data;
@@ -75,25 +91,28 @@ export async function getApiErrorMessage(err) {
 
         const parsed = JSON.parse(text);
 
-        return parsed.message || text || err.message;
+        return formatGoogleOAuthError(parsed.message || parsed.error || text) || text || err.message;
 
       } catch {
 
-        return text || err.message;
+        return formatGoogleOAuthError(text) || text || err.message;
 
       }
 
     } catch {
 
-      return err.message || "Request failed";
+      return formatGoogleOAuthError(err.message) || err.message || "Request failed";
 
     }
 
   }
 
-  if (data && typeof data === "object" && data.message) return data.message;
+  if (data && typeof data === "object") {
+    const msg = data.message || data.error;
+    if (msg) return formatGoogleOAuthError(msg);
+  }
 
-  return err?.message || "Request failed";
+  return formatGoogleOAuthError(err?.message) || err?.message || "Request failed";
 
 }
 
@@ -159,7 +178,7 @@ export function hasTeacherEdits(originalQuestions, editingQuestions) {
 
     const orig = origMap.get(String(q.questionNumber));
 
-    if (!orig) continue;
+    if (!orig) return true;
 
     if (Number(q.marksAwarded) !== Number(orig.marksAwarded)) return true;
 
@@ -336,12 +355,48 @@ const CORRECTION_PATCH_FIELDS = [
 ];
 
 /** Merge AI correction suggestions into live editing state. */
+export function createManualQuestion({
+  questionNumber,
+  maxMarks = 1,
+  pageNumber = 1,
+  yPercent = 30,
+  marksAwarded = 0,
+} = {}) {
+  const max = Math.max(1, Number(maxMarks) || 1);
+  const awarded = Math.min(max, Math.max(0, Number(marksAwarded) || 0));
+  const qNum = String(questionNumber || "").trim();
+  return {
+    questionNumber: qNum,
+    pageNumber: Math.max(1, Number(pageNumber) || 1),
+    yPercent: Math.min(100, Math.max(0, Number(yPercent) || 30)),
+    maxMarks: max,
+    marksAwarded: awarded,
+    markedKeywords: [],
+    missingKeywords: [],
+    studyTopic: "",
+    mistakeAdvice: "",
+    checklist: {
+      scanningClarity: true,
+      handwritingClarity: true,
+      markSchemeUnderstanding: true,
+      studentAnswerUnderstanding: false,
+      answerIsBlank: awarded === 0,
+    },
+    studentAnswer: "Added manually by teacher — adjust marks and feedback as needed.",
+    correctAnswer: "",
+    reason: `Awarded ${awarded}/${max} marks. Q${qNum} was added manually after automated marking.`,
+    _manual: true,
+  };
+}
+
 export function applyCorrectionPatch(editingQuestions, { changes = [], summary = null } = {}) {
   const patchMap = new Map(
-    (changes || []).map((c) => [String(c.questionNumber), c])
+    (changes || [])
+      .filter((c) => c?.action !== "add")
+      .map((c) => [String(c.questionNumber), c])
   );
 
-  const questions = (editingQuestions || []).map((q) => {
+  let questions = (editingQuestions || []).map((q) => {
     const patch = patchMap.get(String(q.questionNumber));
     if (!patch) return { ...q };
 
@@ -357,6 +412,20 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
     }
     return next;
   });
+
+  for (const add of (changes || []).filter((c) => c?.action === "add")) {
+    const qNum = String(add.questionNumber || "").trim();
+    if (!qNum) continue;
+    if (questions.some((q) => String(q.questionNumber) === qNum)) continue;
+    questions.push(
+      createManualQuestion({
+        questionNumber: qNum,
+        maxMarks: add.maxMarks,
+        pageNumber: add.pageNumber,
+        marksAwarded: add.marksAwarded,
+      })
+    );
+  }
 
   return {
     questions,
@@ -407,6 +476,29 @@ export function resolveDisplayMaxTotal({
     return fromAssignment;
   }
   return Math.max(1, Number(getResultMaxTotal(result)) || 1);
+}
+
+/** Drop questions staged for removal (indices refer to the full editingQuestions array). */
+export function filterQuestionsPendingRemoval(questions, pendingRemovedIndices) {
+  if (!pendingRemovedIndices?.size) return questions || [];
+  return (questions || []).filter((_, i) => !pendingRemovedIndices.has(i));
+}
+
+/** Preview overlay list — keeps original indices for remove handlers. */
+export function buildPlacementQuestions(questions, pendingRemovedIndices) {
+  return (questions || [])
+    .map((q, i) => ({ ...q, _placementIndex: i }))
+    .filter((q) => !pendingRemovedIndices?.has(q._placementIndex));
+}
+
+export function stripQuestionPlacementMeta(question) {
+  if (!question || typeof question !== "object") return question;
+  const { _placementIndex, ...rest } = question;
+  return rest;
+}
+
+export function questionsForConfirmEdits(questions, pendingRemovedIndices) {
+  return filterQuestionsPendingRemoval(questions, pendingRemovedIndices).map(stripQuestionPlacementMeta);
 }
 
 export function questionsHavePendingEdits(currentQuestions, confirmedSnapshot) {

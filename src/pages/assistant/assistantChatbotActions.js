@@ -488,6 +488,7 @@ export async function sendAssignmentReports({
   const res = await api.post("/manager-assignments/send-report", {
     reports,
     classroomId,
+    clientSendId: crypto.randomUUID(),
   });
 
   const summary = res.data.summary || [];

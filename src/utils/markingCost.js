@@ -34,8 +34,10 @@ export function sahahlyModelLabel(modelOrId) {
 function brandGeminiLabel(raw) {
   const text = String(raw || "").trim();
   if (!text) return "";
-  // Strip parenthetical notes, then rename Gemini → Sahahly and normalize Flash-Lite.
-  let out = text.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  // Keep "(Lite)" before stripping other parenthetical notes — otherwise Lite and
+  // Flash both collapse to "Sahahly 2.5 Flash" in the dropdown.
+  let out = text.replace(/\(\s*lite\s*\)/gi, " Flash Lite ");
+  out = out.replace(/\s*\([^)]*\)\s*/g, " ").trim();
   out = out.replace(/^gemini[\s_-]*/i, "");
   out = out.replace(/flash[\s_-]*lite/gi, "Flash Lite");
   out = out.replace(/flash/gi, "Flash");
@@ -45,6 +47,38 @@ function brandGeminiLabel(raw) {
     return out.replace(/^sahahly\b/i, "Sahahly");
   }
   return `Sahahly ${out}`;
+}
+
+/** Full catalog for dropdowns when the API is down or running an older backend. */
+export function getDefaultMarkingModels() {
+  return MARKING_GEMINI_PRICING.map((m) => ({
+    ...m,
+    label: SAHAHLY_MODEL_LABELS[m.id] || sahahlyModelLabel(m.id),
+  }));
+}
+
+function mergeMarkingModels(fromApi) {
+  const defaults = getDefaultMarkingModels();
+  const defaultById = new Map(defaults.map((m) => [m.id, m]));
+  const apiList = Array.isArray(fromApi) ? fromApi.filter((m) => m?.id) : [];
+
+  const merged = defaults.map((def) => {
+    const api = apiList.find((m) => m.id === def.id);
+    if (!api) return def;
+    return {
+      ...def,
+      ...api,
+      label: SAHAHLY_MODEL_LABELS[def.id] || sahahlyModelLabel(api),
+    };
+  });
+
+  for (const api of apiList) {
+    if (!defaultById.has(api.id)) {
+      merged.push({ ...api, label: sahahlyModelLabel(api) });
+    }
+  }
+
+  return merged;
 }
 
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
@@ -74,25 +108,15 @@ export function setPriorityRateFactor(factor) {
 }
 
 export function parseGeminiModelsResponse(data) {
-  if (Array.isArray(data)) {
-    return {
-      models: data.map((m) => ({ ...m, label: sahahlyModelLabel(m) })),
-      usdToEgpRate: USD_TO_EGP_RATE,
-      cachedInputRateFactor: CACHED_INPUT_RATE_FACTOR,
-      batchRateFactor: BATCH_RATE_FACTOR,
-      priorityRateFactor: PRIORITY_RATE_FACTOR,
-    };
+  const fromApi = Array.isArray(data) ? data : data?.models || [];
+  if (data && !Array.isArray(data)) {
+    if (data.usdToEgpRate) setUsdToEgpRate(data.usdToEgpRate);
+    if (data.cachedInputRateFactor) setCachedInputRateFactor(data.cachedInputRateFactor);
+    if (data.batchRateFactor) setBatchRateFactor(data.batchRateFactor);
+    if (data.priorityRateFactor) setPriorityRateFactor(data.priorityRateFactor);
   }
-  const models = (data?.models || []).map((m) => ({
-    ...m,
-    label: sahahlyModelLabel(m),
-  }));
-  if (data?.usdToEgpRate) setUsdToEgpRate(data.usdToEgpRate);
-  if (data?.cachedInputRateFactor) setCachedInputRateFactor(data.cachedInputRateFactor);
-  if (data?.batchRateFactor) setBatchRateFactor(data.batchRateFactor);
-  if (data?.priorityRateFactor) setPriorityRateFactor(data.priorityRateFactor);
   return {
-    models,
+    models: mergeMarkingModels(fromApi),
     usdToEgpRate: USD_TO_EGP_RATE,
     cachedInputRateFactor: CACHED_INPUT_RATE_FACTOR,
     batchRateFactor: BATCH_RATE_FACTOR,

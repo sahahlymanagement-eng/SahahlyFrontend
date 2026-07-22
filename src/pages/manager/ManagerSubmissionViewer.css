@@ -836,6 +836,35 @@
   white-space: nowrap;
 }
 
+.pdf-place-handle__remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.92);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pdf-place-handle__remove:hover {
+  background: #ef4444;
+}
+
+.pdf-place-handle__remove:focus-visible {
+  outline: 2px solid #fca5a5;
+  outline-offset: 1px;
+}
+
 .pdf-preview-status {
   flex: 1;
   display: flex;

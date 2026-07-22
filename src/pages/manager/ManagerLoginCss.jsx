@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -11,6 +11,9 @@ import Pagination from "../../components/Pagination";
 import {
   assertPdfBlob,
   sumQuestionMarks,
+  filterQuestionsPendingRemoval,
+  buildPlacementQuestions,
+  questionsForConfirmEdits,
   gradeScorePercent,
   getApiErrorMessage,
   getMarkingResultSummary,
@@ -122,6 +125,7 @@ export default function ManagerLoginCss() {
   const [editingTotal, setEditingTotal] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [returning, setReturning] = useState(false);
+  const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
 
   const [errorViewer, setErrorViewer] = useState({ open: false, title: "", message: null });
 
@@ -255,6 +259,7 @@ export default function ManagerLoginCss() {
     editingMaxTotal,
     resolvePdfSummary,
     getStudentFile,
+    pendingRemovedIndices,
   });
 
   const handleAnnotationPlacementChange = useCallback(
@@ -274,20 +279,49 @@ export default function ManagerLoginCss() {
     []
   );
 
+  const handleQuestionRemove = useCallback((questionIndex) => {
+    setPendingRemovedIndices((prev) => {
+      const next = new Set(prev);
+      next.add(questionIndex);
+      return next;
+    });
+    const removed = editingQuestions[questionIndex];
+    if (removed != null) {
+      toast.info(`Q${removed.questionNumber} will be removed when you confirm edits`);
+    }
+  }, [editingQuestions]);
+
+  const resultModalSubmissionId =
+    resultModal?.submissionId || resultModal?.student?.submissionId || null;
+
+  useEffect(() => {
+    setPendingRemovedIndices(new Set());
+  }, [resultModalSubmissionId]);
+
+  const questionsForDisplay = useMemo(
+    () => filterQuestionsPendingRemoval(editingQuestions, pendingRemovedIndices),
+    [editingQuestions, pendingRemovedIndices]
+  );
+
+  const placementQuestions = useMemo(
+    () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
+    [editingQuestions, pendingRemovedIndices]
+  );
+
   // Auto-rebuild the editable summary from current marks/feedback until the
   // teacher manually edits it (summaryTouched).
   useEffect(() => {
     if (!resultModal || summaryTouched) return;
     setEditingSummary(
       rebuildMarkingSummary({
-        questions: editingQuestions,
+        questions: questionsForDisplay,
         maxTotalMarks: effectiveMaxTotal,
         previousSummary:
           resultModal.result?.summary ||
           getMarkingResultSummary(resultModal.result, {}),
       })
     );
-  }, [resultModal, editingQuestions, effectiveMaxTotal, summaryTouched]);
+  }, [resultModal, questionsForDisplay, effectiveMaxTotal, summaryTouched]);
 
   // ── Defensive normalisation of the LoginCSS list envelope ──
   const normalizeItem = (raw) => {
@@ -913,6 +947,10 @@ export default function ManagerLoginCss() {
   // ── Edit / annotate / upload ──
   const handleConfirmEdits = async () => {
     if (!resultModal) return;
+    const appliedQuestions = questionsForConfirmEdits(
+      editingQuestions,
+      pendingRemovedIndices
+    ).map((q) => ({ ...q }));
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         setResults((prev) => ({
@@ -937,7 +975,11 @@ export default function ManagerLoginCss() {
           )
         );
       });
-      if (finalResult) toast.success("Edits confirmed — preview and grade updated");
+      if (finalResult) {
+        setEditingQuestions(appliedQuestions);
+        setPendingRemovedIndices(new Set());
+        toast.success("Edits confirmed — preview and grade updated");
+      }
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
     }
@@ -1189,7 +1231,7 @@ export default function ManagerLoginCss() {
   );
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
-  const total = sumQuestionMarks(editingQuestions);
+  const total = sumQuestionMarks(questionsForDisplay);
   const pct = gradeScorePercent(total, effectiveMaxTotal);
   const color = getScoreColor(total, effectiveMaxTotal);
 
@@ -2094,6 +2136,7 @@ export default function ManagerLoginCss() {
                             setSummaryTouched(false);
                             setEditingMaxTotal(null);
                             setEditingTotal(null);
+                            setPendingRemovedIndices(new Set());
                           } else {
                             setEditingTotal(null);
                             setEditingMaxTotal(null);
@@ -2229,7 +2272,7 @@ export default function ManagerLoginCss() {
                       ...resultModal.result,
                       questions: editingQuestions,
                       summary: editingSummary,
-                      totalMarks: sumQuestionMarks(editingQuestions),
+                      totalMarks: sumQuestionMarks(questionsForDisplay),
                     }}
                     onApplyPatch={handleCorrectionPatch}
                   />
@@ -2409,6 +2452,7 @@ export default function ManagerLoginCss() {
                 {/* QUESTIONS */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {editingQuestions.map((q, idx) => {
+                    if (pendingRemovedIndices.has(idx)) return null;
                     const awarded = Number(q.marksAwarded) || 0;
                     const qMax = Number(q.maxMarks) || 0;
                     const qColor = getScoreColor(awarded, qMax);
@@ -2667,9 +2711,10 @@ export default function ManagerLoginCss() {
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     <AnnotatedPdfPreview
                       url={annotatedPreviewUrl}
-                      placementQuestions={editingQuestions}
+                      placementQuestions={placementQuestions}
                       reportPageCount={reportPageCount}
                       onPlacementChange={handleAnnotationPlacementChange}
+                      onQuestionRemove={handleQuestionRemove}
                     />
                   </div>
                 ) : (

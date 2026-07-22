@@ -107,6 +107,7 @@ export default function MonthlyParentReportWorkspace({
   const [downloading, setDownloading] = useState(false);
 
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const activeSendIdRef = useRef(null);
 
 
   const [schoolSessionList, setSchoolSessionList] = useState([]);
@@ -610,7 +611,7 @@ export default function MonthlyParentReportWorkspace({
 
 
   const sendWhatsApp = async (studentIds) => {
-
+    if (sendingWhatsApp) return;
     if (!selectedClassroom?._id || !studentIds.length) return;
 
 
@@ -653,56 +654,46 @@ export default function MonthlyParentReportWorkspace({
 
 
 
+    const clientSendId = activeSendIdRef.current || crypto.randomUUID();
+    activeSendIdRef.current = clientSendId;
     setSendingWhatsApp(true);
 
     try {
 
       const payload = {
-
         classroomId: selectedClassroom._id,
-
         year,
-
         month,
-
+        clientSendId,
       };
 
-
-
       if (idsToSend.length === 1) {
-
         payload.studentId = idsToSend[0];
-
       } else {
-
         payload.studentIds = idsToSend;
-
       }
-
-
 
       const { data } = await api.post("/reports/monthly-parent/send-whatsapp", payload);
 
       const sent = data.sent ?? 0;
-
       const failed = data.failed ?? 0;
+      const skipped = data.skipped ?? 0;
 
-      if (sent > 0) {
-
-        toast.success(`Sent to ${sent} parent(s) on WhatsApp${failed ? ` (${failed} failed)` : ""}`);
-
+      if (sent > 0 || skipped > 0) {
+        let msg = `Sent to ${sent} parent(s) on WhatsApp`;
+        if (skipped > 0) msg += ` (${skipped} skipped — already sent recently)`;
+        if (failed > 0) msg += ` (${failed} failed)`;
+        toast.success(msg);
       } else {
-
         toast.error("Failed to send reports on WhatsApp");
-
       }
 
       if (idsToSend.length > 1) clearSelection();
-
+      activeSendIdRef.current = null;
     } catch (err) {
 
       toast.error(err.response?.data?.message || "Failed to send on WhatsApp");
-
+      activeSendIdRef.current = null;
     } finally {
 
       setSendingWhatsApp(false);

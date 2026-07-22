@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import api from "../../api/api";
-import { toast } from "react-toastify";
+import { formatGoogleOAuthError } from "../../utils/markingFormData";
 import "./CourseManagement.css";
 import "../../pages/teacher/teacher.css";
 import { TeacherPageHeader, TeacherLoading } from "../../pages/teacher/TeacherUI";
@@ -355,9 +355,9 @@ export default function Coursework() {
     } catch (err) {
       console.error(err);
       toast.error(
-        err.response?.data?.error ||
-          err.message ||
-          "Could not open Google Drive"
+        formatGoogleOAuthError(
+          err.response?.data?.error || err.message
+        ) || "Could not open Google Drive"
       );
     } finally {
       setDrivePickerOpening(false);

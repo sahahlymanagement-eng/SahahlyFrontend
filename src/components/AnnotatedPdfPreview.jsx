@@ -31,6 +31,8 @@ function PlacementHandle({
   yPercent,
   active,
   onPointerDown,
+  onRemove,
+  showRemove,
 }) {
   const label =
     column === "left"
@@ -48,6 +50,22 @@ function PlacementHandle({
       onPointerDown={(e) => onPointerDown(e, q, column)}
       title="Drag to move this marking box (any page). Positions apply on Confirm Edits."
     >
+      {showRemove && column === "left" && (
+        <button
+          type="button"
+          className="pdf-place-handle__remove"
+          title={`Remove Q${q.questionNumber} from marking`}
+          aria-label={`Remove question ${q.questionNumber}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove?.(q._placementIndex);
+          }}
+        >
+          ×
+        </button>
+      )}
       <span className="pdf-place-handle__grip" aria-hidden>
         ⠿
       </span>
@@ -65,6 +83,8 @@ function LazyPdfPage({
   pageQuestions,
   dragKey,
   onHandlePointerDown,
+  onQuestionRemove,
+  showRemove,
 }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -158,13 +178,15 @@ function LazyPdfPage({
           const { q, yPercent } = item;
           const key = questionKey(q);
           return (
-            <div key={key} className="pdf-place-layer">
+            <div key={`place-${item.placementIndex}`} className="pdf-place-layer">
               <PlacementHandle
                 q={q}
                 column="left"
                 yPercent={yPercent}
                 active={dragKey === `${key}:left`}
                 onPointerDown={onHandlePointerDown}
+                onRemove={onQuestionRemove}
+                showRemove={showRemove}
               />
               <PlacementHandle
                 q={q}
@@ -172,6 +194,7 @@ function LazyPdfPage({
                 yPercent={yPercent}
                 active={dragKey === `${key}:right`}
                 onPointerDown={onHandlePointerDown}
+                showRemove={false}
               />
             </div>
           );
@@ -229,6 +252,7 @@ export default function AnnotatedPdfPreview({
   placementQuestions = null,
   reportPageCount = 0,
   onPlacementChange = null,
+  onQuestionRemove = null,
 }) {
   const scrollRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
@@ -245,6 +269,24 @@ export default function AnnotatedPdfPreview({
 
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
+  const removeEnabled = typeof onQuestionRemove === "function";
+
+  const handleQuestionRemove = useCallback(
+    (questionIndex) => {
+      if (!removeEnabled) return;
+      onQuestionRemove(questionIndex);
+      setLocalPlacement((prev) => {
+        const q = placementQuestions?.[questionIndex];
+        if (!q) return prev;
+        const key = questionKey(q);
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    },
+    [removeEnabled, onQuestionRemove, placementQuestions]
+  );
 
   useEffect(() => {
     setLocalPlacement({});
@@ -307,11 +349,12 @@ export default function AnnotatedPdfPreview({
 
   const effectiveQuestions = useMemo(() => {
     if (!placementEnabled) return [];
-    return placementQuestions.map((q) => {
+    return placementQuestions.map((q, placementIndex) => {
       const key = questionKey(q);
       const override = localPlacement[key];
       return {
         ...q,
+        _placementIndex: q._placementIndex ?? placementIndex,
         pageNumber: Math.max(
           1,
           Number(override?.pageNumber ?? q.pageNumber) || 1
@@ -326,7 +369,7 @@ export default function AnnotatedPdfPreview({
     for (const q of effectiveQuestions) {
       const p = Math.max(1, Number(q.pageNumber) || 1);
       if (!map.has(p)) map.set(p, []);
-      map.get(p).push({ q, yPercent: clampYPercent(q.yPercent) });
+      map.get(p).push({ q, yPercent: clampYPercent(q.yPercent), placementIndex: q._placementIndex });
     }
     return map;
   }, [effectiveQuestions]);
@@ -478,7 +521,7 @@ export default function AnnotatedPdfPreview({
         </button>
         {placementEnabled && (
           <span className="pdf-preview-place-hint">
-            Drag boxes to any page — applies on Confirm Edits
+            Drag boxes to any page · × removes a question — applies on Confirm Edits
           </span>
         )}
       </div>
@@ -522,6 +565,8 @@ export default function AnnotatedPdfPreview({
               pageQuestions={pageQuestions}
               dragKey={dragKey}
               onHandlePointerDown={handlePointerDown}
+              onQuestionRemove={handleQuestionRemove}
+              showRemove={removeEnabled}
             />
           );
         })}

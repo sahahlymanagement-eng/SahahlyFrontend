@@ -7,7 +7,11 @@ import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
-import { parseGeminiModelsResponse, sahahlyModelLabel } from "../../utils/markingCost";
+import {
+  getDefaultMarkingModels,
+  parseGeminiModelsResponse,
+  pickValidGeminiModel,
+} from "../../utils/markingCost";
 
 export default function PaperMarking() {
   const studentRef = useRef();
@@ -46,8 +50,16 @@ export default function PaperMarking() {
     api.get("/qb/boards").then(r => setBoards(r.data)).catch(() => {});
     loadPrompts();
     api.get("/marking/gemini-models")
-      .then(r => setGeminiModels(parseGeminiModelsResponse(r.data).models))
-      .catch(() => {});
+      .then((r) => {
+        const { models } = parseGeminiModelsResponse(r.data);
+        setGeminiModels(models);
+        setGeminiModel((prev) => pickValidGeminiModel(models, prev));
+      })
+      .catch(() => {
+        const models = getDefaultMarkingModels();
+        setGeminiModels(models);
+        setGeminiModel((prev) => pickValidGeminiModel(models, prev));
+      });
   }, []);
 
   useEffect(() => {
@@ -364,8 +376,8 @@ export default function PaperMarking() {
             value={geminiModel}
             onChange={e => setGeminiModel(e.target.value)}
           >
-            {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map(m => (
-              <option key={m.id} value={m.id}>{sahahlyModelLabel(m)}</option>
+            {(geminiModels.length ? geminiModels : getDefaultMarkingModels()).map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
           <p style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.45)" }}>

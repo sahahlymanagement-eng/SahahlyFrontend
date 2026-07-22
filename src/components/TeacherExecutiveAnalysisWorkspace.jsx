@@ -193,7 +193,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   };
 
   const sendToTeacher = async () => {
-    if (!selectedAssignment?._id) return;
+    if (!selectedAssignment?._id || sending) return;
     if (!report?.meta?.teacherPhone) {
       toast.error("Teacher has no WhatsApp number on file");
       return;
@@ -205,9 +205,12 @@ export default function TeacherExecutiveAnalysisWorkspace({
         assignmentId: selectedAssignment._id,
         trigger,
         sendEmail: sendEmailToo,
+        clientSendId: crypto.randomUUID(),
       });
       if (data.result?.whatsApp?.sent) {
         toast.success("Executive report sent to teacher on WhatsApp");
+      } else if (data.result?.whatsApp?.skipped) {
+        toast.info("Executive report was already sent recently — skipped duplicate");
       } else {
         toast.warn(data.message || "Report processed with warnings");
       }

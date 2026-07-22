@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/api";
 import { toast } from "react-toastify";
@@ -48,6 +48,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [summaryMap, setSummaryMap] = useState({});
   const [reportCart, setReportCart] = useState({});
   const [sending, setSending] = useState(false);
+  const activeSendIdRef = useRef(null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [customPhone, setCustomPhone] = useState("");
@@ -58,6 +59,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [selectingAll, setSelectingAll] = useState(false);
   const [reportView, setReportView] = useState("assignment");
   const [preview, setPreview] = useState({ open: false, loading: false, error: null, previews: [] });
+  const [previewClassroomId, setPreviewClassroomId] = useState(null);
 
   const {
     teacherFilter,
@@ -194,6 +196,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setAttendanceMap({});
     setAttendanceRoster([]);
     setAttendanceFileName("");
+    closePreview();
   };
 
   /* SELECT ASSIGNMENT */
@@ -219,6 +222,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setAttendanceMap({});
     setAttendanceRoster([]);
     setAttendanceFileName("");
+    closePreview();
   };
 
   const expandAssignmentSection = () => {
@@ -513,6 +517,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             ),
             summaryMap: fresh.data.summaryMap || {},
             maxPoints: fresh.data.assignment?.maxPoints ?? null,
+            classroomId: fresh.data.assignment?.classroomId ?? null,
           };
         } catch {
           liveByAssignmentId[String(asgId)] = {
@@ -537,7 +542,20 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       name: entry.studentMeta.name,
       phone: entry.studentMeta.phone,
       parentPhone: entry.studentMeta.parentPhone,
-      items: Object.values(entry.items).map((item) => {
+      items: Object.values(entry.items)
+        .filter((item) => {
+          const asgId = String(item.assignmentId || "");
+          const liveClassroomId = liveByAssignmentId[asgId]?.classroomId;
+          if (
+            selectedClassroom?._id &&
+            liveClassroomId &&
+            String(liveClassroomId) !== String(selectedClassroom._id)
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .map((item) => {
         const asgId = String(item.assignmentId || "");
         const liveBundle = liveByAssignmentId[asgId];
         const liveStudent =
@@ -610,12 +628,16 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         classroomId: selectedClassroom?._id,
       });
       setPreview({ open: true, loading: false, error: null, previews: res.data.previews || [] });
+      setPreviewClassroomId(selectedClassroom?._id || null);
     } catch {
       setPreview({ open: true, loading: false, error: "Failed to generate preview", previews: [] });
     }
   };
 
-  const closePreview = () => setPreview({ open: false, loading: false, error: null, previews: [] });
+  const closePreview = () => {
+    setPreview({ open: false, loading: false, error: null, previews: [] });
+    setPreviewClassroomId(null);
+  };
 
   const updatePreviewMessage = (index, message) => {
     setPreview((prev) => ({
@@ -637,27 +659,47 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   /* SEND — from cart bar (no preview edits) or from preview confirm (with edits) */
   const sendReport = async (options) => {
+    if (sending) return;
     const fromPreview = options && options.fromPreview === true;
     const reports = await resolveReports();
     if (!reports) { toast.warn("No students selected"); return; }
+    const clientSendId = activeSendIdRef.current || crypto.randomUUID();
+    activeSendIdRef.current = clientSendId;
     setSending(true);
     try {
       const payload = {
         reports,
         classroomId: selectedClassroom?._id,
+        clientSendId,
       };
       if (fromPreview) {
-        payload.messageOverrides = buildMessageOverrides();
+        if (
+          previewClassroomId &&
+          selectedClassroom?._id &&
+          String(previewClassroomId) !== String(selectedClassroom._id)
+        ) {
+          toast.warn("Classroom changed since preview — sending freshly generated messages");
+        } else {
+          payload.messageOverrides = buildMessageOverrides();
+          payload.previewClassroomId = previewClassroomId;
+        }
       }
       const res = await api.post("/manager-assignments/send-report", payload);
       const summary = res.data.summary || [];
       const succeeded = summary.filter(r => r.status === "fulfilled").length;
       const failed = summary.filter(r => r.status === "rejected").length;
-      toast.success(`✅ Sent to ${succeeded} student(s)${failed ? `, ${failed} failed` : ""}`);
+      const skipped = res.data.skippedCount || 0;
+      const sent = res.data.sentCount ?? succeeded;
+      let msg = `✅ Sent to ${sent} student(s)`;
+      if (skipped > 0) msg += ` (${skipped} skipped — already sent recently)`;
+      if (failed) msg += `, ${failed} failed`;
+      toast.success(msg);
       setReportCart({});
       closePreview();
+      activeSendIdRef.current = null;
     } catch {
       toast.error("Failed to send reports");
+      activeSendIdRef.current = null;
     } finally {
       setSending(false);
     }
@@ -781,6 +823,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
 
   const sendTeacherCollectiveReport = async () => {
+    if (sending) return;
     const cartEntries = Object.entries(reportCart);
 
     if (cartEntries.length === 0) {
@@ -800,7 +843,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         "/manager-assignments/send-teacher-collective-report",
         {
           reports,
-          classroomId: selectedClassroom?._id
+          classroomId: selectedClassroom?._id,
+          clientSendId: crypto.randomUUID(),
         }
       );
 
@@ -813,6 +857,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   };
 
   const sendCustomCollectiveReport = async () => {
+    if (sending) return;
     const cartEntries = Object.entries(reportCart);
 
     if (cartEntries.length === 0) {
@@ -838,7 +883,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         {
           reports,
           classroomId: selectedClassroom?._id,
-          phone: customPhone
+          phone: customPhone,
+          clientSendId: crypto.randomUUID(),
         }
       );
 

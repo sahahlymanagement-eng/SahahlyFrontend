@@ -3,6 +3,7 @@ import { annotatePdf } from "../utils/annotatePdf";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
+  questionsForConfirmEdits,
   resolveDisplayMaxTotal,
   sumQuestionMarks,
   getOutOfScopeNotes,
@@ -51,6 +52,7 @@ export function useExternalAnnotatedPreview({
   editingMaxTotal,
   resolvePdfSummary,
   getStudentFile,
+  pendingRemovedIndices = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -68,6 +70,14 @@ export function useExternalAnnotatedPreview({
   resultModalRef.current = resultModal;
   const editingMaxTotalRef = useRef(editingMaxTotal);
   editingMaxTotalRef.current = editingMaxTotal;
+
+  const pendingRemovedRef = useRef(pendingRemovedIndices);
+  pendingRemovedRef.current = pendingRemovedIndices;
+
+  const questionsForPreviewEdits = useMemo(
+    () => questionsForConfirmEdits(editingQuestions, pendingRemovedIndices),
+    [editingQuestions, pendingRemovedIndices]
+  );
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
@@ -187,7 +197,7 @@ export function useExternalAnnotatedPreview({
     ) {
       return true;
     }
-    if (questionsHavePendingEdits(editingQuestions, confirmedSnapshot)) {
+    if (questionsHavePendingEdits(questionsForPreviewEdits, confirmedSnapshot)) {
       return true;
     }
     if (annotationsHavePendingEdits(
@@ -201,7 +211,7 @@ export function useExternalAnnotatedPreview({
     return currentSummary !== confirmedSummary;
   }, [
     confirmedSnapshot,
-    editingQuestions,
+    questionsForPreviewEdits,
     editingAnnotations,
     editingSummary,
     effectiveMaxTotal,
@@ -216,7 +226,10 @@ export function useExternalAnnotatedPreview({
 
       setConfirmingEdits(true);
       try {
-        const questions = editingQuestions.map((q) => ({ ...q }));
+        const questions = questionsForConfirmEdits(
+          editingQuestions,
+          pendingRemovedRef.current
+        ).map((q) => ({ ...q }));
         const teacherAnnotations = (editingAnnotations || []).map((a) => ({ ...a }));
         const maxTotal = Math.max(1, Number(effectiveMaxTotal) || 1);
         const finalResult = applyTeacherEditsToResult(

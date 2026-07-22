@@ -62,7 +62,11 @@ export async function previewAssignmentReport(classroomId, reports) {
 }
 
 export async function sendAssignmentReport(classroomId, reports, messageOverrides) {
-  const payload = { classroomId, reports };
+  const payload = {
+    classroomId,
+    reports,
+    clientSendId: crypto.randomUUID(),
+  };
   if (messageOverrides) payload.messageOverrides = messageOverrides;
   const { data } = await api.post("/manager-assignments/send-report", payload);
   return data;
@@ -76,7 +80,10 @@ export async function previewMonthly(params) {
 }
 
 export async function sendMonthly(body) {
-  const { data } = await api.post("/teacher-chatbot/actions/send-monthly", body);
+  const { data } = await api.post("/teacher-chatbot/actions/send-monthly", {
+    ...body,
+    clientSendId: body.clientSendId || crypto.randomUUID(),
+  });
   return data;
 }
 
