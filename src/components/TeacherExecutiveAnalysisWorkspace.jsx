@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import api from "../api/api";
 import { toast } from "react-toastify";
+import { downloadBlob } from "../utils/downloadBlob";
 import {
   FiArrowLeft,
   FiBarChart2,
@@ -178,12 +179,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
         { params: { trigger }, responseType: "blob" }
       );
       const blob = new Blob([res.data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${selectedAssignment.title || "assignment"}_executive.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${selectedAssignment.title || "assignment"}_executive.pdf`);
       toast.success("PDF downloaded");
     } catch {
       toast.error("Failed to download PDF");

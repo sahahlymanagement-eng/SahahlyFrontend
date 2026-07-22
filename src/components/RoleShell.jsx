@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { FiMenu, FiLayers } from "react-icons/fi";
+import { FiMenu, FiSun, FiMoon } from "react-icons/fi";
 import "../pages/assistant/assistant.css";
 import "../styles/ui-polish.css";
 import { useIsMobileNav } from "../hooks/useMediaQuery";
+import { useTheme } from "../context/ThemeContext";
+import logo from "../assets/images/Logo-removebg-preview.png";
 
 export default function RoleShell({ sidebar, children }) {
   const isMobileNav = useIsMobileNav();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   // Close the drawer whenever navigation occurs (any sidebar nav item fires it).
   // Adjusting state during render (React's recommended pattern) instead of an
@@ -42,11 +45,18 @@ export default function RoleShell({ sidebar, children }) {
           <FiMenu size={22} />
         </button>
         <div className="ast-mobile-brand">
-          <div className="ast-mobile-brand-mark">
-            <FiLayers size={15} />
-          </div>
-          <span className="ast-mobile-brand-name">Sahahly</span>
+          <span className="ast-mobile-brand-mark">
+            <img src={logo} alt="Sahahly" className="ast-mobile-brand-logo" />
+          </span>
         </div>
+        <button
+          type="button"
+          className="ast-mobile-theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />}
+        </button>
       </header>
 
       {sidebar}

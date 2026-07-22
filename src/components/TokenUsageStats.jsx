@@ -44,7 +44,7 @@ export default function TokenUsageStats({
 
   if (compact) {
     return (
-      <div style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+      <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {lines.map((line) => (
             <span key={line.key}>
@@ -53,19 +53,19 @@ export default function TokenUsageStats({
           ))}
         </div>
         {cost && !hideCost && (
-          <div style={{ marginTop: 4, color: "rgba(255,255,255,0.5)" }}>
-            <span style={{ color: "#a78bfa", fontWeight: 700 }}>Cost:</span>{" "}
+          <div style={{ marginTop: 4, color: "var(--muted)" }}>
+            <span style={{ color: "var(--accent)", fontWeight: 700 }}>Cost:</span>{" "}
             {formatCostUsd(cost.usd)} · {formatCostEgp(cost.egp)}
             {batchNote ? (
-              <span style={{ marginLeft: 6, color: "rgba(129,140,248,0.85)" }}>({batchNote})</span>
+              <span style={{ marginLeft: 6, color: "var(--muted)" }}>({batchNote})</span>
             ) : null}
             {priorityNote ? (
-              <span style={{ marginLeft: 6, color: "rgba(251,191,36,0.9)" }}>({priorityNote})</span>
+              <span style={{ marginLeft: 6, color: "var(--warning)" }}>({priorityNote})</span>
             ) : null}
           </div>
         )}
         {downgraded && (
-          <div style={{ marginTop: 4, color: "rgba(251,191,36,0.85)" }}>
+          <div style={{ marginTop: 4, color: "var(--warning)" }}>
             ⚡ Priority unavailable — ran at standard speed.
           </div>
         )}
@@ -79,7 +79,7 @@ export default function TokenUsageStats({
         style={{
           fontSize: 12,
           fontWeight: 700,
-          color: "rgba(255,255,255,0.5)",
+          color: "var(--muted)",
           marginBottom: 6,
           textTransform: "uppercase",
           letterSpacing: "0.08em",
@@ -104,21 +104,21 @@ export default function TokenUsageStats({
       {cost && !hideCost && (
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10, fontSize: 13 }}>
           <div>
-            <span style={{ color: "#a78bfa", fontWeight: 700 }}>Cost (USD):</span> {formatCostUsd(cost.usd)}
+            <span style={{ color: "var(--accent)", fontWeight: 700 }}>Cost (USD):</span> {formatCostUsd(cost.usd)}
           </div>
           <div>
-            <span style={{ color: "#c084fc", fontWeight: 700 }}>Cost (EGP):</span> {formatCostEgp(cost.egp)}
+            <span style={{ color: "var(--accent)", fontWeight: 700 }}>Cost (EGP):</span> {formatCostEgp(cost.egp)}
           </div>
           {batchNote ? (
-            <div style={{ color: "rgba(129,140,248,0.85)" }}>{batchNote}</div>
+            <div style={{ color: "var(--muted)" }}>{batchNote}</div>
           ) : null}
           {priorityNote ? (
-            <div style={{ color: "rgba(251,191,36,0.9)" }}>{priorityNote}</div>
+            <div style={{ color: "var(--warning)" }}>{priorityNote}</div>
           ) : null}
         </div>
       )}
       {downgraded && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "rgba(251,191,36,0.85)" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning)" }}>
           ⚡ Priority unavailable — ran at standard speed.
         </div>
       )}

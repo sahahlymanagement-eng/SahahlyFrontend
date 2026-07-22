@@ -12,8 +12,8 @@
   flex: 1;
   min-height: 0;
   height: calc(100vh - 210px);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  border: 1px solid var(--border-soft);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -51,16 +51,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(124, 58, 237, 0.2);
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  color: #c4b5fd;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  color: var(--primary);
   margin-top: 2px;
 }
 
 .achat-avatar--user {
-  background: rgba(148, 163, 184, 0.15);
-  border-color: rgba(148, 163, 184, 0.3);
-  color: #cbd5e1;
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  border-color: color-mix(in srgb, var(--muted) 30%, transparent);
+  color: var(--text-secondary);
 }
 
 .achat-bubble {
@@ -68,9 +68,9 @@
   padding: 11px 15px;
   border-radius: 14px;
   border-top-left-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  color: #e2e8f0;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  color: var(--text-primary);
   font-size: 13.5px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -78,16 +78,16 @@
 }
 
 .achat-bubble--user {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.45), rgba(79, 70, 229, 0.35));
-  border-color: rgba(167, 139, 250, 0.4);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary-strong) 45%, transparent), color-mix(in srgb, var(--primary) 35%, transparent));
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
   border-top-left-radius: 14px;
   border-top-right-radius: 4px;
 }
 
 .achat-bubble--error {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
 }
 
 .achat-bubble--typing {
@@ -101,7 +101,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: rgba(196, 181, 253, 0.75);
+  background: color-mix(in srgb, var(--primary) 75%, transparent);
   animation: achat-bounce 1.2s infinite ease-in-out;
 }
 
@@ -141,9 +141,9 @@
   min-width: 40px;
   padding: 8px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  background: rgba(124, 58, 237, 0.12);
-  color: #ddd6fe;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -151,8 +151,8 @@
 }
 
 .achat-quick-btn:hover {
-  background: rgba(124, 58, 237, 0.25);
-  border-color: rgba(167, 139, 250, 0.55);
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
 }
 
 .achat-inputbar {
@@ -160,8 +160,8 @@
   gap: 10px;
   align-items: center;
   padding: 14px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(3, 7, 18, 0.5);
+  border-top: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--background) 50%, transparent);
 }
 
 .achat-input {
@@ -169,9 +169,9 @@
   min-height: 44px;
   padding: 12px 15px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: #f1f5f9;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  background: var(--surface-2);
+  color: var(--text-primary);
   font-size: 13.5px;
   font-family: inherit;
   outline: none;
@@ -179,11 +179,11 @@
 }
 
 .achat-input:focus {
-  border-color: rgba(167, 139, 250, 0.55);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
 }
 
 .achat-input::placeholder {
-  color: rgba(148, 163, 184, 0.55);
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 
 .achat-send {
@@ -195,11 +195,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #7c3aed, #4f46e5);
-  color: #fff;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
   cursor: pointer;
   transition: transform 0.15s ease, opacity 0.15s ease;
-  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.35);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--primary-strong) 35%, transparent);
 }
 
 .achat-send:hover:not(:disabled) {

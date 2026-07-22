@@ -1,5 +1,5 @@
 .dap-page {
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-family: "Inter", sans-serif;
 }
 
@@ -20,7 +20,7 @@
 .dap-header-icon {
   width: 44px;
   height: 44px;
-  background: #081c44;
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -37,7 +37,7 @@
 .dap-header p {
   margin: 4px 0 0;
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .dap-refresh-btn {
@@ -46,15 +46,15 @@
   gap: 8px;
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: #081c44;
-  color: #e2e8f0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
 }
 
 .dap-refresh-btn:hover:not(:disabled) {
-  background: #0a2558;
+  background: var(--surface-2);
 }
 
 .dap-refresh-btn:disabled {
@@ -66,7 +66,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #081c44;
+  background: var(--surface);
   padding: 10px 14px;
   border-radius: 10px;
   margin-bottom: 24px;
@@ -77,16 +77,16 @@
   background: none;
   border: none;
   outline: none;
-  color: white;
+  color: var(--text-primary);
   width: 100%;
 }
 
 .dap-search svg {
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .dap-loading {
-  color: #9ca3af;
+  color: var(--muted);
   margin: 20px 0;
 }
 
@@ -101,14 +101,14 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #081c44;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 12px 14px;
 }
 
 .dap-summary-icon {
-  color: #60a5fa;
+  color: var(--primary);
   font-size: 18px;
 }
 
@@ -121,21 +121,21 @@
 .dap-summary-label {
   display: block;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--muted);
   margin-top: 2px;
 }
 
 .dap-summary-pill--good .dap-summary-icon {
-  color: #4ade80;
+  color: var(--success);
 }
 
 .dap-summary-pill--warn .dap-summary-icon {
-  color: #fbbf24;
+  color: var(--warning);
 }
 
 .dap-table-card {
-  background: #081c44;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -156,9 +156,9 @@
 }
 
 .dap-manager-card {
-  background: #081c44;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid var(--border-soft);
   overflow: hidden;
 }
 
@@ -176,19 +176,19 @@
 }
 
 .dap-manager-top:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .dap-manager-avatar {
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: #000828;
+  background: var(--surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #60a5fa;
+  color: var(--primary);
 }
 
 .dap-manager-info {
@@ -207,7 +207,7 @@
   gap: 6px;
   margin: 4px 0 0;
   font-size: 13px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .dap-manager-meta {
@@ -216,11 +216,11 @@
   gap: 12px;
   margin-top: 10px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .dap-expand-icon {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 18px;
   padding-top: 4px;
 }
@@ -240,20 +240,20 @@
   font-size: 11px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.15);
-  color: #93c5fd;
-  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 .dap-assistants-panel {
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-top: 1px solid var(--border-soft);
   padding: 16px 20px 20px;
-  background: rgba(0, 8, 40, 0.5);
+  background: color-mix(in srgb, var(--surface-2) 50%, transparent);
 }
 
 .dap-empty {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 13px;
 }
 
@@ -271,52 +271,52 @@
 .dap-table td {
   padding: 10px 12px;
   text-align: left;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .dap-table th {
-  color: #94a3b8;
+  color: var(--muted);
   font-weight: 500;
   font-size: 12px;
 }
 
 .dap-table td {
-  color: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .dap-muted {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 12px;
 }
 
 .dap-good {
-  color: #4ade80 !important;
+  color: var(--success) !important;
   font-weight: 600;
 }
 
 .dap-warn {
-  color: #fbbf24 !important;
+  color: var(--warning) !important;
   font-weight: 600;
 }
 
 .dap-detail-btn {
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(96, 165, 250, 0.35);
-  background: rgba(37, 99, 235, 0.12);
-  color: #93c5fd;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
   cursor: pointer;
   font-size: 12px;
 }
 
 .dap-detail-btn:hover {
-  background: rgba(37, 99, 235, 0.22);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .dap-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -329,9 +329,9 @@
   max-width: 920px;
   max-height: 90vh;
   overflow-y: auto;
-  background: #081c44;
+  background: var(--surface);
   border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   padding: 24px;
 }
 
@@ -348,7 +348,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .dap-modal-header h3 {
@@ -358,21 +358,21 @@
 
 .dap-modal-sub {
   margin: 4px 0 0;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 13px;
 }
 
 .dap-modal-close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 22px;
   cursor: pointer;
   padding: 4px;
 }
 
 .dap-modal-close:hover {
-  color: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .dap-modal-body .ast-perf-grid {

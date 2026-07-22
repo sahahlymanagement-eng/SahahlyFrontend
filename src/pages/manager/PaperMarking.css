@@ -3,7 +3,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: 28px 32px 48px;
-  color: white;
+  color: var(--text-primary);
   font-family: "Plus Jakarta Sans", sans-serif;
 }
 
@@ -22,12 +22,12 @@
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0 0 4px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .pm-header p {
   margin: 0;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -39,22 +39,22 @@
 }
 
 .pm-back {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
   padding: 8px 14px;
   border-radius: 8px;
-  color: #93c5fd;
+  color: var(--primary);
   cursor: pointer;
   font-family: "Plus Jakarta Sans", sans-serif;
   font-size: 13px;
 }
 
-.pm-back:hover { border-color: #3b82f6; }
+.pm-back:hover { border-color: var(--primary); }
 
 /* PANELS (Saved prompts, Sahahly model, subject selection) */
 .pm-panel {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px 22px;
   margin-bottom: 20px;
@@ -69,8 +69,8 @@
 }
 
 .pm-mode-card {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 18px 20px;
   cursor: pointer;
@@ -78,24 +78,24 @@
 }
 
 .pm-mode-card:hover {
-  border-color: rgba(59,130,246,0.5);
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
 }
 
 .pm-mode-card--active {
-  border-color: #3b82f6;
-  background: rgba(30,58,138,0.35);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .pm-mode-label {
   font-size: 1rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   margin-bottom: 6px;
 }
 
 .pm-mode-desc {
   font-size: 0.84rem;
-  color: rgba(255,255,255,0.55);
+  color: var(--muted);
   line-height: 1.45;
 }
 
@@ -111,8 +111,8 @@
 .pm-upload-card {
   flex: 1;
   min-width: 200px;
-  background: #06173c;
-  border: 2px dashed rgba(255,255,255,0.15);
+  background: var(--surface);
+  border: 2px dashed var(--border);
   border-radius: 12px;
   padding: 30px 20px;
   text-align: center;
@@ -121,32 +121,32 @@
 }
 
 .pm-upload-card:hover {
-  background: rgba(59,130,246,0.06);
-  border-color: #3b82f6;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  border-color: var(--primary);
 }
 
 .pm-upload-card--done {
   border-style: solid;
-  border-color: #22c55e;
-  background: rgba(34,197,94,0.07);
+  border-color: var(--success);
+  background: var(--success-bg);
 }
 
 .pm-upload-icon { font-size: 32px; margin-bottom: 10px; }
 .pm-upload-label { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-.pm-upload-hint { font-size: 12px; color: rgba(255,255,255,0.4); }
+.pm-upload-hint { font-size: 12px; color: var(--muted); }
 .pm-upload-filename {
   font-size: 12px;
-  color: #22c55e;
+  color: var(--success);
   word-break: break-all;
 }
 
-.pm-arrow { font-size: 24px; color: rgba(255,255,255,0.3); }
+.pm-arrow { font-size: 24px; color: var(--muted); }
 
 .pm-action-card {
   flex: 1;
   min-width: 200px;
-  background: rgba(59,130,246,0.08);
-  border: 1px solid rgba(59,130,246,0.3);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
   border-radius: 12px;
   padding: 30px 20px;
   text-align: center;
@@ -156,9 +156,9 @@
 .pm-action-card p { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
 
 .pm-mark-btn {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: var(--primary-strong);
   border: none;
-  color: white;
+  color: var(--primary-contrast);
   padding: 12px 28px;
   border-radius: 10px;
   font-size: 15px;
@@ -169,19 +169,20 @@
   gap: 8px;
   margin: 0 auto;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(37,99,235,0.3);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .pm-mark-btn:hover:not(:disabled) {
+  background: var(--primary-active);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(37,99,235,0.45);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 45%, transparent);
 }
 .pm-mark-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .pm-spinner {
   width: 16px; height: 16px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
+  border: 2px solid color-mix(in srgb, var(--primary-contrast) 30%, transparent);
+  border-top-color: var(--primary-contrast);
   border-radius: 50%;
   animation: pm-spin 0.7s linear infinite;
   display: inline-block;
@@ -193,22 +194,22 @@
 .pm-loading-panel {
   text-align: center;
   padding: 60px 20px;
-  background: #06173c;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--border);
 }
 
 .pm-loading-spinner {
   width: 48px; height: 48px;
-  border: 3px solid rgba(59,130,246,0.2);
-  border-top-color: #3b82f6;
+  border: 3px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: pm-spin 0.9s linear infinite;
   margin: 0 auto 20px;
 }
 
 .pm-loading-panel p { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
-.pm-loading-panel span { font-size: 13px; color: rgba(255,255,255,0.4); }
+.pm-loading-panel span { font-size: 13px; color: var(--muted); }
 
 /* RESULTS */
 .pm-results { margin-top: 10px; }
@@ -217,8 +218,8 @@
   display: flex;
   align-items: center;
   gap: 30px;
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px 28px;
   margin-bottom: 24px;
@@ -237,12 +238,12 @@
 }
 
 .pm-score-num { font-size: 28px; font-weight: 700; line-height: 1; }
-.pm-score-max { font-size: 12px; color: rgba(255,255,255,0.5); }
+.pm-score-max { font-size: 12px; color: var(--muted); }
 
-.pm-score-info h3 { font-size: 20px; margin-bottom: 10px; color: #ffffff; }
-.pm-summary { color: rgba(255,255,255,0.65); font-size: 14px; line-height: 1.6; }
+.pm-score-info h3 { font-size: 20px; margin-bottom: 10px; color: var(--text-primary); }
+.pm-summary { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
 
-.pm-breakdown-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ffffff; }
+.pm-breakdown-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text-primary); }
 
 .pm-questions {
   display: grid;
@@ -251,8 +252,8 @@
 }
 
 .pm-question-card {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   min-width: 0;
@@ -287,7 +288,7 @@
 .pm-q-bar {
   flex: 1;
   height: 6px;
-  background: rgba(255,255,255,0.1);
+  background: var(--border);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -298,7 +299,7 @@
   transition: width 0.5s ease;
 }
 
-.pm-q-pct { font-size: 12px; color: rgba(255,255,255,0.5); width: 36px; text-align: right; flex-shrink: 0; }
+.pm-q-pct { font-size: 12px; color: var(--muted); width: 36px; text-align: right; flex-shrink: 0; }
 
 .pm-q-section { margin-top: 10px; }
 
@@ -308,13 +309,13 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(255,255,255,0.4);
+  color: var(--muted);
   margin-bottom: 4px;
 }
 
 .pm-q-section p {
   font-size: 13px;
-  color: rgba(255,255,255,0.7);
+  color: var(--text-secondary);
   line-height: 1.5;
   margin: 0;
   overflow-wrap: anywhere;
@@ -339,15 +340,15 @@
 .pm-input-label {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255,255,255,0.6);
+  color: var(--text-secondary);
 }
 
 .pm-input {
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.15);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 14px;
-  color: white;
+  color: var(--text-primary);
   font-size: 14px;
   outline: none;
   font-family: "Plus Jakarta Sans", sans-serif;
@@ -355,17 +356,17 @@
   box-sizing: border-box;
 }
 
-.pm-input:focus { border-color: #3b82f6; }
+.pm-input:focus { border-color: var(--primary); }
 
 select.pm-input {
-  background: #06173c;
-  color: #ffffff;
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 select.pm-input option {
-  color: #ffffff;
-  background: #06173c;
+  color: var(--text-primary);
+  background: var(--surface);
 }
 
 .pm-textarea {
@@ -381,7 +382,7 @@ select.pm-input option {
 .pm-conf-label {
   display: block;
   font-size: 12px;
-  color: rgba(255,255,255,0.5);
+  color: var(--muted);
   margin-bottom: 6px;
   font-weight: 600;
   text-transform: uppercase;
@@ -397,7 +398,7 @@ select.pm-input option {
 .pm-conf-bar {
   flex: 1;
   height: 8px;
-  background: rgba(255,255,255,0.1);
+  background: var(--border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -417,11 +418,11 @@ select.pm-input option {
 .pm-conf-warning {
   margin-top: 8px;
   font-size: 13px;
-  color: #fbbf24;
-  background: rgba(245,158,11,0.1);
+  color: var(--warning);
+  background: var(--warning-bg);
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(245,158,11,0.2);
+  border: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
 }
 
 /* PER QUESTION CONFIDENCE */
@@ -442,8 +443,8 @@ select.pm-input option {
 
 .pm-q-low-conf {
   font-size: 12px;
-  color: #fbbf24;
-  background: rgba(245,158,11,0.08);
+  color: var(--warning);
+  background: var(--warning-bg);
   padding: 6px 10px;
   border-radius: 6px;
   margin-bottom: 8px;
@@ -451,21 +452,21 @@ select.pm-input option {
 
 /* MISSING QUESTION */
 .pm-question-card--missing {
-  border-color: rgba(239,68,68,0.3);
-  background: rgba(239,68,68,0.04);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  background: color-mix(in srgb, var(--danger) 4%, transparent);
 }
 
 .pm-q-missing {
   font-size: 13px;
-  color: #f87171;
+  color: var(--danger);
   padding: 8px 0;
 }
 
 .pm-powered-by {
   font-size: 12px;
-  color: #94a3b8;
-  background: #06173c;
-  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
   padding: 6px 12px;
   border-radius: 20px;
 }
@@ -491,15 +492,15 @@ select.pm-input option {
 }
 
 .pm-checklist-item--pass {
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.35);
-  color: #4ade80;
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
 }
 
 .pm-checklist-item--fail {
-  background: rgba(239,68,68,0.12);
-  border-color: rgba(239,68,68,0.35);
-  color: #f87171;
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
 }
 
 .pm-checklist-icon {
@@ -521,9 +522,9 @@ select.pm-input option {
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
-  background: rgba(245,158,11,0.12);
-  border: 1px solid rgba(245,158,11,0.35);
-  color: #fbbf24;
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  color: var(--warning);
   cursor: default;
 }
 
@@ -539,8 +540,8 @@ select.pm-input option {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #fff;
+  background: var(--success);
+  color: var(--primary-contrast);
   border: none;
   border-radius: 10px;
   padding: 11px 22px;
@@ -548,7 +549,7 @@ select.pm-input option {
   font-weight: 600;
   cursor: pointer;
   font-family: "Plus Jakarta Sans", sans-serif;
-  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--success) 35%, transparent);
   transition: opacity 0.2s, transform 0.15s;
 }
 

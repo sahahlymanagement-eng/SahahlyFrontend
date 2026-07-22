@@ -1,7 +1,7 @@
 .operationLayout{
   padding:60px;
-  background:#000828;
-  color:white;
+  background:var(--background);
+  color:var(--text-primary);
   min-height:100vh;
 }
 
@@ -13,7 +13,8 @@
 }
 
 .metricCard{
-  background:#06173c;
+  background:var(--surface);
+  border:1px solid var(--border);
   padding:25px;
   border-radius:14px;
   min-width:220px;
@@ -27,7 +28,8 @@
 }
 
 .statusCard{
-  background:#06173c;
+  background:var(--surface);
+  border:1px solid var(--border);
   padding:18px;
   border-radius:12px;
   text-align:center;
@@ -36,18 +38,18 @@
 .metricTable{
   width:100%;
   border-collapse:collapse;
-  background:#06173c;
+  background:var(--surface);
   margin-bottom:50px;
 }
 
 .metricTable th,
 .metricTable td{
   padding:14px;
-  border-top:1px solid rgba(255,255,255,0.07);
+  border-top:1px solid var(--border);
 }
 
 .danger{
-  color:#ff6b6b;
+  color:var(--danger);
   font-weight:600;
 }
 
@@ -73,7 +75,7 @@
   /* Both tables render as cards below 640px (see ui-polish.css); the slab
      background moves from the table to each card. */
   .metricTable.sah-table--cards tbody tr{
-    background:#06173c;
+    background:var(--surface);
   }
 
   .metricTable.sah-table--cards td{

@@ -4,7 +4,7 @@
 
 .directorPeoplePage{
 padding:30px;
-color:white;
+color:var(--text-primary);
 font-family:'Inter',sans-serif;
 display:flex;
 justify-content:center;
@@ -36,7 +36,7 @@ font-weight:600;
 /* ================= ADD PERSON PANEL ================= */
 
 .addPersonPanel{
-background:#081c44;
+background:var(--surface);
 padding:24px;
 border-radius:14px;
 display:flex;
@@ -71,18 +71,18 @@ opacity:.7;
 .inputField input{
 padding:12px;
 border-radius:8px;
-border:1px solid rgba(255,255,255,.15);
-background:#000828;
-color:white;
+border:1px solid var(--border);
+background:var(--surface-2);
+color:var(--text-primary);
 outline:none;
 }
 
 .addPersonBtn{
-background:#2563eb;
+background:var(--primary-strong);
 border:none;
 padding:12px 24px;
 border-radius:8px;
-color:white;
+color:var(--primary-contrast);
 cursor:pointer;
 display:flex;
 align-items:center;
@@ -93,7 +93,7 @@ transition:.2s;
 }
 
 .addPersonBtn:hover{
-background:#1d4ed8;
+background:var(--primary-active);
 }
 
 /* ================= GRID ================= */
@@ -107,7 +107,7 @@ gap:22px;
 /* ================= PERSON CARD ================= */
 
 .personCard{
-background:#081c44;
+background:var(--surface);
 border-radius:14px;
 padding:20px;
 display:flex;
@@ -148,9 +148,9 @@ font-size:11px;
 font-weight:700;
 letter-spacing:.02em;
 text-transform:capitalize;
-background:rgba(37,99,235,.25);
-border:1px solid rgba(96,165,250,.45);
-color:#bfdbfe;
+background:color-mix(in srgb, var(--primary) 25%, transparent);
+border:1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+color:var(--primary);
 }
 
 .personMeta{
@@ -172,11 +172,11 @@ min-width:150px;
 }
 
 .roleBox select{
-background:#000828;
-border:1px solid rgba(255,255,255,.2);
+background:var(--surface-2);
+border:1px solid var(--border);
 padding:8px;
 border-radius:7px;
-color:white;
+color:var(--text-primary);
 outline:none;
 }
 
@@ -195,7 +195,8 @@ gap:6px;
 }
 
 .subjectTag{
-background:#2563eb;
+background:var(--primary-strong);
+color:var(--primary-contrast);
 padding:5px 11px;
 border-radius:7px;
 font-size:12px;
@@ -208,8 +209,8 @@ gap:7px;
 }
 
 .subjectItem{
-background:#000828;
-border:1px solid rgba(255,255,255,.15);
+background:var(--surface-2);
+border:1px solid var(--border);
 padding:6px 12px;
 border-radius:7px;
 cursor:pointer;
@@ -218,19 +219,20 @@ transition:.15s;
 }
 
 .subjectItem:hover{
-border-color:#2563eb;
+border-color:var(--primary);
 }
 
 .subjectItem.active{
-background:#2563eb;
+background:var(--primary-strong);
+color:var(--primary-contrast);
 }
 
 .saveSubjectsBtn{
-background:#22c55e;
+background:var(--success);
 border:none;
 padding:10px;
 border-radius:8px;
-color:white;
+color:#fff;
 cursor:pointer;
 display:flex;
 align-items:center;
@@ -241,7 +243,7 @@ transition:.2s;
 }
 
 .saveSubjectsBtn:hover{
-background:#16a34a;
+background:color-mix(in srgb, var(--success) 82%, #000);
 }
 
 /* ================= PHONE INPUT ================= */
@@ -251,22 +253,22 @@ width:100%;
 }
 
 .systemPhoneInput .react-international-phone-input-container{
-background:#000828 !important;
-border:1px solid rgba(255,255,255,.15) !important;
+background:var(--surface-2) !important;
+border:1px solid var(--border) !important;
 border-radius:8px !important;
 overflow:hidden;
 }
 
 .systemPhoneInput .react-international-phone-country-selector-button{
-background:#000828 !important;
+background:var(--surface-2) !important;
 border:none !important;
-color:white !important;
+color:var(--text-primary) !important;
 padding:0 12px !important;
 }
 
 .systemPhoneInput .react-international-phone-input{
-background:#000828 !important;
-color:white !important;
+background:var(--surface-2) !important;
+color:var(--text-primary) !important;
 border:none !important;
 padding:12px !important;
 }
@@ -274,17 +276,17 @@ padding:12px !important;
 /* ================= COUNTRY DROPDOWN ================= */
 
 .react-international-phone-country-selector-dropdown{
-background:#081c44 !important;
-border:1px solid rgba(255,255,255,.15) !important;
-color:white !important;
+background:var(--surface) !important;
+border:1px solid var(--border) !important;
+color:var(--text-primary) !important;
 z-index:9999 !important;
 width:320px !important;
 }
 
 .react-international-phone-country-selector-dropdown__search-input{
-background:#000828 !important;
-border:1px solid rgba(255,255,255,.15) !important;
-color:white !important;
+background:var(--surface-2) !important;
+border:1px solid var(--border) !important;
+color:var(--text-primary) !important;
 padding:8px !important;
 }
 
@@ -299,17 +301,18 @@ overflow-x:hidden !important;
 /* items */
 
 .react-international-phone-country-selector-dropdown__list-item{
-background:#081c44 !important;
-color:white !important;
+background:var(--surface) !important;
+color:var(--text-primary) !important;
 padding:10px 14px !important;
 }
 
 .react-international-phone-country-selector-dropdown__list-item:hover{
-background:#0d2b63 !important;
+background:var(--surface-2) !important;
 }
 
 .react-international-phone-country-selector-dropdown__list-item--selected{
-background:#2563eb !important;
+background:var(--primary-strong) !important;
+color:var(--primary-contrast) !important;
 }
 
 /* scrollbar */
@@ -319,7 +322,7 @@ width:6px;
 }
 
 .react-international-phone-country-selector-dropdown__list::-webkit-scrollbar-thumb{
-background:#2563eb;
+background:var(--primary);
 border-radius:6px;
 }
 
@@ -355,29 +358,29 @@ border-radius:6px;
 
 /* Individual button colors */
 .editBtn {
-  background: #e8f0fe;
-  color: #1a56db;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
 }
 
 .disableBtn {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .enableBtn {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .deleteBtn {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -385,8 +388,8 @@ border-radius:6px;
 }
 
 .modalCard {
-  background: #081c44;
-  border: 1px solid rgba(255,255,255,.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   width: 100%;
   max-width: 460px;
@@ -394,14 +397,14 @@ border-radius:6px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  color: white;
+  color: var(--text-primary);
 }
 
 .modalHeader h3 {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-  color: white;
+  color: var(--text-primary);
 }
 
 .modalClose {
@@ -409,18 +412,18 @@ border-radius:6px;
   border: none;
   cursor: pointer;
   font-size: 18px;
-  color: rgba(255,255,255,.5);
+  color: var(--muted);
   transition: color .2s;
 }
 
 .modalClose:hover {
-  color: white;
+  color: var(--text-primary);
 }
 
 .cancelModalBtn {
-  background: rgba(255,255,255,.08);
-  color: rgba(255,255,255,.8);
-  border: 1px solid rgba(255,255,255,.15);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 18px;
   cursor: pointer;
@@ -429,16 +432,17 @@ border-radius:6px;
 }
 
 .cancelModalBtn:hover {
-  background: rgba(255,255,255,.14);
+  background: var(--surface-secondary);
 }
 
 .saveModalBtn {
-  background: #2563eb; /* matches your .addPersonBtn */
+  background: var(--primary-strong); /* matches your .addPersonBtn */
+  color: var(--primary-contrast);
   /* rest stays the same */
 }
 
 .saveModalBtn:hover {
-  background: #1d4ed8;
+  background: var(--primary-active);
 }
 
 
@@ -446,7 +450,7 @@ border-radius:6px;
 
 .loading{
 margin-top:26px;
-color:#9ca3af;
+color:var(--muted);
 text-align:center;
 }
 

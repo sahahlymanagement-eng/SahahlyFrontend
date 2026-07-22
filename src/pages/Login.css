@@ -1,12 +1,9 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+/* Login page — themed via tokens in styles/theme.css.
+   The .login-container background gradient is provided by ui-polish.css. */
 
 .login-container {
   position: fixed;
-  inset: 0;               /* top:0 right:0 bottom:0 left:0 */
+  inset: 0;
   width: 100%;
   height: 100vh;
 
@@ -14,8 +11,31 @@
   justify-content: center;
   align-items: center;
 
-  background: #000828;    /* exact dark blue */
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body);
+}
+
+.login-theme-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+}
+
+.login-theme-toggle:hover {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: transparent;
 }
 
 .login-content {
@@ -24,8 +44,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  transform: translateY(-70px); /* move UP */
-
+  transform: translateY(-70px);
 }
 
 .login-logo-section {
@@ -33,26 +52,37 @@
   text-align: center;
 }
 
+/* Transparent-background wordmark — no plate. */
+.login-logo-plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .login-logo {
-  max-width: 280px;
+  max-width: 240px;
   height: auto;
+  display: block;
 }
 
 .login-box {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03); /* Semi-transparent dark card */
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 36px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  transform: translateY(-70px); /* move UP */
-
+  box-shadow: var(--shadow);
+  transform: translateY(-70px);
 }
 
 .login-header {
-  color: #ffffff;
-  font-size: 24px;
-  font-weight: 500;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 600;
   text-align: center;
   margin-bottom: 30px;
 }
@@ -73,7 +103,7 @@
   left: 15px;
   top: 50%;
   transform: translateY(-50%);
-  color: #ffffff;
+  color: var(--muted);
   display: flex;
   align-items: center;
 }
@@ -85,11 +115,11 @@
 
   padding: 14px 14px 14px 45px;
 
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
 
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 15px;
 
   outline: none;
@@ -97,12 +127,12 @@
 }
 
 .input-wrapper input:focus {
-  border-color: #2563eb;
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 .input-wrapper input::placeholder {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--muted);
 }
 
 .forgot-password-row {
@@ -114,7 +144,7 @@
 .forgot-link {
   background: none;
   border: none;
-  color: #3b82f6;
+  color: var(--primary);
   font-size: 13px;
   cursor: pointer;
   padding: 0;
@@ -127,8 +157,8 @@
 .login-submit-btn {
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, #1d4ed8, #2563eb);
-  color: white;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
   border: none;
   border-radius: 10px;
   font-size: 17px;
@@ -136,11 +166,11 @@
   cursor: pointer;
   transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
   margin-top: 10px;
-  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .login-submit-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  background: var(--primary);
 }
 
 .login-submit-btn:disabled {

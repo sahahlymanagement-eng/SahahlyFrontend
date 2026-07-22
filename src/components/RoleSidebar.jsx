@@ -5,8 +5,11 @@ import {
   FiX,
   FiChevronRight,
   FiLogOut,
-  FiLayers,
+  FiSun,
+  FiMoon,
 } from "react-icons/fi";
+import { useTheme } from "../context/ThemeContext";
+import logo from "../assets/images/Logo-removebg-preview.png";
 import "./RoleSidebar.css";
 
 /**
@@ -21,6 +24,7 @@ export default function RoleSidebar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
@@ -44,13 +48,10 @@ export default function RoleSidebar({
         <div className="ast-sidebar-brand">
           {!collapsed && (
             <div className="ast-brand-lockup">
-              <div className="ast-brand-mark">
-                <FiLayers size={16} />
-              </div>
-              <div>
-                <span className="ast-brand-name">Sahahly</span>
-                <span className="ast-brand-role">{roleLabel}</span>
-              </div>
+              <span className="ast-brand-logo-wrap">
+                <img src={logo} alt="Sahahly" className="ast-brand-logo" />
+              </span>
+              <span className="ast-brand-role">{roleLabel}</span>
             </div>
           )}
           <button
@@ -113,6 +114,18 @@ export default function RoleSidebar({
       </nav>
 
       <div className="ast-sidebar-bottom">
+        <button
+          type="button"
+          className="ast-theme-toggle"
+          onClick={toggleTheme}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? <FiSun size={16} /> : <FiMoon size={16} />}
+          {!collapsed && (
+            <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+          )}
+        </button>
         <button type="button" className="ast-logout-btn" onClick={handleLogout}>
           <FiLogOut size={16} />
           {!collapsed && <span>Sign out</span>}

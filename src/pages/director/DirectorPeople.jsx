@@ -190,13 +190,13 @@ export default function DirectorPeople() {
                   setLoading(false);
                 }
               }}
-              style={{ background: "#e53e3e", color: "#fff", border: "none", borderRadius: "6px", padding: "6px 14px", cursor: "pointer" }}
+              style={{ background: "var(--danger)", color: "#fff", border: "none", borderRadius: "6px", padding: "6px 14px", cursor: "pointer" }}
             >
               Delete
             </button>
             <button
               onClick={closeToast}
-              style={{ background: "#eee", color: "#333", border: "none", borderRadius: "6px", padding: "6px 14px", cursor: "pointer" }}
+              style={{ background: "var(--surface-2)", color: "var(--text-primary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "6px 14px", cursor: "pointer" }}
             >
               Cancel
             </button>

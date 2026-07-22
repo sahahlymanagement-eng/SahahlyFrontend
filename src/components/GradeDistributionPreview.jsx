@@ -11,7 +11,7 @@ export default function GradeDistributionPreview({ distribution = [] }) {
           const pct = Math.round(((band.value || 0) / max) * 100);
           const color = band.color
             ? `rgb(${band.color.join(",")})`
-            : "#2563eb";
+            : "var(--primary)";
           return (
             <li key={band.label} className="mpr-grade-dist-row">
               <span className="mpr-grade-dist-label">{band.label}</span>

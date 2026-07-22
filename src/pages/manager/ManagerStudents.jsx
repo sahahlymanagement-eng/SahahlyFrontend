@@ -166,7 +166,7 @@ export default function ManagerStudents() {
 
   const SortIcon = ({ col }) => {
     if (sortKey !== col) return <FiChevronDown size={11} style={{ opacity: 0.3 }} />;
-    return <FiChevronDown size={11} style={{ transform: sortDir === "asc" ? "rotate(180deg)" : "none", color: "#93c5fd", transition: "transform 0.2s" }} />;
+    return <FiChevronDown size={11} style={{ transform: sortDir === "asc" ? "rotate(180deg)" : "none", color: "var(--primary)", transition: "transform 0.2s" }} />;
   };
 
   const navItems = [

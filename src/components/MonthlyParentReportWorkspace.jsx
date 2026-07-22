@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 
 import api from "../api/api";
 
+import { downloadBlob } from "../utils/downloadBlob";
+
 import { toast } from "react-toastify";
 
 import {
@@ -582,17 +584,7 @@ export default function MonthlyParentReportWorkspace({
 
       const blob = new Blob([res.data], { type: "application/pdf" });
 
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-
-      a.href = url;
-
-      a.download = `${previewStudent.name || "student"}_${selectedMonthLabel.replace(/\s+/g, "_")}.pdf`;
-
-      a.click();
-
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${previewStudent.name || "student"}_${selectedMonthLabel.replace(/\s+/g, "_")}.pdf`);
 
       toast.success("PDF downloaded");
 

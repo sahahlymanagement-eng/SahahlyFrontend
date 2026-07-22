@@ -1,8 +1,8 @@
 .directorGooglePage {
   padding: 28px 36px 48px;
   min-height: 100vh;
-  background: #020617;
-  color: #e2e8f0;
+  background: var(--background);
+  color: var(--text-primary);
 }
 
 .directorGoogleSection {
@@ -28,13 +28,13 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2563eb;
+  background: var(--primary);
 }
 
 .directorGoogleTitle {
   font-size: 18px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -42,8 +42,8 @@
   padding: 10px 16px;
   border-radius: 10px;
   border: none;
-  background: #2563eb;
-  color: white;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
@@ -57,7 +57,7 @@
 }
 
 .directorGoogleHint {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 14px;
   margin: 0 0 16px 0;
   max-width: 640px;
@@ -77,15 +77,15 @@
   max-width: 360px;
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #0f172a;
-  color: #f8fafc;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
   font-size: 14px;
 }
 
 .directorGoogleEmailInput:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--primary);
 }
 
 .directorGoogleCardTop {
@@ -100,13 +100,13 @@
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #94a3b8;
+  color: var(--muted);
   cursor: pointer;
 }
 
 .directorGoogleRemoveBtn:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .directorGoogleGrid {
@@ -116,20 +116,20 @@
 }
 
 .directorGoogleCard {
-  background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
 }
 
 .directorGoogleCard h3 {
   margin: 0 0 10px 0;
-  color: white;
+  color: var(--text-primary);
 }
 
 .directorGoogleCard p {
-  color: #94a3b8;
+  color: var(--muted);
   margin: 6px 0;
 }
 
@@ -137,7 +137,7 @@
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: rgba(37, 99, 235, 0.14);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -145,7 +145,7 @@
 }
 
 .directorGoogleIcon {
-  color: #93c5fd;
+  color: var(--primary);
   font-size: 18px;
 }
 
@@ -160,8 +160,8 @@
   padding: 10px 14px;
   border: none;
   border-radius: 10px;
-  background: #1e293b;
-  color: white;
+  background: var(--surface-2);
+  color: var(--text-primary);
   cursor: pointer;
   font-weight: 600;
   display: inline-flex;
@@ -175,25 +175,25 @@
 }
 
 .directorGoogleFetchBtn {
-  background: #2563eb !important;
+  background: var(--primary-strong) !important;
 }
 
 .directorGoogleRefreshBtn {
-  background: rgba(20, 184, 166, 0.15);
-  border-color: rgba(45, 212, 191, 0.35);
-  color: #5eead4;
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
+  color: var(--info);
 }
 
 .directorGoogleReconnectBtn {
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  color: #fcd34d;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  color: var(--warning);
 }
 
 .directorGoogleAccountWarn {
   margin: 0 0 10px;
   font-size: 12px;
-  color: #fbbf24;
+  color: var(--warning);
 }
 
 .directorGoogleSpin {

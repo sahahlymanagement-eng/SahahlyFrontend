@@ -1,9 +1,9 @@
 /* ── ROOT ──────────────────────────────────────────────────────────────────── */
 .tc-root {
   min-height: 100vh;
-  background: #000828;
+  background: var(--background);
   font-family: "Inter", sans-serif;
-  color: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .tc-main {
@@ -18,7 +18,7 @@
   gap: 32px;
 }
 .tc-root h2 {
-  color: #f1f5f9;
+  color: var(--text-primary);
 }
 
 /* ── SECTION ─────────────────────────────────────────────────────────────── */
@@ -26,7 +26,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  color: #f1f5f9;
+  color: var(--text-primary);
 }
 
 .tc-section-header {
@@ -45,37 +45,37 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2563eb;
+  background: var(--primary);
   flex-shrink: 0;
 }
 
 .tc-section-title {
   font-size: 16px;
   font-weight: 600;
-  color: #1a1d23;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .tc-section-count {
   font-size: 12px;
   font-weight: 600;
-  color: #93c5fd;
-  background: rgba(37, 99, 235, 0.12);
-  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
   padding: 2px 8px;
   border-radius: 20px;
 }
 
 /* ── FORM CARD ───────────────────────────────────────────────────────────── */
 .tc-form-card {
- background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+ background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
 }
 
 .tc-form-grid {
@@ -100,7 +100,7 @@
 .tc-input-icon {
   position: absolute;
   left: 12px;
-  color: #475569;
+  color: var(--muted);
   pointer-events: none;
   flex-shrink: 0;
 }
@@ -110,22 +110,22 @@
   padding: 10px 12px 10px 36px;
   border-radius: 8px;
   font-size: 14px;
-  background: #060f2e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
 
 .tc-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-  background: #060f2e;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+  background: var(--surface-2);
 }
 
 .tc-input::placeholder {
-   color: #475569;
+   color: var(--muted);
 }
 
 /* Phone input */
@@ -135,34 +135,34 @@
 
 .tc-phone-input {
   width: 100%;
-  background: #060f2e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
 }
 
 .tc-phone-input .react-international-phone-input-container {
   width: 100%;
-  background: #060f2e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
 }
 
 .tc-phone-input .react-international-phone-input {
   width: 100%;
   border-radius: 0 8px 8px 0;
   font-size: 14px;
-  background: #060f2e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   height: 40px;
 }
 
 .tc-phone-input .react-international-phone-country-selector-button {
   border-right: none;
   border-radius: 8px 0 0 8px;
-  background: #060f2e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   height: 40px;
 }
 
@@ -176,7 +176,7 @@
 .tc-input-field label {
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: var(--text-secondary);
 }
 
 /* ── FORM ACTIONS ────────────────────────────────────────────────────────── */
@@ -190,8 +190,8 @@
   align-items: center;
   gap: 7px;
   padding: 10px 20px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  color: #fff;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -201,8 +201,8 @@
 }
 
 .tc-primary-btn:hover:not(:disabled) {
-  background: #4f46e5;
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+  background: var(--primary-active);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 .tc-primary-btn:active:not(:disabled) {
@@ -216,8 +216,8 @@
 
 /* ── TABLE ───────────────────────────────────────────────────────────────── */
 .tc-table-wrap {
-   background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -229,8 +229,8 @@
 }
 
 .tc-table thead tr {
-  background: #060f2e;
-  border-bottom: 1px solid #e8eaed;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
 }
 
 .tc-table thead th {
@@ -238,14 +238,14 @@
   text-align: left;
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
 .tc-row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-soft);
   transition: background 0.12s;
 }
 
@@ -254,7 +254,7 @@
 }
 
 .tc-row:hover {
-  background: rgba(37, 99, 235, 0.05);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 .tc-row-disabled {
@@ -268,11 +268,11 @@
 
 .tc-cell-primary {
   font-weight: 500;
-   color: #f1f5f9;
+   color: var(--text-primary);
 }
 
 .tc-cell-muted {
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 /* Status badge */
@@ -285,13 +285,13 @@
 }
 
 .tc-badge-active {
-  background: rgba(16, 185, 129, 0.12);
-  color: #065f46;
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .tc-badge-disabled {
-  background: rgba(239, 68, 68, 0.12);
-  color: #991b1b;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 /* Row actions */
@@ -319,40 +319,40 @@
 }
 
 .tc-edit-btn {
-  background: rgba(37, 99, 235, 0.14);
-  color: #93c5fd;
-  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 .tc-edit-btn:hover {
-  background: #ddd6fe;
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .tc-disable-btn {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .tc-disable-btn:hover {
-  background: #fde68a;
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
 }
 
 .tc-enable-btn {
-  background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .tc-enable-btn:hover {
-  background: #a7f3d0;
+  background: color-mix(in srgb, var(--success) 30%, transparent);
 }
 
 .tc-delete-btn {
-  background: rgba(239, 68, 68, 0.12);
-  color: #f87171;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .tc-delete-btn:hover {
-  background: #fecaca;
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
 /* Empty state */
@@ -362,7 +362,7 @@
   align-items: center;
   gap: 10px;
   padding: 48px 0;
-  color: #475569;
+  color: var(--muted);
 }
 
 .tc-empty-state p {
@@ -374,7 +374,7 @@
 .tc-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -384,14 +384,14 @@
 }
 
 .tc-modal-card {
-background: #04091f;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   border-radius: 14px;
   width: 100%;
   max-width: 440px;
   margin: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -400,20 +400,20 @@ background: #04091f;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+   border-bottom: 1px solid var(--border-soft);
 }
 
 .tc-modal-header h3 {
   font-size: 16px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .tc-modal-close {
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--muted);
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -423,8 +423,8 @@ background: #04091f;
 }
 
 .tc-modal-close:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #e2e8f0;
+  background: var(--border-soft);
+  color: var(--text-primary);
 }
 
 .tc-modal-body {
@@ -439,14 +439,14 @@ background: #04091f;
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--border-soft);
 }
 
 
 .tc-cancel-btn {
   padding: 9px 18px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  color: var(--text-primary);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -456,7 +456,7 @@ background: #04091f;
 }
 
 .tc-cancel-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--surface-2));
 }
 
 .tc-save-btn {
@@ -464,8 +464,8 @@ background: #04091f;
   align-items: center;
   gap: 6px;
   padding: 9px 18px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  color: #fff;
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -475,7 +475,7 @@ background: #04091f;
 }
 
 .tc-save-btn:hover:not(:disabled) {
-  background: #4f46e5;
+  background: var(--primary-active);
 }
 
 .tc-save-btn:disabled {
@@ -488,9 +488,9 @@ background: #04091f;
   position: fixed;
   bottom: 24px;
   right: 24px;
-  background: #04091f;
-  color: #93c5fd;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  color: var(--primary);
+  border: 1px solid var(--border);
   padding: 8px 16px;
   border-radius: 8px;
   font-size: 13px;

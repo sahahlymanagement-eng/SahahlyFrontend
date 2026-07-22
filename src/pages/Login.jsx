@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiSun, FiMoon } from "react-icons/fi";
 import api from "../api/api";
 import "./Login.css";
-import logo from "../assets/images/Logo.png";
+import logo from "../assets/images/Logo-removebg-preview.png";
+import { useTheme } from "../context/ThemeContext";
 import { toast } from "react-toastify";
 
 // Icons (Lucide-react style or simple SVGs)
@@ -16,6 +18,7 @@ const LockIcon = () => (
 
 export default function Login() {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,9 +65,19 @@ export default function Login() {
 
   return (
     <div className="login-container">
+      <button
+        type="button"
+        className="login-theme-toggle"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />}
+      </button>
       <div className="login-content">
         <div className="login-logo-section">
-          <img src={logo} alt="Sahahly Logo" className="login-logo" />
+          <span className="login-logo-plate">
+            <img src={logo} alt="Sahahly Logo" className="login-logo" />
+          </span>
         </div>
 
         <div className="login-box">

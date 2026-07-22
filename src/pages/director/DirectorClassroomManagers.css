@@ -1,8 +1,8 @@
 .dm-page{
 padding:30px;
-background:#020617;
+background:var(--background);
 min-height:100vh;
-color:white;
+color:var(--text-primary);
 font-family:Arial, Helvetica, sans-serif;
 }
 
@@ -42,12 +42,12 @@ min-height: 38px;
 display:flex;
 align-items:center;
 gap:10px;
-background:#081c44;
-border:1px solid rgba(255,255,255,0.12);
+background:var(--surface);
+border:1px solid var(--border);
 border-radius:10px;
 padding:0 14px;
 min-width:260px;
-color:rgba(255,255,255,0.55);
+color:var(--muted);
 }
 
 .dm-search input{
@@ -55,23 +55,23 @@ flex:1;
 background:transparent;
 border:none;
 outline:none;
-color:white;
+color:var(--text-primary);
 padding:11px 0;
 font-size:14px;
 min-width:180px;
 }
 
 .dm-search input::placeholder{
-color:rgba(255,255,255,0.4);
+color:var(--muted);
 }
 
 .dm-refresh{
 display:inline-flex;
 align-items:center;
 gap:8px;
-background:rgba(59,130,246,0.15);
-border:1px solid rgba(59,130,246,0.35);
-color:#93c5fd;
+background:color-mix(in srgb, var(--primary) 15%, transparent);
+border:1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+color:var(--primary);
 padding:10px 16px;
 border-radius:10px;
 cursor:pointer;
@@ -81,8 +81,8 @@ transition:background .2s, border-color .2s;
 }
 
 .dm-refresh:hover:not(:disabled){
-background:rgba(59,130,246,0.25);
-border-color:rgba(59,130,246,0.5);
+background:color-mix(in srgb, var(--primary) 25%, transparent);
+border-color:color-mix(in srgb, var(--primary) 50%, transparent);
 }
 
 .dm-refresh:disabled{
@@ -101,7 +101,7 @@ to{transform:rotate(360deg);}
 
 .dm-empty{
 text-align:center;
-color:#9ca3af;
+color:var(--muted);
 padding:28px 16px !important;
 }
 
@@ -113,8 +113,8 @@ justify-content:space-between;
 gap:12px;
 margin-bottom:14px;
 padding:12px 14px;
-background:#081c44;
-border:1px solid rgba(255,255,255,0.08);
+background:var(--surface);
+border:1px solid var(--border-soft);
 border-radius:12px;
 }
 
@@ -126,9 +126,9 @@ gap:10px;
 }
 
 .dm-bulk-btn{
-background:rgba(255,255,255,0.06);
-border:1px solid rgba(255,255,255,0.14);
-color:#e2e8f0;
+background:var(--surface-2);
+border:1px solid var(--border);
+color:var(--text-primary);
 padding:8px 12px;
 border-radius:8px;
 cursor:pointer;
@@ -137,7 +137,7 @@ font-weight:600;
 }
 
 .dm-bulk-btn:hover:not(:disabled){
-background:rgba(255,255,255,0.1);
+background:var(--surface-secondary);
 }
 
 .dm-bulk-btn:disabled{
@@ -147,7 +147,7 @@ cursor:not-allowed;
 
 .dm-bulk-count{
 font-size:13px;
-color:rgba(255,255,255,0.55);
+color:var(--muted);
 font-weight:600;
 }
 
@@ -164,54 +164,54 @@ text-align:center;
 width:16px;
 height:16px;
 cursor:pointer;
-accent-color:#3b82f6;
+accent-color:var(--primary);
 }
 
 .dm-row--selected{
-background:rgba(59,130,246,0.12);
+background:color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .dm-table-box{
-background:#081c44;
+background:var(--surface);
 border-radius:12px;
 overflow:hidden;
-box-shadow:0 0 20px rgba(0,0,0,0.45);
+box-shadow:var(--shadow);
 }
 
 .dm-table{
 width:100%;
 border-collapse:collapse;
-color:white;
+color:var(--text-primary);
 }
 
 .dm-table th{
-background:#0a2a66;
+background:var(--surface-2);
 padding:16px;
 text-align:left;
 font-size:15px;
-color:white;
+color:var(--text-primary);
 }
 
 .dm-table td{
 padding:16px;
-border-top:1px solid rgba(255,255,255,0.08);
+border-top:1px solid var(--border-soft);
 font-size:14px;
-color:white;
+color:var(--text-primary);
 }
 
 .dm-table tr:hover{
-background:#0b2f72;
+background:var(--surface-2);
 }
 
 .dm-current{
-color:#22c55e;
+color:var(--success);
 font-weight:600;
 }
 
 .dm-select{
-background:#000828;
-border:1px solid rgba(255,255,255,0.15);
-color:white;
+background:var(--surface-2);
+border:1px solid var(--border);
+color:var(--text-primary);
 padding:8px 12px;
 border-radius:8px;
 min-width:170px;
@@ -219,8 +219,8 @@ outline:none;
 }
 
 .dm-select option{
-color:white;
-background: #000828;
+color:var(--text-primary);
+background: var(--surface-2);
 
 }
 
@@ -230,26 +230,26 @@ gap:10px;
 }
 
 .dm-assign{
-background:#22c55e;
+background:var(--success);
 border:none;
 padding:8px 14px;
 border-radius:8px;
-color:white;
+color:#fff;
 cursor:pointer;
 font-weight:600;
 transition:.2s;
 }
 
 .dm-assign:hover{
-background:#16a34a;
+background:color-mix(in srgb, var(--success) 82%, #000);
 }
 
 .dm-remove{
-background:#ef4444;
+background:var(--danger);
 border:none;
 padding:8px 14px;
 border-radius:8px;
-color:white;
+color:#fff;
 cursor:pointer;
 font-weight:600;
 transition:.2s;
@@ -257,25 +257,25 @@ transition:.2s;
 
 
 .dm-remove:hover{
-background:#dc2626;
+background:color-mix(in srgb, var(--danger) 85%, #000);
 }
 
 .dm-delete{
 display:inline-flex;
 align-items:center;
 gap:6px;
-background:rgba(127,29,29,0.85);
-border:1px solid rgba(248,113,113,0.45);
+background:color-mix(in srgb, var(--danger) 85%, #000);
+border:1px solid color-mix(in srgb, var(--danger) 45%, transparent);
 padding:8px 14px;
 border-radius:8px;
-color:#fecaca;
+color:#fff;
 cursor:pointer;
 font-weight:600;
 transition:.2s;
 }
 
 .dm-delete:hover:not(:disabled){
-background:#7f1d1d;
+background:color-mix(in srgb, var(--danger) 70%, #000);
 color:#fff;
 }
 
@@ -288,23 +288,23 @@ cursor:not-allowed;
 }
 
 .dm-change {
-  background: #3b82f6;
+  background: var(--primary-strong);
   border: none;
   padding: 8px 14px;
   border-radius: 8px;
-  color: white;
+  color: var(--primary-contrast);
   cursor: pointer;
   font-weight: 600;
   transition: .2s;
 }
 
 .dm-change:hover {
-  background: #2563eb;
+  background: var(--primary-active);
 }
 
 .dm-loading{
 margin-top:20px;
-color:#9ca3af;
+color:var(--muted);
 }
 
 /* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
@@ -323,8 +323,8 @@ color:#9ca3af;
   /* The shared card background outranks .dm-row--selected, which would lose
      the selection highlight on phones. Re-apply it to the card. */
   .dm-table.sah-table--cards tbody tr.dm-row--selected {
-    background: rgba(59, 130, 246, 0.16);
-    border-color: rgba(59, 130, 246, 0.5);
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 50%, transparent);
   }
 
   /* Checkbox rides the top-left of the card instead of taking its own line. */

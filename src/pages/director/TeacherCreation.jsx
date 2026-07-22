@@ -187,7 +187,7 @@ export default function TeacherCreation() {
                 }
               }}
               style={{
-                background: "#e53e3e",
+                background: "var(--danger)",
                 color: "#fff",
                 border: "none",
                 borderRadius: "6px",
@@ -200,9 +200,9 @@ export default function TeacherCreation() {
             <button
               onClick={closeToast}
               style={{
-                background: "#eee",
-                color: "#333",
-                border: "none",
+                background: "var(--surface-2)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
                 borderRadius: "6px",
                 padding: "6px 14px",
                 cursor: "pointer",

@@ -1,8 +1,8 @@
 .assistantPerfPage {
   padding: 30px;
-  color: #f8fafc;
+  color: var(--text-primary);
   font-family: "Inter", sans-serif;
-  background: #000828;
+  background: var(--background);
   min-height: 100vh;
 }
 
@@ -27,7 +27,7 @@
   gap: 6px;
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--muted);
   cursor: pointer;
   font-size: 14px;
   padding: 0;
@@ -42,13 +42,13 @@
 .assistantPerfIcon {
   width: 46px;
   height: 46px;
-  background: #081c44;
+  background: var(--surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
   font-size: 22px;
-  color: #60a5fa;
+  color: var(--primary);
 }
 
 .assistantPerfHeader h1 {
@@ -59,13 +59,13 @@
 .assistantPerfHeader p {
   margin: 4px 0 0;
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .assistantPerfRefresh {
-  background: #081c44;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
@@ -82,7 +82,7 @@
   margin: 0 0 14px;
   font-size: 18px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text-primary);
 }
 
 .assistantPerfGrid {
@@ -92,18 +92,18 @@
 }
 
 .assistantPerfCard {
-  background: #081c44;
+  background: var(--surface);
   border-radius: 12px;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-soft);
 }
 
 .assistantPerfCard--good {
-  border-left: 3px solid #22c55e;
+  border-left: 3px solid var(--success);
 }
 
 .assistantPerfCard--warn {
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid var(--warning);
 }
 
 .assistantPerfCardTop {
@@ -111,12 +111,12 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
 .assistantPerfCardIcon {
-  color: #60a5fa;
+  color: var(--primary);
   font-size: 17px;
 }
 
@@ -128,7 +128,7 @@
 .assistantPerfCardSub {
   margin-top: 6px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .assistantPerfTokenRow {
@@ -136,11 +136,11 @@
   flex-wrap: wrap;
   gap: 16px;
   padding: 14px 16px;
-  background: #081c44;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-soft);
   font-size: 14px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .assistantPerfChipList {
@@ -150,24 +150,24 @@
 }
 
 .assistantPerfChip {
-  background: #081c44;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
   border-radius: 999px;
   padding: 8px 14px;
   font-size: 13px;
-  color: #e2e8f0;
+  color: var(--text-secondary);
 }
 
 .assistantPerfTableWrap {
   overflow-x: auto;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-soft);
 }
 
 .assistantPerfTable {
   width: 100%;
   border-collapse: collapse;
-  background: #081c44;
+  background: var(--surface);
   font-size: 14px;
 }
 
@@ -175,11 +175,11 @@
 .assistantPerfTable td {
   padding: 12px 14px;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .assistantPerfTable th {
-  color: #9ca3af;
+  color: var(--muted);
   font-weight: 600;
   font-size: 12px;
   text-transform: uppercase;
@@ -187,31 +187,31 @@
 }
 
 .assistantPerfTable td {
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .assistantPerfTable td strong {
-  color: #f1f5f9;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
 .assistantPerfMuted {
-  color: #9ca3af;
+  color: var(--muted);
   font-weight: 400;
 }
 
 .assistantPerfGood {
-  color: #4ade80;
+  color: var(--success);
   font-weight: 600;
 }
 
 .assistantPerfWarn {
-  color: #fbbf24;
+  color: var(--warning);
   font-weight: 600;
 }
 
 .assistantPerfEmpty,
 .assistantPerfLoading {
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 14px;
 }

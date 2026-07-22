@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
+import { FiSun, FiMoon } from "react-icons/fi";
 import logo from "../assets/images/Logo-removebg-preview.png";
+import { useTheme } from "../context/ThemeContext";
 import "./LandingPage.css";
 
 const AppIcon = () => (
@@ -26,8 +28,20 @@ const ArrowIcon = () => (
 );
 
 export default function LandingPage() {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <div className="landing-container">
+      <button
+        type="button"
+        className="landing-theme-toggle"
+        onClick={toggleTheme}
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />}
+      </button>
+
       <div className="landing-bg-orb landing-bg-orb--1" />
       <div className="landing-bg-orb landing-bg-orb--2" />
 

@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import { annotatePdf } from "../../utils/annotatePdf";
 import "./PaperMarking.css";
 import { appendMarkingContext, currentUserId, getOutOfScopeNotes } from "../../utils/markingFormData";
+import { downloadBlob } from "../../utils/downloadBlob";
 
 export default function PaperMarkingClaude() {
   const studentRef    = useRef();
@@ -56,9 +57,9 @@ export default function PaperMarkingClaude() {
 
   const getScoreColor = (awarded, max) => {
     const pct = awarded / max;
-    if (pct >= 0.75) return "#22c55e";
-    if (pct >= 0.5)  return "#f59e0b";
-    return "#ef4444";
+    if (pct >= 0.75) return "var(--success)";
+    if (pct >= 0.5)  return "var(--warning)";
+    return "var(--danger)";
   };
 
   const totalPct = result
@@ -96,12 +97,7 @@ export default function PaperMarkingClaude() {
         summary:       result.summary || "",
         outOfScopeNotes: getOutOfScopeNotes(result),
       });
-      const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
-      const a   = document.createElement("a");
-      a.href     = url;
-      a.download = studentFile.name.replace(/\.pdf$/i, "") + "_graded.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), studentFile.name.replace(/\.pdf$/i, "") + "_graded.pdf");
       toast.success("Marked paper downloaded!");
     } catch (err) {
       toast.error(err.message || "Failed to generate marked paper");
@@ -241,7 +237,7 @@ export default function PaperMarkingClaude() {
                       <div className="pm-q-right">
                         <div
                           className="pm-q-score"
-                          style={{ color, borderColor: color, background: `${color}15` }}
+                          style={{ color, borderColor: color, background: `color-mix(in srgb, ${color} 15%, transparent)` }}
                         >
                           {q.marksAwarded} / {q.maxMarks}
                         </div>
