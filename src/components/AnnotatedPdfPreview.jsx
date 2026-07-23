@@ -9,10 +9,18 @@ GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs
 /** Fit-to-width scale; cap pixel width so huge scans stay scrollable. */
 const MAX_RENDER_WIDTH = 920;
 const PREVIEW_SCALE_CAP = 1.35;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 2.5;
-const ZOOM_STEP = 0.25;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 3;
+const ZOOM_STEP_BTN = 0.1;
+const ZOOM_SLIDER_STEP = 5;
 const DEFAULT_ZOOM = 1;
+const PAN_ZOOM_THRESHOLD = 1.02;
+
+function clampZoom(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_ZOOM;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(n * 100) / 100));
+}
 
 /** Examiner column is ~178pt on ~595pt paper → ~23% of annotated page width. */
 const RIGHT_COL_LEFT_PCT = 76;
@@ -82,6 +90,7 @@ function LazyPdfPage({
   pdf,
   pageNumber,
   renderWidth,
+  zoomLevel,
   scrollRoot,
   studentPageNumber,
   pageQuestions,
@@ -114,7 +123,7 @@ function LazyPdfPage({
         const page = await pdf.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
         let scale = renderWidth / baseViewport.width;
-        if (renderWidth <= MAX_RENDER_WIDTH) {
+        if (zoomLevel <= 1.001 && renderWidth <= MAX_RENDER_WIDTH) {
           scale = Math.min(scale, PREVIEW_SCALE_CAP);
         }
         const viewport = page.getViewport({ scale });
@@ -167,7 +176,7 @@ function LazyPdfPage({
         }
       }
     };
-  }, [pdf, pageNumber, renderWidth, scrollRoot]);
+  }, [pdf, pageNumber, renderWidth, zoomLevel, scrollRoot]);
 
   const showHandles = Array.isArray(pageQuestions) && pageQuestions.length > 0;
 
@@ -269,10 +278,12 @@ export default function AnnotatedPdfPreview({
   const [containerWidth, setContainerWidth] = useState(MAX_RENDER_WIDTH);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
   /** Local drag overrides: { [questionNumber]: { pageNumber, yPercent } } */
   const [localPlacement, setLocalPlacement] = useState({});
   const [dragKey, setDragKey] = useState(null);
   const dragRef = useRef(null);
+  const panRef = useRef(null);
 
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
@@ -501,12 +512,75 @@ export default function AnnotatedPdfPreview({
 
   const renderWidth = Math.max(240, Math.floor(containerWidth * zoomLevel));
   const zoomPercent = Math.round(zoomLevel * 100);
+  const canPan = zoomLevel > PAN_ZOOM_THRESHOLD;
 
-  const zoomOut = () =>
-    setZoomLevel((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
-  const zoomIn = () =>
-    setZoomLevel((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
+  const zoomOut = () => setZoomLevel((z) => clampZoom(z - ZOOM_STEP_BTN));
+  const zoomIn = () => setZoomLevel((z) => clampZoom(z + ZOOM_STEP_BTN));
   const resetZoom = () => setZoomLevel(DEFAULT_ZOOM);
+  const setZoomFromSlider = (pct) => setZoomLevel(clampZoom(pct / 100));
+
+  const handlePreviewWheel = useCallback((e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.08 : 0.08;
+    setZoomLevel((z) => clampZoom(z + delta));
+  }, []);
+
+  const handlePanPointerDown = useCallback(
+    (e) => {
+      if (dragKey) return;
+      if (e.target.closest(".pdf-place-handle")) return;
+
+      const root = scrollRef.current;
+      if (!root) return;
+
+      const middleClick = e.button === 1;
+      const leftClick = e.button === 0;
+      if (!middleClick && !(leftClick && canPan)) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      panRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        scrollLeft: root.scrollLeft,
+        scrollTop: root.scrollTop,
+      };
+      setIsPanning(true);
+    },
+    [canPan, dragKey]
+  );
+
+  useEffect(() => {
+    if (!isPanning) return;
+
+    const onMove = (e) => {
+      const pan = panRef.current;
+      if (!pan || pan.pointerId !== e.pointerId) return;
+      const root = scrollRef.current;
+      if (!root) return;
+      e.preventDefault();
+      root.scrollLeft = pan.scrollLeft - (e.clientX - pan.startX);
+      root.scrollTop = pan.scrollTop - (e.clientY - pan.startY);
+    };
+
+    const onUp = (e) => {
+      const pan = panRef.current;
+      if (!pan || (e.pointerId != null && pan.pointerId !== e.pointerId)) return;
+      panRef.current = null;
+      setIsPanning(false);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [isPanning]);
 
   if (loading) {
     return <div className="pdf-preview-status">Loading preview pages…</div>;
@@ -544,32 +618,44 @@ export default function AnnotatedPdfPreview({
             type="button"
             className="pdf-preview-nav"
             onClick={zoomOut}
-            disabled={zoomLevel <= ZOOM_MIN}
+            disabled={zoomLevel <= ZOOM_MIN + 0.001}
             title="Zoom out"
             aria-label="Zoom out"
           >
             <FiZoomOut size={15} />
           </button>
-          <button
-            type="button"
-            className="pdf-preview-zoom-label"
-            onClick={resetZoom}
-            title="Reset zoom"
-            aria-label={`Zoom ${zoomPercent} percent, click to reset`}
-          >
-            {zoomPercent}%
-          </button>
+          <input
+            type="range"
+            className="pdf-preview-zoom-slider"
+            min={ZOOM_MIN * 100}
+            max={ZOOM_MAX * 100}
+            step={ZOOM_SLIDER_STEP}
+            value={zoomPercent}
+            onChange={(e) => setZoomFromSlider(Number(e.target.value))}
+            aria-label="Zoom level"
+            title="Drag to adjust zoom"
+          />
+          <span className="pdf-preview-zoom-readout">{zoomPercent}%</span>
           <button
             type="button"
             className="pdf-preview-nav"
             onClick={zoomIn}
-            disabled={zoomLevel >= ZOOM_MAX}
+            disabled={zoomLevel >= ZOOM_MAX - 0.001}
             title="Zoom in"
             aria-label="Zoom in"
           >
             <FiZoomIn size={15} />
           </button>
+          <button
+            type="button"
+            className="pdf-preview-fit-btn"
+            onClick={resetZoom}
+            title="Fit to panel width"
+          >
+            Fit
+          </button>
         </div>
+        <span className="pdf-preview-pan-hint">Ctrl+scroll to zoom · drag to pan when zoomed</span>
         {placementEnabled && (
           <span className="pdf-preview-place-hint">
             Drag boxes to any page · × removes a question — applies on Confirm Edits
@@ -581,7 +667,16 @@ export default function AnnotatedPdfPreview({
           scrollRef.current = node;
           setScrollRoot(node);
         }}
-        className={`pdf-preview-scroll${zoomLevel > 1 ? " pdf-preview-scroll--zoomed" : ""}`}
+        className={[
+          "pdf-preview-scroll",
+          zoomLevel > PAN_ZOOM_THRESHOLD ? "pdf-preview-scroll--zoomed" : "",
+          canPan ? "pdf-preview-scroll--pan-ready" : "",
+          isPanning ? "pdf-preview-scroll--panning" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onWheel={handlePreviewWheel}
+        onPointerDown={handlePanPointerDown}
         onScroll={() => {
           const root = scrollRef.current;
           if (!root) return;
@@ -611,6 +706,7 @@ export default function AnnotatedPdfPreview({
               pdf={pdf}
               pageNumber={pageNumber}
               renderWidth={renderWidth}
+              zoomLevel={zoomLevel}
               scrollRoot={scrollRoot}
               studentPageNumber={studentPageNumber}
               pageQuestions={pageQuestions}
