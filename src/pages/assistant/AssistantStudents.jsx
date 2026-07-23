@@ -34,7 +34,7 @@ export default function AssistantStudents() {
 //     catch { 
 //       toast.error("Failed to load students"); 
 //     } finally { setLoading(false); } };
- const { data: students, page, totalPages, loading, fetchPage, setData: setStudents } =
+ const { data: students, page, totalPages, loading, fetchPage, setData: setStudents, extra } =
   usePagination(
     `/assignment-submissions/${assignmentId}/students`,
     {},
@@ -42,6 +42,7 @@ export default function AssistantStudents() {
     "students",
     !!assignmentId
   );
+  const classroomId = extra?.classroomId || null;
 /* EDIT */
   const startEdit = (s) => {
     setEditingId(s.studentId);
@@ -64,7 +65,8 @@ export default function AssistantStudents() {
       const payload = {
         ...editForm,
         phone: editForm.phone?.replace(/\D/g, ""),
-        parentPhone: editForm.parentPhone?.replace(/\D/g, "")
+        parentPhone: editForm.parentPhone?.replace(/\D/g, ""),
+        classroomId,
       };
 
       const res = await api.put(`/students/google/${studentId}`, payload);
@@ -72,7 +74,14 @@ export default function AssistantStudents() {
 setStudents((prev) =>
   prev.map((s) =>
     s.studentId === studentId
-      ? { ...s, ...res.data }
+      ? {
+          ...s,
+          phone: res.data.phone,
+          parentName: res.data.parentName,
+          parentPhone: res.data.parentPhone,
+          name: res.data.name ?? s.name,
+          email: res.data.email ?? s.email,
+        }
       : s
   )
 );

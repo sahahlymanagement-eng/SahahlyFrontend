@@ -144,6 +144,7 @@ export default function ManagerStudents() {
         ...editForm,
         phone: editForm.phone?.replace(/\D/g, ""),
         parentPhone: editForm.parentPhone?.replace(/\D/g, ""),
+        classroomId: selectedClassroom?._id,
         };
 
         const res = await api.put(`/students/${studentId}`, payload);
@@ -192,7 +193,7 @@ export default function ManagerStudents() {
               <h1 className="ms-topbar-title">Students</h1>
               <span className="ms-topbar-sub">
                 {selectedClassroom
-                  ? `Viewing ${selectedClassroom.name}`
+                  ? `Viewing ${selectedClassroom.name} — contact numbers are saved per teacher/class`
                   : `Welcome back, ${user.name}`}
               </span>
             </div>

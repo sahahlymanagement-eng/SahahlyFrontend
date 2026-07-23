@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
+import { FiChevronLeft, FiChevronRight, FiZoomIn, FiZoomOut } from "react-icons/fi";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 
@@ -9,6 +9,10 @@ GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs
 /** Fit-to-width scale; cap pixel width so huge scans stay scrollable. */
 const MAX_RENDER_WIDTH = 920;
 const PREVIEW_SCALE_CAP = 1.35;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.5;
+const ZOOM_STEP = 0.25;
+const DEFAULT_ZOOM = 1;
 
 /** Examiner column is ~178pt on ~595pt paper → ~23% of annotated page width. */
 const RIGHT_COL_LEFT_PCT = 76;
@@ -77,7 +81,7 @@ function PlacementHandle({
 function LazyPdfPage({
   pdf,
   pageNumber,
-  containerWidth,
+  renderWidth,
   scrollRoot,
   studentPageNumber,
   pageQuestions,
@@ -95,7 +99,7 @@ function LazyPdfPage({
   useEffect(() => {
     renderedRef.current = false;
     setRendered(false);
-  }, [pdf, pageNumber, containerWidth]);
+  }, [pdf, pageNumber, renderWidth]);
 
   useEffect(() => {
     if (!pdf || !wrapRef.current || !scrollRoot) return;
@@ -109,8 +113,10 @@ function LazyPdfPage({
       try {
         const page = await pdf.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
-        let scale = containerWidth / baseViewport.width;
-        scale = Math.min(scale, PREVIEW_SCALE_CAP);
+        let scale = renderWidth / baseViewport.width;
+        if (renderWidth <= MAX_RENDER_WIDTH) {
+          scale = Math.min(scale, PREVIEW_SCALE_CAP);
+        }
         const viewport = page.getViewport({ scale });
 
         const canvas = canvasRef.current;
@@ -161,7 +167,7 @@ function LazyPdfPage({
         }
       }
     };
-  }, [pdf, pageNumber, containerWidth, scrollRoot]);
+  }, [pdf, pageNumber, renderWidth, scrollRoot]);
 
   const showHandles = Array.isArray(pageQuestions) && pageQuestions.length > 0;
 
@@ -261,6 +267,7 @@ export default function AnnotatedPdfPreview({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [containerWidth, setContainerWidth] = useState(MAX_RENDER_WIDTH);
+  const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
   const [currentPage, setCurrentPage] = useState(1);
   /** Local drag overrides: { [questionNumber]: { pageNumber, yPercent } } */
   const [localPlacement, setLocalPlacement] = useState({});
@@ -290,6 +297,7 @@ export default function AnnotatedPdfPreview({
 
   useEffect(() => {
     setLocalPlacement({});
+    setZoomLevel(DEFAULT_ZOOM);
   }, [url]);
 
   useEffect(() => {
@@ -317,6 +325,7 @@ export default function AnnotatedPdfPreview({
     setLoading(true);
     setError(null);
     setCurrentPage(1);
+    setZoomLevel(DEFAULT_ZOOM);
 
     (async () => {
       try {
@@ -490,6 +499,15 @@ export default function AnnotatedPdfPreview({
   const goPrev = () => scrollToPage(Math.max(1, currentPage - 1));
   const goNext = () => scrollToPage(Math.min(numPages, currentPage + 1));
 
+  const renderWidth = Math.max(240, Math.floor(containerWidth * zoomLevel));
+  const zoomPercent = Math.round(zoomLevel * 100);
+
+  const zoomOut = () =>
+    setZoomLevel((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
+  const zoomIn = () =>
+    setZoomLevel((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
+  const resetZoom = () => setZoomLevel(DEFAULT_ZOOM);
+
   if (loading) {
     return <div className="pdf-preview-status">Loading preview pages…</div>;
   }
@@ -505,20 +523,53 @@ export default function AnnotatedPdfPreview({
   return (
     <div className={`pdf-preview-root${placementEnabled ? " pdf-preview-root--placeable" : ""}`}>
       <div className="pdf-preview-toolbar">
-        <button type="button" className="pdf-preview-nav" onClick={goPrev} disabled={currentPage <= 1}>
-          <FiChevronLeft size={16} />
-        </button>
-        <span className="pdf-preview-page-label">
-          Page {currentPage} / {numPages}
-        </span>
-        <button
-          type="button"
-          className="pdf-preview-nav"
-          onClick={goNext}
-          disabled={currentPage >= numPages}
-        >
-          <FiChevronRight size={16} />
-        </button>
+        <div className="pdf-preview-toolbar-group">
+          <button type="button" className="pdf-preview-nav" onClick={goPrev} disabled={currentPage <= 1}>
+            <FiChevronLeft size={16} />
+          </button>
+          <span className="pdf-preview-page-label">
+            Page {currentPage} / {numPages}
+          </span>
+          <button
+            type="button"
+            className="pdf-preview-nav"
+            onClick={goNext}
+            disabled={currentPage >= numPages}
+          >
+            <FiChevronRight size={16} />
+          </button>
+        </div>
+        <div className="pdf-preview-toolbar-group pdf-preview-zoom">
+          <button
+            type="button"
+            className="pdf-preview-nav"
+            onClick={zoomOut}
+            disabled={zoomLevel <= ZOOM_MIN}
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <FiZoomOut size={15} />
+          </button>
+          <button
+            type="button"
+            className="pdf-preview-zoom-label"
+            onClick={resetZoom}
+            title="Reset zoom"
+            aria-label={`Zoom ${zoomPercent} percent, click to reset`}
+          >
+            {zoomPercent}%
+          </button>
+          <button
+            type="button"
+            className="pdf-preview-nav"
+            onClick={zoomIn}
+            disabled={zoomLevel >= ZOOM_MAX}
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <FiZoomIn size={15} />
+          </button>
+        </div>
         {placementEnabled && (
           <span className="pdf-preview-place-hint">
             Drag boxes to any page · × removes a question — applies on Confirm Edits
@@ -530,7 +581,7 @@ export default function AnnotatedPdfPreview({
           scrollRef.current = node;
           setScrollRoot(node);
         }}
-        className="pdf-preview-scroll"
+        className={`pdf-preview-scroll${zoomLevel > 1 ? " pdf-preview-scroll--zoomed" : ""}`}
         onScroll={() => {
           const root = scrollRef.current;
           if (!root) return;
@@ -556,10 +607,10 @@ export default function AnnotatedPdfPreview({
               : null;
           return (
             <LazyPdfPage
-              key={`${url}-p${pageNumber}`}
+              key={`${url}-p${pageNumber}-z${zoomLevel}`}
               pdf={pdf}
               pageNumber={pageNumber}
-              containerWidth={containerWidth}
+              renderWidth={renderWidth}
               scrollRoot={scrollRoot}
               studentPageNumber={studentPageNumber}
               pageQuestions={pageQuestions}
