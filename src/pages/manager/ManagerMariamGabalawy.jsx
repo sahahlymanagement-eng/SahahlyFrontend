@@ -147,6 +147,7 @@ export default function ManagerMariamGabalawy() {
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
 
   const effectiveMaxTotal = resolveDisplayMaxTotal({
+    assignmentMaxPoints: Number(selectedAssignment?.grade) || null,
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -2356,7 +2357,7 @@ export default function ManagerMariamGabalawy() {
                       {(() => {
                         const cg = resultModal.result.criteriaGrade;
                         const cgTotal = cg.totalMarks || 0;
-                        const cgMax = cg.maxTotalMarks || 10;
+                        const cgMax = effectiveMaxTotal;
                         const cgPct = cgMax > 0 ? Math.round((cgTotal / cgMax) * 100) : 0;
                         const cgColor = getScoreColor(cgTotal, cgMax);
                         return (

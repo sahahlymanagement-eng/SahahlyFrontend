@@ -4777,7 +4777,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     {(() => {
                       const cg    = resultModal.result.criteriaGrade;
                       const total = cg.totalMarks || 0;
-                      const max   = cg.maxTotalMarks || 10;
+                      const max   = effectiveMaxTotal;
                       const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
                       const color = getScoreColor(total, max);
                       return (

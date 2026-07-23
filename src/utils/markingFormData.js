@@ -462,7 +462,27 @@ export function getResultMaxTotal(result) {
   return Number(result.maxTotalMarks) || 0;
 }
 
-/** Max shown in results modal / PDF — Classroom sync wins over saved AI max. */
+export function sumQuestionMaxMarks(items) {
+  return (items || []).reduce((sum, q) => sum + (Number(q.maxMarks) || 0), 0);
+}
+
+/** Max derived from the mark-scheme items (per-question or per-criterion) — internally
+ *  consistent, so it beats the AI's separate headline max when that is wrong/missing. */
+export function resolveMaxTotalFromItems(result) {
+  if (!result) return 0;
+  if (result.markingMode === "criteria") {
+    const breakdown = result.criteriaGrade?.breakdown;
+    return Array.isArray(breakdown) && breakdown.length
+      ? sumQuestionMaxMarks(breakdown)
+      : 0;
+  }
+  return Array.isArray(result.questions) && result.questions.length
+    ? sumQuestionMaxMarks(result.questions)
+    : 0;
+}
+
+/** Max shown in results modal / PDF. Priority: manual edit → Classroom assignment max →
+ *  sum of mark-scheme item maxes → AI headline max (last resort). */
 export function resolveDisplayMaxTotal({
   assignmentMaxPoints = null,
   result = null,
@@ -474,6 +494,10 @@ export function resolveDisplayMaxTotal({
   const fromAssignment = Number(assignmentMaxPoints);
   if (Number.isFinite(fromAssignment) && fromAssignment > 0) {
     return fromAssignment;
+  }
+  const fromItems = Number(resolveMaxTotalFromItems(result));
+  if (Number.isFinite(fromItems) && fromItems > 0) {
+    return fromItems;
   }
   return Math.max(1, Number(getResultMaxTotal(result)) || 1);
 }
