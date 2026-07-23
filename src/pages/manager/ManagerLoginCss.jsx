@@ -7,6 +7,7 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
+  FiEdit3, FiShield,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
 import usePersistedState from "../../hooks/usePersistedState";
@@ -37,6 +38,14 @@ import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor"
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import AddMarkingQuestionBar, {
+  MarkingCompletenessNotice,
+} from "../../components/AddMarkingQuestionBar";
+import QuestionNumberBadge from "../../components/QuestionNumberBadge";
+import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
+import MarkSchemeVerificationModal, {
+  runMarkSchemeVerification,
+} from "../../components/MarkSchemeVerificationModal";
 import { isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
@@ -91,6 +100,11 @@ export default function ManagerLoginCss() {
     selectedAssignment?.id != null ? String(selectedAssignment.id) : null
   );
   const [listTotal, setListTotal] = useState(0);
+  const [promptGenOpen, setPromptGenOpen] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [msVerifyOpen, setMsVerifyOpen] = useState(false);
+  const [msVerifying, setMsVerifying] = useState(false);
+  const [msVerifyResult, setMsVerifyResult] = useState(null);
 
   // ── Guidance modal / marking config ──
   const [guidanceModal, setGuidanceModal] = useState(null);
@@ -530,6 +544,26 @@ export default function ManagerLoginCss() {
   const openGuidanceModal = (student, opts = {}) => {
     setGuidance(resolveMarkingGuidanceText("", assignmentPrompt.content));
     setGuidanceModal({ student, ...opts });
+  };
+
+  const handleRunMsVerification = async (extraInstructions = "") => {
+    if (selectedAssignment?.id == null) return;
+    setMsVerifying(true);
+    setMsVerifyResult(null);
+    try {
+      const result = await runMarkSchemeVerification(
+        String(selectedAssignment.id),
+        extraInstructions
+      );
+      setMsVerifyResult(result);
+      if (result.status === "pass") toast.success("Mark scheme verification passed");
+      else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
+      else toast.warn("Mark scheme verification completed with warnings");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Mark scheme verification failed");
+    } finally {
+      setMsVerifying(false);
+    }
   };
 
   const handleGuidanceConfirm = (provider = "gemini") => {
@@ -1423,6 +1457,35 @@ export default function ManagerLoginCss() {
                         </option>
                       ))}
                     </select>
+                    {selectedAssignment?.id != null && (
+                      <button
+                        type="button"
+                        className="msv-btn-ai msv-btn-prompt-gen"
+                        onClick={() => {
+                          setPromptDraft(assignmentPrompt.content || "");
+                          setPromptGenOpen(true);
+                        }}
+                        title="Generate or edit assignment-specific marking prompt"
+                      >
+                        <FiEdit3 size={13} />
+                        Prompt Generation
+                        {assignmentPrompt.hasPrompt ? " ✓" : ""}
+                      </button>
+                    )}
+                    {selectedAssignment?.id != null && (
+                      <button
+                        type="button"
+                        className="msv-btn-ai msv-btn-verify"
+                        onClick={() => {
+                          setMsVerifyResult(null);
+                          setMsVerifyOpen(true);
+                        }}
+                        title="Verify mark scheme against Classroom totals and sample submissions"
+                      >
+                        <FiShield size={13} />
+                        Mark Scheme Verification
+                      </button>
+                    )}
                     <button
                       className="msv-btn-ai"
                       onClick={() => openGuidanceModal(null, { bulk: true })}
@@ -2088,6 +2151,39 @@ export default function ManagerLoginCss() {
         </div>
       )}
 
+      <AssignmentPromptGeneration
+        open={promptGenOpen}
+        onClose={() => setPromptGenOpen(false)}
+        assignmentTitle={selectedAssignment?.name}
+        content={assignmentPrompt.content}
+        draft={promptDraft}
+        onDraftChange={setPromptDraft}
+        maxPoints={assignmentPrompt.maxPoints}
+        maxPointsLabel="Total marks:"
+        generatedAt={assignmentPrompt.generatedAt}
+        loading={assignmentPrompt.loading}
+        generating={assignmentPrompt.generating}
+        saving={assignmentPrompt.saving}
+        hasPrompt={assignmentPrompt.hasPrompt}
+        onGenerate={async (extraInstructions) => {
+          const res = await assignmentPrompt.generate(extraInstructions);
+          if (res?.content) setPromptDraft(res.content);
+        }}
+        onSave={async () => {
+          await assignmentPrompt.save(promptDraft);
+        }}
+      />
+
+      <MarkSchemeVerificationModal
+        open={msVerifyOpen}
+        onClose={() => setMsVerifyOpen(false)}
+        assignmentId={selectedAssignment?.id != null ? String(selectedAssignment.id) : null}
+        assignmentTitle={selectedAssignment?.name}
+        verifying={msVerifying}
+        result={msVerifyResult}
+        onRun={handleRunMsVerification}
+      />
+
       {/* ── RESULTS MODAL ── */}
       {resultModal && (
         <div className="msv-overlay" onClick={() => setResultModal(null)}>
@@ -2492,7 +2588,19 @@ export default function ManagerLoginCss() {
                 )}
 
                 {/* QUESTIONS */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <MarkingCompletenessNotice
+                  result={resultModal?.result}
+                  questionCount={questionsForDisplay.length}
+                />
+                {!isCriteria && (
+                  <AddMarkingQuestionBar
+                    onAdd={(q) => {
+                      setEditingQuestions((prev) => [...prev, q]);
+                      toast.success(`Added Q${q.questionNumber}`);
+                    }}
+                  />
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                   {editingQuestions.map((q, idx) => {
                     if (pendingRemovedIndices.has(idx)) return null;
                     const awarded = Number(q.marksAwarded) || 0;
@@ -2510,7 +2618,7 @@ export default function ManagerLoginCss() {
                             flexWrap: "wrap",
                           }}
                         >
-                          <span style={{ fontSize: 14, fontWeight: 700 }}>Q{q.questionNumber}</span>
+                          <QuestionNumberBadge question={q} />
                           {isCriteria ? (
                             <span
                               style={{

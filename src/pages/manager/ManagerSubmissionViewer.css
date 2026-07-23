@@ -1103,6 +1103,13 @@
 }
 .msv-btn-verify:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
 
+.msv-btn-save {
+  background: var(--success);
+  border: 1px solid var(--success);
+  color: #fff;
+}
+.msv-btn-save:hover:not(:disabled) { background: color-mix(in srgb, var(--success) 85%, black); }
+
 .msv-verify-modal {
   max-width: 760px;
 }

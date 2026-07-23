@@ -10,6 +10,7 @@ export default function AssignmentPromptGeneration({
   draft,
   onDraftChange,
   maxPoints,
+  maxPointsLabel = "Total marks (Google Classroom):",
   generatedAt,
   loading,
   generating,
@@ -68,7 +69,7 @@ export default function AssignmentPromptGeneration({
 
         <div className="apg-meta">
           <span>
-            Total marks (Google Classroom):{" "}
+            {maxPointsLabel}{" "}
             <strong>{maxPoints != null ? maxPoints : "—"}</strong>
           </span>
           {generatedAt ? (
@@ -151,10 +152,9 @@ export default function AssignmentPromptGeneration({
         <div className="apg-actions">
           <button
             type="button"
-            className="msv-btn-ai"
+            className="msv-btn-ai msv-btn-save"
             onClick={onSave}
             disabled={saving || loading || !draft?.trim()}
-            style={{ background: "rgba(34,197,94,0.15)", borderColor: "rgba(34,197,94,0.35)" }}
           >
             {saving ? "Saving…" : (
               <>
