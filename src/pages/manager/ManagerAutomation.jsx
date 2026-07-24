@@ -376,12 +376,15 @@ export default function ManagerAutomation({ scope = "manager" }) {
   const launch = async ({ forceRun = force, dry = dryRun, redo = remark } = {}) => {
     if (!assignmentId || launching || continuing) return;
 
-    // A dry run has no side effects worth confirming; a real one costs Gemini
-    // calls, overwrites the expected page count and messages the manager.
+    // A dry run still verifies and regenerates the prompt — it just stops
+    // before the expensive, irreversible half, which is what the confirmation
+    // is guarding.
     if (!dry) {
       const ok = await confirmToast(
         `Mark ${scopeLabel} with Gemini. This also sets the assignment's expected page count and WhatsApps the manager when it finishes.${
-          forceRun ? " Force ignores the due date and re-runs work that is already done." : ""
+          forceRun
+            ? " Force starts the run even if the due date hasn't passed or one already finished."
+            : ""
         }${redo ? ` ${remarkWarning}` : ""}`,
         {
           title: redo ? "Run and re-mark" : forceRun ? "Force run automation" : "Run automation",
@@ -626,7 +629,7 @@ export default function ManagerAutomation({ scope = "manager" }) {
                 >
                   Dry run
                   <span className="atm-toggle-hint">
-                    Walk the pipeline without marking or messaging
+                    Verify, prompt and page count only — stops before marking
                   </span>
                 </button>
 
@@ -639,7 +642,7 @@ export default function ManagerAutomation({ scope = "manager" }) {
                 >
                   Force
                   <span className="atm-toggle-hint">
-                    Ignore the due date and re-run finished work
+                    Start even before the due date, or after it but must be unmarked
                   </span>
                 </button>
 
