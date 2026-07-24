@@ -59,6 +59,7 @@ import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
+import ManagerAutomation from "./pages/manager/ManagerAutomation";
 import PaperMarking from "./pages/manager/PaperMarking";
 import PaperMarkingClaude from "./pages/manager/PaperMarkingClaude";
 import QBManage from "./pages/questionbank/QBManage";
@@ -206,6 +207,7 @@ function App() {
           <Route path="dashboard" element={<AssistantDashboard />} />
           <Route path="performance" element={<AssistantPerformance />} />
           <Route path="assignments" element={<AssistantAssignments />} />
+          <Route path="automation" element={<ManagerAutomation scope="assistant" />} />
           <Route path="assignments/:assignmentId" element={<AssistantSubmissionViewer />} />
           <Route path="assignments/:assignmentId/students" element={<AssistantStudents />} />
           <Route
@@ -235,6 +237,7 @@ function App() {
           <Route path="assignments" element={<ManagerAssignments />} />
           <Route path="students" element={<ManagerStudents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
+          <Route path="automation" element={<ManagerAutomation scope="manager" />} />
           <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler />} />
           <Route path="marking" element={<PaperMarking />} />
           <Route path="logincss" element={<ManagerLoginCss />} />
