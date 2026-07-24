@@ -1,0 +1,520 @@
+/**
+ * Scheduled WhatsApp tab — `mws-` prefix.
+ *
+ * The page mounts inside `.ast-page` (assistant.css), which already supplies
+ * the padding, max-width and scroll container, so nothing here re-declares
+ * those. Colors are design tokens only (src/styles/theme.css) so the tab
+ * follows the light/dark toggle.
+ *
+ * Breakpoints follow the project convention (ui-polish.css): 1024px tablet,
+ * 640px mobile — where every table flips to stacked cards via
+ * `.sah-table--cards`, which is why every <td> carries a data-label.
+ */
+
+.mws-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ─── Page header ─── */
+
+.mws-page-title {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mws-page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* ─── Card ─── */
+
+.mws-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px 24px;
+}
+
+.mws-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.mws-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mws-hint {
+  margin: 0 0 16px;
+  max-width: 720px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.mws-hint code,
+.mws-empty code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.mws-empty {
+  margin: 0;
+  padding: 22px 4px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.mws-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ─── Controls ─── */
+
+.mws-input,
+.mws-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.mws-input:focus,
+.mws-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.mws-input--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.mws-textarea {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.5;
+}
+
+.mws-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mws-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.mws-charcount {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* The datepicker renders its own wrapper around the input; make it fill. */
+.mws-field .react-datepicker-wrapper {
+  width: 100%;
+}
+
+/* ─── Buttons ─── */
+
+.mws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.mws-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mws-btn--primary {
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
+}
+
+.mws-btn--primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.mws-btn--ghost {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.mws-btn--ghost:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.mws-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mws-icon-btn:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.mws-icon-btn--danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.mws-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─── Add-group form ─── */
+
+.mws-add-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.mws-add-group .mws-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  width: auto;
+}
+
+/* ─── Composer ─── */
+
+.mws-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mws-segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  width: fit-content;
+}
+
+.mws-segment {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mws-segment--on {
+  background: var(--primary-strong);
+  color: var(--primary-contrast);
+}
+
+.mws-recurring {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.mws-field--wide {
+  grid-column: 1 / -1;
+}
+
+.mws-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mws-day {
+  min-width: 52px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mws-day--on {
+  background: var(--primary-strong);
+  border-color: var(--primary-strong);
+  color: var(--primary-contrast);
+}
+
+.mws-day:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mws-summary {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--info-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mws-form-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ─── Filters ─── */
+
+.mws-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 280px);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+/* ─── Table ─── */
+
+.mws-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mws-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.mws-table td {
+  padding: 12px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-soft, var(--border));
+  vertical-align: top;
+}
+
+.mws-row--inactive td {
+  opacity: 0.6;
+}
+
+.mws-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+/* Long messages are clamped to two lines; the full text is in the title. */
+.mws-message {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mws-error {
+  display: block;
+  margin-top: 6px;
+  max-width: 320px;
+  font-size: 12px;
+  color: var(--danger);
+  word-break: break-word;
+}
+
+.mws-runcount {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mws-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mws-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+/* Shrink the actions column to its buttons so they stay on one row and the
+   text columns keep the slack. */
+.mws-table td:last-child,
+.mws-table th:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* ─── Status badges ─── */
+
+.mws-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.mws-badge--info {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.mws-badge--success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.mws-badge--danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.mws-badge--neutral {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.mws-badge--muted {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+/* A badge trailing a label needs breathing room. */
+.mws-badge--inline {
+  margin-left: 8px;
+}
+
+/* ─── Responsive ─── */
+
+@media (max-width: 1024px) {
+  .mws-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mws-card {
+    padding: 16px 14px 20px;
+  }
+
+  .mws-recurring,
+  .mws-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mws-add-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mws-add-group .mws-btn {
+    justify-content: center;
+  }
+
+  .mws-segmented,
+  .mws-form-actions .mws-btn {
+    width: 100%;
+  }
+
+  .mws-segment {
+    flex: 1;
+  }
+
+  /* Cards mode gives each cell the full row width — let text use it. */
+  .mws-message,
+  .mws-error {
+    max-width: none;
+  }
+
+  .mws-row-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}

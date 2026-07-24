@@ -58,6 +58,7 @@ import ManagerAssignments from "./pages/manager/ManagerAssignments";
 import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
+import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
 import PaperMarking from "./pages/manager/PaperMarking";
 import PaperMarkingClaude from "./pages/manager/PaperMarkingClaude";
 import QBManage from "./pages/questionbank/QBManage";
@@ -234,6 +235,7 @@ function App() {
           <Route path="assignments" element={<ManagerAssignments />} />
           <Route path="students" element={<ManagerStudents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
+          <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler />} />
           <Route path="marking" element={<PaperMarking />} />
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
