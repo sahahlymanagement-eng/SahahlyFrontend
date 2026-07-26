@@ -810,6 +810,12 @@
   touch-action: none;
 }
 
+.pdf-preview-scroll-inner--zoomed {
+  display: inline-block;
+  min-width: 100%;
+  width: max-content;
+}
+
 .pdf-preview-scroll--pan-ready {
   cursor: grab;
 }

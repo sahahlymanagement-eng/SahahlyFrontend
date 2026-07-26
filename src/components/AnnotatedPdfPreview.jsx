@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { FiChevronLeft, FiChevronRight, FiZoomIn, FiZoomOut } from "react-icons/fi";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
+import { getDisplayQuestionNumber } from "../utils/questionLabelDisplay";
 
 // CDN worker avoids nginx serving bundled .mjs as application/octet-stream on VPS
 GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
@@ -39,6 +40,7 @@ function questionKey(q) {
 
 function PlacementHandle({
   q,
+  displayNumber,
   column,
   yPercent,
   active,
@@ -46,10 +48,11 @@ function PlacementHandle({
   onRemove,
   showRemove,
 }) {
+  const labelNum = displayNumber || q?.questionNumber;
   const label =
     column === "left"
-      ? `Q${q.questionNumber} ${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}`
-      : `Q${q.questionNumber}`;
+      ? `Q${labelNum} ${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}`
+      : `Q${labelNum}`;
 
   return (
     <div
@@ -66,8 +69,8 @@ function PlacementHandle({
         <button
           type="button"
           className="pdf-place-handle__remove"
-          title={`Remove Q${q.questionNumber} from marking`}
-          aria-label={`Remove question ${q.questionNumber}`}
+          title={`Remove Q${labelNum} from marking`}
+          aria-label={`Remove question ${labelNum}`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.preventDefault();
@@ -94,6 +97,7 @@ function LazyPdfPage({
   scrollRoot,
   studentPageNumber,
   pageQuestions,
+  labelGuidance,
   dragKey,
   onHandlePointerDown,
   onQuestionRemove,
@@ -192,10 +196,12 @@ function LazyPdfPage({
         pageQuestions.map((item) => {
           const { q, yPercent } = item;
           const key = questionKey(q);
+          const displayNumber = getDisplayQuestionNumber(q, labelGuidance);
           return (
             <div key={`place-${item.placementIndex}`} className="pdf-place-layer">
               <PlacementHandle
                 q={q}
+                displayNumber={displayNumber}
                 column="left"
                 yPercent={yPercent}
                 active={dragKey === `${key}:left`}
@@ -268,6 +274,7 @@ export default function AnnotatedPdfPreview({
   reportPageCount = 0,
   onPlacementChange = null,
   onQuestionRemove = null,
+  labelGuidance = "",
 }) {
   const scrollRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
@@ -279,6 +286,7 @@ export default function AnnotatedPdfPreview({
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
   const [currentPage, setCurrentPage] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
+  const [canScrollX, setCanScrollX] = useState(false);
   /** Local drag overrides: { [questionNumber]: { pageNumber, yPercent } } */
   const [localPlacement, setLocalPlacement] = useState({});
   const [dragKey, setDragKey] = useState(null);
@@ -512,7 +520,25 @@ export default function AnnotatedPdfPreview({
 
   const renderWidth = Math.max(240, Math.floor(containerWidth * zoomLevel));
   const zoomPercent = Math.round(zoomLevel * 100);
-  const canPan = zoomLevel > PAN_ZOOM_THRESHOLD;
+  const canPan = zoomLevel > PAN_ZOOM_THRESHOLD || canScrollX;
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+
+    const updateOverflow = () => {
+      setCanScrollX(root.scrollWidth > root.clientWidth + 2);
+    };
+
+    updateOverflow();
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(root);
+    root.addEventListener("scroll", updateOverflow);
+    return () => {
+      observer.disconnect();
+      root.removeEventListener("scroll", updateOverflow);
+    };
+  }, [zoomLevel, numPages, renderWidth, url]);
 
   const zoomOut = () => setZoomLevel((z) => clampZoom(z - ZOOM_STEP_BTN));
   const zoomIn = () => setZoomLevel((z) => clampZoom(z + ZOOM_STEP_BTN));
@@ -548,6 +574,7 @@ export default function AnnotatedPdfPreview({
         scrollTop: root.scrollTop,
       };
       setIsPanning(true);
+      root.setPointerCapture?.(e.pointerId);
     },
     [canPan, dragKey]
   );
@@ -570,6 +597,7 @@ export default function AnnotatedPdfPreview({
       if (!pan || (e.pointerId != null && pan.pointerId !== e.pointerId)) return;
       panRef.current = null;
       setIsPanning(false);
+      scrollRef.current?.releasePointerCapture?.(pan.pointerId);
     };
 
     window.addEventListener("pointermove", onMove, { passive: false });
@@ -693,6 +721,14 @@ export default function AnnotatedPdfPreview({
           }
         }}
       >
+        <div
+          className={[
+            "pdf-preview-scroll-inner",
+            zoomLevel > PAN_ZOOM_THRESHOLD ? "pdf-preview-scroll-inner--zoomed" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
         {Array.from({ length: numPages }, (_, i) => {
           const pageNumber = i + 1;
           const studentPageNumber = pageNumber - offset;
@@ -710,6 +746,7 @@ export default function AnnotatedPdfPreview({
               scrollRoot={scrollRoot}
               studentPageNumber={studentPageNumber}
               pageQuestions={pageQuestions}
+              labelGuidance={labelGuidance}
               dragKey={dragKey}
               onHandlePointerDown={handlePointerDown}
               onQuestionRemove={handleQuestionRemove}
@@ -717,6 +754,7 @@ export default function AnnotatedPdfPreview({
             />
           );
         })}
+        </div>
       </div>
     </div>
   );

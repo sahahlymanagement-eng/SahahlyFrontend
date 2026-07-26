@@ -2628,7 +2628,7 @@ export default function ManagerMariamGabalawy() {
                             flexWrap: "wrap",
                           }}
                         >
-                          <QuestionNumberBadge question={q} />
+                          <QuestionNumberBadge question={q} guidance={assignmentPrompt.content} />
                           {isCriteria ? (
                             <span
                               style={{
@@ -2876,6 +2876,7 @@ export default function ManagerMariamGabalawy() {
                       reportPageCount={reportPageCount}
                       onPlacementChange={handleAnnotationPlacementChange}
                       onQuestionRemove={handleQuestionRemove}
+                      labelGuidance={assignmentPrompt.content}
                     />
                   </div>
                 ) : (
@@ -2915,7 +2916,7 @@ export default function ManagerMariamGabalawy() {
                   <div style={{ color: "var(--danger)", fontSize: 13 }}>{markSchemeError}</div>
                 ) : markSchemePreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                    <AnnotatedPdfPreview url={markSchemePreviewUrl} />
+                    <AnnotatedPdfPreview url={markSchemePreviewUrl} labelGuidance={assignmentPrompt.content} />
                   </div>
                 ) : (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>No mark scheme available</div>

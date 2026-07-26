@@ -4865,7 +4865,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   return (
                     <div key={idx} className="msv-q-card">
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                        <QuestionNumberBadge question={q} />
+                        <QuestionNumberBadge question={q} guidance={assignmentPrompt.content} />
                         {/* In criteria mode, scores are read-only feedback */}
                         {isCriteria ? (
                           <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 13 }}>
@@ -5058,6 +5058,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             reportPageCount={reportPageCount}
                             onPlacementChange={handleAnnotationPlacementChange}
                             onQuestionRemove={handleQuestionRemove}
+                            labelGuidance={assignmentPrompt.content}
                           />
                         </div>
                       ) : (
@@ -5099,7 +5100,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         </div>
                       ) : markSchemePreviewUrl ? (
                         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                          <AnnotatedPdfPreview url={markSchemePreviewUrl} />
+                          <AnnotatedPdfPreview url={markSchemePreviewUrl} labelGuidance={assignmentPrompt.content} />
                         </div>
                       ) : (
                         <div style={{ color: "var(--muted)", fontSize: 13 }}>
@@ -5162,7 +5163,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     return (
                       <div key={item.questionNumber} className="msv-q-card">
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-                          <QuestionNumberBadge question={item} />
+                          <QuestionNumberBadge question={item} guidance={assignmentPrompt.content} />
                           {item.resolution == null && (
                             <span style={{ fontSize: 11, color: "var(--warning)" }}>Unresolved</span>
                           )}
