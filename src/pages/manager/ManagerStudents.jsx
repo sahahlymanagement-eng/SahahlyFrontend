@@ -21,13 +21,13 @@ import {
   useReportTeacherOptions,
   useClearClassroomOnTeacherFilter,
 } from "../../hooks/useReportTeacherFilter";
+import { useClassroomRosterSync } from "../../hooks/useClassroomRosterSync";
 
 export default function ManagerStudents() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedClassroom, setSelectedClassroom] = usePersistedState("students:manager:classroom", null);
-  const [syncing, setSyncing] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
@@ -99,18 +99,29 @@ export default function ManagerStudents() {
     !!selectedClassroom?._id
   );
 
+  const { syncRoster, syncing } = useClassroomRosterSync(selectedClassroom?._id, {
+    enabled: Boolean(selectedClassroom?._id),
+    autoSync: Boolean(selectedClassroom?._id),
+    onSynced: () => fetchPage(1),
+  });
+
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
     setSelectedClassroom(classroom);
     setEditingId(null);
     setSearch("");
-    setSyncing(true);
-    try {
-      await api.post(`/students/sync/${classroom._id}`);
-    } catch {
-      toast.warn("Sync failed, showing existing data");
-    } finally {
-      setSyncing(false);
+  };
+
+  const refreshStudents = async () => {
+    if (!selectedClassroom?._id) return;
+    const result = await syncRoster({ force: true });
+    await fetchPage(page);
+    if (result) {
+      const removedNote =
+        result.removed > 0 ? ` · ${result.removed} removed from class` : "";
+      toast.success(`Students refreshed (${result.total} on Google Classroom${removedNote})`);
+    } else {
+      toast.warn("Could not refresh from Google Classroom — showing saved list");
     }
   };
 
@@ -323,6 +334,16 @@ export default function ManagerStudents() {
                             onChange={(e) => setSearch(e.target.value)}
                         />
                         </div>
+                        <button
+                          type="button"
+                          className="ma-send-btn"
+                          onClick={refreshStudents}
+                          disabled={syncing || loadingStudents}
+                          title="Pull latest roster from Google Classroom and remove students who left the class"
+                        >
+                          <FiRefreshCw className={syncing ? "ms-spin" : ""} />
+                          {syncing ? "Refreshing…" : "Refresh students"}
+                        </button>
                     </div>
 
                     {/* KEEP YOUR EXISTING TABLE HERE */}

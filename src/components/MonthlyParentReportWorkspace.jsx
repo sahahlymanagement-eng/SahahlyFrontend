@@ -37,6 +37,7 @@ import {
   useReportTeacherOptions,
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
+import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 
 function newSchoolSessionId() {
   return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -94,6 +95,7 @@ export default function MonthlyParentReportWorkspace({
   const [students, setStudents] = useState([]);
 
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [rosterRefreshKey, setRosterRefreshKey] = useState(0);
 
   const [studentSearch, setStudentSearch] = useState("");
 
@@ -202,6 +204,12 @@ export default function MonthlyParentReportWorkspace({
 
   useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
+  useClassroomRosterSync(selectedClassroom?._id, {
+    enabled: Boolean(selectedClassroom?._id),
+    autoSync: Boolean(selectedClassroom?._id),
+    onSynced: () => setRosterRefreshKey((n) => n + 1),
+  });
+
 
 
   useEffect(() => {
@@ -232,7 +240,7 @@ export default function MonthlyParentReportWorkspace({
 
       .finally(() => setLoadingStudents(false));
 
-  }, [selectedClassroom?._id]);
+  }, [selectedClassroom?._id, rosterRefreshKey]);
 
 
 

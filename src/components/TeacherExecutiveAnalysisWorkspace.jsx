@@ -27,6 +27,7 @@ import {
   useReportTeacherOptions,
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
+import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 
 const TRIGGERS = [
   { value: "assignment_done", label: "Assignment completed" },
@@ -102,6 +103,11 @@ export default function TeacherExecutiveAnalysisWorkspace({
   }, []);
 
   useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
+
+  useClassroomRosterSync(selectedClassroom?._id, {
+    enabled: Boolean(selectedClassroom?._id),
+    autoSync: Boolean(selectedClassroom?._id),
+  });
 
   const assignmentParams = useMemo(() => ({ search: assignmentSearch }), [assignmentSearch]);
 

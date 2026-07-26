@@ -36,6 +36,7 @@ import {
   useReportTeacherOptions,
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
+import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 
 
 export default function ReportsWorkspace({ variant = "manager" }) {
@@ -108,6 +109,11 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   }, []);
 
   useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
+
+  useClassroomRosterSync(selectedClassroom?._id, {
+    enabled: Boolean(selectedClassroom?._id),
+    autoSync: Boolean(selectedClassroom?._id),
+  });
 
   const assignmentParams = useMemo(() => ({
     search: assignmentSearch,
