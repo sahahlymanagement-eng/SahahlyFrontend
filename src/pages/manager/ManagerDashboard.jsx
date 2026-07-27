@@ -45,9 +45,9 @@ export default function ManagerDashboard() {
   const [classroomIds, setClassroomIds] = useState([]);
   const [classroomMap, setClassroomMap] = useState({});
   const [teacherMap, setTeacherMap] = useState({});
-  const [classroomSubjectMap, setClassroomSubjectMap] = useState({});
   const [delegations, setDelegations] = useState([]);
   const [assistantsMap, setAssistantsMap] = useState({});
+  const [assistantMetaMap, setAssistantMetaMap] = useState({});
   const [statusCounts, setStatusCounts] = useState({});
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [selectedAssistants, setSelectedAssistants] = useState({});
@@ -105,8 +105,8 @@ export default function ManagerDashboard() {
   const assignments = useMemo(() =>
     (data || []).map((a) => ({
       ...a,
-      classroomName: classroomMap[a.classroomId] || "Unknown",
-      teacherName: teacherMap[a.classroomId] || "Not Assigned",
+      classroomName: classroomMap[String(a.classroomId)] || "Unknown",
+      teacherName: teacherMap[String(a.classroomId)] || "Not Assigned",
       dashboardStatus: computeDashboardStatus(a),
     })),
   [data, classroomMap, teacherMap]);
@@ -133,46 +133,81 @@ export default function ManagerDashboard() {
   useEffect(() => {
     if (!data.length) {
       setAssistantsMap({});
+      setAssistantMetaMap({});
       return;
     }
-    const uniqueSubjectIds = [...new Set(data.map((a) => classroomSubjectMap[a.classroomId]).filter(Boolean))];
-    Promise.all(uniqueSubjectIds.map(async (subjectId) => {
-      const res = await api.get(`/role-subject-assignments?subjectId=${subjectId}&role=assistant`);
-      return [subjectId, res.data || []];
-    })).then((entries) => {
-      const subjectAssistantsMap = Object.fromEntries(entries);
-      const assistantsTemp = {};
-      data.forEach((a) => {
-        const subjectId = classroomSubjectMap[a.classroomId];
-        assistantsTemp[a._id] = subjectId ? (subjectAssistantsMap[subjectId] || []) : [];
-      });
-      setAssistantsMap(assistantsTemp);
-    }).catch((err) => console.error("Failed to load assistants", err));
-  }, [data, classroomSubjectMap]);
+
+    const classroomIds = [
+      ...new Set(data.map((a) => String(a.classroomId)).filter(Boolean)),
+    ];
+    if (!classroomIds.length) return;
+
+    api
+      .get("/assignment-delegations/available-assistants", {
+        params: { classroomIds: classroomIds.join(",") },
+      })
+      .then((res) => {
+        const assistantsTemp = {};
+        const metaTemp = {};
+        data.forEach((a) => {
+          const info = res.data?.[String(a.classroomId)] || {};
+          assistantsTemp[a._id] = info.assistants || [];
+          metaTemp[a._id] = {
+            subjectName: info.subjectName,
+            reason: info.reason,
+          };
+        });
+        setAssistantsMap(assistantsTemp);
+        setAssistantMetaMap(metaTemp);
+      })
+      .catch((err) => console.error("Failed to load assistants", err));
+  }, [data]);
+
+  const renderAssistantUnavailable = (assignmentId) => {
+    const meta = assistantMetaMap[assignmentId];
+    if (meta?.reason === "no_subject") {
+      return <span className="md-no-assistants">No subject linked to this classroom</span>;
+    }
+    if (meta?.reason === "no_assistants_on_subject" && meta?.subjectName) {
+      return (
+        <span className="md-no-assistants" title={`Subject "${meta.subjectName}" has no assistants assigned in People`}>
+          No assistants on {meta.subjectName}
+        </span>
+      );
+    }
+    return <span className="md-no-assistants">No assistants available</span>;
+  };
 
   const loadClassroomContext = async () => {
     try {
       setContextLoading(true);
-      const classroomsRes = await api.get("/classrooms", { params: { page: 1, limit: 5000 } });
-      const teachers = {};
-      const subjects = {};
-      (classroomsRes.data.data || []).forEach((c) => {
-        teachers[c._id] = c.teacherId?.name || "Not Assigned";
-        subjects[c._id] = typeof c.subjectId === "string" ? c.subjectId : c.subjectId?._id || null;
-      });
-      setTeacherMap(teachers);
-      setClassroomSubjectMap(subjects);
-
       const classroomManagersRes = await api.get(`/classroom-managers?personId=${user.id}`, { params: { page: 1, limit: 5000 } });
       const map = {};
-      (classroomManagersRes.data.data || []).forEach((m) => { if (m.classroomId?._id) map[m.classroomId._id] = m.classroomId.name; });
+      const teachers = {};
+      (classroomManagersRes.data.data || []).forEach((m) => {
+        const c = m.classroomId;
+        if (!c?._id) return;
+        const cid = String(c._id);
+        map[cid] = c.name;
+        teachers[cid] = c.teacherId?.name || "Not Assigned";
+      });
+      setTeacherMap(teachers);
       setClassroomMap(map);
-      const ids = (classroomManagersRes.data.data || []).map((m) => m.classroomId?._id).filter(Boolean);
+      const ids = (classroomManagersRes.data.data || [])
+        .map((m) => m.classroomId?._id)
+        .filter(Boolean)
+        .map(String);
       setClassroomIds(ids);
 
       if (!ids.length) {
-        setDelegations([]); setAssistantsMap({});
-        const e = {}; DASHBOARD_STATUSES.forEach((s) => { e[s] = 0; }); setStatusCounts(e);
+        setDelegations([]);
+        setAssistantsMap({});
+        setAssistantMetaMap({});
+        const e = {};
+        DASHBOARD_STATUSES.forEach((s) => {
+          e[s] = 0;
+        });
+        setStatusCounts(e);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load dashboard");
@@ -502,7 +537,7 @@ const goToSubmissionViewer = (assignment) => {
                                     const canManage = ["ASSIGNED","FAILED_DEADLINE","IN_REVIEW","RECHECK_BY_ASSISTANT"].includes(selectedStatus);
 
                                     if (isInitialAssign) {
-                                      if (!hasSubjectAssistants) return <span className="md-no-assistants">No assistants available</span>;
+                                      if (!hasSubjectAssistants) return renderAssistantUnavailable(a._id);
                                       return (
                                         <div className="md-assign-cell">
                                           <Select
