@@ -59,6 +59,37 @@ function googleDueToFormFields(dueDate, dueTime) {
   };
 }
 
+function googleScheduledToFormFields(scheduledTime) {
+  if (!scheduledTime) {
+    return { scheduleDate: "", scheduleTime: "", scheduleEnabled: false };
+  }
+
+  const utc = new Date(scheduledTime);
+  if (Number.isNaN(utc.getTime())) {
+    return { scheduleDate: "", scheduleTime: "", scheduleEnabled: false };
+  }
+
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Cairo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+      .formatToParts(utc)
+      .map((p) => [p.type, p.value])
+  );
+
+  return {
+    scheduleEnabled: true,
+    scheduleDate: `${parts.year}-${parts.month}-${parts.day}`,
+    scheduleTime: `${parts.hour}:${parts.minute}`,
+  };
+}
+
 function buildCourseworkPayload({
   title,
   description,
@@ -66,6 +97,11 @@ function buildCourseworkPayload({
   maxPoints,
   dueDate,
   dueTime,
+  scheduleEnabled,
+  scheduleDate,
+  scheduleTime,
+  blockSubmissionsAfterDueDate,
+  unschedule,
   topicId,
   newTopicName,
 }) {
@@ -87,6 +123,24 @@ function buildCourseworkPayload({
           minutes: Number(dueTime.split(":")[1]),
         }
       : undefined,
+    scheduleEnabled,
+    scheduleDate:
+      scheduleEnabled && scheduleDate
+        ? {
+            year: Number(scheduleDate.split("-")[0]),
+            month: Number(scheduleDate.split("-")[1]),
+            day: Number(scheduleDate.split("-")[2]),
+          }
+        : undefined,
+    scheduleTime:
+      scheduleEnabled && scheduleTime
+        ? {
+            hours: Number(scheduleTime.split(":")[0]),
+            minutes: Number(scheduleTime.split(":")[1]),
+          }
+        : undefined,
+    blockSubmissionsAfterDueDate: Boolean(blockSubmissionsAfterDueDate),
+    unschedule: Boolean(unschedule),
     topicId: topicId || undefined,
     topicName: newTopicName || undefined,
   };
@@ -110,6 +164,12 @@ export default function Coursework() {
   const [isUngraded, setIsUngraded] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [blockSubmissionsAfterDueDate, setBlockSubmissionsAfterDueDate] =
+    useState(false);
+  const [initialHadSchedule, setInitialHadSchedule] = useState(false);
   const [topics, setTopics] = useState([]);
   const [topicId, setTopicId] = useState("");
   const [newTopicName, setNewTopicName] = useState("");
@@ -163,6 +223,15 @@ export default function Coursework() {
         const dueFields = googleDueToFormFields(cw.dueDate, cw.dueTime);
         setDueDate(dueFields.dueDate);
         setDueTime(dueFields.dueTime);
+
+        const scheduleFields = googleScheduledToFormFields(cw.scheduledTime);
+        const hadSchedule =
+          scheduleFields.scheduleEnabled || cw.state === "DRAFT";
+        setInitialHadSchedule(hadSchedule);
+        setScheduleEnabled(hadSchedule);
+        setScheduleDate(scheduleFields.scheduleDate);
+        setScheduleTime(scheduleFields.scheduleTime);
+        setBlockSubmissionsAfterDueDate(Boolean(cw.blockSubmissionsAfterDueDate));
       } catch (err) {
         toast.error(err.response?.data?.error || "Failed to load coursework");
         navigate(-1);
@@ -389,6 +458,16 @@ export default function Coursework() {
       return toast.warn("Valid max points required or select ungraded");
     }
 
+    if (scheduleEnabled && !scheduleDate) {
+      return toast.warn("Publish date is required when scheduling");
+    }
+
+    if (blockSubmissionsAfterDueDate && !dueDate) {
+      return toast.warn(
+        "Due date is required when blocking submissions after the due date"
+      );
+    }
+
     setLoading(true);
 
     const courseworkData = buildCourseworkPayload({
@@ -398,6 +477,11 @@ export default function Coursework() {
       maxPoints,
       dueDate,
       dueTime,
+      scheduleEnabled,
+      scheduleDate,
+      scheduleTime,
+      blockSubmissionsAfterDueDate,
+      unschedule: isEditMode && initialHadSchedule && !scheduleEnabled,
       topicId,
       newTopicName,
     });
@@ -452,13 +536,23 @@ export default function Coursework() {
             toast.success("Coursework created with worksheet attached");
           }
         } else {
-          toast.success("Coursework created successfully");
+          if (scheduleEnabled) {
+            toast.success(
+              "Assignment scheduled — it will publish in Google Classroom at the chosen time"
+            );
+          } else {
+            toast.success("Coursework created successfully");
+          }
         }
         setTitle("");
         setDescription("");
         setMaxPoints("");
         setDueDate("");
         setDueTime("");
+        setScheduleEnabled(false);
+        setScheduleDate("");
+        setScheduleTime("");
+        setBlockSubmissionsAfterDueDate(false);
         setTopicId("");
         setNewTopicName("");
         setIsUngraded(false);
@@ -741,6 +835,56 @@ export default function Coursework() {
           onChange={(e) => setDueTime(e.target.value)}
         />
       </div>
+
+      <label className={`cw-check-row${isTeacherShell ? " cw-check-row--tch" : ""}`}>
+        <input
+          type="checkbox"
+          checked={blockSubmissionsAfterDueDate}
+          onChange={(e) => setBlockSubmissionsAfterDueDate(e.target.checked)}
+        />
+        <span>Do not accept submissions after the due date</span>
+      </label>
+
+      {isTeacherShell ? (
+        <div className="tch-form-section-title">Publish schedule</div>
+      ) : null}
+
+      <label className={`cw-check-row${isTeacherShell ? " cw-check-row--tch" : ""}`}>
+        <input
+          type="checkbox"
+          checked={scheduleEnabled}
+          onChange={(e) => setScheduleEnabled(e.target.checked)}
+        />
+        <span>Schedule for later (publish at a specific date and time)</span>
+      </label>
+
+      {scheduleEnabled && (
+        <>
+          <div className={isTeacherShell ? "tch-field" : "pm-input-group"}>
+            <label className={isTeacherShell ? "tch-label" : "pm-input-label"}>
+              Publish date
+            </label>
+            <input
+              type="date"
+              className={isTeacherShell ? "tch-input" : "pm-input"}
+              value={scheduleDate}
+              onChange={(e) => setScheduleDate(e.target.value)}
+            />
+          </div>
+
+          <div className={isTeacherShell ? "tch-field" : "pm-input-group"}>
+            <label className={isTeacherShell ? "tch-label" : "pm-input-label"}>
+              Publish time
+            </label>
+            <input
+              type="time"
+              className={isTeacherShell ? "tch-input" : "pm-input"}
+              value={scheduleTime}
+              onChange={(e) => setScheduleTime(e.target.value)}
+            />
+          </div>
+        </>
+      )}
 
       {isTeacherShell ? <div className="tch-form-section-title">Organization</div> : null}
 

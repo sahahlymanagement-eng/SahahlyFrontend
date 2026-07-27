@@ -366,8 +366,12 @@ function drawColumnHeader(page, layout, bold) {
 }
 
 function buildColumnBlock(q, font, noteSize, colWidth) {
-  const marked = (q.markedKeywords || []).filter(Boolean);
-  const missing = (q.missingKeywords || []).filter(Boolean);
+  const marked = (q.markedKeywords || [])
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  const missing = (q.missingKeywords || [])
+    .map((s) => String(s).trim())
+    .filter(Boolean);
   const mcq = mcqChoiceSummary(q);
   const blank = isBlankQuestion(q);
   const noteLines = q.reason ? wrap(q.reason, font, noteSize, colWidth) : [];

@@ -977,3 +977,26 @@ input:checked + .slider:before {
   align-self: center;
   margin-top: 0 !important;
 }
+
+.cw-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cw-check-row input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.cw-check-row--tch {
+  color: var(--tch-text, #1a1a1a);
+}
