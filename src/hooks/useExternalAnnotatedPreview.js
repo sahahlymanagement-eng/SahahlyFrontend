@@ -3,6 +3,7 @@ import { annotatePdf } from "../utils/annotatePdf";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
+  markingResultHasPendingCriteriaEdits,
   questionsForConfirmEdits,
   resolveDisplayMaxTotal,
   sumQuestionMarks,
@@ -10,6 +11,7 @@ import {
   getTeacherAnnotations,
   getApiErrorMessage,
 } from "../utils/markingFormData";
+import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 
 function getSubmissionId(modal) {
@@ -53,6 +55,7 @@ export function useExternalAnnotatedPreview({
   resolvePdfSummary,
   getStudentFile,
   pendingRemovedIndices = null,
+  editingCriteriaGrade = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -99,6 +102,7 @@ export function useExternalAnnotatedPreview({
     const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
     const outOfScopeNotes = (modal.result?.outOfScopeNotes || []).map((n) => ({ ...n }));
     const teacherAnnotations = getTeacherAnnotations(modal.result).map((a) => ({ ...a }));
+    const criteriaGrade = cloneCriteriaGrade(modal.result?.criteriaGrade);
     const studentFile = modal.studentFile || null;
     return {
       submissionId,
@@ -107,6 +111,7 @@ export function useExternalAnnotatedPreview({
       summary,
       outOfScopeNotes,
       teacherAnnotations,
+      criteriaGrade,
       studentFile,
     };
   }, []);
@@ -200,6 +205,14 @@ export function useExternalAnnotatedPreview({
     if (questionsHavePendingEdits(questionsForPreviewEdits, confirmedSnapshot)) {
       return true;
     }
+    if (
+      markingResultHasPendingCriteriaEdits(
+        editingCriteriaGrade,
+        confirmedSnapshot
+      )
+    ) {
+      return true;
+    }
     if (annotationsHavePendingEdits(
       editingAnnotations,
       confirmedSnapshot.teacherAnnotations
@@ -216,6 +229,7 @@ export function useExternalAnnotatedPreview({
     editingSummary,
     effectiveMaxTotal,
     editingMaxTotal,
+    editingCriteriaGrade,
   ]);
 
   const confirmEdits = useCallback(
@@ -237,7 +251,8 @@ export function useExternalAnnotatedPreview({
           questions,
           maxTotal,
           teacherAnnotations,
-          editingSummary
+          editingSummary,
+          editingCriteriaGrade
         );
         const summary = finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
         const studentFile = resultModalRef.current?.studentFile || null;
@@ -248,6 +263,7 @@ export function useExternalAnnotatedPreview({
           summary,
           outOfScopeNotes: getOutOfScopeNotes(finalResult),
           teacherAnnotations,
+          criteriaGrade: cloneCriteriaGrade(finalResult.criteriaGrade),
           studentFile,
         };
 
@@ -269,6 +285,7 @@ export function useExternalAnnotatedPreview({
       editingSummary,
       effectiveMaxTotal,
       generatePreview,
+      editingCriteriaGrade,
     ]
   );
 
@@ -281,6 +298,7 @@ export function useExternalAnnotatedPreview({
       teacherAnnotations: (confirmedSnapshot.teacherAnnotations || []).map((a) => ({
         ...a,
       })),
+      criteriaGrade: cloneCriteriaGrade(confirmedSnapshot.criteriaGrade),
     };
   }, [confirmedSnapshot]);
 

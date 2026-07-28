@@ -5,6 +5,7 @@
   border: 1px solid var(--border) !important;
   border-radius: 14px !important;
   box-shadow: var(--shadow) !important;
+  z-index: 10050 !important;
 }
 
 .confirm-toast-container .Toastify__toast-body {

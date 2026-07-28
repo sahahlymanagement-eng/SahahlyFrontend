@@ -3,6 +3,7 @@ import { annotatePdf } from "../utils/annotatePdf";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
+  markingResultHasPendingCriteriaEdits,
   questionsForConfirmEdits,
   resolveDisplayMaxTotal,
   sumQuestionMarks,
@@ -10,6 +11,7 @@ import {
   getTeacherAnnotations,
   getApiErrorMessage,
 } from "../utils/markingFormData";
+import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 
 function getSubmissionId(modal) {
@@ -52,6 +54,7 @@ export function useAnnotatedResultPreview({
   editingMaxTotal,
   resolvePdfSummary,
   pendingRemovedIndices = null,
+  editingCriteriaGrade = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -103,6 +106,7 @@ export function useAnnotatedResultPreview({
         ? annotationOverride
         : getTeacherAnnotations(modal.result)
     ).map((a) => ({ ...a }));
+    const criteriaGrade = cloneCriteriaGrade(modal.result?.criteriaGrade);
     return {
       submissionId,
       questions,
@@ -110,6 +114,7 @@ export function useAnnotatedResultPreview({
       summary,
       outOfScopeNotes,
       teacherAnnotations,
+      criteriaGrade,
     };
   }, []);
 
@@ -225,6 +230,14 @@ export function useAnnotatedResultPreview({
       return true;
     }
     if (
+      markingResultHasPendingCriteriaEdits(
+        editingCriteriaGrade,
+        confirmedSnapshot
+      )
+    ) {
+      return true;
+    }
+    if (
       annotationsHavePendingEdits(
         editingAnnotations,
         confirmedSnapshot.teacherAnnotations
@@ -242,6 +255,7 @@ export function useAnnotatedResultPreview({
     editingSummary,
     effectiveMaxTotal,
     editingMaxTotal,
+    editingCriteriaGrade,
   ]);
 
   const confirmEdits = useCallback(
@@ -263,7 +277,8 @@ export function useAnnotatedResultPreview({
           questions,
           maxTotal,
           teacherAnnotations,
-          editingSummary
+          editingSummary,
+          editingCriteriaGrade
         );
         const summary =
           finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
@@ -274,6 +289,7 @@ export function useAnnotatedResultPreview({
           summary,
           outOfScopeNotes: getOutOfScopeNotes(finalResult),
           teacherAnnotations,
+          criteriaGrade: cloneCriteriaGrade(finalResult.criteriaGrade),
         };
 
         if (onPersist) {
@@ -301,6 +317,7 @@ export function useAnnotatedResultPreview({
       editingSummary,
       effectiveMaxTotal,
       generatePreview,
+      editingCriteriaGrade,
     ]
   );
 
@@ -313,6 +330,7 @@ export function useAnnotatedResultPreview({
       teacherAnnotations: (confirmedSnapshot.teacherAnnotations || []).map((a) => ({
         ...a,
       })),
+      criteriaGrade: cloneCriteriaGrade(confirmedSnapshot.criteriaGrade),
     };
   }, [confirmedSnapshot]);
 

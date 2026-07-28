@@ -26,6 +26,7 @@ import {
   sumQuestionMarks,
   filterQuestionsPendingRemoval,
   buildPlacementQuestions,
+  applyPlacementChange,
   questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
@@ -45,7 +46,9 @@ import {
   getTeacherAnnotations,
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
-import QuestionKeywordFields from "../../components/QuestionKeywordFields";
+import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
+import { cloneCriteriaGrade } from "../../utils/markingQuestionEdits";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
@@ -90,7 +93,7 @@ import {
   sanitizeExcelFilenameBase,
 } from "../../utils/exportGradesExcel";
 import SubmissionGradeInput from "../../components/SubmissionGradeInput";
-import { enrichMarkingQuestions, isBlankQuestion } from "../../utils/blankQuestionFeedback";
+import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
 import {
   gradeFromPercent,
   resolveTableGrade,
@@ -111,14 +114,6 @@ import {
   isBatchStopped,
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
-
-const CHECKLIST_CONFIG = [
-  { key: "scanningClarity",            label: "Scanning Clarity",         passIsGood: true  },
-  { key: "handwritingClarity",         label: "Handwriting Clarity",       passIsGood: true  },
-  { key: "markSchemeUnderstanding",    label: "Mark Scheme Understanding", passIsGood: true  },
-  { key: "studentAnswerUnderstanding", label: "Student Answer Understood", passIsGood: true  },
-  { key: "answerIsBlank",              label: "Answer is Blank",           passIsGood: false },
-];
 
 function geminiDropdownLabel(model) {
   return sahahlyModelLabel(model);
@@ -458,6 +453,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   }, []);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [editingCriteriaGrade, setEditingCriteriaGrade] = useState(null);
   const [editingAnnotations, setEditingAnnotations] = useState([]);
   const [editingSummary, setEditingSummary] = useState("");
   const [summaryTouched, setSummaryTouched] = useState(false);
@@ -547,24 +543,12 @@ const resolvePdfSummary = (submissionId, result) =>
     editingMaxTotal,
     resolvePdfSummary,
     pendingRemovedIndices,
+    editingCriteriaGrade,
   });
 
-  const handleAnnotationPlacementChange = useCallback(
-    ({ questionNumber, pageNumber, yPercent }) => {
-      setEditingQuestions((prev) =>
-        prev.map((q) =>
-          String(q.questionNumber) === String(questionNumber)
-            ? {
-                ...q,
-                pageNumber: Math.max(1, Number(pageNumber) || 1),
-                yPercent,
-              }
-            : q
-        )
-      );
-    },
-    []
-  );
+  const handleAnnotationPlacementChange = useCallback((change) => {
+    setEditingQuestions((prev) => applyPlacementChange(prev, change));
+  }, []);
 
   const handleQuestionRemove = useCallback((questionIndex) => {
     setPendingRemovedIndices((prev) => {
@@ -1864,6 +1848,7 @@ useEffect(() => {
       }
 
       setEditingQuestions((enrichedResult.questions || []).map(q => ({ ...q })));
+      setEditingCriteriaGrade(cloneCriteriaGrade(enrichedResult.criteriaGrade));
       setEditingAnnotations(getTeacherAnnotations(enrichedResult).map((a) => ({ ...a })));
       setEditingMaxTotal(null);
     } catch (err) {
@@ -2860,6 +2845,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       });
       if (finalResult) {
         setEditingQuestions(appliedQuestions);
+        setEditingCriteriaGrade(cloneCriteriaGrade(finalResult.criteriaGrade));
         setPendingRemovedIndices(new Set());
         toast.success("Edits confirmed — preview and grade updated");
       }
@@ -2941,6 +2927,24 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000,
       });
+
+      const submissionKey = resultModal.student.submissionId || submissionId;
+      const returnedAt = new Date().toISOString();
+      setSavedResults((prev) => ({
+        ...prev,
+        [submissionKey]: {
+          ...(prev[submissionKey] || {}),
+          returnedAt,
+        },
+      }));
+      setBulkProgress((prev) => {
+        if (!prev[submissionKey]) return prev;
+        return {
+          ...prev,
+          [submissionKey]: { ...prev[submissionKey], returned: true },
+        };
+      });
+
       toast.success("Marked paper returned to student");
       setResultModal(null);
     } catch (err) {
@@ -2956,6 +2960,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       return;
     }
 
+    if (showMarkingTools && hasPendingEdits) {
+      toast.warn("Confirm your edits first so returned PDFs match the preview");
+      return;
+    }
+
     try {
       const allStudents = await fetchAllPaginated(
         api,
@@ -2964,7 +2973,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         "students"
       );
 
-      const { bulkQueue, batchQueue } = buildReturnAllQueue({
+      const queue = buildReturnAllQueue({
         bulkProgress,
         batchJob,
         savedResults,
@@ -2972,12 +2981,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         allStudents,
       });
 
-      const returnCount = bulkQueue.length + batchQueue.length;
+      const returnCount = queue.bulkQueue.length + queue.batchQueue.length;
       if (returnCount === 0) {
         const gradedCount = Object.values(savedResults).filter((s) => s?.result).length;
         if (gradedCount > 0) {
           toast.warn(
-            "All graded papers were already returned. Re-mark a student to return updated papers."
+            "All graded papers were already returned. Re-mark or edit a student to return updated papers."
           );
         } else {
           toast.warn("No graded papers to return");
@@ -2991,7 +3000,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       setReturning(true);
 
       const saveRequests = [
-        ...bulkQueue
+        ...queue.bulkQueue
           .map(({ submissionId, bulk }) => {
             const summary = resolvePdfSummary(submissionId, bulk?.result);
             if (!summary) return null;
@@ -3002,7 +3011,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             });
           })
           .filter(Boolean),
-        ...batchQueue
+        ...queue.batchQueue
           .map(({ submissionId, batch }) => {
             const summary = resolvePdfSummary(submissionId, batch?.result);
             if (!summary) return null;
@@ -3017,7 +3026,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       await Promise.all(saveRequests);
 
-      await returnAllToStudents();
+      await returnAllToStudents(queue);
     } catch (err) {
       console.error("Return all failed:", err);
       toast.error((await getApiErrorMessage(err)) || "Return all failed");
@@ -3088,28 +3097,35 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     return { submissionId, name: "Student" };
   };
 
-  const returnAllToStudents = async () => {
+  const returnAllToStudents = async (prebuiltQueue = null) => {
     if (!studentsMarkingUrl) {
       toast.error("Assignment not loaded");
       return;
     }
 
-    let allStudents = [];
-    try {
-      allStudents = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load all students for return");
-      return;
-    }
+    let bulkQueue;
+    let batchQueue;
 
-    const { bulkQueue, batchQueue } = buildReturnAllQueue({
-      bulkProgress,
-      batchJob,
-      savedResults,
-      singleProgress,
-      allStudents,
-    });
+    if (prebuiltQueue) {
+      ({ bulkQueue, batchQueue } = prebuiltQueue);
+    } else {
+      let allStudents = [];
+      try {
+        allStudents = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to load all students for return");
+        return;
+      }
+
+      ({ bulkQueue, batchQueue } = buildReturnAllQueue({
+        bulkProgress,
+        batchJob,
+        savedResults,
+        singleProgress,
+        allStudents,
+      }));
+    }
 
     if (!bulkQueue.length && !batchQueue.length) {
       toast.warn("No new graded students to return");
@@ -3312,7 +3328,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
 
-  const total = sumQuestionMarks(questionsForDisplay);
+  const total =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : sumQuestionMarks(questionsForDisplay);
   const max   = effectiveMaxTotal;
   const pct   = gradeScorePercent(total, max);
   const color = getScoreColor(total, max);
@@ -3473,6 +3492,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
                     {!bulkMarking && (
                       <button
+                        type="button"
                         className="msv-btn-ai"
                         onClick={handleReturnAll}
                         disabled={returning}
@@ -3574,6 +3594,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                  {/* Return All */}
                   {msInfo && !bulkMarking && (
                     <button
+                      type="button"
                       className="msv-btn-ai"
                       onClick={handleReturnAll}
                       disabled={returning}
@@ -4037,6 +4058,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                               setEditingQuestions(
                                                 enrichMarkingQuestions(result.questions || []).map((q) => ({ ...q }))
                                               );
+                                              setEditingCriteriaGrade(cloneCriteriaGrade(result.criteriaGrade));
                                               setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
                                               setEditingMaxTotal(null);
                                               setSummaryTouched(false);
@@ -4629,6 +4651,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         const reset = resetToConfirmed();
                         if (reset) {
                           setEditingQuestions(reset.questions);
+                          setEditingCriteriaGrade(cloneCriteriaGrade(reset.criteriaGrade));
                           setEditingAnnotations(reset.teacherAnnotations || []);
                           setEditingSummary(reset.summary || "");
                           setSummaryTouched(false);
@@ -4770,218 +4793,68 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 />
               )}
 
-              {/* ── CRITERIA MODE: show criteria grade first ── */}
-              {isCriteria && resultModal.result.criteriaGrade && (
+              {isCriteria && editingCriteriaGrade && (
                 <div style={{ marginBottom: 20 }}>
-                  {/* Final grade card */}
-                  <div style={{ padding: "16px 20px", background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)", borderRadius: 12, marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Criteria Grade (Final)</div>
-                    {(() => {
-                      const cg    = resultModal.result.criteriaGrade;
-                      const total = cg.totalMarks || 0;
-                      const max   = effectiveMaxTotal;
-                      const pct   = max > 0 ? Math.round((total / max) * 100) : 0;
-                      const color = getScoreColor(total, max);
-                      return (
-                        <>
-                          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
-                            <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{total}</div>
-                            <div style={{ fontSize: 16, color: "var(--muted)" }}>/ {max}</div>
-                            <div style={{ flex: 1, minWidth: 100 }}>
-                              <div style={{ height: 8, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
-                                <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
-                              </div>
-                              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{pct}%</div>
-                            </div>
-                          </div>
-                          {/* Criteria breakdown table */}
-                          {cg.breakdown?.length > 0 && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              {cg.breakdown.map((row, i) => (
-                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, flexWrap: "wrap" }}>
-                                  <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>{row.criterion}</div>
-                                  <div style={{ fontWeight: 700, fontSize: 13, color: getScoreColor(row.marksAwarded, row.maxMarks), minWidth: 60 }}>
-                                    {row.marksAwarded} / {row.maxMarks}
-                                  </div>
-                                  <div style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>{row.reason}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {cg.summary && (
-                            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 12, lineHeight: 1.6 }}>{cg.summary}</p>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Divider */}
+                  <CriteriaGradeEditor
+                    criteriaGrade={editingCriteriaGrade}
+                    maxTotal={effectiveMaxTotal}
+                    onChange={setEditingCriteriaGrade}
+                    getScoreColor={getScoreColor}
+                  />
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
                     <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>📝 Question Corrections (Feedback Only)</span>
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      Question feedback (PDF)
+                    </span>
                     <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                   </div>
                 </div>
               )}
 
-              {/* ── NORMAL MODE: summary only (grade + bar live in header) ── */}
-              {!isCriteria && (
-                <>
-                  <div className="msv-summary-box">
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Overall Summary</div>
-                    <textarea
-                      value={editingSummary}
-                      onChange={(e) => {
-                        setSummaryTouched(true);
-                        setEditingSummary(e.target.value);
-                      }}
-                      rows={4}
-                      placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
-                      style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
-                    />
-                  </div>
-                </>
-              )}
+              <div className="msv-summary-box">
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  Overall summary (PDF)
+                </div>
+                <textarea
+                  value={editingSummary}
+                  onChange={(e) => {
+                    setSummaryTouched(true);
+                    setEditingSummary(e.target.value);
+                  }}
+                  rows={4}
+                  placeholder="Short bullet points (one per line, start with •)."
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 13, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                />
+              </div>
 
-              {/* ── QUESTIONS (both modes) ── */}
               <MarkingCompletenessNotice
                 result={resultModal?.result}
                 questionCount={questionsForDisplay.length}
               />
-              {!isCriteria && (
-                <AddMarkingQuestionBar
-                  onAdd={(q) => {
-                    setEditingQuestions((prev) => [...prev, q]);
-                    toast.success(`Added Q${q.questionNumber}`);
-                  }}
-                />
-              )}
+              <AddMarkingQuestionBar
+                onAdd={(q) => {
+                  setEditingQuestions((prev) => [...prev, q]);
+                  toast.success(`Added Q${q.questionNumber}`);
+                }}
+              />
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                 {editingQuestions.map((q, idx) => {
                   if (pendingRemovedIndices.has(idx)) return null;
-                  const awarded = Number(q.marksAwarded) || 0;
-                  const qMax = Number(q.maxMarks) || 0;
-                  const color = getScoreColor(awarded, qMax);
-                  const qPct = qMax > 0 ? Math.round((awarded / qMax) * 100) : 0;
                   return (
-                    <div key={idx} className="msv-q-card">
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                        <QuestionNumberBadge question={q} guidance={assignmentPrompt.content} />
-                        {/* In criteria mode, scores are read-only feedback */}
-                        {isCriteria ? (
-                          <span style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 13 }}>
-                            {q.marksAwarded} / {q.maxMarks}
-                          </span>
-                        ) : (
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
-                              type="number" min={0} max={q.maxMarks}
-                              value={awarded}
-                              onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, marksAwarded: Math.min(qMax, Math.max(0, Number(e.target.value) || 0)) } : x))}
-                              style={{ width: 52, padding: "4px 8px", borderRadius: 6, border: `1px solid ${color}`, background: `color-mix(in srgb, ${color} 15%, transparent)`, color, fontWeight: 700, fontSize: 14, textAlign: "center", outline: "none" }}
-                            />
-                            <span style={{ color: "var(--muted)", fontSize: 13 }}>/</span>
-                            {(q._manual || q._backfilled) ? (
-                              <input
-                                type="number"
-                                min={1}
-                                max={50}
-                                value={qMax}
-                                onChange={(e) => {
-                                  const max = Math.max(1, Number(e.target.value) || 1);
-                                  setEditingQuestions((prev) =>
-                                    prev.map((x, i) =>
-                                      i === idx
-                                        ? {
-                                            ...x,
-                                            maxMarks: max,
-                                            marksAwarded: Math.min(max, Number(x.marksAwarded) || 0),
-                                          }
-                                        : x
-                                    )
-                                  );
-                                }}
-                                style={{
-                                  width: 44,
-                                  padding: "4px 6px",
-                                  borderRadius: 6,
-                                  border: "1px solid var(--border)",
-                                  background: "var(--surface-2)",
-                                  color: "var(--text-primary)",
-                                  fontSize: 13,
-                                  textAlign: "center",
-                                  outline: "none",
-                                }}
-                              />
-                            ) : (
-                              <span style={{ color: "var(--muted)", fontSize: 13 }}>{q.maxMarks}</span>
-                            )}
-                          </div>
-                        )}
-                        <div style={{ flex: 1, minWidth: 60, height: 5, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 3 }}>
-                          <div style={{ width: `${qPct}%`, height: "100%", background: color, borderRadius: 3 }} />
-                        </div>
-                        <span style={{ fontSize: 11, color: "var(--muted)" }}>{qPct}%</span>
-                      </div>
-
-                      {q.checklist && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-                          {CHECKLIST_CONFIG.map(({ key, label, passIsGood }) => {
-                            const val    = q.checklist[key];
-                            const isGood = passIsGood ? val === true : val === false;
-                            return (
-                              <span key={key} style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, background: isGood ? "color-mix(in srgb, var(--success) 10%, transparent)" : "color-mix(in srgb, var(--danger) 10%, transparent)", color: isGood ? "var(--success)" : "var(--danger)", border: `1px solid ${isGood ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--danger) 20%, transparent)"}` }}>
-                                {isGood ? "✅" : "❌"} {label}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {q.studentAnswer && !isBlankQuestion(q) && (
-                        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-                          <span style={{ fontWeight: 600, color: "var(--muted)" }}>Student: </span>{q.studentAnswer}
-                        </div>
-                      )}
-                      {isBlankQuestion(q) && (
-                        <div style={{ fontSize: 12, color: "var(--warning)", marginBottom: 6, lineHeight: 1.5 }}>
-                          📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
-                        </div>
-                      )}
-
-                      {/* Correct answer — criteria mode or MCQ */}
-                      {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
-                        <div style={{ fontSize: 12, color: "var(--success)", marginBottom: 6, padding: "6px 10px", background: "color-mix(in srgb, var(--success) 7%, transparent)", borderRadius: 6, border: "1px solid color-mix(in srgb, var(--success) 15%, transparent)" }}>
-                          <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>{q.correctAnswer}
-                        </div>
-                      )}
-
-                      {!isCriteria && (
-                        <QuestionKeywordFields
-                          question={q}
-                          onChange={(updated) =>
-                            setEditingQuestions((prev) =>
-                              prev.map((x, i) => (i === idx ? updated : x))
-                            )
-                          }
-                        />
-                      )}
-
-                      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                        {isCriteria ? "Comment" : "Examiner Note"}
-                      </div>
-                      {isCriteria ? (
-                        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{q.reason}</p>
-                      ) : (
-                        <textarea
-                          value={q.reason}
-                          onChange={e => setEditingQuestions(prev => prev.map((x, i) => i === idx ? { ...x, reason: e.target.value } : x))}
-                          rows={3}
-                          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)", fontSize: 12, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
-                        />
-                      )}
-                    </div>
+                    <MarkingQuestionCard
+                      key={idx}
+                      question={q}
+                      index={idx}
+                      guidance={assignmentPrompt.content}
+                      allQuestions={questionsForDisplay}
+                      getScoreColor={getScoreColor}
+                      onChange={(index, updated) =>
+                        setEditingQuestions((prev) =>
+                          prev.map((x, i) => (i === index ? updated : x))
+                        )
+                      }
+                      onRemove={(questionIndex) => handleQuestionRemove(questionIndex)}
+                    />
                   );
                 })}
               </div>
@@ -5165,7 +5038,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     return (
                       <div key={item.questionNumber} className="msv-q-card">
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-                          <QuestionNumberBadge question={item} guidance={assignmentPrompt.content} />
+                          <QuestionNumberBadge question={item} guidance={assignmentPrompt.content} allQuestions={questionsForDisplay} />
                           {item.resolution == null && (
                             <span style={{ fontSize: 11, color: "var(--warning)" }}>Unresolved</span>
                           )}

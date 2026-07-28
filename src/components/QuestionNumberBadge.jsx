@@ -1,10 +1,25 @@
+import { useMemo } from "react";
 import {
+  buildDuplicateQuestionNumberSet,
   formatMsLabelHint,
-  getDisplayQuestionNumber,
+  formatQuestionLabelWithPage,
 } from "../utils/questionLabelDisplay";
 
-export default function QuestionNumberBadge({ question, guidance, style = {} }) {
-  const displayNumber = getDisplayQuestionNumber(question, guidance);
+export default function QuestionNumberBadge({
+  question,
+  guidance,
+  allQuestions = null,
+  style = {},
+}) {
+  const duplicateNumbers = useMemo(
+    () => (allQuestions ? buildDuplicateQuestionNumberSet(allQuestions) : null),
+    [allQuestions]
+  );
+  const displayNumber = formatQuestionLabelWithPage(
+    question,
+    guidance,
+    duplicateNumbers
+  );
   const msHint = formatMsLabelHint(question, guidance);
 
   return (

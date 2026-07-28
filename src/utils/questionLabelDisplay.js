@@ -103,6 +103,28 @@ export function resolvePrintedQuestionNumber(question, guidance) {
   return lookupPrintedLabel(msMaps, msRef, page);
 }
 
+export function buildDuplicateQuestionNumberSet(questions) {
+  const counts = new Map();
+  for (const q of questions || []) {
+    const n = String(q?.questionNumber ?? "").trim();
+    if (!n) continue;
+    counts.set(n, (counts.get(n) || 0) + 1);
+  }
+  return new Set(
+    [...counts.entries()].filter(([, c]) => c > 1).map(([n]) => n)
+  );
+}
+
+export function formatQuestionLabelWithPage(question, guidance, duplicateNumbers) {
+  const display = getDisplayQuestionNumber(question, guidance);
+  const ms = String(question?.questionNumber ?? "").trim();
+  if (duplicateNumbers?.has(ms)) {
+    const page = Math.max(1, Number(question?.pageNumber) || 1);
+    return `${display} · p${page}`;
+  }
+  return display;
+}
+
 export function getDisplayQuestionNumber(question, guidance) {
   const printed =
     resolvePrintedQuestionNumber(question, guidance) ||

@@ -18,11 +18,13 @@ function markingChangedSinceReturn(saved) {
 }
 
 export function isSubmissionAlreadyReturned({ bulk, batch, saved }) {
-  if (bulk?.returned || batch?.returned) return true;
-
-  if (saved?.returnedAt && !markingChangedSinceReturn(saved)) {
-    return true;
+  // Prefer persisted return state — allows re-return after teacher edits (updatedAt > returnedAt).
+  if (saved?.returnedAt) {
+    return !markingChangedSinceReturn(saved);
   }
+
+  // Session-only flags when nothing is persisted yet.
+  if (bulk?.returned || batch?.returned) return true;
 
   return false;
 }
@@ -62,7 +64,11 @@ export function buildReturnAllQueue({
     const student = resolveStudent(submissionId);
     if (isSubmissionAlreadyReturned({ bulk, saved })) continue;
 
-    bulkQueue.push({ submissionId, student, bulk });
+    bulkQueue.push({
+      submissionId,
+      student,
+      bulk: mergeBulkForReturn(bulk, saved),
+    });
     seen.add(submissionId);
   }
 
@@ -74,7 +80,11 @@ export function buildReturnAllQueue({
     const student = resolveStudent(submissionId);
     if (isSubmissionAlreadyReturned({ batch, saved })) continue;
 
-    batchQueue.push({ submissionId, student, batch });
+    batchQueue.push({
+      submissionId,
+      student,
+      batch: mergeBatchForReturn(batch, saved),
+    });
     seen.add(submissionId);
   }
 
@@ -89,11 +99,14 @@ export function buildReturnAllQueue({
     bulkQueue.push({
       submissionId,
       student,
-      bulk: {
-        status: "done",
-        result: single.result,
-        studentFile: single.studentFile,
-      },
+      bulk: mergeBulkForReturn(
+        {
+          status: "done",
+          result: single.result,
+          studentFile: single.studentFile,
+        },
+        saved
+      ),
     });
     seen.add(submissionId);
   }
@@ -108,14 +121,34 @@ export function buildReturnAllQueue({
     bulkQueue.push({
       submissionId,
       student,
-      bulk: {
-        status: "done",
-        result: saved.result,
-        studentFile: saved.studentFile,
-      },
+      bulk: mergeBulkForReturn(
+        {
+          status: "done",
+          result: saved.result,
+          studentFile: saved.studentFile,
+        },
+        saved
+      ),
     });
     seen.add(submissionId);
   }
 
   return { bulkQueue, batchQueue };
+}
+
+function mergeBulkForReturn(bulk, saved) {
+  if (!saved?.result) return bulk;
+  return {
+    ...bulk,
+    result: saved.result,
+    studentFile: bulk?.studentFile || saved.studentFile,
+  };
+}
+
+function mergeBatchForReturn(batch, saved) {
+  if (!saved?.result) return batch;
+  return {
+    ...batch,
+    result: saved.result,
+  };
 }

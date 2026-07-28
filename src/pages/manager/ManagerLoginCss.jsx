@@ -16,6 +16,7 @@ import {
   sumQuestionMarks,
   filterQuestionsPendingRemoval,
   buildPlacementQuestions,
+  applyPlacementChange,
   questionsForConfirmEdits,
   gradeScorePercent,
   getApiErrorMessage,
@@ -329,22 +330,9 @@ export default function ManagerLoginCss() {
     pendingRemovedIndices,
   });
 
-  const handleAnnotationPlacementChange = useCallback(
-    ({ questionNumber, pageNumber, yPercent }) => {
-      setEditingQuestions((prev) =>
-        prev.map((q) =>
-          String(q.questionNumber) === String(questionNumber)
-            ? {
-                ...q,
-                pageNumber: Math.max(1, Number(pageNumber) || 1),
-                yPercent,
-              }
-            : q
-        )
-      );
-    },
-    []
-  );
+  const handleAnnotationPlacementChange = useCallback((change) => {
+    setEditingQuestions((prev) => applyPlacementChange(prev, change));
+  }, []);
 
   const handleQuestionRemove = useCallback((questionIndex) => {
     setPendingRemovedIndices((prev) => {
@@ -2618,7 +2606,7 @@ export default function ManagerLoginCss() {
                             flexWrap: "wrap",
                           }}
                         >
-                          <QuestionNumberBadge question={q} guidance={assignmentPrompt.content} />
+                          <QuestionNumberBadge question={q} guidance={assignmentPrompt.content} allQuestions={questionsForDisplay} />
                           {isCriteria ? (
                             <span
                               style={{

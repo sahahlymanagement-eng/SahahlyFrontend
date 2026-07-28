@@ -1,4 +1,5 @@
 import { estimateMarkingCost } from "./markingCost";
+import { questionRowHasEdits, criteriaGradeHasEdits } from "./markingQuestionEdits";
 
 /** Attach assignment context for backend logging (person comes from JWT only). */
 export function appendMarkingContext(formData, { assignmentId, classroomId } = {}) {
@@ -508,6 +509,33 @@ export function filterQuestionsPendingRemoval(questions, pendingRemovedIndices) 
   return (questions || []).filter((_, i) => !pendingRemovedIndices.has(i));
 }
 
+/** Stable key for placement drag state — index when available, else page + label. */
+export function placementKey(q) {
+  if (q != null && q._placementIndex != null && q._placementIndex !== "") {
+    return `idx:${q._placementIndex}`;
+  }
+  const id = String(q?.questionNumber ?? "").trim();
+  const page = Math.max(1, Number(q?.pageNumber) || 1);
+  const y = Math.min(100, Math.max(0, Number(q?.yPercent) || 0));
+  const yBucket = Math.round(y / 5) * 5;
+  return id ? `${id}::p${page}::y${yBucket}` : `anon::p${page}::y${yBucket}`;
+}
+
+/** Apply a drag placement update to one row (by index, not questionNumber). */
+export function applyPlacementChange(questions, { placementIndex, pageNumber, yPercent }) {
+  const idx = Number(placementIndex);
+  if (!Number.isFinite(idx) || idx < 0) return questions;
+  return (questions || []).map((q, i) =>
+    i === idx
+      ? {
+          ...q,
+          pageNumber: Math.max(1, Number(pageNumber) || 1),
+          yPercent,
+        }
+      : q
+  );
+}
+
 /** Preview overlay list — keeps original indices for remove handlers. */
 export function buildPlacementQuestions(questions, pendingRemovedIndices) {
   return (questions || [])
@@ -531,17 +559,17 @@ export function questionsHavePendingEdits(currentQuestions, confirmedSnapshot) {
   const confirmed = confirmedSnapshot.questions || [];
   if (current.length !== confirmed.length) return true;
 
-  const normKw = (arr) =>
-    JSON.stringify((arr || []).map((s) => String(s).trim()).filter(Boolean));
+  return current.some((q, i) => questionRowHasEdits(q, confirmed[i]));
+}
 
-  return current.some(
-    (q, i) =>
-      Number(q.marksAwarded) !== Number(confirmed[i]?.marksAwarded) ||
-      String(q.reason || "") !== String(confirmed[i]?.reason || "") ||
-      Number(q.yPercent) !== Number(confirmed[i]?.yPercent) ||
-      Number(q.pageNumber) !== Number(confirmed[i]?.pageNumber) ||
-      normKw(q.markedKeywords) !== normKw(confirmed[i]?.markedKeywords) ||
-      normKw(q.missingKeywords) !== normKw(confirmed[i]?.missingKeywords)
+export function markingResultHasPendingCriteriaEdits(
+  editingCriteriaGrade,
+  confirmedSnapshot
+) {
+  if (!confirmedSnapshot?.criteriaGrade && !editingCriteriaGrade) return false;
+  return criteriaGradeHasEdits(
+    editingCriteriaGrade,
+    confirmedSnapshot?.criteriaGrade
   );
 }
 
@@ -551,18 +579,39 @@ export function applyTeacherEditsToResult(
   editingQuestions,
   maxTotalMarks,
   editingAnnotations = null,
-  summaryOverride = null
+  summaryOverride = null,
+  editingCriteriaGrade = null
 ) {
-  const finalResult = buildFinalMarkingResult(baseResult, editingQuestions);
+  const totalMarks = sumQuestionMarks(editingQuestions);
+
+  const finalResult = {
+    ...baseResult,
+    questions: editingQuestions,
+    totalMarks,
+  };
+
   const max = Math.max(1, Number(maxTotalMarks) || getResultMaxTotal(baseResult));
 
   finalResult.maxTotalMarks = max;
   if (finalResult.markingMode === "criteria" && finalResult.criteriaGrade) {
+    const criteria = editingCriteriaGrade
+      ? {
+          ...finalResult.criteriaGrade,
+          ...editingCriteriaGrade,
+          breakdown: (editingCriteriaGrade.breakdown || []).map((row) => ({
+            ...row,
+          })),
+        }
+      : finalResult.criteriaGrade;
     finalResult.criteriaGrade = {
-      ...finalResult.criteriaGrade,
+      ...criteria,
       maxTotalMarks: max,
-      totalMarks: finalResult.totalMarks,
+      totalMarks:
+        editingCriteriaGrade != null
+          ? Number(editingCriteriaGrade.totalMarks) || 0
+          : criteria.totalMarks,
     };
+    finalResult.totalMarks = finalResult.criteriaGrade.totalMarks;
   }
 
   if (editingAnnotations != null) {
