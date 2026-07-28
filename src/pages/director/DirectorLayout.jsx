@@ -17,6 +17,7 @@ import {
   FiBookOpen,
 
   FiUserPlus,
+  FiUser,
 
   FiLink,
 
@@ -77,6 +78,7 @@ const NAV_SECTIONS = [
       { icon: <FiBookOpen />, label: "Course Management", path: "/director/courses" },
 
       { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
+      { icon: <FiUser />, label: "Assign Assistants", path: "/director/assign-assistants" },
 
     ],
 

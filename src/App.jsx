@@ -51,6 +51,8 @@ import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerf
 import DirectorFeedback from "./pages/director/DirectorFeedback";
 import DirectorReports from "./pages/director/DirectorReports";
 import DirectorAssignments from "./pages/director/DirectorAssignments";
+import BackupLayout from "./pages/backup/BackupLayout";
+import BackupAssignments from "./pages/backup/BackupAssignments";
 import OperationMetrics from "./pages/manager/operation-metrics";
 import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
 import ManagerFeedback from "./pages/manager/ManagerFeedback";
@@ -309,11 +311,30 @@ function App() {
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
+          <Route path="assign-assistants" element={<ManagerDashboard scope="director" />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
           <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
         </Route>
 
+        {/* Backup — limited director access */}
+        <Route
+          path="/backup"
+          element={
+            <RoleProtectedRoute allowedRole="backup">
+              <BackupLayout />
+            </RoleProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="submissions" replace />} />
+          <Route path="submissions" element={<ManagerSubmissionViewer scope="backup" />} />
+          <Route path="reports" element={<BackupAssignments />} />
+          <Route path="courses" element={<CoursesList />} />
+          <Route path="google-classroom" element={<GoogleClassroom />} />
+          <Route path="coursework/:courseId" element={<CourseWork />} />
+          <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
+          <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
+        </Route>
 
 
 

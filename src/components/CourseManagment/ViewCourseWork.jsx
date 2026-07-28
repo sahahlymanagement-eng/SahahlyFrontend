@@ -8,7 +8,7 @@ import "../../pages/teacher/teacher.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 import { TeacherPageHeader, TeacherLoading, TeacherEmpty } from "../../pages/teacher/TeacherUI";
-import { FiCalendar, FiAward, FiEdit3, FiTrash2, FiPlus } from "react-icons/fi";
+import { isDirectorLikeRole, roleShellPath } from "../../utils/directorLikeAccess";
 
 export default function ViewCoursework() {
   const { courseId } = useParams();
@@ -18,7 +18,10 @@ export default function ViewCoursework() {
   const storedUser = localStorage.getItem("user");
   const user = storedUser ? JSON.parse(storedUser) : null;
   const role = user?.roleId?.name?.toLowerCase();
-  const canDelete = role === "manager" || role === "admin" || role === "teacher";
+  const canDelete =
+    role === "manager" ||
+    isDirectorLikeRole(role) ||
+    role === "teacher";
   const canEdit = canDelete;
   const showSubmissionStats = role === "teacher";
   const isTeacherShell = role === "teacher";
@@ -129,8 +132,8 @@ export default function ViewCoursework() {
     const editPath =
       role === "manager"
         ? `/manager/coursework/${courseId}/edit/${googleCourseWorkId}`
-        : role === "admin"
-          ? `/director/coursework/${courseId}/edit/${googleCourseWorkId}`
+        : isDirectorLikeRole(role)
+          ? `${roleShellPath(role)}/coursework/${courseId}/edit/${googleCourseWorkId}`
           : `/teacher/coursework/${courseId}/edit/${googleCourseWorkId}`;
 
     navigate(editPath, { state: { courseName: state?.courseName } });

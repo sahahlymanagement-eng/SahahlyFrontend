@@ -18,7 +18,7 @@ import "./CourseManagement.css";
 import { usePagination } from "../../hooks/usePagination";
 import ReportTeacherFilterSelect from "../ReportTeacherFilterSelect";
 import { useReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
-import { confirmToast } from "../../utils/confirmToast";
+import { isDirectorLikeRole, roleShellPath } from "../../utils/directorLikeAccess";
 
 const UNASSIGNED_KEY = "__unassigned__";
 
@@ -68,7 +68,7 @@ export default function CoursesList() {
   const storedUser = localStorage.getItem("user");
   const user = storedUser ? JSON.parse(storedUser) : null;
   const role = user?.roleId?.name?.toLowerCase();
-  const isAdmin = role === "admin";
+  const isAdmin = isDirectorLikeRole(role);
   const isManager = role === "manager";
   const isFolderView = isAdmin || isManager;
 
@@ -180,7 +180,7 @@ export default function CoursesList() {
     }
   };
 
-  const basePath = isManager ? "/manager" : isAdmin ? "/director" : "/teacher";
+  const basePath = isManager ? "/manager" : isAdmin ? roleShellPath(role) : "/teacher";
 
   const goCreateCoursework = (course) => {
     navigate(`${basePath}/coursework/${courseId(course)}`);

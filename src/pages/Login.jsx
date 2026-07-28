@@ -51,6 +51,7 @@ export default function Login() {
         "quality team": "/quality-team/dashboard",
         "quality manager": "/quality-manager/dashboard",
         admin: "/director/dashboard",
+        backup: "/backup/submissions",
       };
 
       navigate(routes[roleName] || "/", { replace: true });

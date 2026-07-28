@@ -13,6 +13,7 @@ import {
   listPersonalDrivePdfs,
   downloadDrivePdfAsFile,
 } from "../../utils/googleDrivePicker";
+import { isDirectorLikeRole, roleShellPath } from "../../utils/directorLikeAccess";
 
 function formatDriveModified(iso) {
   if (!iso) return "";
@@ -504,8 +505,8 @@ export default function Coursework() {
         const viewPath =
           role === "manager"
             ? `/manager/view-coursework/${courseId}`
-            : role === "admin"
-              ? `/director/view-coursework/${courseId}`
+            : isDirectorLikeRole(role)
+              ? `${roleShellPath(role)}/view-coursework/${courseId}`
               : `/teacher/view-coursework/${courseId}`;
         navigate(viewPath, {
           state: { courseName: state?.courseName },

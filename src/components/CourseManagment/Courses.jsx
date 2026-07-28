@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import "./CourseManagement.css";
-import { useNavigate } from "react-router-dom";
+import { isDirectorLikeRole, roleShellPath } from "../../utils/directorLikeAccess";
 
 export default function CreateCourse() {
   const [name, setName] = useState("");
@@ -34,7 +34,7 @@ export default function CreateCourse() {
         toast.error("Failed to load Google accounts");
       }
 
-      if (role === "manager" || role === "admin") {
+      if (role === "manager" || isDirectorLikeRole(role)) {
         try {
           const res = await api.get("/people/teachers");
           setTeachers(res.data);
@@ -52,18 +52,18 @@ export default function CreateCourse() {
     if (!selectedGoogleAccountId) {
       return toast.warn("Please select which Sahahly Gmail account owns this classroom");
     }
-    if ((role === "manager" || role === "admin") && !selectedTeacherId) {
+    if ((role === "manager" || isDirectorLikeRole(role)) && !selectedTeacherId) {
       return toast.warn("Please select a teacher");
     }
 
     setLoading(true);
 
     try {
-      const url = (role === "manager" || role === "admin")
+      const url = (role === "manager" || isDirectorLikeRole(role))
         ? "/google-classroom/courses/manager-director"
         : "/google-classroom/courses/teacher";
 
-      const payload = (role === "manager" || role === "admin")
+      const payload = (role === "manager" || isDirectorLikeRole(role))
         ? {
             courseData: { name, section, description },
             teacherId: selectedTeacherId,
@@ -121,8 +121,8 @@ export default function CreateCourse() {
               navigate(
                 role === "manager"
                   ? "/manager/courses"
-                  : role === "admin"
-                  ? "/director/courses"
+                  : isDirectorLikeRole(role)
+                  ? `${roleShellPath(role)}/courses`
                   : "/teacher/courses"
               )
             }
@@ -183,7 +183,7 @@ export default function CreateCourse() {
           </div>
 
           {/* Only show teacher dropdown for manager */}
-          {(role === "manager" || role === "admin")&& (
+          {(role === "manager" || isDirectorLikeRole(role)) && (
             <div className="pm-input-group">
               <label className="pm-input-label">Assign teacher (in Sahahly)</label>
               <select

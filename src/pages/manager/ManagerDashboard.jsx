@@ -15,6 +15,7 @@ import {
   FiAlertTriangle, FiZap,FiClipboard,FiFileText
 } from "react-icons/fi";
 
+import { isDirectorLikeRole } from "../../utils/directorLikeAccess";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 
@@ -37,8 +38,9 @@ const STATUS_META = {
 const formatStatus = (s) =>
   s.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 
-export default function ManagerDashboard() {
+export default function ManagerDashboard({ scope = "manager" }) {
   const navigate = useNavigate();
+  const isDirectorScope = scope === "director";
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState(null);
@@ -69,9 +71,15 @@ export default function ManagerDashboard() {
     const token = localStorage.getItem("token");
     if (!storedUser || !token) { navigate("/login", { replace: true }); return; }
     const parsed = JSON.parse(storedUser);
-    if (parsed?.roleId?.name?.toLowerCase() !== "manager") { navigate("/login", { replace: true }); return; }
+    const roleName = parsed?.roleId?.name?.toLowerCase();
+    if (isDirectorScope) {
+      if (!isDirectorLikeRole(roleName)) { navigate("/login", { replace: true }); return; }
+    } else if (roleName !== "manager") {
+      navigate("/login", { replace: true });
+      return;
+    }
     setUser(parsed);
-  }, [navigate]);
+  }, [navigate, isDirectorScope]);
 
   const computeDashboardStatus = (a) => {
     if (a.status === "UNASSIGNED" && a.assignedAssistantId) return "ASSIGNED";
@@ -181,6 +189,38 @@ export default function ManagerDashboard() {
   const loadClassroomContext = async () => {
     try {
       setContextLoading(true);
+
+      if (isDirectorScope) {
+        const classroomsRes = await api.get("/classrooms", { params: { page: 1, limit: 5000 } });
+        const map = {};
+        const teachers = {};
+        (classroomsRes.data.data || []).forEach((c) => {
+          if (!c?._id) return;
+          const cid = String(c._id);
+          map[cid] = c.name;
+          teachers[cid] = c.teacherId?.name || "Not Assigned";
+        });
+        setTeacherMap(teachers);
+        setClassroomMap(map);
+        const ids = (classroomsRes.data.data || [])
+          .map((c) => c._id)
+          .filter(Boolean)
+          .map(String);
+        setClassroomIds(ids);
+
+        if (!ids.length) {
+          setDelegations([]);
+          setAssistantsMap({});
+          setAssistantMetaMap({});
+          const e = {};
+          DASHBOARD_STATUSES.forEach((s) => {
+            e[s] = 0;
+          });
+          setStatusCounts(e);
+        }
+        return;
+      }
+
       const classroomManagersRes = await api.get(`/classroom-managers?personId=${user.id}`, { params: { page: 1, limit: 5000 } });
       const map = {};
       const teachers = {};
@@ -357,8 +397,9 @@ const toggleRow = (id) => {
 
 const goToSubmissionViewer = (assignment) => {
   if (!assignment?.classroomId || !assignment?._id) return;
+  const base = isDirectorScope ? "/director/submissions" : "/manager/submissions";
   navigate(
-    `/manager/submissions?classroomId=${assignment.classroomId}&assignmentId=${assignment._id}`
+    `${base}?classroomId=${assignment.classroomId}&assignmentId=${assignment._id}`
   );
 };
 
@@ -371,8 +412,12 @@ const goToSubmissionViewer = (assignment) => {
         {/* TOP BAR */}
         <header className="md-topbar">
           <div className="md-topbar-left">
-            <h1 className="md-topbar-title">Dashboard</h1>
-            <span className="md-topbar-sub">Welcome back, {user.name}</span>
+            <h1 className="md-topbar-title">{isDirectorScope ? "Assign Assistants" : "Dashboard"}</h1>
+            <span className="md-topbar-sub">
+              {isDirectorScope
+                ? "Assign assistants to assignments across all classrooms"
+                : `Welcome back, ${user.name}`}
+            </span>
           </div>
           <div className="md-topbar-right">
             <div className="md-total-pill">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import api from "../api/api";
 import { toast } from "react-toastify";
 import { downloadBlob } from "../utils/downloadBlob";
@@ -40,7 +40,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   onNavigate,
 }) {
   const isTeacher = variant === "teacher";
-  const isDirector = variant === "director";
+  const isDirector = isDirectorLikeVariant(variant);
   const [user, setUser] = useState(null);
   const [selectedClassroom, setSelectedClassroom] = usePersistedState(`reports:${variant}:exec:classroom`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`reports:${variant}:exec:assignment`, null);

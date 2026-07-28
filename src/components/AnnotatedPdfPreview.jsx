@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { FiChevronLeft, FiChevronRight, FiZoomIn, FiZoomOut } from "react-icons/fi";
+import {
+  FiChevronLeft,
+  FiChevronRight,
+  FiZoomIn,
+  FiZoomOut,
+  FiMaximize2,
+  FiMinimize2,
+} from "react-icons/fi";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 import { getDisplayQuestionNumber } from "../utils/questionLabelDisplay";
@@ -7,20 +14,25 @@ import { getDisplayQuestionNumber } from "../utils/questionLabelDisplay";
 // CDN worker avoids nginx serving bundled .mjs as application/octet-stream on VPS
 GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
-/** Fit-to-width scale; cap pixel width so huge scans stay scrollable. */
 const MAX_RENDER_WIDTH = 920;
-const PREVIEW_SCALE_CAP = 1.35;
+const PREVIEW_SCALE_CAP = 2;
 const ZOOM_MIN = 0.25;
-const ZOOM_MAX = 3;
-const ZOOM_STEP_BTN = 0.1;
-const ZOOM_SLIDER_STEP = 5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP_BTN = 0.15;
+const ZOOM_WHEEL_STEP = 0.12;
 const DEFAULT_ZOOM = 1;
-const PAN_ZOOM_THRESHOLD = 1.02;
+const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 function clampZoom(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_ZOOM;
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(n * 100) / 100));
+}
+
+function pointerDistance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
 }
 
 /** Examiner column is ~178pt on ~595pt paper → ~23% of annotated page width. */
@@ -93,7 +105,6 @@ function LazyPdfPage({
   pdf,
   pageNumber,
   renderWidth,
-  zoomLevel,
   scrollRoot,
   studentPageNumber,
   pageQuestions,
@@ -127,17 +138,18 @@ function LazyPdfPage({
         const page = await pdf.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
         let scale = renderWidth / baseViewport.width;
-        if (zoomLevel <= 1.001 && renderWidth <= MAX_RENDER_WIDTH) {
-          scale = Math.min(scale, PREVIEW_SCALE_CAP);
-        }
+        scale = Math.min(scale, PREVIEW_SCALE_CAP);
         const viewport = page.getViewport({ scale });
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
         const canvas = canvasRef.current;
         if (!canvas) return;
 
         const ctx = canvas.getContext("2d", { alpha: false });
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
         setRendered(true);
 
         if (renderTaskRef.current) {
@@ -148,6 +160,7 @@ function LazyPdfPage({
           }
         }
 
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         const task = page.render({ canvasContext: ctx, viewport });
         renderTaskRef.current = task;
         await task.promise;
@@ -166,7 +179,7 @@ function LazyPdfPage({
           renderPage();
         }
       },
-      { root: scrollRoot, rootMargin: "240px 0px", threshold: 0.01 }
+      { root: scrollRoot, rootMargin: "320px 0px", threshold: 0.01 }
     );
 
     observer.observe(el);
@@ -180,7 +193,7 @@ function LazyPdfPage({
         }
       }
     };
-  }, [pdf, pageNumber, renderWidth, zoomLevel, scrollRoot]);
+  }, [pdf, pageNumber, renderWidth, scrollRoot]);
 
   const showHandles = Array.isArray(pageQuestions) && pageQuestions.length > 0;
 
@@ -248,8 +261,6 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
       clientY < rect.top ? rect.top - clientY : clientY - rect.bottom;
     if (dist < bestDist) {
       bestDist = dist;
-      // Pointer is between pages: snap to the nearest edge of this page
-      // instead of extrapolating a percentage past its bounds.
       const yPercent = clientY < rect.top ? 5 : 92;
       best = { studentPage, yPercent, pageEl: el };
     }
@@ -257,14 +268,13 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
 
   if (best) return best;
 
-  // Fallback: first student page
   const first = Math.max(1, 1);
   void reportOffset;
   return { studentPage: first, yPercent: 30, pageEl: null };
 }
 
 /**
- * Lazy page-by-page PDF preview.
+ * Lazy page-by-page PDF preview with smooth CSS-transform zoom.
  * Optional placementQuestions + onPlacementChange: drag boxes across pages;
  * parent should apply pageNumber/yPercent and only regenerate on Confirm Edits.
  */
@@ -276,7 +286,9 @@ export default function AnnotatedPdfPreview({
   onQuestionRemove = null,
   labelGuidance = "",
 }) {
+  const rootRef = useRef(null);
   const scrollRef = useRef(null);
+  const contentRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
   const [pdf, setPdf] = useState(null);
   const [numPages, setNumPages] = useState(0);
@@ -285,17 +297,25 @@ export default function AnnotatedPdfPreview({
   const [containerWidth, setContainerWidth] = useState(MAX_RENDER_WIDTH);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isPanning, setIsPanning] = useState(false);
-  const [canScrollX, setCanScrollX] = useState(false);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   /** Local drag overrides: { [questionNumber]: { pageNumber, yPercent } } */
   const [localPlacement, setLocalPlacement] = useState({});
   const [dragKey, setDragKey] = useState(null);
   const dragRef = useRef(null);
-  const panRef = useRef(null);
+  const pinchRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const lastTapRef = useRef({ time: 0, x: 0, y: 0 });
+  const zoomRef = useRef(DEFAULT_ZOOM);
 
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
   const removeEnabled = typeof onQuestionRemove === "function";
+
+  const baseRenderWidth = Math.max(240, Math.floor(containerWidth));
+  const zoomPercent = Math.round(zoomLevel * 100);
+  const scaledWidth = Math.ceil(baseRenderWidth * zoomLevel);
+  const scaledHeight = Math.ceil(contentHeight * zoomLevel);
 
   const handleQuestionRemove = useCallback(
     (questionIndex) => {
@@ -315,6 +335,10 @@ export default function AnnotatedPdfPreview({
   );
 
   useEffect(() => {
+    zoomRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  useEffect(() => {
     setLocalPlacement({});
     setZoomLevel(DEFAULT_ZOOM);
   }, [url]);
@@ -330,6 +354,24 @@ export default function AnnotatedPdfPreview({
     });
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const el = contentRef.current;
+    const measure = () => setContentHeight(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [numPages, baseRenderWidth, url]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === rootRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
   useEffect(() => {
@@ -412,9 +454,6 @@ export default function AnnotatedPdfPreview({
       const studentPage = Math.max(1, Number(q.pageNumber) || 1);
       const startY = clampYPercent(q.yPercent);
 
-      // The handle is centered on its anchor line (translateY(-50%)). Remember
-      // where inside the handle the user grabbed so the anchor doesn't snap to
-      // the cursor on the first move — that jump made drags land inaccurately.
       const rect = e.currentTarget.getBoundingClientRect();
       const grabOffsetY = e.clientY - (rect.top + rect.height / 2);
 
@@ -446,7 +485,6 @@ export default function AnnotatedPdfPreview({
       );
       if (!hit) return;
 
-      // Auto-scroll near edges while dragging across pages
       const root = scrollRef.current;
       if (root) {
         const rootRect = root.getBoundingClientRect();
@@ -487,7 +525,6 @@ export default function AnnotatedPdfPreview({
       }));
       dragRef.current = null;
       setDragKey(null);
-      // Parent updates editingQuestions only — PDF regenerates on Confirm Edits
       onPlacementChange?.({
         questionNumber: drag.questionNumber,
         pageNumber,
@@ -518,97 +555,157 @@ export default function AnnotatedPdfPreview({
   const goPrev = () => scrollToPage(Math.max(1, currentPage - 1));
   const goNext = () => scrollToPage(Math.min(numPages, currentPage + 1));
 
-  const renderWidth = Math.max(240, Math.floor(containerWidth * zoomLevel));
-  const zoomPercent = Math.round(zoomLevel * 100);
-  const canPan = zoomLevel > PAN_ZOOM_THRESHOLD || canScrollX;
-
-  useEffect(() => {
+  const applyZoomAtPoint = useCallback((newZoom, clientX, clientY) => {
     const root = scrollRef.current;
-    if (!root) return;
+    const oldZoom = zoomRef.current;
+    const clamped = clampZoom(newZoom);
+    if (Math.abs(clamped - oldZoom) < 0.001) return;
 
-    const updateOverflow = () => {
-      setCanScrollX(root.scrollWidth > root.clientWidth + 2);
-    };
+    if (!root) {
+      setZoomLevel(clamped);
+      zoomRef.current = clamped;
+      return;
+    }
 
-    updateOverflow();
-    const observer = new ResizeObserver(updateOverflow);
-    observer.observe(root);
-    root.addEventListener("scroll", updateOverflow);
-    return () => {
-      observer.disconnect();
-      root.removeEventListener("scroll", updateOverflow);
-    };
-  }, [zoomLevel, numPages, renderWidth, url]);
+    const rect = root.getBoundingClientRect();
+    const ratio = clamped / oldZoom;
+    const offsetX = clientX - rect.left + root.scrollLeft;
+    const offsetY = clientY - rect.top + root.scrollTop;
 
-  const zoomOut = () => setZoomLevel((z) => clampZoom(z - ZOOM_STEP_BTN));
-  const zoomIn = () => setZoomLevel((z) => clampZoom(z + ZOOM_STEP_BTN));
-  const resetZoom = () => setZoomLevel(DEFAULT_ZOOM);
-  const setZoomFromSlider = (pct) => setZoomLevel(clampZoom(pct / 100));
+    setZoomLevel(clamped);
+    zoomRef.current = clamped;
 
-  const handlePreviewWheel = useCallback((e) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.08 : 0.08;
-    setZoomLevel((z) => clampZoom(z + delta));
+    requestAnimationFrame(() => {
+      root.scrollLeft = offsetX * ratio - (clientX - rect.left);
+      root.scrollTop = offsetY * ratio - (clientY - rect.top);
+    });
   }, []);
 
-  const handlePanPointerDown = useCallback(
-    (e) => {
-      if (dragKey) return;
-      if (e.target.closest(".pdf-place-handle")) return;
+  const zoomOut = () => {
+    const root = scrollRef.current;
+    if (!root) {
+      setZoomLevel((z) => clampZoom(z - ZOOM_STEP_BTN));
+      return;
+    }
+    const rect = root.getBoundingClientRect();
+    applyZoomAtPoint(zoomRef.current - ZOOM_STEP_BTN, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  };
 
-      const root = scrollRef.current;
-      if (!root) return;
+  const zoomIn = () => {
+    const root = scrollRef.current;
+    if (!root) {
+      setZoomLevel((z) => clampZoom(z + ZOOM_STEP_BTN));
+      return;
+    }
+    const rect = root.getBoundingClientRect();
+    applyZoomAtPoint(zoomRef.current + ZOOM_STEP_BTN, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  };
 
-      const middleClick = e.button === 1;
-      const leftClick = e.button === 0;
-      if (!middleClick && !(leftClick && canPan)) return;
+  const resetZoom = () => {
+    setZoomLevel(DEFAULT_ZOOM);
+    zoomRef.current = DEFAULT_ZOOM;
+    scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  };
 
-      e.preventDefault();
-      e.stopPropagation();
-      panRef.current = {
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        scrollLeft: root.scrollLeft,
-        scrollTop: root.scrollTop,
-      };
-      setIsPanning(true);
-      root.setPointerCapture?.(e.pointerId);
-    },
-    [canPan, dragKey]
-  );
+  const fitPage = useCallback(async () => {
+    if (!pdf || !scrollRef.current) return;
+    try {
+      const page = await pdf.getPage(currentPage);
+      const viewport = page.getViewport({ scale: 1 });
+      const pageHeightAtBase = (baseRenderWidth / viewport.width) * viewport.height;
+      const available = scrollRef.current.clientHeight - 12;
+      const nextZoom = clampZoom(available / pageHeightAtBase);
+      setZoomLevel(nextZoom);
+      zoomRef.current = nextZoom;
+      scrollRef.current.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    } catch (err) {
+      console.warn("[AnnotatedPdfPreview] fit page:", err);
+    }
+  }, [pdf, currentPage, baseRenderWidth]);
+
+  const toggleFullscreen = async () => {
+    const el = rootRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement === el) {
+        await document.exitFullscreen();
+      } else {
+        await el.requestFullscreen();
+      }
+    } catch (err) {
+      console.warn("[AnnotatedPdfPreview] fullscreen:", err);
+    }
+  };
+
+  const handlePreviewWheel = useCallback((e) => {
+    const wantsZoom = e.ctrlKey || e.metaKey || e.altKey;
+    if (!wantsZoom) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -ZOOM_WHEEL_STEP : ZOOM_WHEEL_STEP;
+    applyZoomAtPoint(zoomRef.current + delta, e.clientX, e.clientY);
+  }, [applyZoomAtPoint]);
 
   useEffect(() => {
-    if (!isPanning) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e) => handlePreviewWheel(e);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [handlePreviewWheel, scrollRoot]);
 
-    const onMove = (e) => {
-      const pan = panRef.current;
-      if (!pan || pan.pointerId !== e.pointerId) return;
-      const root = scrollRef.current;
-      if (!root) return;
-      e.preventDefault();
-      root.scrollLeft = pan.scrollLeft - (e.clientX - pan.startX);
-      root.scrollTop = pan.scrollTop - (e.clientY - pan.startY);
-    };
+  const handleScrollAreaPointerDown = useCallback((e) => {
+    if (e.target.closest(".pdf-place-handle")) return;
 
-    const onUp = (e) => {
-      const pan = panRef.current;
-      if (!pan || (e.pointerId != null && pan.pointerId !== e.pointerId)) return;
-      panRef.current = null;
-      setIsPanning(false);
-      scrollRef.current?.releasePointerCapture?.(pan.pointerId);
-    };
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    window.addEventListener("pointermove", onMove, { passive: false });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-  }, [isPanning]);
+    if (pointersRef.current.size === 2) {
+      const pts = [...pointersRef.current.values()];
+      pinchRef.current = {
+        startDistance: pointerDistance(pts[0], pts[1]),
+        startZoom: zoomRef.current,
+        centerX: (pts[0].x + pts[1].x) / 2,
+        centerY: (pts[0].y + pts[1].y) / 2,
+      };
+    }
+
+    const now = Date.now();
+    const last = lastTapRef.current;
+    const isDoubleTap =
+      pointersRef.current.size === 1 &&
+      now - last.time < 320 &&
+      Math.hypot(e.clientX - last.x, e.clientY - last.y) < 24;
+
+    if (isDoubleTap) {
+      const targetZoom = zoomRef.current < 1.5 ? 2 : DEFAULT_ZOOM;
+      applyZoomAtPoint(targetZoom, e.clientX, e.clientY);
+      lastTapRef.current = { time: 0, x: 0, y: 0 };
+      return;
+    }
+
+    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+  }, [applyZoomAtPoint]);
+
+  const handleScrollAreaPointerMove = useCallback((e) => {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size !== 2 || !pinchRef.current) return;
+    e.preventDefault();
+
+    const pts = [...pointersRef.current.values()];
+    const dist = pointerDistance(pts[0], pts[1]);
+    const { startDistance, startZoom, centerX, centerY } = pinchRef.current;
+    if (startDistance <= 0) return;
+
+    applyZoomAtPoint(clampZoom(startZoom * (dist / startDistance)), centerX, centerY);
+  }, [applyZoomAtPoint]);
+
+  const handleScrollAreaPointerUp = useCallback((e) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
+    }
+  }, []);
 
   if (loading) {
     return <div className="pdf-preview-status">Loading preview pages…</div>;
@@ -623,7 +720,16 @@ export default function AnnotatedPdfPreview({
   const offset = Math.max(0, Number(reportPageCount) || 0);
 
   return (
-    <div className={`pdf-preview-root${placementEnabled ? " pdf-preview-root--placeable" : ""}`}>
+    <div
+      ref={rootRef}
+      className={[
+        "pdf-preview-root",
+        placementEnabled ? "pdf-preview-root--placeable" : "",
+        isFullscreen ? "pdf-preview-root--fullscreen" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div className="pdf-preview-toolbar">
         <div className="pdf-preview-toolbar-group">
           <button type="button" className="pdf-preview-nav" onClick={goPrev} disabled={currentPage <= 1}>
@@ -641,6 +747,7 @@ export default function AnnotatedPdfPreview({
             <FiChevronRight size={16} />
           </button>
         </div>
+
         <div className="pdf-preview-toolbar-group pdf-preview-zoom">
           <button
             type="button"
@@ -652,17 +759,6 @@ export default function AnnotatedPdfPreview({
           >
             <FiZoomOut size={15} />
           </button>
-          <input
-            type="range"
-            className="pdf-preview-zoom-slider"
-            min={ZOOM_MIN * 100}
-            max={ZOOM_MAX * 100}
-            step={ZOOM_SLIDER_STEP}
-            value={zoomPercent}
-            onChange={(e) => setZoomFromSlider(Number(e.target.value))}
-            aria-label="Zoom level"
-            title="Drag to adjust zoom"
-          />
           <span className="pdf-preview-zoom-readout">{zoomPercent}%</span>
           <button
             type="button"
@@ -674,46 +770,72 @@ export default function AnnotatedPdfPreview({
           >
             <FiZoomIn size={15} />
           </button>
+          <div className="pdf-preview-zoom-presets">
+            {ZOOM_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={`pdf-preview-preset-btn${Math.abs(zoomLevel - preset) < 0.02 ? " pdf-preview-preset-btn--active" : ""}`}
+                onClick={() => {
+                  const root = scrollRef.current;
+                  if (root) {
+                    const rect = root.getBoundingClientRect();
+                    applyZoomAtPoint(preset, rect.left + rect.width / 2, rect.top + rect.height / 2);
+                  } else {
+                    setZoomLevel(clampZoom(preset));
+                  }
+                }}
+                title={`${Math.round(preset * 100)}% zoom`}
+              >
+                {Math.round(preset * 100)}%
+              </button>
+            ))}
+          </div>
+          <button type="button" className="pdf-preview-fit-btn" onClick={resetZoom} title="Fit to panel width">
+            Fit width
+          </button>
+          <button type="button" className="pdf-preview-fit-btn" onClick={fitPage} title="Fit current page to view">
+            Fit page
+          </button>
           <button
             type="button"
-            className="pdf-preview-fit-btn"
-            onClick={resetZoom}
-            title="Fit to panel width"
+            className="pdf-preview-nav"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen preview"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen preview"}
           >
-            Fit
+            {isFullscreen ? <FiMinimize2 size={15} /> : <FiMaximize2 size={15} />}
           </button>
         </div>
-        <span className="pdf-preview-pan-hint">Ctrl+scroll to zoom · drag to pan when zoomed</span>
+
+        <span className="pdf-preview-pan-hint">
+          Scroll to move · Alt/⌘+wheel or pinch to zoom · double-click to zoom
+        </span>
         {placementEnabled && (
           <span className="pdf-preview-place-hint">
             Drag boxes to any page · × removes a question — applies on Confirm Edits
           </span>
         )}
       </div>
+
       <div
         ref={(node) => {
           scrollRef.current = node;
           setScrollRoot(node);
         }}
-        className={[
-          "pdf-preview-scroll",
-          zoomLevel > PAN_ZOOM_THRESHOLD ? "pdf-preview-scroll--zoomed" : "",
-          canPan ? "pdf-preview-scroll--pan-ready" : "",
-          isPanning ? "pdf-preview-scroll--panning" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        onWheel={handlePreviewWheel}
-        onPointerDown={handlePanPointerDown}
+        className="pdf-preview-scroll"
+        onPointerDown={handleScrollAreaPointerDown}
+        onPointerMove={handleScrollAreaPointerMove}
+        onPointerUp={handleScrollAreaPointerUp}
+        onPointerCancel={handleScrollAreaPointerUp}
         onScroll={() => {
           const root = scrollRef.current;
           if (!root) return;
-          const mid = root.scrollTop + root.clientHeight * 0.35;
+          const mid = root.getBoundingClientRect().top + root.clientHeight * 0.35;
           const pages = root.querySelectorAll("[data-page]");
           for (const node of pages) {
-            const top = node.offsetTop;
-            const bottom = top + node.offsetHeight;
-            if (mid >= top && mid < bottom) {
+            const rect = node.getBoundingClientRect();
+            if (mid >= rect.top && mid < rect.bottom) {
               const p = Number(node.getAttribute("data-page"));
               if (p && p !== currentPage) setCurrentPage(p);
               break;
@@ -722,38 +844,47 @@ export default function AnnotatedPdfPreview({
         }}
       >
         <div
-          className={[
-            "pdf-preview-scroll-inner",
-            zoomLevel > PAN_ZOOM_THRESHOLD ? "pdf-preview-scroll-inner--zoomed" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
+          className="pdf-preview-zoom-spacer"
+          style={{
+            width: Math.max(scaledWidth, baseRenderWidth),
+            height: scaledHeight || undefined,
+            minHeight: scaledHeight ? undefined : "100%",
+          }}
         >
-        {Array.from({ length: numPages }, (_, i) => {
-          const pageNumber = i + 1;
-          const studentPageNumber = pageNumber - offset;
-          const pageQuestions =
-            placementEnabled && studentPageNumber > 0
-              ? byStudentPage.get(studentPageNumber) || []
-              : null;
-          return (
-            <LazyPdfPage
-              key={`${url}-p${pageNumber}-z${zoomLevel}`}
-              pdf={pdf}
-              pageNumber={pageNumber}
-              renderWidth={renderWidth}
-              zoomLevel={zoomLevel}
-              scrollRoot={scrollRoot}
-              studentPageNumber={studentPageNumber}
-              pageQuestions={pageQuestions}
-              labelGuidance={labelGuidance}
-              dragKey={dragKey}
-              onHandlePointerDown={handlePointerDown}
-              onQuestionRemove={handleQuestionRemove}
-              showRemove={removeEnabled}
-            />
-          );
-        })}
+          <div
+            ref={contentRef}
+            className="pdf-preview-scroll-inner"
+            style={{
+              width: baseRenderWidth,
+              transform: `scale(${zoomLevel})`,
+              transformOrigin: "top left",
+            }}
+          >
+            {Array.from({ length: numPages }, (_, i) => {
+              const pageNumber = i + 1;
+              const studentPageNumber = pageNumber - offset;
+              const pageQuestions =
+                placementEnabled && studentPageNumber > 0
+                  ? byStudentPage.get(studentPageNumber) || []
+                  : null;
+              return (
+                <LazyPdfPage
+                  key={`${url}-p${pageNumber}-w${baseRenderWidth}`}
+                  pdf={pdf}
+                  pageNumber={pageNumber}
+                  renderWidth={baseRenderWidth}
+                  scrollRoot={scrollRoot}
+                  studentPageNumber={studentPageNumber}
+                  pageQuestions={pageQuestions}
+                  labelGuidance={labelGuidance}
+                  dragKey={dragKey}
+                  onHandlePointerDown={handlePointerDown}
+                  onQuestionRemove={handleQuestionRemove}
+                  showRemove={removeEnabled}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

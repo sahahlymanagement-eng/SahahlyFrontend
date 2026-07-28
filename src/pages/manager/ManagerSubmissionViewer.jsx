@@ -141,11 +141,13 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [studentSearch,      setStudentSearch]      = useState("");
   const [markingModeModal,   setMarkingModeModal]   = useState("normal");
 
-  const isDirectorScope = scope === "director";
+  const isDirectorScope = scope === "director" || scope === "backup";
   const isTeacherScope = scope === "teacher";
   const showMarkingTools = !isTeacherScope;
   const dashboardPath = isDirectorScope
-    ? "/director/dashboard"
+    ? scope === "backup"
+      ? "/backup/submissions"
+      : "/director/dashboard"
     : isTeacherScope
       ? "/teacher/dashboard"
       : "/manager/dashboard";

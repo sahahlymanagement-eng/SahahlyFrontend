@@ -36,13 +36,13 @@ import {
   useReportTeacherOptions,
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
-import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
+import { isDirectorLikeRole, isDirectorLikeVariant } from "../utils/directorLikeAccess";
 
 
 export default function ReportsWorkspace({ variant = "manager" }) {
   const isTeacher = variant === "teacher";
   const isAssistant = variant === "assistant";
-  const isDirector = variant === "director";
+  const isDirector = isDirectorLikeVariant(variant);
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
@@ -183,7 +183,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         return;
       }
     } else if (isDirector) {
-      if (role !== "admin" && role !== "director") {
+      if (!isDirectorLikeRole(role)) {
         navigate("/login", { replace: true });
         return;
       }

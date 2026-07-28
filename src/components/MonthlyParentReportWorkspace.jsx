@@ -19,7 +19,7 @@ import Pagination from "./Pagination";
 import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
 import MarksLostBreakdownPreview from "./MarksLostBreakdownPreview";
 import ReportDecisionGuide from "./ReportDecisionGuide";
-import ReportPdfPreview from "./ReportPdfPreview";
+import { isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import TopicMasteryPreview from "./TopicMasteryPreview";
 import ActionThisWeekPreview from "./ActionThisWeekPreview";
 import SmartRecommendationsPreview from "./SmartRecommendationsPreview";
@@ -82,7 +82,7 @@ export default function MonthlyParentReportWorkspace({
 }) {
 
   const isTeacher = variant === "teacher";
-  const isDirector = variant === "director";
+  const isDirector = isDirectorLikeVariant(variant);
 
   const [user, setUser] = useState(null);
 
