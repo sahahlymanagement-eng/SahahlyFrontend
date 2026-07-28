@@ -37,6 +37,8 @@ import {
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
 import { isDirectorLikeRole, isDirectorLikeVariant } from "../utils/directorLikeAccess";
+import { getRoleName } from "../utils/authRoutes";
+import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 
 
 export default function ReportsWorkspace({ variant = "manager" }) {
@@ -171,7 +173,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     const token = localStorage.getItem("token");
     if (!storedUser || !token) { navigate("/login", { replace: true }); return; }
     const parsed = JSON.parse(storedUser);
-    const role = parsed?.roleId?.name?.toLowerCase();
+    const role = getRoleName(parsed);
     if (isTeacher) {
       if (role !== "teacher") {
         navigate("/login", { replace: true });
