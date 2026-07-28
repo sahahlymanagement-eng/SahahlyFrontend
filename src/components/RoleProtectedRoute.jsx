@@ -1,4 +1,5 @@
 import { Navigate } from "react-router-dom";
+import { getRoleName } from "../utils/authRoutes";
 
 export default function RoleProtectedRoute({ children, allowedRole }) {
   const storedUser = localStorage.getItem("user");
@@ -9,8 +10,7 @@ export default function RoleProtectedRoute({ children, allowedRole }) {
 
   const user = JSON.parse(storedUser);
 
-  const roleName =
-    user?.roleId?.name?.toLowerCase() || "";
+  const roleName = getRoleName(user);
 
   // if (roleName !== allowedRole.toLowerCase()) {
   //   return <Navigate to="/login" replace />;

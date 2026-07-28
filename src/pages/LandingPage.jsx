@@ -1,7 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { FiSun, FiMoon } from "react-icons/fi";
 import logo from "../assets/images/Logo-trimmed.png";
 import { useTheme } from "../context/ThemeContext";
+import { getDashboardPathForUser } from "../utils/authRoutes";
 import "./LandingPage.css";
 
 const AppIcon = () => (
@@ -28,7 +30,20 @@ const ArrowIcon = () => (
 );
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const stored = localStorage.getItem("user");
+    if (!token || !stored) return;
+    try {
+      const path = getDashboardPathForUser(JSON.parse(stored));
+      if (path) navigate(path, { replace: true });
+    } catch {
+      // ignore malformed session
+    }
+  }, [navigate]);
 
   return (
     <div className="landing-container">

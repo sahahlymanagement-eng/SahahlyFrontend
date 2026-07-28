@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiSun, FiMoon } from "react-icons/fi";
 import api from "../api/api";
@@ -7,6 +7,7 @@ import logo from "../assets/images/Logo-trimmed.png";
 import { useTheme } from "../context/ThemeContext";
 import { toast } from "react-toastify";
 import { clearPersistedUiState } from "../hooks/usePersistedState";
+import { getRoleName, getDashboardPathForUser } from "../utils/authRoutes";
 
 // Icons (Lucide-react style or simple SVGs)
 const EmailIcon = () => (
@@ -23,6 +24,19 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const stored = localStorage.getItem("user");
+    if (!token || !stored) return;
+    try {
+      const user = JSON.parse(stored);
+      const path = getDashboardPathForUser(user);
+      if (path) navigate(path, { replace: true });
+    } catch {
+      // ignore malformed session
+    }
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -41,20 +55,18 @@ export default function Login() {
       // Drop any leftover tab-restore state so a new login starts clean.
       clearPersistedUiState();
 
-      const roleName = user?.roleId?.name?.toLowerCase();
+      const roleName = getRoleName(user);
+      const destination = getDashboardPathForUser(user);
+
+      if (!destination) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        toast.error(`No portal configured for role "${roleName || "unknown"}". Contact an administrator.`);
+        return;
+      }
+
       toast.success("Login successful");
-
-      const routes = {
-        teacher : "/teacher/dashboard",
-        assistant: "/assistant/dashboard",
-        manager: "/manager/dashboard",
-        "quality team": "/quality-team/dashboard",
-        "quality manager": "/quality-manager/dashboard",
-        admin: "/director/dashboard",
-        backup: "/backup/submissions",
-      };
-
-      navigate(routes[roleName] || "/", { replace: true });
+      navigate(destination, { replace: true });
     } catch (err) {
       const data = err.response?.data;
       if (data?.requiresSetup) {
