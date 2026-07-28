@@ -48,7 +48,6 @@ import {
   appendClassroomGradeToFormData,
 } from "../../utils/submissionGrades";
 import { SubmissionStatusBadge } from "../../utils/submissionStatusBadge";
-import { writePersisted, removePersisted } from "../../hooks/usePersistedState";
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -135,14 +134,7 @@ export default function AssignmentSubmissionViewer() {
   const navigate = useNavigate();
   const assignmentPrompt = useAssignmentMarkingPrompt(assignmentId);
 
-  // Remember the assignment being viewed so the Assignments tab reopens it after
-  // a tab switch. Cleared when the user explicitly clicks Back (leaveViewer).
-  useEffect(() => {
-    if (assignmentId) writePersisted("assistant:lastAssignmentId", assignmentId);
-  }, [assignmentId]);
-
   const leaveViewer = () => {
-    removePersisted("assistant:lastAssignmentId");
     navigate("/assistant/assignments");
   };
 
@@ -436,9 +428,6 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   useEffect(() => {
     if (!assignmentId || loading) return;
     if (studentFetchError) {
-      // Assignment couldn't load (e.g. deleted) — forget it so the Assignments
-      // tab stops auto-reopening this broken viewer.
-      removePersisted("assistant:lastAssignmentId");
       toast.error(`Could not load students: ${studentFetchError}`);
     } else if (googleUnavailable) {
       toast.warn(
