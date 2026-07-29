@@ -161,6 +161,7 @@ export default function AssignmentSubmissionViewer() {
 
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
+  const [savedResults, setSavedResults] = useState({});
 
   useEffect(() => {
     if (!assignmentId) {
@@ -259,7 +260,6 @@ export default function AssignmentSubmissionViewer() {
   const [markingProvider, setMarkingProvider] = useState("gemini");
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
-  const [savedResults, setSavedResults] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [exportingGrades, setExportingGrades] = useState(false);
   const [studentSearch, setStudentSearch] = useState("");
