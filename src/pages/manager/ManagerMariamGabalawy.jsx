@@ -61,6 +61,7 @@ import {
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { isGradingManager } from "../../utils/gradingAccess";
+import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 
 // Mariam Gabalawy is served by the provider-parameterized backend layer. LoginCSS
 // keeps its own /external-grading routes; the request/response shapes are identical.
@@ -409,7 +410,14 @@ export default function ManagerMariamGabalawy() {
         raw.name ||
         raw.title ||
         (id != null ? `Submission #${id}` : "Submission"),
-      submittedAt: raw.created_at || raw.createdAt || raw.submittedAt || null,
+      // The provider names this `submission_date` — the other three are never
+      // present in its payload, which is why this column read empty.
+      submittedAt:
+        raw.submission_date ||
+        raw.created_at ||
+        raw.createdAt ||
+        raw.submittedAt ||
+        null,
       localStatus: raw.localStatus ?? (draftResult ? "grading" : null),
       localGrade:
         raw.localGrade ?? (draftResult ? resolveTotalMarksFromResult(draftResult) : null),
@@ -1799,7 +1807,7 @@ export default function ManagerMariamGabalawy() {
                                 <td data-label="Status">{statusBadge(s)}</td>
                                 <td data-label="Submitted">
                                   <span className="ma-cell-muted">
-                                    {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
+                                    {formatSubmittedAt(s.submittedAt)}
                                   </span>
                                 </td>
                                 <td data-label="Grade">
