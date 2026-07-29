@@ -9,6 +9,7 @@ import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
 import { TeacherPageHeader, TeacherLoading, TeacherEmpty } from "../../pages/teacher/TeacherUI";
 import { isDirectorLikeRole, roleShellPath } from "../../utils/directorLikeAccess";
+import { FiPlus, FiAward, FiEdit3, FiTrash2, FiCalendar } from "react-icons/fi";
 
 function formatScheduledTime(iso) {
   if (!iso) return null;
@@ -22,8 +23,24 @@ function formatScheduledTime(iso) {
   }
 }
 
-function isScheduledCoursework(cw) {
-  return cw?.state === "DRAFT" || Boolean(cw?.scheduledTime);
+function scheduledTimeMs(cw) {
+  if (!cw?.scheduledTime) return null;
+  const ms = new Date(cw.scheduledTime).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+// Once the publish moment passes there is nothing left to reschedule — Google
+// refuses any publish time that is not in the future.
+function isAwaitingPublish(cw, nowMs) {
+  const ms = scheduledTimeMs(cw);
+  if (ms === null) return false;
+  return ms > nowMs;
+}
+
+function isOverduePublish(cw, nowMs) {
+  const ms = scheduledTimeMs(cw);
+  if (ms === null) return false;
+  return ms <= nowMs && cw?.state === "DRAFT";
 }
 
 export default function ViewCoursework() {
@@ -47,7 +64,16 @@ export default function ViewCoursework() {
   const [dbLoading, setDbLoading] = useState(canDelete || showSubmissionStats);
   const [deletingId, setDeletingId] = useState(null);
   const [syncingId, setSyncingId] = useState(null);
+  const [syncingAll, setSyncingAll] = useState(false);
   const [submissionCounts, setSubmissionCounts] = useState({});
+  // Re-evaluated on a timer so a card stops offering "Edit publish time" the
+  // moment its scheduled time passes, without needing a page refresh.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 20_000);
+    return () => clearInterval(id);
+  }, []);
 
   const loadDbAssignments = async () => {
     if (!courseId) return;
@@ -106,6 +132,29 @@ export default function ViewCoursework() {
       toast.error(err.response?.data?.error || "Failed to sync assignment to Sahahly");
     } finally {
       setSyncingId(null);
+    }
+  };
+
+  const handleSyncAllFromGoogle = async () => {
+    setSyncingAll(true);
+    try {
+      const res = await api.post("/google-classroom/coursework/sync-all-from-google", {
+        courseId,
+      });
+      const added = res.data?.newlyAddedCount || 0;
+      const restored = res.data?.restoredExclusions || 0;
+      toast.success(
+        res.data?.message ||
+          (added || restored
+            ? `Synced from Google — ${added} new, ${restored} restored`
+            : "Sahahly is up to date with Google Classroom")
+      );
+      await loadDbAssignments();
+      fetchPage(page);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to sync from Google Classroom");
+    } finally {
+      setSyncingAll(false);
     }
   };
 
@@ -210,18 +259,30 @@ export default function ViewCoursework() {
             { label: state?.courseName || "Coursework" },
           ]}
           actions={
-            <button
-              type="button"
-              className="tch-btn tch-btn--primary"
-              onClick={() =>
-                navigate(`/teacher/coursework/${courseId}`, {
-                  state: { courseName: state?.courseName },
-                })
-              }
-            >
-              <FiPlus size={15} />
-              New assignment
-            </button>
+            <>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="tch-btn tch-btn--secondary"
+                  onClick={handleSyncAllFromGoogle}
+                  disabled={syncingAll}
+                >
+                  {syncingAll ? "Syncing…" : "Sync all to Sahahly"}
+                </button>
+              )}
+              <button
+                type="button"
+                className="tch-btn tch-btn--primary"
+                onClick={() =>
+                  navigate(`/teacher/coursework/${courseId}`, {
+                    state: { courseName: state?.courseName },
+                  })
+                }
+              >
+                <FiPlus size={15} />
+                New assignment
+              </button>
+            </>
           }
         />
 
@@ -253,6 +314,8 @@ export default function ViewCoursework() {
               {visibleCoursework.map((cw, i) => {
                 const dbAssignment = dbAssignmentByGoogleId[cw.id];
                 const isDeleting = deletingId === dbAssignment?._id;
+                const awaitingPublish = isAwaitingPublish(cw, nowMs);
+                const overduePublish = isOverduePublish(cw, nowMs);
 
                 return (
                   <article
@@ -268,9 +331,14 @@ export default function ViewCoursework() {
                     </div>
 
                     <div className="tch-assignment-meta">
-                      {isScheduledCoursework(cw) && (
+                      {awaitingPublish && (
                         <span style={{ color: "#b45309", fontWeight: 600 }}>
                           Scheduled · publishes {formatScheduledTime(cw.scheduledTime) || "later"}
+                        </span>
+                      )}
+                      {overduePublish && (
+                        <span style={{ color: "#b45309", fontWeight: 600 }}>
+                          Publish time passed — Google is publishing it now
                         </span>
                       )}
                       {cw.dueDate && (
@@ -331,7 +399,7 @@ export default function ViewCoursework() {
                         onClick={() => handleEditAssignment(cw.id)}
                       >
                         <FiEdit3 size={14} />
-                        {isScheduledCoursework(cw) ? "Edit schedule" : "Edit"}
+                        {awaitingPublish ? "Edit schedule" : "Edit"}
                       </button>
                       {dbAssignment ? (
                         <button
@@ -366,6 +434,17 @@ export default function ViewCoursework() {
           <h1>Coursework</h1>
           <div className="pm-header-actions">
             {state?.courseName && <div className="pm-powered-by">{state.courseName}</div>}
+            {canEdit && (
+              <button
+                type="button"
+                className="pm-back"
+                onClick={handleSyncAllFromGoogle}
+                disabled={syncingAll}
+                title="Pull all Google Classroom assignments (including scheduled) into Sahahly"
+              >
+                {syncingAll ? "Syncing…" : "Sync all to Sahahly"}
+              </button>
+            )}
             <button className="pm-back" onClick={() => navigate(-1)}>← Back</button>
           </div>
         </header>
@@ -380,6 +459,8 @@ export default function ViewCoursework() {
               {visibleCoursework.map((cw) => {
                 const dbAssignment = dbAssignmentByGoogleId[cw.id];
                 const isDeleting = deletingId === dbAssignment?._id;
+                const awaitingPublish = isAwaitingPublish(cw, nowMs);
+                const overduePublish = isOverduePublish(cw, nowMs);
 
                 return (
                   <div key={cw.id} className="pm-question-card">
@@ -390,10 +471,16 @@ export default function ViewCoursework() {
                     <p style={{ opacity: 0.5, fontSize: 13 }}>
                       {cw.maxPoints ? `Max Points: ${cw.maxPoints}` : "Ungraded"}
                       {cw.dueDate ? ` · Due: ${cw.dueDate.month}/${cw.dueDate.day}/${cw.dueDate.year}` : ""}
-                      {isScheduledCoursework(cw)
-                        ? ` · Scheduled: ${formatScheduledTime(cw.scheduledTime) || "pending publish"}`
+                      {awaitingPublish
+                        ? ` · Scheduled: ${formatScheduledTime(cw.scheduledTime)}`
                         : ""}
                     </p>
+
+                    {overduePublish && (
+                      <p style={{ color: "#b45309", fontSize: 13, margin: "6px 0" }}>
+                        Publish time passed — Google is publishing it now.
+                      </p>
+                    )}
 
                     {!dbAssignment && !dbLoading && canEdit && (
                       <p style={{ color: "#b45309", fontSize: 13, margin: "6px 0" }}>
@@ -443,7 +530,7 @@ export default function ViewCoursework() {
                           className="vcw-edit-btn"
                           onClick={() => handleEditAssignment(cw.id)}
                         >
-                          {isScheduledCoursework(cw) ? "Edit publish time" : "Edit Assignment"}
+                          {awaitingPublish ? "Edit publish time" : "Edit Assignment"}
                         </button>
 
                         {canDelete && (

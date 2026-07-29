@@ -1,6 +1,6 @@
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { toast } from "react-toastify";
 import api from "../../api/api";
 import { formatGoogleOAuthError } from "../../utils/markingFormData";
 import "./CourseManagement.css";
@@ -91,6 +91,29 @@ function googleScheduledToFormFields(scheduledTime) {
   };
 }
 
+// Google rejects a scheduledTime that is not strictly in the future, and the
+// backend converts the picked date/time as Cairo local time.
+function cairoNowFields() {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Cairo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date())
+      .map((p) => [p.type, p.value])
+  );
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
 function buildCourseworkPayload({
   title,
   description,
@@ -175,6 +198,7 @@ export default function Coursework() {
   const [topicId, setTopicId] = useState("");
   const [newTopicName, setNewTopicName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [initialLoading, setInitialLoading] = useState(isEditMode);
   const [assignmentFile, setAssignmentFile] = useState(null);
   const [pdfSource, setPdfSource] = useState("computer"); // computer | drive
@@ -225,11 +249,20 @@ export default function Coursework() {
         setDueDate(dueFields.dueDate);
         setDueTime(dueFields.dueTime);
 
-        const scheduleFields = googleScheduledToFormFields(cw.scheduledTime);
-        const hadSchedule =
-          scheduleFields.scheduleEnabled || cw.state === "DRAFT";
-        setInitialHadSchedule(hadSchedule);
-        setScheduleEnabled(hadSchedule);
+        // A publish time that already passed cannot be rescheduled — Google
+        // only accepts future times — so don't prefill it as an active schedule.
+        const scheduledMs = cw.scheduledTime
+          ? new Date(cw.scheduledTime).getTime()
+          : null;
+        const scheduleStillAhead =
+          Number.isFinite(scheduledMs) && scheduledMs > Date.now();
+
+        const scheduleFields = scheduleStillAhead
+          ? googleScheduledToFormFields(cw.scheduledTime)
+          : { scheduleEnabled: false, scheduleDate: "", scheduleTime: "" };
+
+        setInitialHadSchedule(scheduleFields.scheduleEnabled);
+        setScheduleEnabled(scheduleFields.scheduleEnabled);
         setScheduleDate(scheduleFields.scheduleDate);
         setScheduleTime(scheduleFields.scheduleTime);
         setBlockSubmissionsAfterDueDate(Boolean(cw.blockSubmissionsAfterDueDate));
@@ -246,18 +279,6 @@ export default function Coursework() {
 
   const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB, matches backend multer cap
 
-  const fileToBase64 = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || "");
-        const comma = result.indexOf(",");
-        resolve(comma >= 0 ? result.slice(comma + 1) : result);
-      };
-      reader.onerror = () => reject(new Error("Failed to read PDF"));
-      reader.readAsDataURL(file);
-    });
-
   const buildCourseworkFormData = async (payload, file, driveSelected = null) => {
     const formData = new FormData();
     formData.append("courseId", courseId);
@@ -266,13 +287,6 @@ export default function Coursework() {
     // Only use Drive file id when no file bytes are available.
     if (file) {
       formData.append("assignmentFile", file, file.name || "worksheet.pdf");
-      try {
-        const b64 = await fileToBase64(file);
-        formData.append("assignmentFileBase64", b64);
-        formData.append("assignmentFileName", file.name || "worksheet.pdf");
-      } catch (e) {
-        console.warn("Could not attach base64 PDF backup:", e);
-      }
     } else if (driveSelected?.id) {
       formData.append("assignmentDriveFileId", driveSelected.id);
     }
@@ -450,25 +464,56 @@ export default function Coursework() {
     }
   };
 
+  const failSubmit = (message) => {
+    setSubmitError(message);
+    toast.warn(message);
+  };
+
   const handleSubmit = async () => {
     if (!title.trim()) {
-      return toast.warn("Title is required");
+      return failSubmit("Title is required");
     }
 
     if (!isUngraded && (maxPoints === "" || Number(maxPoints) <= 0)) {
-      return toast.warn("Valid max points required or select ungraded");
+      return failSubmit("Valid max points required or select ungraded");
     }
 
-    if (scheduleEnabled && !scheduleDate) {
-      return toast.warn("Publish date is required when scheduling");
+    if (!isUngraded && Number(maxPoints) > 100000) {
+      return failSubmit("Max points must be 100000 or less — Google Classroom rejects larger values.");
+    }
+
+    // Date inputs accept years far beyond Google's 1–9999 range.
+    const dueYear = dueDate ? Number(dueDate.split("-")[0]) : null;
+    if (dueYear !== null && (dueYear < 1 || dueYear > 9999)) {
+      return failSubmit(
+        `Due date year must be between 1 and 9999 — Google Classroom rejects "${dueYear}".`
+      );
+    }
+
+    if (scheduleEnabled) {
+      if (!scheduleDate) {
+        return failSubmit("Publish date is required when scheduling");
+      }
+      if (!scheduleTime) {
+        return failSubmit(
+          "Publish time is required when scheduling — leaving it empty means midnight, which Google rejects as a past time."
+        );
+      }
+      const now = cairoNowFields();
+      if (`${scheduleDate}T${scheduleTime}` <= `${now.date}T${now.time}`) {
+        return failSubmit(
+          `Publish time must be in the future. It is currently ${now.time} on ${now.date} (Cairo time), so pick a later time.`
+        );
+      }
     }
 
     if (blockSubmissionsAfterDueDate && !dueDate) {
-      return toast.warn(
+      return failSubmit(
         "Due date is required when blocking submissions after the due date"
       );
     }
 
+    setSubmitError("");
     setLoading(true);
 
     const courseworkData = buildCourseworkPayload({
@@ -497,7 +542,8 @@ export default function Coursework() {
 
         const res = await api.patch(
           `/google-classroom/coursework/${courseWorkId}`,
-          formData
+          formData,
+          { timeout: 180_000 }
         );
         if (res.data?.warning) toast.warn(res.data.warning);
         if (res.data?.materialWarning) toast.warn(res.data.materialWarning);
@@ -527,9 +573,13 @@ export default function Coursework() {
           driveFile
         );
 
-        const res = await api.post("/google-classroom/coursework", formData);
+        const res = await api.post("/google-classroom/coursework", formData, {
+          timeout: 180_000,
+        });
 
-        if (assignmentFile || driveFile) {
+        if (res.data?.dbSyncWarning) {
+          toast.warn(res.data.dbSyncWarning);
+        } else if (assignmentFile || driveFile) {
           if (!res.data?.assignmentFileId && !res.data?.assignmentWebLink) {
             toast.error(
               "Assignment created, but the PDF never reached Google. Check VPS logs for [coursework create] and try again."
@@ -541,18 +591,24 @@ export default function Coursework() {
               "Assignment created. If the PDF card is missing in Classroom, open the description — the worksheet link is there."
             );
           } else if (res.data?.materialsAttached === true) {
-            toast.success("Coursework created — PDF attached in Google Classroom");
-          } else {
-            toast.success("Coursework created with worksheet attached");
-          }
-        } else {
-          if (scheduleEnabled) {
             toast.success(
-              "Assignment scheduled — it will publish in Google Classroom at the chosen time"
+              scheduleEnabled
+                ? "Scheduled with PDF — will publish in Google Classroom at the chosen time"
+                : "Coursework created — PDF attached in Google Classroom"
             );
           } else {
-            toast.success("Coursework created successfully");
+            toast.success(
+              scheduleEnabled
+                ? "Assignment scheduled — it will publish at the chosen time"
+                : "Coursework created with worksheet attached"
+            );
           }
+        } else if (scheduleEnabled) {
+          toast.success(
+            "Assignment scheduled — it will publish in Google Classroom at the chosen time. You can change the publish time later via Edit schedule."
+          );
+        } else {
+          toast.success("Coursework created successfully");
         }
         setTitle("");
         setDescription("");
@@ -572,10 +628,13 @@ export default function Coursework() {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     } catch (err) {
-      toast.error(
-        err.response?.data?.error ||
-          `Failed to ${isEditMode ? "update" : "create"} coursework`
-      );
+      const message =
+        (err.code === "ECONNABORTED"
+          ? "Google Classroom took too long to respond. Check View coursework before trying again—the assignment may already have been created."
+          : err.response?.data?.error) ||
+        `Failed to ${isEditMode ? "update" : "create"} coursework`;
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -819,6 +878,8 @@ export default function Coursework() {
           <input
             type="number"
             className={isTeacherShell ? "tch-input" : "pm-input"}
+            min={1}
+            max={100000}
             value={maxPoints}
             onChange={(e) => setMaxPoints(e.target.value)}
             placeholder="e.g. 100"
@@ -831,6 +892,8 @@ export default function Coursework() {
         <input
           type="date"
           className={isTeacherShell ? "tch-input" : "pm-input"}
+          min="1970-01-01"
+          max="9999-12-31"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
         />
@@ -882,6 +945,8 @@ export default function Coursework() {
             <input
               type="date"
               className={isTeacherShell ? "tch-input" : "pm-input"}
+              min={cairoNowFields().date}
+              max="9999-12-31"
               value={scheduleDate}
               onChange={(e) => setScheduleDate(e.target.value)}
             />
@@ -897,6 +962,10 @@ export default function Coursework() {
               value={scheduleTime}
               onChange={(e) => setScheduleTime(e.target.value)}
             />
+            <p style={{ fontSize: 12, opacity: 0.75, margin: "6px 0 0" }}>
+              Cairo time — must be later than {cairoNowFields().time} today.
+              Google Classroom refuses a publish time that has already passed.
+            </p>
           </div>
         </>
       )}
@@ -928,6 +997,23 @@ export default function Coursework() {
           placeholder="New topic name"
         />
       </div>
+
+      {submitError ? (
+        <div
+          role="alert"
+          style={{
+            marginTop: 16,
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "1px solid #f5b1b1",
+            background: "rgba(220, 53, 69, 0.08)",
+            color: "#b02a37",
+            fontSize: 14,
+          }}
+        >
+          {submitError}
+        </div>
+      ) : null}
 
       <div className={isTeacherShell ? "tch-form-actions" : undefined}>
         <button
