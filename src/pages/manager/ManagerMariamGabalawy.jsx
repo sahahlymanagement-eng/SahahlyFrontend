@@ -62,10 +62,21 @@ import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { isGradingManager } from "../../utils/gradingAccess";
 import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
+import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
+import GradingAssignmentSettingsBar from "../../components/GradingAssignmentSettingsBar";
+import PageCountCheckModal from "../../components/PageCountCheckModal";
+import {
+  usePageCountCheck,
+  buildPageCountFlagMap,
+  pageCountWarningText,
+} from "../../hooks/usePageCountCheck";
 
 // Mariam Gabalawy is served by the provider-parameterized backend layer. LoginCSS
 // keeps its own /external-grading routes; the request/response shapes are identical.
 const BASE = "/grading/mariamgabalawy";
+
+// Provider slug for the shared settings + page-count endpoints (null = LoginCSS).
+const PROVIDER = "mariamgabalawy";
 
 // assignmentBatchJobStore is a module-level singleton shared with the LoginCSS and
 // internal viewers. Assignment ids are only unique *within* a company, so prefix the
@@ -165,13 +176,32 @@ export default function ManagerMariamGabalawy() {
 
   const [errorViewer, setErrorViewer] = useState({ open: false, title: "", message: null });
 
+  // Per-assignment settings (expectedPages + maxGrade). Seeded from the
+  // assignment index row, which already carries both.
+  const assignmentSettings = useGradingAssignmentSettings(
+    PROVIDER,
+    selectedAssignment?.id ?? null,
+    selectedAssignment
+  );
+
+  // Advisory pre-grading page-count review.
+  const { pageCheckModal, confirmGradingPageCounts, resolvePageCheck } = usePageCountCheck();
+  const [pageCountFlags, setPageCountFlags] = useState({});
+  const applyPageCountReport = useCallback(
+    (report) => setPageCountFlags((prev) => ({ ...prev, ...buildPageCountFlagMap(report) })),
+    []
+  );
+
   // Cache of fetched PDFs per submission (avoids re-downloading base64 from Mariam Gabalawy).
   const pdfCacheRef = useRef({});
 
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
 
+  // A configured maxGrade outranks the partner's own assignment total — it is
+  // what the backend clamps to, so the UI must agree.
   const effectiveMaxTotal = resolveDisplayMaxTotal({
-    assignmentMaxPoints: Number(selectedAssignment?.grade) || null,
+    assignmentMaxPoints:
+      assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -822,6 +852,16 @@ export default function ManagerMariamGabalawy() {
         return;
       }
 
+      // Advisory page-count review before any tokens are spent. Returning here
+      // still runs the finally block, which clears the running flags.
+      const proceed = await confirmGradingPageCounts({
+        provider: PROVIDER,
+        assignmentId: selectedAssignment.id,
+        submissionIds: eligible.map((s) => s.submissionId),
+        onReport: applyPageCountReport,
+      });
+      if (!proceed) return;
+
       const pending = {};
       eligible.forEach((s) => {
         pending[s.submissionId] = { status: "pending" };
@@ -959,6 +999,16 @@ export default function ManagerMariamGabalawy() {
       return;
     }
 
+    // Advisory page-count review before any tokens are spent. Passes silently
+    // when this assignment has no expectedPages set or nothing is flagged.
+    const proceed = await confirmGradingPageCounts({
+      provider: PROVIDER,
+      assignmentId: selectedAssignment.id,
+      submissionIds: eligible.map((s) => s.submissionId),
+      onReport: applyPageCountReport,
+    });
+    if (!proceed) return;
+
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
@@ -1021,7 +1071,10 @@ export default function ManagerMariamGabalawy() {
         succeeded,
         markingMode: mode,
         guidance: guidanceForForm(guidanceText),
-        ...(selectedAssignment.grade != null ? { totalGrade: selectedAssignment.grade } : {}),
+        // A configured maxGrade wins over the partner's own assignment total.
+        ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
+          ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
+          : {}),
         geminiModel: selectedModel,
       });
       jobId = res.data?.jobId;
@@ -1709,6 +1762,13 @@ export default function ManagerMariamGabalawy() {
                   </div>
                 </div>
 
+                {selectedAssignment.id != null && (
+                  <GradingAssignmentSettingsBar
+                    state={assignmentSettings}
+                    partnerGrade={selectedAssignment.grade ?? null}
+                  />
+                )}
+
                 {batchJob && batchJob.phase !== "done" && (
                   <div
                     style={{
@@ -1802,6 +1862,27 @@ export default function ManagerMariamGabalawy() {
                                       {(s.name || "?").charAt(0).toUpperCase()}
                                     </div>
                                     <span className="ma-cell-name">{s.name || "—"}</span>
+                                    {(() => {
+                                      // Either the live pre-grading check or a
+                                      // fileWarning baked into a saved result.
+                                      const savedWarn = results[s.submissionId]?.result?.fileWarning;
+                                      const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
+                                      if (!savedWarn && !flagText) return null;
+                                      const title = flagText
+                                        || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
+                                        || "Submitted file may be wrong — page count differs from expected";
+                                      return (
+                                        <span
+                                          title={title}
+                                          className="msv-review-warn"
+                                          style={{ color: "var(--warning)", fontSize: 11, marginLeft: 6, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}
+                                        >
+                                          ⚠️{" "}
+                                          <span className="msv-review-warn-full">Review Submission</span>
+                                          <span className="msv-review-warn-short">Review</span>
+                                        </span>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                                 <td data-label="Status">{statusBadge(s)}</td>
@@ -2327,6 +2408,13 @@ export default function ManagerMariamGabalawy() {
         verifying={msVerifying}
         result={msVerifyResult}
         onRun={handleRunMsVerification}
+      />
+
+      {/* ── PRE-GRADING PAGE-COUNT REVIEW ── */}
+      <PageCountCheckModal
+        state={pageCheckModal}
+        onResolve={resolvePageCheck}
+        onOpenPdf={(c) => viewFile({ submissionId: c.submissionId, name: c.studentName }, "student")}
       />
 
       {/* ── RESULTS MODAL ── */}

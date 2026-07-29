@@ -13,8 +13,11 @@ export default function PageCountCheckModal({ state, onResolve, onOpenPdf }) {
   const unreadable = checked.filter((c) => c.unreadable);
   const skipped = report?.skipped || [];
   const errored = report?.errored || [];
+  // Classroom rows carry a `student` object; grading-partner rows carry at most
+  // a `studentName` (their payloads often have no student identity at all, in
+  // which case the submission id is the only label available).
   const nameOf = (row) =>
-    row.student?.name || row.student?.studentId || row.submissionId || "Unknown";
+    row.student?.name || row.studentName || row.student?.studentId || row.submissionId || "Unknown";
 
   return (
     <div
