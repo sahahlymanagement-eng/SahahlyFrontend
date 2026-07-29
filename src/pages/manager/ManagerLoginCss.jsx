@@ -7,7 +7,7 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
-  FiEdit3, FiShield,
+  FiEdit3, FiShield, FiDownloadCloud,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
 import usePersistedState from "../../hooks/usePersistedState";
@@ -61,6 +61,7 @@ import {
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { isGradingManager } from "../../utils/gradingAccess";
+import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 
 const PER_PAGE = 10;
 const ASSIGNMENTS_PER_PAGE = 15;
@@ -74,9 +75,6 @@ const CHECKLIST_CONFIG = [
 ];
 
 // Stable per-assignment key (submissions with no assignment fall under "__none__").
-const submissionAssignmentKey = (s) =>
-  s.assignment?.id != null ? String(s.assignment.id) : "__none__";
-
 const getScoreColor = (awarded, max) => {
   const pct = max > 0 ? awarded / max : 0;
   if (pct >= 0.75) return "var(--success)";
@@ -92,11 +90,22 @@ export default function ManagerLoginCss() {
   // ── LoginCSS submissions list ──
   const [submissions, setSubmissions] = useState([]);
   const [page, setPage] = useState(1);
+  // Lets loadAll refresh the page currently on screen without depending on it.
+  const pageRef = useRef(page);
   const [assignmentPage, setAssignmentPage] = useState(1);
-  const [loadingList, setLoadingList] = useState(true);
+  const [loadingList, setLoadingList] = useState(false);
+  const [loadingAssignments, setLoadingAssignments] = useState(true);
+  const [assignmentIndex, setAssignmentIndex] = useState([]);
+  // Server-side pagination for the open assignment's submissions.
+  const [listMeta, setListMeta] = useState({ total: 0, lastPage: 1 });
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [selectedAssignment, setSelectedAssignment] = usePersistedState("logincss:assignment", null);
+  // Read by loadAll and the mount effect so neither has to re-create itself
+  // every time the selection changes. Seeded with the persisted value, then
+  // kept in sync from an effect — assigning during render is not allowed.
+  const selectedAssignmentRef = useRef(selectedAssignment);
   const assignmentPrompt = useAssignmentMarkingPrompt(
     selectedAssignment?.id != null ? String(selectedAssignment.id) : null
   );
@@ -391,7 +400,14 @@ export default function ManagerLoginCss() {
         raw.name ||
         raw.title ||
         (id != null ? `Submission #${id}` : "Submission"),
-      submittedAt: raw.created_at || raw.createdAt || raw.submittedAt || null,
+      // LoginCSS names this `submission_date` — the other three are never
+      // present in its payload, which is why this column read empty.
+      submittedAt:
+        raw.submission_date ||
+        raw.created_at ||
+        raw.createdAt ||
+        raw.submittedAt ||
+        null,
       localStatus: raw.localStatus ?? (draftResult ? "grading" : null),
       localGrade:
         raw.localGrade ?? (draftResult ? resolveTotalMarksFromResult(draftResult) : null),
@@ -400,53 +416,78 @@ export default function ManagerLoginCss() {
     };
   };
 
-  // Load EVERY submission (paging through the LoginCSS list) so we can group by
-  // assignment and let the manager drill into one assignment at a time. Drafts
-  // are hydrated into React state so "✅ Results" + grades survive refresh.
-  const loadAll = useCallback(async () => {
+  // The assignment index — one row per assignment, grouped by the server.
+  //
+  // This used to download every submission and group them client-side. With the
+  // marking drafts included that was ~2.9 MB over four requests just to render a
+  // list of three assignment names; the grouped form is under a kilobyte.
+  const loadAssignments = useCallback(async () => {
+    setLoadingAssignments(true);
+    try {
+      const { data } = await api.get("/external-grading/submissions/assignments");
+      setAssignmentIndex(
+        (data?.assignments || []).map((a) => ({
+          key: a.id != null ? String(a.id) : "__none__",
+          id: a.id ?? null,
+          name: a.name || "Unassigned",
+          grade: a.grade ?? null,
+          dueDate: a.due_date || null,
+          count: a.count ?? 0,
+          graded: a.graded ?? 0,
+        }))
+      );
+      setListTotal(data?.total ?? 0);
+    } catch (err) {
+      console.error("Failed to load assignments", err);
+      toast.error((await getApiErrorMessage(err)) || "Failed to load assignments");
+    } finally {
+      setLoadingAssignments(false);
+    }
+  }, []);
+
+  // ONE page of ONE assignment's submissions.
+  //
+  // Paged on the server rather than downloading the assignment and slicing in
+  // the browser: with the marking drafts attached, a 100-submission assignment
+  // was ~2.9 MB, against ~30 KB for the ten rows actually on screen.
+  //
+  // `includeDrafts` is affordable at this size and keeps "✅ Results" and grades
+  // populated for the visible rows without a second request each.
+  const loadAssignmentSubmissions = useCallback(async (assignment, pageNum = 1) => {
+    if (!assignment) return;
     setLoadingList(true);
     try {
+      const { data } = await api.get("/external-grading/submissions", {
+        params: {
+          ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
+          page: pageNum,
+          per_page: PER_PAGE,
+          includeDrafts: 1,
+        },
+      });
+      const items = data?.data || [];
+
       const collected = [];
       const hydrated = {};
-      let p = 1;
-      let tp = 1;
-      do {
-        const res = await api.get("/external-grading/submissions", {
-          params: { page: p, per_page: 50 },
-        });
-        const body = res.data || {};
-        const items =
-          body.data ||
-          body.submissions ||
-          body.items ||
-          body.results ||
-          body.rows ||
-          (Array.isArray(body) ? body : []);
-        const meta = body.meta || body.pagination || body;
-        const totalCount = meta.total ?? meta.totalItems ?? meta.count ?? items.length;
-        tp =
-          meta.totalPages ??
-          meta.total_pages ??
-          meta.last_page ??
-          (meta.per_page ? Math.ceil(totalCount / meta.per_page) : 1);
-        for (const raw of items) {
-          collected.push(normalizeItem(raw));
-          const sid = raw.id ?? raw.submissionId ?? raw._id;
-          if (sid != null && raw.draftResult) {
-            hydrated[sid] = {
-              result: raw.draftResult,
-              originalAiResult: raw.draftOriginalAiResult || raw.draftResult,
-              studentFile: undefined,
-            };
-          }
+      for (const raw of items) {
+        collected.push(normalizeItem(raw));
+        const sid = raw.id ?? raw.submissionId ?? raw._id;
+        if (sid != null && raw.draftResult) {
+          hydrated[sid] = {
+            result: raw.draftResult,
+            originalAiResult: raw.draftOriginalAiResult || raw.draftResult,
+            studentFile: undefined,
+          };
         }
-        p += 1;
-      } while (p <= tp && p <= 100);
+      }
 
       setSubmissions(collected);
+      setListMeta({
+        total: data?.total ?? collected.length,
+        lastPage: data?.last_page ?? 1,
+      });
       // In-memory results (prev) win over server drafts — keep fresher local edits.
       setResults((prev) => ({ ...hydrated, ...prev }));
-      setListTotal(collected.length);
     } catch (err) {
       console.error("Failed to load submissions", err);
       toast.error((await getApiErrorMessage(err)) || "Failed to load submissions");
@@ -454,6 +495,60 @@ export default function ManagerLoginCss() {
       setLoadingList(false);
     }
   }, []);
+
+  // Every submission in the open assignment, without the draft payloads.
+  //
+  // Bulk and batch marking act on the whole assignment, not the page on screen,
+  // so they cannot read the paged `submissions` state. This is the cheap full
+  // roster — `hasDraft` stands in for "already has a result", which is in fact
+  // more accurate than the old check, since that only saw loaded pages.
+  const fetchAssignmentRoster = useCallback(async (assignment) => {
+    const { data } = await api.get("/external-grading/submissions", {
+      params: {
+        ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
+        per_page: 1000,
+      },
+      timeout: 120000,
+    });
+    return (data?.data || []).map(normalizeItem);
+  }, []);
+
+  // Reload whatever the manager is currently looking at.
+  const loadAll = useCallback(async () => {
+    await loadAssignments();
+    if (selectedAssignmentRef.current) {
+      await loadAssignmentSubmissions(selectedAssignmentRef.current, pageRef.current);
+    }
+  }, [loadAssignments, loadAssignmentSubmissions]);
+
+  // ── Reconcile our copy against LoginCSS ──
+  // The list above is served from our own database, which the webhook keeps in
+  // step. This pulls LoginCSS's full list to recover anything a delivery missed
+  // (e.g. dropped while the server was restarting). Grading work is never
+  // overwritten — only LoginCSS-owned fields are refreshed — so it is always
+  // safe to run. Reloads the list afterwards only when something actually moved.
+  const syncFromProvider = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const { data } = await api.post("/external-grading/sync", null, { timeout: 120000 });
+      const inserted = data?.inserted ?? 0;
+      const updated = data?.updated ?? 0;
+
+      if (inserted || updated) {
+        toast.success(
+          `Synced — ${inserted} new, ${updated} updated of ${data?.fetched ?? 0}`
+        );
+        await loadAll();
+      } else {
+        toast.info(`Already up to date — ${data?.fetched ?? 0} submissions in sync`);
+      }
+    } catch (err) {
+      console.error("Failed to sync from LoginCSS", err);
+      toast.error((await getApiErrorMessage(err)) || "Failed to sync from LoginCSS");
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadAll]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -465,8 +560,21 @@ export default function ManagerLoginCss() {
   }, [navigate]);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    selectedAssignmentRef.current = selectedAssignment;
+  }, [selectedAssignment]);
+
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
+    loadAssignments();
+    // An assignment persisted from a previous visit is still open on mount, so
+    // its submissions need fetching too.
+    if (selectedAssignmentRef.current) {
+      loadAssignmentSubmissions(selectedAssignmentRef.current, pageRef.current);
+    }
+  }, [loadAssignments, loadAssignmentSubmissions]);
 
   useEffect(() => {
     api.get("/marking/prompts").then((r) => setSavedPrompts(r.data || [])).catch(() => {});
@@ -686,11 +794,14 @@ export default function ManagerLoginCss() {
     if (isPriority) setPriorityBulkRunning(true);
     else setBulkMarking(true);
     try {
-      const eligible = submissions.filter(
+      // The whole assignment, not the page on screen — `submissions` only holds
+      // the current page now.
+      const roster = await fetchAssignmentRoster(selectedAssignment);
+      const eligible = roster.filter(
         (s) =>
-          submissionAssignmentKey(s) === selectedAssignment.key &&
           s.submissionId &&
           s.localStatus !== "done" &&
+          !s.hasDraft &&
           !results[s.submissionId]?.result
       );
       if (!eligible.length) {
@@ -820,11 +931,14 @@ export default function ManagerLoginCss() {
     }
     const assignId = String(selectedAssignment.id);
 
-    const eligible = submissions.filter(
+    // The whole assignment, not the page on screen — `submissions` only holds
+    // the current page now.
+    const roster = await fetchAssignmentRoster(selectedAssignment);
+    const eligible = roster.filter(
       (s) =>
-        submissionAssignmentKey(s) === selectedAssignment.key &&
         s.submissionId &&
         s.localStatus !== "done" &&
+        !s.hasDraft &&
         !results[s.submissionId]?.result
     );
     if (!eligible.length) {
@@ -980,10 +1094,36 @@ export default function ManagerLoginCss() {
     checkForActiveJob();
   }, [selectedAssignment?.id, checkForActiveJob]);
 
-  const openSavedResult = (student) => {
+  // The list no longer carries the marking JSON (it dominated the payload), so a
+  // result that isn't already in memory is fetched on demand here. `hasDraft` on
+  // the row is what makes the button appear, so the button survives a reload
+  // even though its content hasn't been downloaded yet.
+  const openSavedResult = async (student) => {
     const saved = results[student.submissionId];
-    if (!saved?.result) return;
-    openResultModal(student, saved.result, saved.originalAiResult || saved.result, saved.studentFile);
+    if (saved?.result) {
+      openResultModal(student, saved.result, saved.originalAiResult || saved.result, saved.studentFile);
+      return;
+    }
+    if (!student.hasDraft) return;
+
+    try {
+      const { data } = await api.get(
+        `/external-grading/submissions/${student.submissionId}/draft`
+      );
+      if (!data?.draftResult) return;
+
+      const entry = {
+        result: data.draftResult,
+        originalAiResult: data.draftOriginalAiResult || data.draftResult,
+        studentFile: undefined,
+      };
+      // Cache so reopening is instant and edits have somewhere to land.
+      setResults((prev) => ({ ...prev, [student.submissionId]: entry }));
+      openResultModal(student, entry.result, entry.originalAiResult, undefined);
+    } catch (err) {
+      console.error("Failed to load saved result", err);
+      toast.error((await getApiErrorMessage(err)) || "Failed to load saved result");
+    }
   };
 
   const deleteResult = (student) => {
@@ -1238,31 +1378,20 @@ export default function ManagerLoginCss() {
     setSelectedAssignment(a);
     setSearch("");
     setPage(1);
+    // Submissions are fetched a page at a time, so opening one loads page 1.
+    loadAssignmentSubmissions(a, 1);
   };
 
   const backToAssignments = () => {
     setSelectedAssignment(null);
     setSearch("");
     setPage(1);
+    // Drop the previous assignment's rows so they can't leak into the next one.
+    setSubmissions([]);
   };
 
-  // Distinct assignments across ALL loaded submissions, each with its count.
-  const assignmentMap = new Map();
-  for (const s of submissions) {
-    const key = submissionAssignmentKey(s);
-    if (!assignmentMap.has(key)) {
-      assignmentMap.set(key, {
-        key,
-        id: s.assignment?.id ?? null,
-        name: s.assignment?.name || "Unassigned",
-        grade: s.assignment?.grade ?? null,
-        dueDate: s.assignment?.due_date || null,
-        count: 0,
-      });
-    }
-    assignmentMap.get(key).count += 1;
-  }
-  const assignments = Array.from(assignmentMap.values());
+  // Grouped by the server — see loadAssignments.
+  const assignments = assignmentIndex;
 
   const aq = assignmentSearch.trim().toLowerCase();
   const filteredAssignments = aq
@@ -1278,22 +1407,20 @@ export default function ManagerLoginCss() {
     safeAssignmentPage * ASSIGNMENTS_PER_PAGE
   );
 
-  // Submissions for the selected assignment, filtered by name search.
+  // `submissions` already holds exactly the page the server returned, so there
+  // is nothing left to slice. Search still narrows what's on screen — it only
+  // covers the current page, since the server has no name index to search on
+  // (the partner payload carries no student name; rows fall back to their id).
   const q = search.trim().toLowerCase();
-  const assignmentSubmissions = selectedAssignment
-    ? submissions.filter((s) => submissionAssignmentKey(s) === selectedAssignment.key)
-    : [];
+  const assignmentSubmissions = selectedAssignment ? submissions : [];
   const filteredSubmissions = q
     ? assignmentSubmissions.filter((s) => (s.name || "").toLowerCase().includes(q))
     : assignmentSubmissions;
 
-  // Client-side pagination within the selected assignment.
-  const clientTotalPages = Math.max(1, Math.ceil(filteredSubmissions.length / PER_PAGE));
+  // Pagination comes from the server for this list.
+  const clientTotalPages = Math.max(1, listMeta.lastPage);
   const safePage = Math.min(page, clientTotalPages);
-  const visibleSubmissions = filteredSubmissions.slice(
-    (safePage - 1) * PER_PAGE,
-    safePage * PER_PAGE
-  );
+  const visibleSubmissions = filteredSubmissions;
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
   const total = sumQuestionMarks(questionsForDisplay);
@@ -1324,10 +1451,21 @@ export default function ManagerLoginCss() {
               type="button"
               className="msv-refresh-btn"
               onClick={() => loadAll()}
-              disabled={loadingList}
+              disabled={loadingList || loadingAssignments || syncing}
             >
               <FiRefreshCw size={13} className={loadingList ? "msv-spin" : ""} />
               {loadingList ? "Loading…" : "Refresh"}
+            </button>
+            <button
+              type="button"
+              className="msv-refresh-btn"
+              onClick={syncFromProvider}
+              disabled={loadingList || loadingAssignments || syncing}
+              style={{ marginLeft: 8 }}
+              title="Fetch LoginCSS's full list and add anything missing from this view"
+            >
+              <FiDownloadCloud size={13} className={syncing ? "msv-spin" : ""} />
+              {syncing ? "Syncing…" : "Sync from LoginCSS"}
             </button>
           </div>
         </header>
@@ -1351,7 +1489,7 @@ export default function ManagerLoginCss() {
                   onChange={(e) => { setAssignmentSearch(e.target.value); setAssignmentPage(1); }}
                 />
                 <div className="ma-scroll-list">
-                  {loadingList ? (
+                  {loadingAssignments ? (
                     <p className="ma-loading-msg">Loading…</p>
                   ) : filteredAssignments.length === 0 ? (
                     <p className="ma-empty-msg">
@@ -1383,7 +1521,7 @@ export default function ManagerLoginCss() {
                     ))
                   )}
                 </div>
-                {!loadingList && filteredAssignments.length > ASSIGNMENTS_PER_PAGE && (
+                {!loadingAssignments && filteredAssignments.length > ASSIGNMENTS_PER_PAGE && (
                   <Pagination
                     page={safeAssignmentPage}
                     totalPages={assignmentTotalPages}
@@ -1421,7 +1559,7 @@ export default function ManagerLoginCss() {
                   <div className="ma-panel-title-wrap">
                     <div className="ma-panel-dot" />
                     <h2 className="ma-panel-title">{selectedAssignment.name}</h2>
-                    <span className="ma-panel-count">{assignmentSubmissions.length} total</span>
+                    <span className="ma-panel-count">{listMeta.total} total</span>
                   </div>
                   <div className="msv-panel-controls" style={{ flexWrap: "wrap", gap: 8 }}>
                     <input
@@ -1635,7 +1773,11 @@ export default function ManagerLoginCss() {
                               bulk?.status === "marking" ||
                               bulk?.status === "pending" ||
                               markingStudentId === s.submissionId;
-                            const hasResult = !!results[s.submissionId]?.result;
+                            // `hasDraft` comes from the server without carrying
+                            // the draft itself, so the button shows immediately
+                            // on load; openSavedResult fetches content on click.
+                            const hasResult =
+                              !!results[s.submissionId]?.result || !!s.hasDraft;
                             const hasError = single?.status === "error" || bulk?.status === "error" || studentErrors[s.submissionId];
                             return (
                               <tr
@@ -1654,7 +1796,7 @@ export default function ManagerLoginCss() {
                                 <td data-label="Status">{statusBadge(s)}</td>
                                 <td data-label="Submitted">
                                   <span className="ma-cell-muted">
-                                    {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
+                                    {formatSubmittedAt(s.submittedAt)}
                                   </span>
                                 </td>
                                 <td data-label="Grade">
@@ -1786,11 +1928,15 @@ export default function ManagerLoginCss() {
                   </div>
                 )}
 
-                {!loadingList && filteredSubmissions.length > PER_PAGE && (
+                {!loadingList && clientTotalPages > 1 && (
                   <Pagination
                     page={safePage}
                     totalPages={clientTotalPages}
-                    onPageChange={(p) => setPage(p)}
+                    onPageChange={(p) => {
+                      setPage(p);
+                      // Each page is its own request now.
+                      loadAssignmentSubmissions(selectedAssignment, p);
+                    }}
                   />
                 )}
               </div>
