@@ -1,3 +1,5 @@
+import { placementKey } from "./markingFormData";
+
 /** Natural-ish sort for question labels: 1, 1a, 1b, 2, 10. */
 export function compareQuestionNumbers(a, b) {
   const sa = String(a ?? "").trim().toLowerCase();
@@ -28,8 +30,8 @@ export function placementLooksUnreliable(questions) {
   const yValues = questions.map(yPercentOf);
   const spread = Math.max(...yValues) - Math.min(...yValues);
 
-  // All answers piled in nearly the same band
-  if (spread < 12) return true;
+  // All answers piled in nearly the same band (likely defaulted coordinates)
+  if (spread < 8 && questions.length >= 3) return true;
 
   const atDefault = yValues.filter((y) => Math.abs(y - 30) < 4).length;
   if (atDefault >= questions.length * 0.6) return true;
@@ -125,4 +127,64 @@ export function paperAnchorY(q, pageHeight) {
 export function columnAnchorY(q, layout) {
   const yPct = Math.min(92, Math.max(5, yPercentOf(q)));
   return layout.colTop - (yPct / 100) * (layout.colTop - layout.colBottom);
+}
+
+/** PDF badge layout constants (match annotatePdf.js). */
+const PREVIEW_BADGE_BLOCK_H_RATIO = 46 / 842;
+const PREVIEW_PAGE_STRIP_RATIO = 28 / 842;
+
+/**
+ * Resolve badge Y positions with the same collision logic as annotatePdf.js,
+ * returned as yPercent for preview overlay handles.
+ * Map keys are stable placement ids (not object references).
+ */
+export function resolveBadgeYPercentsForPage(questionsOnPage, pageHeight = 842) {
+  if (!Array.isArray(questionsOnPage) || questionsOnPage.length === 0) {
+    return new Map();
+  }
+
+  const height = pageHeight;
+  const PAGE_BOTTOM = height * PREVIEW_PAGE_STRIP_RATIO + 6;
+  const PAGE_TOP = height - 8;
+  const badgeBlockH = height * PREVIEW_BADGE_BLOCK_H_RATIO;
+
+  const sortedQs = [...questionsOnPage].sort(
+    (a, b) =>
+      yPercentOf(a) - yPercentOf(b) ||
+      compareQuestionNumbers(a.questionNumber, b.questionNumber)
+  );
+
+  const badgePlacements = resolveVerticalCollisions(
+    sortedQs.map((q) => ({
+      q,
+      targetCenter: paperAnchorY(q, height),
+      height: badgeBlockH,
+    })),
+    {
+      minCenter: PAGE_BOTTOM + badgeBlockH / 2,
+      maxCenter: PAGE_TOP - badgeBlockH / 2,
+      gap: 6,
+    }
+  );
+
+  const out = new Map();
+  for (const { q, center } of badgePlacements) {
+    const yPct = ((height - center) / height) * 100;
+    out.set(placementKey(q), Math.min(92, Math.max(5, yPct)));
+  }
+  return out;
+}
+
+/** Sort questions for UI / breakdown: page order, then vertical position, then label. */
+export function sortQuestionsByPlacement(questions) {
+  if (!Array.isArray(questions)) return [];
+  return [...questions].sort((a, b) => {
+    const pa = Math.max(1, Number(a?.pageNumber) || 1);
+    const pb = Math.max(1, Number(b?.pageNumber) || 1);
+    if (pa !== pb) return pa - pb;
+    const ya = yPercentOf(a);
+    const yb = yPercentOf(b);
+    if (ya !== yb) return ya - yb;
+    return compareQuestionNumbers(a?.questionNumber, b?.questionNumber);
+  });
 }

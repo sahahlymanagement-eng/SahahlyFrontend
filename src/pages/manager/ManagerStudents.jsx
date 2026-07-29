@@ -4,7 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import "./ManagerStudents.css";
 import {
-  FiHome, FiUsers, FiSearch, FiX, FiEdit2,
+  FiHome, FiUsers, FiSearch, FiX, FiEdit2, FiTrash2,
   FiCheck, FiChevronRight, FiLogOut, FiMenu,
   FiPhone, FiMail, FiUser, FiRefreshCw,
   FiChevronLeft, FiChevronDown,FiClipboard
@@ -22,6 +22,7 @@ import {
   useClearClassroomOnTeacherFilter,
 } from "../../hooks/useReportTeacherFilter";
 import { useClassroomRosterSync } from "../../hooks/useClassroomRosterSync";
+import { confirmToast } from "../../utils/confirmToast";
 
 export default function ManagerStudents() {
   const navigate = useNavigate();
@@ -29,6 +30,7 @@ export default function ManagerStudents() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedClassroom, setSelectedClassroom] = usePersistedState("students:manager:classroom", null);
   const [editingId, setEditingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("name");
@@ -168,6 +170,40 @@ export default function ManagerStudents() {
   };
 
   const cancelEdit = () => setEditingId(null);
+
+  const deleteStudent = async (student) => {
+    if (!selectedClassroom?._id || deletingId) return;
+
+    const name = (student.name || student.email || "this student").trim();
+    const confirmed = await confirmToast(
+      `Permanently remove ${name} from ${selectedClassroom.name}?\n\nThis deletes their marking results, submissions, attendance, and report history for this class. If they are not in any other class, their student record is removed entirely.\n\nNote: they may reappear if still on the Google Classroom roster — use Refresh students after removing them there too.`,
+      {
+        title: "Delete student",
+        confirmLabel: "Delete permanently",
+        cancelLabel: "Cancel",
+        danger: true,
+      }
+    );
+    if (!confirmed) return;
+
+    setDeletingId(student._id);
+    try {
+      const { data } = await api.delete(`/students/${student._id}`, {
+        params: {
+          classroomId: selectedClassroom._id,
+          personId: user?.id,
+        },
+      });
+      setStudents((prev) => prev.filter((s) => s._id !== student._id));
+      if (editingId === student._id) setEditingId(null);
+      await fetchPage(page);
+      toast.success(data.message || "Student removed");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete student");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -439,7 +475,19 @@ export default function ManagerStudents() {
                                     </td>
                                     <td>
                                       <div className="ms-action-wrap">
-                                        <button className="ms-edit-btn" onClick={() => startEdit(s)}><FiEdit2 size={11} /> Edit</button>
+                                        <button className="ms-edit-btn" onClick={() => startEdit(s)} disabled={deletingId === s._id}>
+                                          <FiEdit2 size={11} /> Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ms-delete-btn"
+                                          onClick={() => deleteStudent(s)}
+                                          disabled={deletingId === s._id}
+                                          title="Remove student and all their data for this class"
+                                        >
+                                          <FiTrash2 size={11} />
+                                          {deletingId === s._id ? "Deleting…" : "Delete"}
+                                        </button>
                                       </div>
                                     </td>
                                   </>

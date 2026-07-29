@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, Fragment } from "react";
+import { useCallback, useEffect, useState, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -7,12 +7,13 @@ import Select from "react-select";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "./ManagerDashboard.css";
+import "../teacher/teacher.css";
+import { TeacherActionLink } from "../teacher/TeacherUI";
 import { selectStyles } from "../../utils/selectTheme";
 import {
-  FiHome, FiList, FiBarChart2, FiMenu, FiX,
-  FiLogOut, FiSearch, FiCalendar, FiChevronRight,
+  FiBarChart2, FiSearch, FiCalendar, FiChevronRight,
   FiUser, FiUsers, FiBookOpen, FiClock, FiCheckCircle,
-  FiAlertTriangle, FiZap,FiClipboard,FiFileText
+  FiAlertTriangle, FiClipboard, FiRefreshCw, FiAlertCircle,
 } from "react-icons/fi";
 
 import { isDirectorLikeRole } from "../../utils/directorLikeAccess";
@@ -29,10 +30,10 @@ const DASHBOARD_STATUSES = [
 // Palette-aligned status accents (kept as static hex so the `${accent}18`
 // alpha trick below still works; these read well on both themes).
 const STATUS_META = {
-  UNASSIGNED:     { icon: <FiClock />,         accent: "#8A94A6" },
-  ASSIGNED:       { icon: <FiUser />,          accent: "#7A9CB3" },
-  FAILED_DEADLINE:{ icon: <FiAlertTriangle />, accent: "#C15F52" },
-  DONE:           { icon: <FiCheckCircle />,   accent: "#5B9279" },
+  UNASSIGNED:      { icon: <FiClock />,         accent: "#8A94A6", iconClass: "tch-stat-icon--muted" },
+  ASSIGNED:        { icon: <FiUser />,          accent: "#7A9CB3", iconClass: "tch-stat-icon--blue" },
+  FAILED_DEADLINE: { icon: <FiAlertTriangle />, accent: "#C15F52", iconClass: "md-stat-icon--danger" },
+  DONE:            { icon: <FiCheckCircle />,   accent: "#5B9279", iconClass: "tch-stat-icon--green" },
 };
 
 const formatStatus = (s) =>
@@ -42,7 +43,6 @@ export default function ManagerDashboard({ scope = "manager" }) {
   const navigate = useNavigate();
   const isDirectorScope = scope === "director";
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState(null);
   const [classroomIds, setClassroomIds] = useState([]);
   const [classroomMap, setClassroomMap] = useState({});
@@ -62,9 +62,29 @@ export default function ManagerDashboard({ scope = "manager" }) {
   const [filterQuality, setFilterQuality] = useState("");
   const [contextLoading, setContextLoading] = useState(false);
   const [submissionCounts, setSubmissionCounts] = useState({});
-  const [countsLoading, setCountsLoading] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
+  const [briefing, setBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
 
+  const basePath = isDirectorScope ? "/director" : "/manager";
+
+  const loadBriefing = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      setBriefingLoading(true);
+      const res = await api.get("/manager-dashboard/briefing", {
+        params: {
+          personId: user.id,
+          scope: isDirectorScope ? "director" : "manager",
+        },
+      });
+      setBriefing(res.data);
+    } catch {
+      setBriefing(null);
+    } finally {
+      setBriefingLoading(false);
+    }
+  }, [user?.id, isDirectorScope]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -120,6 +140,7 @@ export default function ManagerDashboard({ scope = "manager" }) {
   [data, classroomMap, teacherMap]);
 
   useEffect(() => { if (!user?.id) return; loadClassroomContext(); }, [user]);
+  useEffect(() => { if (user?.id) loadBriefing(); }, [user, loadBriefing]);
 
   useEffect(() => {
     if (extra.statusCounts) {
@@ -267,15 +288,10 @@ export default function ManagerDashboard({ scope = "manager" }) {
       });
       toast.success("Assistant assigned successfully");
       fetchPage(page);
+      loadBriefing();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to assign assistant");
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    navigate("/login", { replace: true });
   };
 
   // Shared token-based react-select styles (src/utils/selectTheme.js), with
@@ -285,19 +301,9 @@ export default function ManagerDashboard({ scope = "manager" }) {
     control: (base, state) => ({ ...selectStyles.control(base, state), minWidth: "180px" }),
   };
 
- const navItems = [
-    { icon: <FiHome />, label: "Dashboard", path: "/manager/dashboard", active: true },
-    { icon: <FiUsers />, label: "Students", path: "/manager/students" },
-    { icon: <FiClipboard />, label: "Assignments / Reports", path: "/manager/assignments" },
-    { icon: <FiFileText />, label: "Gemini AI Marking", path: "/manager/marking" },
-    { icon: <FiFileText />, label: "Claude AI Marking", path: "/manager/markingclaude" },
-    { icon: <FiZap />, label: "AI Classifier Test", path: "/questionbank/manage" },
-    { label: "Course Management", path: "/manager/courses" },
-    
-    
-  ];
-
   if (!user) return null;
+
+  const briefingSummary = briefing?.summary;
 
   const totalAssignments = DASHBOARD_STATUSES.reduce(
     (sum, status) => sum + (statusCounts[status] || 0),
@@ -316,6 +322,7 @@ export default function ManagerDashboard({ scope = "manager" }) {
     });
     toast.success("Assistant changed successfully");
     fetchPage(page);
+    loadBriefing();
   } catch (err) {
     toast.error(err.response?.data?.message || "Failed to change assistant");
   }
@@ -333,21 +340,9 @@ const removeAssistant = async (assignmentId) => {
     });
     toast.success("Assistant removed. Task is now UNASSIGNED.");
     fetchPage(page);
+    loadBriefing();
   } catch (err) {
     toast.error(err.response?.data?.message || "Failed to remove assistant");
-  }
-};
-
-const loadSubmissionCounts = async (assignmentIds) => {
-  if (!assignmentIds.length) return;
-  try {
-    setCountsLoading(true);
-    const res = await api.post("/assignment-submissions/batch-counts", { assignmentIds });
-    setSubmissionCounts(res.data || {});
-  } catch (err) {
-    console.error("Failed to load submission counts", err);
-  } finally {
-    setCountsLoading(false);
   }
 };
 
@@ -405,57 +400,232 @@ const goToSubmissionViewer = (assignment) => {
 
 
   return (
-    <div className="md-root">
-      {/* MAIN */}
-      <main className="md-main">
+    <div className="tch-page md-dashboard-page">
+      <section className="tch-hero">
+        <p className="tch-hero-greeting">
+          {briefing?.greeting ||
+            `Welcome back${user.name ? `, ${user.name.split(" ")[0]}` : ""}`}
+        </p>
+        <h1>
+          {isDirectorScope ? (
+            <>Assign assistants, <span>org-wide</span></>
+          ) : (
+            <>Welcome back, <span>{user.name?.split(" ")[0] || "Manager"}</span></>
+          )}
+        </h1>
+        <p>
+          {isDirectorScope
+            ? "Assign assistants to coursework across all classrooms, track deadlines, and monitor submission progress from one place."
+            : "Assign assistants, track submission progress, and manage student reports across your classrooms — all from one place."}
+        </p>
+      </section>
 
-        {/* TOP BAR */}
-        <header className="md-topbar">
-          <div className="md-topbar-left">
-            <h1 className="md-topbar-title">{isDirectorScope ? "Assign Assistants" : "Dashboard"}</h1>
-            <span className="md-topbar-sub">
-              {isDirectorScope
-                ? "Assign assistants to assignments across all classrooms"
-                : `Welcome back, ${user.name}`}
-            </span>
+      <section className="tch-briefing" aria-label="Today's briefing">
+        <div className="tch-briefing-head">
+          <div>
+            <div className="tch-briefing-eyebrow">Today&apos;s briefing</div>
+            <h2 className="tch-briefing-title">What needs attention</h2>
           </div>
-          <div className="md-topbar-right">
-            <div className="md-total-pill">
-              <FiBookOpen size={13} />
-              <span>{totalAssignments} assignments</span>
+          <div className="md-total-pill">
+            <FiBookOpen size={13} />
+            <span>{totalAssignments} assignments</span>
+          </div>
+        </div>
+
+        {briefingLoading ? (
+          <div className="tch-briefing-loading">Loading your briefing…</div>
+        ) : briefing ? (
+          <>
+            <div className="tch-briefing-stats">
+              <div className="tch-briefing-stat">
+                <span className="tch-briefing-stat-value">
+                  {briefingSummary?.unassigned ?? statusCounts.UNASSIGNED ?? 0}
+                </span>
+                <span className="tch-briefing-stat-label">Unassigned</span>
+              </div>
+              <div className="tch-briefing-stat">
+                <span className="tch-briefing-stat-value">
+                  {briefingSummary?.assigned ?? statusCounts.ASSIGNED ?? 0}
+                </span>
+                <span className="tch-briefing-stat-label">In progress</span>
+              </div>
+              <div className="tch-briefing-stat">
+                <span className="tch-briefing-stat-value">
+                  {briefingSummary?.assistantsBehind ?? 0}
+                </span>
+                <span className="tch-briefing-stat-label">Assistants behind</span>
+              </div>
+              <div className="tch-briefing-stat">
+                <span className="tch-briefing-stat-value">
+                  {briefingSummary?.failedDeadline ?? statusCounts.FAILED_DEADLINE ?? 0}
+                </span>
+                <span className="tch-briefing-stat-label">Failed deadline</span>
+              </div>
+              <div className="tch-briefing-stat">
+                <span className="tch-briefing-stat-value">
+                  {briefingSummary?.classroomsManaged ?? classroomIds.length}
+                </span>
+                <span className="tch-briefing-stat-label">Classrooms</span>
+              </div>
             </div>
+            <ul className="tch-briefing-lines">
+              {(briefing.lines || []).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {briefing.details?.assistantsBehind?.length > 0 && (
+              <div className="tch-briefing-alert">
+                <FiAlertCircle size={16} />
+                <div>
+                  <strong>Behind schedule</strong>
+                  <p>
+                    {briefing.details.assistantsBehind
+                      .slice(0, 3)
+                      .map(
+                        (a) =>
+                          `${a.assistantName} on “${a.assignmentTitle}”${
+                            a.className ? ` (${a.className})` : ""
+                          }`
+                      )
+                      .join(" · ")}
+                    {briefing.details.assistantsBehind.length > 3
+                      ? ` · +${briefing.details.assistantsBehind.length - 3} more`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            )}
+            {briefing.details?.unassignedAssignments?.length > 0 && (
+              <div className="tch-briefing-alert md-briefing-alert--info">
+                <FiClock size={16} />
+                <div>
+                  <strong>Needs assistant assignment</strong>
+                  <p>
+                    {briefing.details.unassignedAssignments
+                      .slice(0, 3)
+                      .map(
+                        (a) =>
+                          `“${a.title}”${a.className ? ` (${a.className})` : ""}`
+                      )
+                      .join(" · ")}
+                    {briefing.details.unassignedAssignments.length > 3
+                      ? ` · +${briefing.details.unassignedAssignments.length - 3} more`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="tch-briefing-loading">
+            Briefing unavailable right now. Try refresh.
           </div>
-        </header>
+        )}
+      </section>
 
-        <div className="md-content">
+      <div className="tch-stats-row">
+        {DASHBOARD_STATUSES.map((status, i) => {
+          const meta = STATUS_META[status];
+          const isActive = selectedStatus === status;
+          const count = statusCounts[status] || 0;
+          return (
+            <button
+              key={status}
+              type="button"
+              className={`tch-stat-card md-stat-filter ${isActive ? "md-stat-filter--active" : ""}`}
+              style={{ animationDelay: `${i * 0.05}s` }}
+              onClick={() => setSelectedStatus(isActive ? null : status)}
+            >
+              <div className={`tch-stat-icon ${meta.iconClass}`}>
+                {meta.icon}
+              </div>
+              <div>
+                <div className="tch-stat-value">{count}</div>
+                <div className="tch-stat-label">{formatStatus(status)}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
 
-          {/* STATUS GRID */}
-          <div className="md-status-grid">
-            {DASHBOARD_STATUSES.map((status, i) => {
-              const meta = STATUS_META[status];
-              const isActive = selectedStatus === status;
-              const count = statusCounts[status] || 0;
-              return (
-                <button
-                  key={status}
-                  className={`md-status-card ${isActive ? "md-status-card--active" : ""}`}
-                  style={{ "--accent": meta.accent, animationDelay: `${i * 0.05}s` }}
-                  onClick={() => setSelectedStatus(isActive ? null : status)}
-                >
-                  <div className="md-status-icon" style={{ color: meta.accent, background: `${meta.accent}18` }}>
-                    {meta.icon}
-                  </div>
-                  <div className="md-status-count">{count}</div>
-                  <div className="md-status-label">{formatStatus(status)}</div>
-                  {isActive && <div className="md-status-active-dot" />}
-                </button>
-              );
-            })}
+      <div className="tch-actions-grid">
+        {!isDirectorScope && (
+          <button
+            type="button"
+            className="tch-action-card"
+            style={{ animationDelay: "0.12s" }}
+            onClick={() => navigate(`${basePath}/students`)}
+          >
+            <div className="tch-action-card-icon">
+              <FiUsers />
+            </div>
+            <h3>Students data</h3>
+            <p>
+              View and edit student contact details, parent phones, and classroom
+              rosters across your managed classes.
+            </p>
+            <TeacherActionLink>Open students</TeacherActionLink>
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="tch-action-card"
+          style={{ animationDelay: "0.15s" }}
+          onClick={() =>
+            navigate(isDirectorScope ? `${basePath}/reports` : `${basePath}/assignments`)
+          }
+        >
+          <div className="tch-action-card-icon">
+            <FiClipboard />
           </div>
+          <h3>{isDirectorScope ? "Assignment reports" : "Assignments & reports"}</h3>
+          <p>
+            Review assignment status, send WhatsApp grade reports to parents, and
+            track report delivery.
+          </p>
+          <TeacherActionLink>Open reports</TeacherActionLink>
+        </button>
 
-          {/* ASSIGNMENT SECTION */}
-          {selectedStatus && (
-            <div className="md-section">
+        <button
+          type="button"
+          className="tch-action-card"
+          style={{ animationDelay: "0.18s" }}
+          onClick={() => navigate(`${basePath}/submissions`)}
+        >
+          <div className="tch-action-card-icon">
+            <FiBarChart2 />
+          </div>
+          <h3>Submission viewer</h3>
+          <p>
+            Browse student submissions, compare on-time and late work, and open
+            the marking workflow for any assignment.
+          </p>
+          <TeacherActionLink>Open submissions</TeacherActionLink>
+        </button>
+
+        {!isDirectorScope && (
+          <button
+            type="button"
+            className="tch-action-card"
+            style={{ animationDelay: "0.21s" }}
+            onClick={() => navigate(`${basePath}/operation-metrics`)}
+          >
+            <div className="tch-action-card-icon">
+              <FiBarChart2 />
+            </div>
+            <h3>Operation metrics</h3>
+            <p>
+              Monitor assistant workload, marking throughput, and operational
+              performance across your classrooms.
+            </p>
+            <TeacherActionLink>View metrics</TeacherActionLink>
+          </button>
+        )}
+      </div>
+
+      {selectedStatus && (
+        <div className="md-section">
               <div className="md-section-header">
                 <div className="md-section-title-wrap">
                   <span className="md-section-dot" style={{ background: STATUS_META[selectedStatus]?.accent }} />
@@ -724,14 +894,29 @@ const goToSubmissionViewer = (assignment) => {
           )}
 
           {!selectedStatus && !contextLoading && (
-            <div className="md-empty-state">
-              <FiBookOpen size={40} />
-              <p>Select a status card above to view assignments</p>
-            </div>
-          )}
-
+        <div className="tch-empty md-dashboard-hint">
+          <div className="tch-empty-icon">
+            <FiBookOpen size={28} />
+          </div>
+          <h3>Select a status above</h3>
+          <p>Choose Unassigned, Assigned, Failed Deadline, or Done to view and manage assignments.</p>
         </div>
-      </main>
+      )}
+
+      <div className="md-dashboard-refresh">
+        <button
+          type="button"
+          className="tch-btn tch-btn--ghost"
+          onClick={() => {
+            loadBriefing();
+            if (classroomIds.length) fetchPage(page);
+          }}
+          disabled={briefingLoading || contextLoading}
+        >
+          <FiRefreshCw size={15} />
+          Refresh
+        </button>
+      </div>
     </div>
   );
 }

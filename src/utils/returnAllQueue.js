@@ -17,16 +17,76 @@ function markingChangedSinceReturn(saved) {
   return !Number.isFinite(lastChange) || lastChange > returnedAt;
 }
 
-export function isSubmissionAlreadyReturned({ bulk, batch, saved }) {
-  // Prefer persisted return state — allows re-return after teacher edits (updatedAt > returnedAt).
-  if (saved?.returnedAt) {
-    return !markingChangedSinceReturn(saved);
+export function isSubmissionAlreadyReturned({ saved }) {
+  // Only trust persisted return timestamps — session flags (bulk.returned / batch.returned)
+  // can be stale after a failed return, navigation, or partial Return All.
+  if (!saved?.returnedAt) return false;
+  return !markingChangedSinceReturn(saved);
+}
+
+function normalizeStudentName(name) {
+  return String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function buildStudentLookupMaps(allStudents = [], batchJob = null) {
+  const bySubmissionId = new Map();
+  const byStudentId = new Map();
+  const byName = new Map();
+
+  const register = (student) => {
+    if (!student) return;
+    if (student.submissionId) {
+      bySubmissionId.set(String(student.submissionId), student);
+    }
+    if (student._id != null) {
+      byStudentId.set(String(student._id), student);
+    }
+    if (student.name) {
+      byName.set(normalizeStudentName(student.name), student);
+    }
+  };
+
+  for (const student of allStudents) register(student);
+  for (const student of batchJob?.batchStudents || []) register(student);
+
+  return { bySubmissionId, byStudentId, byName };
+}
+
+function resolveStudentForReturn(submissionId, saved, maps) {
+  const { bySubmissionId, byStudentId, byName } = maps;
+  const key = String(submissionId || "");
+
+  if (key && bySubmissionId.has(key)) {
+    return bySubmissionId.get(key);
   }
 
-  // Session-only flags when nothing is persisted yet.
-  if (bulk?.returned || batch?.returned) return true;
+  const savedStudentId = saved?.studentId;
+  if (savedStudentId != null && byStudentId.has(String(savedStudentId))) {
+    return byStudentId.get(String(savedStudentId));
+  }
 
-  return false;
+  const savedName = saved?.studentName;
+  if (savedName && byName.has(normalizeStudentName(savedName))) {
+    return byName.get(normalizeStudentName(savedName));
+  }
+
+  return {
+    submissionId: key || null,
+    name: savedName || "Student",
+  };
+}
+
+function queueEntry(submissionId, saved, student, payload, sourceKey) {
+  const liveSubmissionId = student?.submissionId || submissionId;
+  return {
+    submissionId: liveSubmissionId,
+    storedSubmissionId: submissionId,
+    student,
+    [sourceKey]: payload,
+  };
 }
 
 export function buildReturnAllQueue({
@@ -36,22 +96,9 @@ export function buildReturnAllQueue({
   singleProgress = {},
   allStudents = [],
 }) {
-  const studentById = new Map();
-
-  for (const student of allStudents) {
-    if (student?.submissionId) {
-      studentById.set(student.submissionId, student);
-    }
-  }
-
-  for (const student of batchJob?.batchStudents || []) {
-    if (student?.submissionId && !studentById.has(student.submissionId)) {
-      studentById.set(student.submissionId, student);
-    }
-  }
-
-  const resolveStudent = (submissionId) =>
-    studentById.get(submissionId) || { submissionId, name: "Student" };
+  const maps = buildStudentLookupMaps(allStudents, batchJob);
+  const resolveStudent = (submissionId, saved) =>
+    resolveStudentForReturn(submissionId, saved, maps);
 
   const bulkQueue = [];
   const batchQueue = [];
@@ -61,76 +108,82 @@ export function buildReturnAllQueue({
     if (bulk?.status !== "done" || !bulk?.result) continue;
 
     const saved = savedResults[submissionId];
-    const student = resolveStudent(submissionId);
-    if (isSubmissionAlreadyReturned({ bulk, saved })) continue;
-
-    bulkQueue.push({
-      submissionId,
-      student,
-      bulk: mergeBulkForReturn(bulk, saved),
-    });
-    seen.add(submissionId);
-  }
-
-  for (const [submissionId, batch] of Object.entries(batchJob?.results || {})) {
-    if (seen.has(submissionId)) continue;
-    if (batch?.status !== "done" || !batch?.result) continue;
-
-    const saved = savedResults[submissionId];
-    const student = resolveStudent(submissionId);
-    if (isSubmissionAlreadyReturned({ batch, saved })) continue;
-
-    batchQueue.push({
-      submissionId,
-      student,
-      batch: mergeBatchForReturn(batch, saved),
-    });
-    seen.add(submissionId);
-  }
-
-  for (const [submissionId, single] of Object.entries(singleProgress)) {
-    if (seen.has(submissionId)) continue;
-    if (single?.status !== "done" || !single?.result) continue;
-
-    const saved = savedResults[submissionId];
-    const student = resolveStudent(submissionId);
-    if (isSubmissionAlreadyReturned({ bulk: single, saved })) continue;
-
-    bulkQueue.push({
-      submissionId,
-      student,
-      bulk: mergeBulkForReturn(
-        {
-          status: "done",
-          result: single.result,
-          studentFile: single.studentFile,
-        },
-        saved
-      ),
-    });
-    seen.add(submissionId);
-  }
-
-  for (const [submissionId, saved] of Object.entries(savedResults)) {
-    if (seen.has(submissionId)) continue;
-    if (!saved?.result) continue;
-
-    const student = resolveStudent(submissionId);
+    const student = resolveStudent(submissionId, saved);
+    const liveId = student?.submissionId || submissionId;
+    if (!liveId || seen.has(liveId)) continue;
     if (isSubmissionAlreadyReturned({ saved })) continue;
 
     bulkQueue.push({
-      submissionId,
-      student,
-      bulk: mergeBulkForReturn(
-        {
-          status: "done",
-          result: saved.result,
-          studentFile: saved.studentFile,
-        },
-        saved
+      ...queueEntry(submissionId, saved, student, mergeBulkForReturn(bulk, saved), "bulk"),
+    });
+    seen.add(liveId);
+  }
+
+  for (const [submissionId, batch] of Object.entries(batchJob?.results || {})) {
+    const saved = savedResults[submissionId];
+    const student = resolveStudent(submissionId, saved);
+    const liveId = student?.submissionId || submissionId;
+    if (!liveId || seen.has(liveId)) continue;
+    if (batch?.status !== "done" || !batch?.result) continue;
+    if (isSubmissionAlreadyReturned({ saved })) continue;
+
+    batchQueue.push({
+      ...queueEntry(submissionId, saved, student, mergeBatchForReturn(batch, saved), "batch"),
+    });
+    seen.add(liveId);
+  }
+
+  for (const [submissionId, single] of Object.entries(singleProgress)) {
+    const saved = savedResults[submissionId];
+    const student = resolveStudent(submissionId, saved);
+    const liveId = student?.submissionId || submissionId;
+    if (!liveId || seen.has(liveId)) continue;
+    if (single?.status !== "done" || !single?.result) continue;
+    if (isSubmissionAlreadyReturned({ saved })) continue;
+
+    bulkQueue.push({
+      ...queueEntry(
+        submissionId,
+        saved,
+        student,
+        mergeBulkForReturn(
+          {
+            status: "done",
+            result: single.result,
+            studentFile: single.studentFile,
+          },
+          saved
+        ),
+        "bulk"
       ),
     });
-    seen.add(submissionId);
+    seen.add(liveId);
+  }
+
+  for (const [submissionId, saved] of Object.entries(savedResults)) {
+    const student = resolveStudent(submissionId, saved);
+    const liveId = student?.submissionId || submissionId;
+    if (!liveId || seen.has(liveId)) continue;
+    if (!saved?.result) continue;
+    if (isSubmissionAlreadyReturned({ saved })) continue;
+
+    bulkQueue.push({
+      ...queueEntry(
+        submissionId,
+        saved,
+        student,
+        mergeBulkForReturn(
+          {
+            status: "done",
+            result: saved.result,
+            studentFile: saved.studentFile,
+          },
+          saved
+        ),
+        "bulk"
+      ),
+    });
+    seen.add(liveId);
   }
 
   return { bulkQueue, batchQueue };

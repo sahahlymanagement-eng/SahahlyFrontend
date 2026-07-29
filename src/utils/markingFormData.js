@@ -1,6 +1,8 @@
 import { estimateMarkingCost } from "./markingCost";
 import { questionRowHasEdits, criteriaGradeHasEdits } from "./markingQuestionEdits";
 
+export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
+
 /** Attach assignment context for backend logging (person comes from JWT only). */
 export function appendMarkingContext(formData, { assignmentId, classroomId } = {}) {
   if (assignmentId) formData.append("assignmentId", assignmentId);

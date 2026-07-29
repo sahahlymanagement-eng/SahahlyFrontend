@@ -8,9 +8,11 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 import {
   FiClipboard, FiUsers, FiSend,
-  FiCheckSquare, FiMessageSquare,   FiCalendar,
-  FiBarChart2, FiDownload, FiEye,
+  FiCheckSquare, FiMessageSquare, FiCalendar,
+  FiBarChart2, FiDownload, FiEye, FiChevronRight,
+  FiInfo, FiX,
 } from "react-icons/fi";
+import "./ReportsWorkspace.css";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
 import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, countPresentInMap } from "../utils/attendanceExcel";
@@ -18,6 +20,7 @@ import ReportAttendanceSelect from "./ReportAttendanceSelect";
 import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
 import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
 import TeacherExecutiveAnalysisWorkspace from "./TeacherExecutiveAnalysisWorkspace";
+import ReportsSentWorkspace from "./ReportsSentWorkspace";
 import AssignmentReportPreviewModal from "./AssignmentReportPreviewModal";
 import ReportPdfPreview from "./ReportPdfPreview";
 import "./MonthlyParentReport.css";
@@ -56,6 +59,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const activeSendIdRef = useRef(null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [checkedAssignments, setCheckedAssignments] = useState({});
   const [customPhone, setCustomPhone] = useState("");
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
   const [assignmentAttendance, setAssignmentAttendance] = useState({});
@@ -65,6 +69,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [reportView, setReportView] = usePersistedState(`reports:${variant}:view`, "assignment");
   const [preview, setPreview] = useState({ open: false, loading: false, error: null, previews: [] });
   const [previewClassroomId, setPreviewClassroomId] = useState(null);
+  const [studentFilter, setStudentFilter] = useState("all");
+  const [collectiveTab, setCollectiveTab] = useState("teacher");
+  const [showCollectivePanel, setShowCollectivePanel] = useState(false);
 
   const {
     teacherFilter,
@@ -108,6 +115,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setSelectedAssignment(null);
     setReportCart({});
     setSummaryMap({});
+    setCheckedAssignments({});
   }, []);
 
   useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
@@ -202,10 +210,10 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setSelectedAssignment(null);
     setReportCart({});
     setSummaryMap({});
-    setIncludeAttendance(false);
-    setAttendanceMap({});
-    setAttendanceRoster([]);
-    setAttendanceFileName("");
+    setAssignmentAttendance({});
+    setCheckedAssignments({});
+    setStudentFilter("all");
+    setShowCollectivePanel(false);
     closePreview();
   };
 
@@ -218,9 +226,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
     setSelectedAssignment(assignment);
     setSummaryMap({});
-    setAttendanceMap({});
-    setAttendanceRoster([]);
-    setAttendanceFileName("");
+    setStudentFilter("all");
   };
 
   const expandClassroomSection = () => {
@@ -228,17 +234,37 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setSelectedAssignment(null);
     setReportCart({});
     setSummaryMap({});
-    setIncludeAttendance(false);
-    setAttendanceMap({});
-    setAttendanceRoster([]);
-    setAttendanceFileName("");
+    setAssignmentAttendance({});
+    setCheckedAssignments({});
+    setStudentFilter("all");
+    setShowCollectivePanel(false);
     closePreview();
   };
 
-  const expandAssignmentSection = () => {
-    setSelectedAssignment(null);
-    setSummaryMap({});
+  const toggleAssignmentChecked = (assignment, event) => {
+    event?.stopPropagation();
+    const id = String(assignment._id);
+    setCheckedAssignments((prev) => {
+      const next = { ...prev };
+      if (next[id]) delete next[id];
+      else next[id] = assignment;
+      return next;
+    });
   };
+
+  const toggleAllAssignmentsOnPage = (checked) => {
+    setCheckedAssignments((prev) => {
+      const next = { ...prev };
+      assignments.forEach((assignment) => {
+        const id = String(assignment._id);
+        if (checked) next[id] = assignment;
+        else delete next[id];
+      });
+      return next;
+    });
+  };
+
+  const checkedAssignmentCount = Object.keys(checkedAssignments).length;
 
   /* CART */
   const toggleStudent = (student) => {
@@ -317,12 +343,68 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
-  const buildItem = (student) => {
+  const selectAllStudentsForCheckedAssignments = async () => {
+    const assignmentsToAdd = Object.values(checkedAssignments);
+    if (assignmentsToAdd.length === 0) {
+      toast.warn("Check one or more assignments for the collective report");
+      return;
+    }
+
+    setSelectingAll(true);
+    try {
+      let nextCart = { ...reportCart };
+
+      for (const assignment of assignmentsToAdd) {
+        const asgId = String(assignment._id);
+        const allStudents = await fetchAllPaginated(
+          api,
+          `/manager-assignments/${assignment._id}/full`,
+          {},
+          "students",
+          100
+        );
+
+        allStudents.forEach((student) => {
+          const stuId = String(student._id);
+          const item = buildItem(student, assignment);
+
+          if (!nextCart[stuId]) {
+            nextCart[stuId] = {
+              studentMeta: student,
+              items: { [asgId]: item },
+            };
+          } else if (!nextCart[stuId].items[asgId]) {
+            nextCart[stuId] = {
+              ...nextCart[stuId],
+              items: {
+                ...nextCart[stuId].items,
+                [asgId]: item,
+              },
+            };
+          }
+        });
+      }
+
+      setReportCart(nextCart);
+      toast.success(
+        `Selected all students from ${assignmentsToAdd.length} assignment${
+          assignmentsToAdd.length !== 1 ? "s" : ""
+        }`
+      );
+    } catch (err) {
+      console.error("Select all for checked assignments error:", err);
+      toast.error("Failed to select students for checked assignments");
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
+  const buildItem = (student, assignment = selectedAssignment) => {
     const maxPoints =
-      selectedAssignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
+      assignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
     return {
-      assignmentTitle: selectedAssignment.title,
-      assignmentId: selectedAssignment._id,
+      assignmentTitle: assignment?.title,
+      assignmentId: assignment?._id,
       submissionId: student.submissionId || null,
       state: student.state,
       submittedAt: student.submittedAt,
@@ -336,6 +418,21 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   const isStudentSelected = (studentId) =>
     !!(reportCart[String(studentId)]?.items[selectedAssignment?._id]);
+
+  const selectedStudentCount = useMemo(
+    () => students.filter((s) => isStudentSelected(s._id)).length,
+    [students, reportCart, selectedAssignment?._id]
+  );
+
+  const filteredStudents = useMemo(() => {
+    if (studentFilter === "selected") {
+      return students.filter((s) => isStudentSelected(s._id));
+    }
+    if (studentFilter === "not_sent") {
+      return students.filter((s) => !s.reportSent);
+    }
+    return students;
+  }, [students, studentFilter, reportCart, selectedAssignment?._id]);
 
   const setComment = (studentId, assignmentId, comment) => {
     setReportCart(prev => ({
@@ -707,6 +804,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       setReportCart({});
       closePreview();
       activeSendIdRef.current = null;
+      if (selectedAssignment?._id) {
+        fetchStudentPage(studentPage);
+      }
     } catch {
       toast.error("Failed to send reports");
       activeSendIdRef.current = null;
@@ -822,10 +922,33 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
   const statusBadge = (student) => <SubmissionStatusBadge student={student} />;
 
+  const reportSentBadge = (student) => {
+    if (student.reportSent) {
+      const when = student.reportSentAt
+        ? new Date(student.reportSentAt).toLocaleString()
+        : "";
+      return (
+        <span
+          className="ma-report-sent-pill ma-report-sent-pill--yes"
+          title={when ? `Report sent ${when}` : "Report sent"}
+        >
+          Sent
+        </span>
+      );
+    }
+    return (
+      <span className="ma-report-sent-pill ma-report-sent-pill--no" title="No report sent yet for this assignment">
+        Not sent
+      </span>
+    );
+  };
+
   const filteredClassrooms = classrooms;
 
   const filteredAssignments = assignments;
-
+  const allOnPageChecked =
+    filteredAssignments.length > 0 &&
+    filteredAssignments.every((a) => checkedAssignments[String(a._id)]);
 
   const sendTeacherCollectiveReport = async () => {
     if (sending) return;
@@ -904,6 +1027,8 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const pageTitle =
     isTeacher || isAssistant || isDirector ? "Reports" : "Assignments";
 
+  const workflowStep = !selectedClassroom ? 1 : !selectedAssignment ? 2 : reportCount > 0 ? 4 : 3;
+
   if (!user) return null;
 
   if (reportView === "monthly") {
@@ -926,18 +1051,28 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     );
   }
 
+  if (reportView === "sent") {
+    return (
+      <ReportsSentWorkspace
+        variant={variant}
+        onBack={() => setReportView("assignment")}
+        onNavigate={setReportView}
+      />
+    );
+  }
+
   const mainContent = (
       <main className="ma-main">
 
         {/* TOPBAR */}
-        <header className="ma-topbar">
+        <header className="ma-topbar ma-topbar--reports">
           <div className="ma-topbar-left">
             <h1 className="ma-topbar-title">{pageTitle}</h1>
             <span className="ma-topbar-sub">
               {selectedClassroom
                 ? selectedAssignment
                   ? `${selectedClassroom.name} — ${selectedAssignment.title}`
-                  : `Select an assignment from ${selectedClassroom.name}`
+                  : `Choose an assignment in ${selectedClassroom.name}`
                 : `Welcome back, ${user.name}`}
             </span>
             <div className="ma-report-tabs">
@@ -961,121 +1096,95 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               >
                 <FiBarChart2 size={12} /> Teacher Executive Analysis
               </button>
+              <button
+                type="button"
+                className="ma-report-tab"
+                onClick={() => setReportView("sent")}
+              >
+                <FiSend size={12} /> Reports Sent
+              </button>
             </div>
           </div>
           {reportCount > 0 && (
-            <div className="ma-topbar-right">
+            <div className="rw-topbar-actions">
               <div className="ma-cart-pill">
                 <FiCheckSquare size={13} />
                 <span>{cartSummary}</span>
-              </div>
-              <button
-                className="ma-send-btn"
-                onClick={previewReport}
-                disabled={sending || preview.loading}
-              >
-                <FiMessageSquare size={13} />
-                {preview.loading ? "Loading…" : "Preview Report"}
-              </button>
-              <button className="ma-send-btn" onClick={sendReport} disabled={sending}>
-                <FiSend size={13} />
-                {sending ? "Sending…" : `Send Report`}
-              </button>
-              <div className="ma-collective-toolbar">
-                <span className="ma-collective-toolbar-label">Teacher PDF</span>
-                <button
-                  type="button"
-                  className="ma-send-btn ma-send-btn--ghost"
-                  onClick={() => scrollToCollectivePreview("teacher")}
-                  disabled={!teacherCollectivePdfConfig}
-                  title="Scroll to teacher collective preview"
-                >
-                  <FiEye size={13} />
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  className="ma-send-btn ma-send-btn--ghost"
-                  onClick={() => downloadCollectivePdf("teacher")}
-                  disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
-                >
-                  <FiDownload size={13} />
-                  {downloadingCollective === "teacher"
-                    ? "Downloading…"
-                    : "Download"}
-                </button>
-                {!isTeacher && (
-                  <button
-                    type="button"
-                    className="ma-send-btn"
-                    onClick={sendTeacherCollectiveReport}
-                    disabled={sending}
-                  >
-                    <FiSend size={13} />
-                    {sending ? "Sending…" : "Send"}
-                  </button>
-                )}
-              </div>
-              <div className="ma-collective-toolbar">
-                <span className="ma-collective-toolbar-label">Custom PDF</span>
-                <div style={{ minWidth: "220px" }}>
-                  <PhoneInput
-                    defaultCountry="eg"
-                    value={`+${customPhone}`}
-                    onChange={(value) =>
-                      setCustomPhone(value.replace(/\D/g, ""))
-                    }
-                    className="tm-phone-input"
-                    countrySelectorStyleProps={{
-                      dropdownStyleProps: {
-                        style: {
-                          maxHeight: "350px",
-                          zIndex: 9999
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="ma-send-btn ma-send-btn--ghost"
-                  onClick={() => scrollToCollectivePreview("custom")}
-                  disabled={!customCollectivePdfConfig}
-                >
-                  <FiEye size={13} />
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  className="ma-send-btn ma-send-btn--ghost"
-                  onClick={() => downloadCollectivePdf("custom")}
-                  disabled={!!downloadingCollective || !customCollectivePdfConfig}
-                >
-                  <FiDownload size={13} />
-                  {downloadingCollective === "custom"
-                    ? "Downloading…"
-                    : "Download"}
-                </button>
-                <button
-                  type="button"
-                  className="ma-send-btn"
-                  onClick={sendCustomCollectiveReport}
-                  disabled={sending}
-                >
-                  <FiSend size={13} />
-                  {sending ? "Sending…" : "Send"}
-                </button>
               </div>
             </div>
           )}
         </header>
 
         <div className={`ma-content${reportCount > 0 ? " ma-content--with-cart" : ""}`}>
-          <div className="ma-layout msv-collapsible-layout">
-          {/* COLUMN 1 — CLASSROOMS */}
+          <nav className="rw-steps" aria-label="Report workflow">
+            <button
+              type="button"
+              className={`rw-step rw-step--clickable ${workflowStep === 1 ? "rw-step--active" : ""} ${workflowStep > 1 ? "rw-step--done" : ""}`}
+              onClick={workflowStep > 1 ? expandClassroomSection : undefined}
+            >
+              <span className="rw-step-num">{workflowStep > 1 ? "✓" : "1"}</span>
+              <span className="rw-step-body">
+                <span className="rw-step-label">Classroom</span>
+                <span className="rw-step-hint">
+                  {selectedClassroom?.name || "Pick a class"}
+                </span>
+              </span>
+            </button>
+            <span className="rw-step-divider" aria-hidden="true" />
+            <button
+              type="button"
+              className={`rw-step ${selectedClassroom ? "rw-step--clickable" : ""} ${workflowStep === 2 ? "rw-step--active" : ""} ${workflowStep > 2 ? "rw-step--done" : ""}`}
+              onClick={
+                selectedClassroom && workflowStep > 2
+                  ? () => {
+                      setSelectedAssignment(null);
+                      setSummaryMap({});
+                      setStudentFilter("all");
+                    }
+                  : undefined
+              }
+            >
+              <span className="rw-step-num">{workflowStep > 2 ? "✓" : "2"}</span>
+              <span className="rw-step-body">
+                <span className="rw-step-label">Assignment</span>
+                <span className="rw-step-hint">
+                  {selectedAssignment?.title || "Choose assignment"}
+                </span>
+              </span>
+            </button>
+            <span className="rw-step-divider" aria-hidden="true" />
+            <div className={`rw-step ${workflowStep === 3 ? "rw-step--active" : ""} ${workflowStep > 3 ? "rw-step--done" : ""}`}>
+              <span className="rw-step-num">{workflowStep > 3 ? "✓" : "3"}</span>
+              <span className="rw-step-body">
+                <span className="rw-step-label">Students</span>
+                <span className="rw-step-hint">
+                  {selectedStudentCount > 0
+                    ? `${selectedStudentCount} selected`
+                    : "Select recipients"}
+                </span>
+              </span>
+            </div>
+            <span className="rw-step-divider" aria-hidden="true" />
+            <div className={`rw-step ${workflowStep === 4 ? "rw-step--active" : ""}`}>
+              <span className="rw-step-num">4</span>
+              <span className="rw-step-body">
+                <span className="rw-step-label">Send</span>
+                <span className="rw-step-hint">
+                  {reportCount > 0 ? `${reportCount} ready` : "Preview & send"}
+                </span>
+              </span>
+            </div>
+          </nav>
+
+          <div className="rw-workspace">
           {!selectedClassroom ? (
-          <div className="ma-column">
-            <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
+          <section className="rw-pane rw-pane--full">
+            <div className="rw-pane-head">
+              <div>
+                <h2 className="rw-pane-title">Select a classroom</h2>
+                <p className="rw-pane-sub">Choose where the assignment lives before building reports.</p>
+              </div>
+            </div>
 
             <input
               className="ma-search-input"
@@ -1092,118 +1201,146 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             />
 
             <div className="ma-scroll-list">
-              {filteredClassrooms.map(c => (
-                <div
-                  key={c._id}
-                  className={`ma-classroom-card ${
-                    selectedClassroom?._id === c._id
-                      ? "ma-classroom-card--active"
-                      : ""
-                  }`}
-                  onClick={() => selectClassroom(c)}
-                >
-                  <div className="ma-classroom-icon">
-                    <FiUsers size={15} />
-                  </div>
-                  <div className="ma-classroom-info">
-                    <span className="ma-classroom-name">{c.name}</span>
-                    {c.section && (
-                      <span className="ma-classroom-section">{c.section}</span>
-                    )}
-                    {c.teacherId?.name && (
-                      <span className="msv-classroom-teacher">Teacher: {c.teacherId.name}</span>
-                    )}
-                  </div>
+              {filteredClassrooms.length === 0 ? (
+                <div className="rw-empty">
+                  <FiUsers size={28} />
+                  <p>No classrooms match your search.</p>
                 </div>
-              ))}
-            </div>
-            <Pagination page={classroomPage} totalPages={classroomTotalPages} onPageChange={fetchClassroomPage} />
-          </div>
-          ) : (
-            <div
-              className="msv-section-collapsed"
-              onClick={expandClassroomSection}
-              onKeyDown={(e) => e.key === "Enter" && expandClassroomSection()}
-              role="button"
-              tabIndex={0}
-            >
-              <span className="msv-section-collapsed-chevron">▶</span>
-              <span className="msv-section-collapsed-text">Classroom: {selectedClassroom.name}</span>
-              <button
-                type="button"
-                className="msv-section-change"
-                onClick={(e) => { e.stopPropagation(); expandClassroomSection(); }}
-              >
-                [change]
-              </button>
-            </div>
-          )}
-
-          {/* COLUMN 2 — ASSIGNMENTS */}
-          {selectedClassroom && (
-            !selectedAssignment ? (
-          <div className="ma-column">
-            <p className="ma-section-label msv-section-header-expanded">▼ Select Assignment</p>
-
-            <input
-              className="ma-search-input"
-              placeholder="Search assignments..."
-              value={assignmentSearch}
-              onChange={(e) => setAssignmentSearch(e.target.value)}
-            />
-
-            <div className="ma-scroll-list">
-              {filteredAssignments.map(a => (
+              ) : (
+                filteredClassrooms.map(c => (
                   <div
-                    key={a._id}
-                    className={`ma-assignment-card ${
-                      selectedAssignment?._id === a._id
-                        ? "ma-assignment-card--active"
-                        : ""
-                    }`}
-                    onClick={() => selectAssignment(a)}
+                    key={c._id}
+                    className="ma-classroom-card"
+                    onClick={() => selectClassroom(c)}
                   >
-                    <div className="ma-assignment-icon">
-                      <FiClipboard size={14} />
+                    <div className="ma-classroom-icon">
+                      <FiUsers size={15} />
                     </div>
-                    <div className="ma-assignment-info">
-                      <span className="ma-assignment-title">{a.title}</span>
-                      {a.dueDate && (
-                        <span className="ma-assignment-due">
-                          <FiCalendar size={10} />
-                          {new Date(a.dueDate).toLocaleDateString()}
-                        </span>
+                    <div className="ma-classroom-info">
+                      <span className="ma-classroom-name">{c.name}</span>
+                      {c.section && (
+                        <span className="ma-classroom-section">{c.section}</span>
+                      )}
+                      {c.teacherId?.name && (
+                        <span className="msv-classroom-teacher">Teacher: {c.teacherId.name}</span>
                       )}
                     </div>
+                    <FiChevronRight size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
                   </div>
-                ))}
+                ))
+              )}
             </div>
-            <Pagination page={assignmentPage} totalPages={assignmentTotalPages} onPageChange={fetchAssignmentPage} />
-          </div>
-            ) : (
-              <div
-                className="msv-section-collapsed"
-                onClick={expandAssignmentSection}
-                onKeyDown={(e) => e.key === "Enter" && expandAssignmentSection()}
-                role="button"
-                tabIndex={0}
-              >
-                <span className="msv-section-collapsed-chevron">▶</span>
-                <span className="msv-section-collapsed-text">Assignment: {selectedAssignment.title}</span>
-                <button
-                  type="button"
-                  className="msv-section-change"
-                  onClick={(e) => { e.stopPropagation(); expandAssignmentSection(); }}
-                >
-                  [change]
+            <Pagination page={classroomPage} totalPages={classroomTotalPages} onPageChange={fetchClassroomPage} />
+          </section>
+          ) : (
+            <>
+              <div className="rw-context-bar">
+                <div className="rw-context-bar-main">
+                  <span className="rw-context-label">Classroom</span>
+                  <span className="rw-context-value">{selectedClassroom.name}</span>
+                </div>
+                <button type="button" className="rw-context-change" onClick={expandClassroomSection}>
+                  Change classroom
                 </button>
               </div>
-            )
-          )}
 
-          {/* COLUMN 3 — STUDENTS */}
-          {selectedAssignment && (
-          <div className="ma-right-panel msv-right-panel-full">
+              <div className={`rw-split${selectedAssignment ? "" : " rw-split--assignments-only"}`}>
+                <aside className="rw-pane rw-pane--assignments">
+                  <div className="rw-pane-head">
+                    <div>
+                      <h2 className="rw-pane-title">Assignments</h2>
+                      <p className="rw-pane-sub">Open one to pick students, or check several for a collective PDF.</p>
+                    </div>
+                  </div>
+
+                  <div className="rw-info-card">
+                    <FiInfo size={14} />
+                    <span>
+                      Check multiple assignments, then use <strong>Add all students</strong> to build a collective teacher report in one go.
+                    </span>
+                  </div>
+
+                  <input
+                    className="ma-search-input"
+                    placeholder="Search assignments..."
+                    value={assignmentSearch}
+                    onChange={(e) => setAssignmentSearch(e.target.value)}
+                  />
+
+                  <div className="ma-assignment-bulk-actions">
+                    <label className="ma-assignment-check-all">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageChecked}
+                        onChange={(e) => toggleAllAssignmentsOnPage(e.target.checked)}
+                      />
+                      <span>Select page</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="ma-send-btn ma-send-btn--compact"
+                      onClick={selectAllStudentsForCheckedAssignments}
+                      disabled={selectingAll || checkedAssignmentCount === 0}
+                      title="Add every student from all checked assignments to the report cart"
+                    >
+                      {selectingAll
+                        ? "Selecting…"
+                        : `Add all students (${checkedAssignmentCount || 0})`}
+                    </button>
+                  </div>
+
+                  <div className="ma-scroll-list">
+                    {filteredAssignments.length === 0 ? (
+                      <div className="rw-empty">
+                        <FiClipboard size={24} />
+                        <p>No assignments found.</p>
+                      </div>
+                    ) : (
+                      filteredAssignments.map(a => {
+                        const isChecked = Boolean(checkedAssignments[String(a._id)]);
+                        return (
+                          <div
+                            key={a._id}
+                            className={`ma-assignment-card ${
+                              selectedAssignment?._id === a._id
+                                ? "ma-assignment-card--active"
+                                : ""
+                            }${isChecked ? " ma-assignment-card--checked" : ""}`}
+                            onClick={() => selectAssignment(a)}
+                          >
+                            <label
+                              className="ma-assignment-checkbox"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => toggleAssignmentChecked(a, e)}
+                                aria-label={`Include ${a.title} in collective report`}
+                              />
+                            </label>
+                            <div className="ma-assignment-icon">
+                              <FiClipboard size={14} />
+                            </div>
+                            <div className="ma-assignment-info">
+                              <span className="ma-assignment-title">{a.title}</span>
+                              {a.dueDate && (
+                                <span className="ma-assignment-due">
+                                  <FiCalendar size={10} />
+                                  {new Date(a.dueDate).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <Pagination page={assignmentPage} totalPages={assignmentTotalPages} onPageChange={fetchAssignmentPage} />
+                </aside>
+
+                {selectedAssignment ? (
+                <section className="rw-pane rw-pane--students">
               <div className="ma-panel">
                 <div className="ma-panel-header">
                   <div className="ma-panel-title-wrap">
@@ -1226,7 +1363,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   </button>
 
                   <button
-                    className="ma-send-btn"
+                    className="ma-send-btn ma-send-btn--ghost"
                     onClick={clearAllSelections}
                     disabled={cartCount === 0}
                   >
@@ -1238,6 +1375,38 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                       <FiCheckSquare size={12} /> {reportCount} report{reportCount !== 1 ? "s" : ""} ready
                     </span>
                   )}
+                </div>
+
+                <div className="rw-student-toolbar">
+                  <div className="rw-filter-tabs" role="tablist" aria-label="Filter students">
+                    <button
+                      type="button"
+                      role="tab"
+                      className={`rw-filter-tab ${studentFilter === "all" ? "rw-filter-tab--active" : ""}`}
+                      onClick={() => setStudentFilter("all")}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      className={`rw-filter-tab ${studentFilter === "selected" ? "rw-filter-tab--active" : ""}`}
+                      onClick={() => setStudentFilter("selected")}
+                    >
+                      Selected ({selectedStudentCount})
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      className={`rw-filter-tab ${studentFilter === "not_sent" ? "rw-filter-tab--active" : ""}`}
+                      onClick={() => setStudentFilter("not_sent")}
+                    >
+                      Not sent
+                    </button>
+                  </div>
+                  <span className="rw-student-count">
+                    Showing {filteredStudents.length} of {students.length}
+                  </span>
                 </div>
 
                 {selectedAssignment && (
@@ -1294,14 +1463,15 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
                 {!loadingStudents && students.length > 0 && (
                   <div className="ma-table-wrap">
-                    <div className="ma-table-scroll">
-                      <table className="ma-table sah-table--cards">
+                    <div className="ma-table-scroll rw-table-scroll">
+                      <table className="ma-table sah-table--cards rw-table-sticky">
                         <thead>
                           <tr>
                             <th style={{ width: 44 }}></th>
                             <th>Name</th>
                             <th>Email</th>
                             <th>Status</th>
+                            <th>Report Sent</th>
                             {showAttendanceColumn && <th>Attendance</th>}
                             {showAttendanceColumn && <th>Date</th>}
                             <th>Submitted At</th>
@@ -1311,7 +1481,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {students.map((s, i) => {
+                          {filteredStudents.map((s, i) => {
                             const selected = isStudentSelected(s._id);
                             const stuId = String(s._id);
                             const asgId = selectedAssignment._id;
@@ -1337,6 +1507,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                                 </td>
                                 <td data-label="Email"><span className="ma-cell-muted">{s.email || "—"}</span></td>
                                 <td data-label="Status">{statusBadge(s)}</td>
+                                <td data-label="Report Sent">{reportSentBadge(s)}</td>
                                 {showAttendanceColumn && (
                                   <td data-label="Attendance" onClick={(e) => e.stopPropagation()}>
                                     <ReportAttendanceSelect
@@ -1444,86 +1615,148 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                     </div>
                   </div>
                 )}
+                {!loadingStudents && students.length > 0 && filteredStudents.length === 0 && (
+                  <div className="rw-empty">
+                    <FiUsers size={24} />
+                    <p>No students match this filter.</p>
+                  </div>
+                )}
                 {!loadingStudents && students.length > 0 && (
                   <Pagination page={studentPage} totalPages={studentTotalPages} onPageChange={fetchStudentPage} />
                 )}
               </div>
-          </div>
+                </section>
+                ) : (
+                  <div className="rw-pane rw-pane--placeholder">
+                    <FiClipboard size={32} />
+                    <h3>Select an assignment</h3>
+                    <p>Click an assignment on the left to view students and build WhatsApp reports.</p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
-        </div>
+          </div>
 
         {reportCount > 0 && selectedClassroom?._id && (
           <section className="ma-collective-preview-section">
-            <div className="ma-collective-preview-grid">
-              <div
-                className="ma-collective-preview-card"
-                id="teacher-collective-preview"
+            <div className="ma-collective-preview-head">
+              <h3>Collective PDF reports</h3>
+              <button
+                type="button"
+                className="rw-collective-toggle"
+                onClick={() => setShowCollectivePanel((v) => !v)}
               >
-                <div className="ma-collective-preview-head">
-                  <h3>Teacher collective PDF</h3>
-                  <div className="ma-collective-preview-actions">
-                    <button
-                      type="button"
-                      className="ma-send-btn ma-send-btn--ghost"
-                      onClick={() => downloadCollectivePdf("teacher")}
-                      disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
-                    >
-                      <FiDownload size={13} />
-                      {downloadingCollective === "teacher" ? "Downloading…" : "Download"}
-                    </button>
-                    {!isTeacher && (
-                      <button
-                        type="button"
-                        className="ma-send-btn"
-                        onClick={sendTeacherCollectiveReport}
-                        disabled={sending}
-                      >
-                        <FiSend size={13} />
-                        Send
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <ReportPdfPreview
-                  fetchConfig={teacherCollectivePdfConfig}
-                  title="Teacher collective report PDF"
-                  frameClassName="mpr-pdf-preview-frame--tall"
-                />
-              </div>
-              <div
-                className="ma-collective-preview-card"
-                id="custom-collective-preview"
-              >
-                <div className="ma-collective-preview-head">
-                  <h3>Custom collective PDF</h3>
-                  <div className="ma-collective-preview-actions">
-                    <button
-                      type="button"
-                      className="ma-send-btn ma-send-btn--ghost"
-                      onClick={() => downloadCollectivePdf("custom")}
-                      disabled={!!downloadingCollective || !customCollectivePdfConfig}
-                    >
-                      <FiDownload size={13} />
-                      {downloadingCollective === "custom" ? "Downloading…" : "Download"}
-                    </button>
-                    <button
-                      type="button"
-                      className="ma-send-btn"
-                      onClick={sendCustomCollectiveReport}
-                      disabled={sending}
-                    >
-                      <FiSend size={13} />
-                      Send
-                    </button>
-                  </div>
-                </div>
-                <ReportPdfPreview
-                  fetchConfig={customCollectivePdfConfig}
-                  title="Custom collective report PDF"
-                  frameClassName="mpr-pdf-preview-frame--tall"
-                />
-              </div>
+                {showCollectivePanel ? "Hide preview" : "Show preview"}
+              </button>
             </div>
+
+            {showCollectivePanel && (
+              <>
+                <div className="rw-collective-tabs">
+                  <button
+                    type="button"
+                    className={`rw-collective-tab ${collectiveTab === "teacher" ? "rw-collective-tab--active" : ""}`}
+                    onClick={() => setCollectiveTab("teacher")}
+                  >
+                    Teacher PDF
+                  </button>
+                  <button
+                    type="button"
+                    className={`rw-collective-tab ${collectiveTab === "custom" ? "rw-collective-tab--active" : ""}`}
+                    onClick={() => setCollectiveTab("custom")}
+                  >
+                    Custom recipient
+                  </button>
+                </div>
+
+                {collectiveTab === "teacher" ? (
+                  <div className="ma-collective-preview-card" id="teacher-collective-preview">
+                    <div className="ma-collective-preview-head">
+                      <p className="rw-pane-sub" style={{ margin: 0 }}>
+                        Combined PDF for the classroom teacher
+                      </p>
+                      <div className="ma-collective-preview-actions">
+                        <button
+                          type="button"
+                          className="ma-send-btn ma-send-btn--ghost"
+                          onClick={() => downloadCollectivePdf("teacher")}
+                          disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
+                        >
+                          <FiDownload size={13} />
+                          {downloadingCollective === "teacher" ? "Downloading…" : "Download"}
+                        </button>
+                        {!isTeacher && (
+                          <button
+                            type="button"
+                            className="ma-send-btn"
+                            onClick={sendTeacherCollectiveReport}
+                            disabled={sending}
+                          >
+                            <FiSend size={13} />
+                            Send to teacher
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <ReportPdfPreview
+                      fetchConfig={teacherCollectivePdfConfig}
+                      title="Teacher collective report PDF"
+                      frameClassName="mpr-pdf-preview-frame--tall"
+                    />
+                  </div>
+                ) : (
+                  <div className="ma-collective-preview-card" id="custom-collective-preview">
+                    <div className="rw-collective-phone">
+                      <span className="rw-collective-phone-label">Send to</span>
+                      <div style={{ minWidth: "240px", flex: 1 }}>
+                        <PhoneInput
+                          defaultCountry="eg"
+                          value={`+${customPhone}`}
+                          onChange={(value) => setCustomPhone(value.replace(/\D/g, ""))}
+                          className="tm-phone-input"
+                          countrySelectorStyleProps={{
+                            dropdownStyleProps: {
+                              style: { maxHeight: "350px", zIndex: 9999 },
+                            },
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="ma-collective-preview-head">
+                      <p className="rw-pane-sub" style={{ margin: 0 }}>
+                        Combined PDF to a custom WhatsApp number
+                      </p>
+                      <div className="ma-collective-preview-actions">
+                        <button
+                          type="button"
+                          className="ma-send-btn ma-send-btn--ghost"
+                          onClick={() => downloadCollectivePdf("custom")}
+                          disabled={!!downloadingCollective || !customCollectivePdfConfig}
+                        >
+                          <FiDownload size={13} />
+                          {downloadingCollective === "custom" ? "Downloading…" : "Download"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ma-send-btn"
+                          onClick={sendCustomCollectiveReport}
+                          disabled={sending}
+                        >
+                          <FiSend size={13} />
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                    <ReportPdfPreview
+                      fetchConfig={customCollectivePdfConfig}
+                      title="Custom collective report PDF"
+                      frameClassName="mpr-pdf-preview-frame--tall"
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </section>
         )}
         </div>
@@ -1552,6 +1785,18 @@ export default function ReportsWorkspace({ variant = "manager" }) {
             </div>
             <div className="ma-cart-bar-actions">
               <button
+                className="ma-send-btn ma-send-btn--ghost"
+                onClick={() => {
+                  setShowCollectivePanel(true);
+                  setCollectiveTab("teacher");
+                  scrollToCollectivePreview("teacher");
+                }}
+                disabled={!teacherCollectivePdfConfig}
+              >
+                <FiDownload size={16} />
+                Collective PDF
+              </button>
+              <button
                 className="ma-send-btn"
                 onClick={previewReport}
                 disabled={sending || preview.loading}
@@ -1562,26 +1807,6 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
                 <FiSend size={18} />
                 {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
-              </button>
-              <button
-                type="button"
-                className="ma-send-btn ma-send-btn--ghost"
-                onClick={() => scrollToCollectivePreview("teacher")}
-                disabled={!teacherCollectivePdfConfig}
-              >
-                <FiEye size={16} />
-                Teacher Preview
-              </button>
-              <button
-                type="button"
-                className="ma-send-btn ma-send-btn--ghost"
-                onClick={() => downloadCollectivePdf("teacher")}
-                disabled={!!downloadingCollective || !teacherCollectivePdfConfig}
-              >
-                <FiDownload size={16} />
-                {downloadingCollective === "teacher"
-                  ? "Downloading…"
-                  : "Teacher Download"}
               </button>
             </div>
           </div>
@@ -1600,86 +1825,32 @@ export default function ReportsWorkspace({ variant = "manager" }) {
 
         {summaryViewer.open && (
           <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 1000,
-              background: "rgba(0,0,0,0.6)",
-              backdropFilter: "blur(4px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}
+            className="rw-summary-overlay"
             onClick={() =>
-              setSummaryViewer({
-                open: false,
-                title: "",
-                message: ""
-              })
+              setSummaryViewer({ open: false, title: "", message: "" })
             }
           >
             <div
-              style={{
-                background: "#1e1e2e",
-                borderRadius: 14,
-                padding: 24,
-                width: "min(520px, 90vw)",
-                border: "1px solid rgba(139,92,246,0.3)",
-                boxShadow: "0 20px 60px rgba(0,0,0,0.5)"
-              }}
+              className="rw-summary-modal"
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 16
-                }}
-              >
-                <span
-                  style={{
-                    fontWeight: 700,
-                    color: "#fff",
-                    fontSize: 15
-                  }}
-                >
-                  {summaryViewer.title}
-                </span>
-
+              <div className="rw-summary-head">
+                <span className="rw-summary-title">{summaryViewer.title}</span>
                 <button
+                  type="button"
+                  className="rw-summary-close"
                   onClick={() =>
-                    setSummaryViewer({
-                      open: false,
-                      title: "",
-                      message: ""
-                    })
+                    setSummaryViewer({ open: false, title: "", message: "" })
                   }
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "rgba(255,255,255,0.5)",
-                    cursor: "pointer",
-                    fontSize: 18
-                  }}
+                  aria-label="Close"
                 >
-                  ✕
+                  <FiX size={16} />
                 </button>
               </div>
-
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "rgba(255,255,255,0.75)",
-                  lineHeight: 1.7,
-                  margin: 0
-                }}
-              >
-                {summaryViewer.message}
-              </p>
+              <p className="rw-summary-body">{summaryViewer.message}</p>
             </div>
           </div>
-)}
+        )}
 
       </main>
   );

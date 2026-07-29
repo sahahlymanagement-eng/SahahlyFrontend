@@ -62,6 +62,8 @@ import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
 import ManagerAutomation from "./pages/manager/ManagerAutomation";
+import ManagerChatbot from "./pages/manager/ManagerChatbot";
+import ManagerActionsChatbot from "./pages/manager/ManagerActionsChatbot";
 import PaperMarking from "./pages/manager/PaperMarking";
 import PaperMarkingClaude from "./pages/manager/PaperMarkingClaude";
 import QBManage from "./pages/questionbank/QBManage";
@@ -247,6 +249,8 @@ function App() {
           <Route path="markingclaude" element={<PaperMarkingClaude />} />
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />
+          <Route path="ai-agent" element={<ManagerChatbot />} />
+          <Route path="chatbot" element={<ManagerActionsChatbot />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
           <Route path="submission/:courseId/:courseWorkId/:submissionId" element={<SubmissionActions />} />

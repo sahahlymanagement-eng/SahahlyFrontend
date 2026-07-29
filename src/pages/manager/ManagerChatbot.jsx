@@ -1,30 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../../api/api";
-import { TeacherPageHeader } from "./TeacherUI";
+import { TeacherPageHeader } from "../teacher/TeacherUI";
 import { FiSend, FiPlus, FiCpu, FiUser, FiZap } from "react-icons/fi";
 import {
+  assignAssistant,
+  changeAssistant,
   createCoursework,
   downloadGradesExcel,
   previewAssignmentReport,
+  pushClassroomGrades,
+  removeAssistant,
+  runAutomation,
   sendAssignmentReport,
-  sendMonthly,
   sendExecutiveReport,
+  sendMonthly,
   sendTeacherCollectiveReport,
-} from "./teacherChatbotActionsClient";
-import "./teacher.css";
-import "./TeacherChatbot.css";
+  syncClassroom,
+} from "./managerChatbotActionsClient";
+import "../teacher/teacher.css";
+import "../teacher/TeacherChatbot.css";
 
 const SUGGESTIONS = [
   "Give me today's briefing",
-  "Send Omar's report for the last test in Class 9A",
-  "Which students need the most support?",
-  "Show assistant workload",
-  "Export grades for the midterm in Physics",
-  "Send executive analysis for the midterm",
-  "Send teacher collective report for Class 9A",
+  "Assign Raghad to mark the Physics test in Grade 10A",
+  "Show assistant workload across my classes",
+  "Send teacher collective report for Class 9B",
+  "Run automation on the last homework in Chemistry",
+  "Who is behind on deadlines?",
 ];
 
-const STORAGE_KEY = "sahahly-teacher-ai-agent";
+const STORAGE_KEY = "sahahly-manager-ai-agent";
 
 function renderMarkdown(text) {
   const escaped = String(text || "")
@@ -75,7 +80,34 @@ function previewKey(item) {
   return String(item.studentId || item.name || item.key || "");
 }
 
-export default function TeacherChatbot() {
+function confirmLabelFor(type) {
+  switch (type) {
+    case "export_grades":
+      return "Download Excel";
+    case "create_coursework":
+      return "Create assignment";
+    case "assign_assistant":
+      return "Assign assistant";
+    case "change_assistant":
+      return "Change assistant";
+    case "remove_assistant":
+      return "Remove assistant";
+    case "run_automation":
+      return "Start automation";
+    case "push_classroom_grades":
+      return "Push grades";
+    case "sync_classroom":
+      return "Sync now";
+    case "send_teacher_collective_report":
+      return "Send collective PDF";
+    case "send_executive_report":
+      return "Send executive report";
+    default:
+      return "Confirm";
+  }
+}
+
+export default function ManagerChatbot() {
   const [user, setUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -95,7 +127,7 @@ export default function TeacherChatbot() {
       setUser(parsed);
       if (parsed?.id) {
         api
-          .get("/teacher-chatbot/briefing", { params: { personId: parsed.id } })
+          .get("/manager-chatbot/briefing", { params: { personId: parsed.id } })
           .then((res) => setBriefing(res.data))
           .catch(() => setBriefing(null));
       }
@@ -189,7 +221,7 @@ export default function TeacherChatbot() {
       setLastMatched(null);
 
       try {
-        const { data } = await api.post("/teacher-chatbot/agent", {
+        const { data } = await api.post("/manager-chatbot/agent", {
           personId: user.id,
           messages: nextMessages.map(({ role, content: c }) => ({
             role,
@@ -254,92 +286,119 @@ export default function TeacherChatbot() {
 
     try {
       const ex = actionProposal.execute;
+      let successMsg = "Done.";
 
-      if (actionProposal.type === "send_assignment_report") {
-        const overrides = buildMessageOverrides();
-        const result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides);
-        const summary = result.summary || [];
-        const ok = summary.filter((r) => r.status === "fulfilled").length;
-        const fail = summary.filter((r) => r.status === "rejected").length;
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Done — sent **${ok}** report(s)${fail ? `, **${fail}** failed` : ""}.`,
-          },
-        ]);
-      } else if (actionProposal.type === "send_monthly_report") {
-        const overrides = buildMessageOverrides();
-        const result = await sendMonthly({
-          personId: user.id,
-          classroomId: ex.classroomId,
-          year: ex.year,
-          month: ex.month,
-          studentIds: ex.studentIds,
-          messageOverrides: overrides,
-        });
-        const sent = result.sent ?? result.successCount ?? ex.studentIds.length;
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Done — monthly report send completed (${sent} recipient(s)).`,
-          },
-        ]);
-      } else if (actionProposal.type === "create_coursework") {
-        await createCoursework({
-          personId: user.id,
-          courseId: ex.courseId,
-          courseworkData: ex.courseworkData,
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Created assignment **${ex.courseworkData.title}** in ${ex.classroomName}. Attach worksheets from **Courses** if needed.`,
-          },
-        ]);
-      } else if (actionProposal.type === "export_grades") {
-        const filename = await downloadGradesExcel(
-          user.id,
-          ex.assignmentId,
-          ex.targetMax
-        );
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Downloaded **${filename}** for ${ex.assignmentTitle}.`,
-          },
-        ]);
-      } else if (actionProposal.type === "send_executive_report") {
-        await sendExecutiveReport({
-          personId: user.id,
-          assignmentId: ex.assignmentId,
-          trigger: ex.trigger,
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Executive analysis report sent for **${ex.assignmentTitle}**.`,
-          },
-        ]);
-      } else if (actionProposal.type === "send_teacher_collective_report") {
-        await sendTeacherCollectiveReport({
-          personId: user.id,
-          classroomId: ex.classroomId,
-          reports: ex.reports,
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Teacher collective PDF sent for **${ex.classroomName}**.`,
-          },
-        ]);
+      switch (actionProposal.type) {
+        case "send_assignment_report": {
+          const overrides = buildMessageOverrides();
+          const result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides);
+          const summary = result.summary || [];
+          const ok = summary.filter((r) => r.status === "fulfilled").length;
+          const fail = summary.filter((r) => r.status === "rejected").length;
+          successMsg = `Sent **${ok}** report(s)${fail ? `, **${fail}** failed` : ""}.`;
+          break;
+        }
+        case "send_monthly_report": {
+          const overrides = buildMessageOverrides();
+          const result = await sendMonthly({
+            personId: user.id,
+            classroomId: ex.classroomId,
+            year: ex.year,
+            month: ex.month,
+            studentIds: ex.studentIds,
+            messageOverrides: overrides,
+          });
+          const sent = result.sent ?? result.successCount ?? ex.studentIds.length;
+          successMsg = `Monthly report send completed (${sent} recipient(s)).`;
+          break;
+        }
+        case "create_coursework":
+          await createCoursework({
+            personId: user.id,
+            courseId: ex.courseId,
+            courseworkData: ex.courseworkData,
+          });
+          successMsg = `Created assignment **${ex.courseworkData.title}** in ${ex.classroomName}.`;
+          break;
+        case "export_grades": {
+          const filename = await downloadGradesExcel(
+            user.id,
+            ex.assignmentId,
+            ex.targetMax
+          );
+          successMsg = `Downloaded **${filename}** for ${ex.assignmentTitle}.`;
+          break;
+        }
+        case "assign_assistant":
+          await assignAssistant({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            assistantPersonId: ex.assistantPersonId,
+            assignedBy: ex.assignedBy || user.id,
+          });
+          successMsg = `Assigned **${ex.assistantName}** to **${ex.assignmentTitle}**.`;
+          break;
+        case "change_assistant":
+          await changeAssistant({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            newPersonId: ex.newPersonId,
+            assignedBy: ex.assignedBy || user.id,
+          });
+          successMsg = `Changed assistant to **${ex.assistantName}** on **${ex.assignmentTitle}**.`;
+          break;
+        case "remove_assistant":
+          await removeAssistant({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            assignedBy: ex.assignedBy || user.id,
+          });
+          successMsg = `Removed assistant from **${ex.assignmentTitle}**.`;
+          break;
+        case "run_automation": {
+          const result = await runAutomation({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            force: ex.force,
+          });
+          successMsg = result.message || `Automation started for **${ex.assignmentTitle}**. Poll Automation tab for status.`;
+          break;
+        }
+        case "push_classroom_grades":
+          await pushClassroomGrades({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+          });
+          successMsg = `Pushed grades to Google Classroom for **${ex.assignmentTitle}**.`;
+          break;
+        case "sync_classroom":
+          await syncClassroom({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+          });
+          successMsg = `Synced submissions for **${ex.assignmentTitle}**.`;
+          break;
+        case "send_executive_report":
+          await sendExecutiveReport({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            trigger: ex.trigger,
+          });
+          successMsg = `Executive analysis report sent for **${ex.assignmentTitle}**.`;
+          break;
+        case "send_teacher_collective_report":
+          await sendTeacherCollectiveReport({
+            personId: user.id,
+            classroomId: ex.classroomId,
+            reports: ex.reports,
+          });
+          successMsg = `Teacher collective PDF sent for **${ex.classroomName}**.`;
+          break;
+        default:
+          throw new Error("Unknown action type");
       }
 
+      setMessages((prev) => [...prev, { role: "assistant", content: successMsg }]);
       clearActionState();
     } catch (err) {
       setMessages((prev) => [
@@ -382,23 +441,16 @@ export default function TeacherChatbot() {
     (actionProposal.type === "send_assignment_report" ||
       actionProposal.type === "send_monthly_report");
 
-  const confirmLabel =
-    actionProposal?.type === "export_grades"
-      ? "Download Excel"
-      : actionProposal?.type === "create_coursework"
-        ? "Create assignment"
-        : actionProposal?.type === "send_teacher_collective_report"
-          ? "Send collective PDF"
-          : actionProposal?.type === "send_executive_report"
-            ? "Send executive report"
-            : "Send";
+  const confirmLabel = actionProposal
+    ? confirmLabelFor(actionProposal.type)
+    : "Confirm";
 
   return (
     <div className="tch-page tch-page--wide tchat-page">
       <TeacherPageHeader
         eyebrow="AI Assistant"
         title="AI Agent"
-        subtitle="Ask questions or tell me what to do — e.g. send a report, export grades, create an assignment."
+        subtitle="Ask questions or instruct me to do anything in your manager account — delegations, reports, automation, and more."
         actions={
           messages.length > 0 ? (
             <button type="button" className="tch-btn tch-btn--ghost" onClick={newChat}>
@@ -417,8 +469,9 @@ export default function TeacherChatbot() {
               </div>
               <h3>What would you like to know or do?</h3>
               <p>
-                Ask about your classes, or tell me to send a report, export grades,
-                or create an assignment. I&apos;ll show a preview before anything is sent.
+                Natural language works for everything — assign assistants, send reports,
+                run automation, push grades, and more. I always show a confirm step before
+                executing.
               </p>
               {briefing?.lines?.length ? (
                 <div className="tchat-briefing-card">
@@ -580,7 +633,7 @@ export default function TeacherChatbot() {
           <textarea
             ref={inputRef}
             className="tchat-input"
-            placeholder='Ask or instruct — e.g. "Send Sara&apos;s report for Quiz 2 in Grade 10"'
+            placeholder='Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
             value={input}
             rows={1}
             onChange={(e) => setInput(e.target.value)}

@@ -11,12 +11,14 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey } from "../utils/markingFormData";
+import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
 
 // CDN worker avoids nginx serving bundled .mjs as application/octet-stream on VPS
 GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
 const MAX_RENDER_WIDTH = 720;
-const PREVIEW_SCALE_CAP = 2;
+const MAX_RENDER_PIXEL_WIDTH = 3200;
+const RENDER_ZOOM_DEBOUNCE_MS = 120;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4;
 const ZOOM_STEP_BTN = 0.1;
@@ -56,6 +58,7 @@ function PlacementHandle({
   onPointerDown,
   onRemove,
   showRemove,
+  zIndex,
 }) {
   const labelNum = displayNumber || q?.questionNumber;
   const label =
@@ -70,8 +73,9 @@ function PlacementHandle({
         top: `${yPercent}%`,
         left: column === "left" ? "0.6%" : `${RIGHT_COL_LEFT_PCT}%`,
         width: column === "left" ? `${LEFT_COL_WIDTH_PCT}%` : `${RIGHT_COL_WIDTH_PCT}%`,
+        zIndex: zIndex ?? undefined,
       }}
-      onPointerDown={(e) => onPointerDown(e, q, column)}
+      onPointerDown={(e) => onPointerDown(e, q, column, yPercent)}
       title="Drag to move this marking box (any page). Positions apply on Confirm Edits."
     >
       {showRemove && column === "left" && (
@@ -90,8 +94,8 @@ function PlacementHandle({
           ×
         </button>
       )}
-      <span className="pdf-place-handle__grip" aria-hidden>
-        ⠿
+      <span className="pdf-place-handle__grip" aria-hidden title="Drag">
+        ⋮⋮
       </span>
       <span className="pdf-place-handle__label">{label}</span>
     </div>
@@ -136,9 +140,10 @@ function LazyPdfPage({
         const page = await pdf.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
         let scale = renderWidth / baseViewport.width;
-        scale = Math.min(scale, PREVIEW_SCALE_CAP);
+        const maxScale = MAX_RENDER_PIXEL_WIDTH / baseViewport.width;
+        scale = Math.min(scale, maxScale);
         const viewport = page.getViewport({ scale });
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
 
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -203,38 +208,45 @@ function LazyPdfPage({
       data-student-page={studentPageNumber > 0 ? studentPageNumber : undefined}
     >
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
-      {showHandles &&
-        pageQuestions.map((item) => {
-          const { q, yPercent } = item;
-          const key = placementKey(q);
-          const displayNumber = formatQuestionLabelWithPage(
-            q,
-            labelGuidance,
-            duplicateQuestionNumbers
-          );
-          return (
-            <div key={`place-${item.placementIndex}`} className="pdf-place-layer">
-              <PlacementHandle
-                q={q}
-                displayNumber={displayNumber}
-                column="left"
-                yPercent={yPercent}
-                active={dragKey === `${key}:left`}
-                onPointerDown={onHandlePointerDown}
-                onRemove={onQuestionRemove}
-                showRemove={showRemove}
-              />
-              <PlacementHandle
-                q={q}
-                column="right"
-                yPercent={yPercent}
-                active={dragKey === `${key}:right`}
-                onPointerDown={onHandlePointerDown}
-                showRemove={false}
-              />
-            </div>
-          );
-        })}
+      {showHandles && (
+        <div className="pdf-place-layer">
+          {pageQuestions.map((item) => {
+            const { q, yPercent } = item;
+            const key = placementKey(q);
+            const displayNumber = formatQuestionLabelWithPage(
+              q,
+              labelGuidance,
+              duplicateQuestionNumbers
+            );
+            const stackZ = 3 + (Number(item.placementIndex) || 0) * 2;
+            return (
+              <div key={`place-${item.placementIndex ?? key}`} className="pdf-place-handle-group">
+                <PlacementHandle
+                  q={q}
+                  displayNumber={displayNumber}
+                  column="left"
+                  yPercent={yPercent}
+                  zIndex={stackZ}
+                  active={dragKey === `${key}:left`}
+                  onPointerDown={onHandlePointerDown}
+                  onRemove={onQuestionRemove}
+                  showRemove={showRemove}
+                />
+                <PlacementHandle
+                  q={q}
+                  displayNumber={displayNumber}
+                  column="right"
+                  yPercent={yPercent}
+                  zIndex={stackZ + 1}
+                  active={dragKey === `${key}:right`}
+                  onPointerDown={onHandlePointerDown}
+                  showRemove={false}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -276,7 +288,7 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
 }
 
 /**
- * Lazy page-by-page PDF preview with smooth CSS-transform zoom.
+ * Lazy page-by-page PDF preview with native-resolution zoom (re-renders at zoom level).
  * Optional placementQuestions + onPlacementChange: drag boxes across pages;
  * parent should apply pageNumber/yPercent and only regenerate on Confirm Edits.
  */
@@ -298,6 +310,7 @@ export default function AnnotatedPdfPreview({
   const [error, setError] = useState(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
+  const [renderZoom, setRenderZoom] = useState(DEFAULT_ZOOM);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
   const [contentHeight, setContentHeight] = useState(0);
@@ -318,9 +331,14 @@ export default function AnnotatedPdfPreview({
   const removeEnabled = typeof onQuestionRemove === "function";
 
   const baseRenderWidth = Math.max(240, Math.floor(containerWidth) || 320);
+  const visualScale = renderZoom > 0 ? zoomLevel / renderZoom : 1;
+  const effectiveRenderWidth = Math.min(
+    Math.max(240, Math.ceil(baseRenderWidth * renderZoom)),
+    MAX_RENDER_PIXEL_WIDTH
+  );
   const zoomPercent = Math.round(zoomLevel * 100);
   const scaledWidth = Math.ceil(baseRenderWidth * zoomLevel);
-  const scaledHeight = Math.ceil(contentHeight * zoomLevel);
+  const scaledHeight = Math.ceil(contentHeight * visualScale);
 
   const handleQuestionRemove = useCallback(
     (questionIndex) => {
@@ -343,9 +361,19 @@ export default function AnnotatedPdfPreview({
     zoomRef.current = zoomLevel;
   }, [zoomLevel]);
 
+  /** Debounce expensive PDF re-renders during wheel/pinch; buttons update renderZoom via applyZoomAtPoint. */
+  useEffect(() => {
+    if (Math.abs(zoomLevel - renderZoom) < 0.001) return undefined;
+    const timer = window.setTimeout(() => {
+      setRenderZoom(zoomLevel);
+    }, RENDER_ZOOM_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [zoomLevel, renderZoom]);
+
   useEffect(() => {
     setLocalPlacement({});
     setZoomLevel(DEFAULT_ZOOM);
+    setRenderZoom(DEFAULT_ZOOM);
   }, [url]);
 
   useEffect(() => {
@@ -388,7 +416,7 @@ export default function AnnotatedPdfPreview({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [numPages, baseRenderWidth, url]);
+  }, [numPages, effectiveRenderWidth, url]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -411,6 +439,7 @@ export default function AnnotatedPdfPreview({
     setError(null);
     setCurrentPage(1);
     setZoomLevel(DEFAULT_ZOOM);
+    setRenderZoom(DEFAULT_ZOOM);
 
     (async () => {
       try {
@@ -465,23 +494,40 @@ export default function AnnotatedPdfPreview({
 
   const byStudentPage = useMemo(() => {
     const map = new Map();
+    const byPageRaw = new Map();
+
     for (const q of effectiveQuestions) {
       const p = Math.max(1, Number(q.pageNumber) || 1);
-      if (!map.has(p)) map.set(p, []);
-      map.get(p).push({ q, yPercent: clampYPercent(q.yPercent), placementIndex: q._placementIndex });
+      if (!byPageRaw.has(p)) byPageRaw.set(p, []);
+      byPageRaw.get(p).push(q);
     }
+
+    for (const [pageNum, group] of byPageRaw) {
+      const resolvedY = resolveBadgeYPercentsForPage(group);
+      if (!map.has(pageNum)) map.set(pageNum, []);
+      for (const q of group) {
+        map.get(pageNum).push({
+          q,
+          yPercent: clampYPercent(
+            resolvedY.get(placementKey(q)) ?? q.yPercent
+          ),
+          placementIndex: q._placementIndex,
+        });
+      }
+    }
+
     return map;
   }, [effectiveQuestions]);
 
   const handlePointerDown = useCallback(
-    (e, q, column) => {
+    (e, q, column, displayedYPercent) => {
       if (!placementEnabled) return;
       e.preventDefault();
       e.stopPropagation();
 
       const key = placementKey(q);
       const studentPage = Math.max(1, Number(q.pageNumber) || 1);
-      const startY = clampYPercent(q.yPercent);
+      const startY = clampYPercent(displayedYPercent ?? q.yPercent);
 
       const rect = e.currentTarget.getBoundingClientRect();
       const grabOffsetY = e.clientY - (rect.top + rect.height / 2);
@@ -609,6 +655,7 @@ export default function AnnotatedPdfPreview({
 
     if (!root) {
       setZoomLevel(clamped);
+      setRenderZoom(clamped);
       zoomRef.current = clamped;
       return;
     }
@@ -620,6 +667,7 @@ export default function AnnotatedPdfPreview({
 
     setZoomLevel(clamped);
     zoomRef.current = clamped;
+    setRenderZoom(clamped);
 
     requestAnimationFrame(() => {
       root.scrollLeft = offsetX * ratio - (clientX - rect.left);
@@ -630,7 +678,12 @@ export default function AnnotatedPdfPreview({
   const zoomOut = () => {
     const root = scrollRef.current;
     if (!root) {
-      setZoomLevel((z) => clampZoom(z - ZOOM_STEP_BTN));
+      setZoomLevel((z) => {
+        const next = clampZoom(z - ZOOM_STEP_BTN);
+        setRenderZoom(next);
+        zoomRef.current = next;
+        return next;
+      });
       return;
     }
     const rect = root.getBoundingClientRect();
@@ -640,7 +693,12 @@ export default function AnnotatedPdfPreview({
   const zoomIn = () => {
     const root = scrollRef.current;
     if (!root) {
-      setZoomLevel((z) => clampZoom(z + ZOOM_STEP_BTN));
+      setZoomLevel((z) => {
+        const next = clampZoom(z + ZOOM_STEP_BTN);
+        setRenderZoom(next);
+        zoomRef.current = next;
+        return next;
+      });
       return;
     }
     const rect = root.getBoundingClientRect();
@@ -649,12 +707,14 @@ export default function AnnotatedPdfPreview({
 
   const resetZoom = () => {
     setZoomLevel(DEFAULT_ZOOM);
+    setRenderZoom(DEFAULT_ZOOM);
     zoomRef.current = DEFAULT_ZOOM;
     scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
 
   const fitWidth = useCallback(() => {
     setZoomLevel(DEFAULT_ZOOM);
+    setRenderZoom(DEFAULT_ZOOM);
     zoomRef.current = DEFAULT_ZOOM;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollTop, left: 0, behavior: "smooth" });
   }, []);
@@ -668,6 +728,7 @@ export default function AnnotatedPdfPreview({
       const available = scrollRef.current.clientHeight - 8;
       const nextZoom = clampZoom(available / pageHeightAtBase);
       setZoomLevel(nextZoom);
+      setRenderZoom(nextZoom);
       zoomRef.current = nextZoom;
       scrollRef.current.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     } catch (err) {
@@ -978,8 +1039,8 @@ export default function AnnotatedPdfPreview({
             ref={contentRef}
             className="pdf-preview-scroll-inner"
             style={{
-              width: baseRenderWidth,
-              transform: `scale(${zoomLevel})`,
+              width: effectiveRenderWidth,
+              transform: Math.abs(visualScale - 1) > 0.001 ? `scale(${visualScale})` : undefined,
               transformOrigin: "top left",
             }}
           >
@@ -992,10 +1053,10 @@ export default function AnnotatedPdfPreview({
                   : null;
               return (
                 <LazyPdfPage
-                  key={`${url}-p${pageNumber}-w${baseRenderWidth}`}
+                  key={`${url}-p${pageNumber}-w${effectiveRenderWidth}`}
                   pdf={pdf}
                   pageNumber={pageNumber}
-                  renderWidth={baseRenderWidth}
+                  renderWidth={effectiveRenderWidth}
                   scrollRoot={scrollRoot}
                   studentPageNumber={studentPageNumber}
                   pageQuestions={pageQuestions}

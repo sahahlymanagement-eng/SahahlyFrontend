@@ -527,7 +527,7 @@
 
 .ma-classroom-card {
   display: flex; align-items: center; gap: 10px;
-  padding: 30px 2px;
+  padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -582,6 +582,60 @@
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 8%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.ma-assignment-card--checked {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.ma-assignment-collective-hint {
+  margin: -4px 0 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ma-assignment-bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ma-assignment-check-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ma-assignment-check-all input {
+  accent-color: var(--primary);
+}
+
+.ma-assignment-checkbox {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.ma-assignment-checkbox input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.ma-send-btn--compact {
+  padding: 6px 10px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .ma-assignment-icon {
@@ -716,6 +770,28 @@
   padding: 3px 10px; border-radius: 999px;
 }
 
+.ma-report-sent-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ma-report-sent-pill--yes {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
+}
+
+.ma-report-sent-pill--no {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
 .ma-search-input {
   width: 100%;
   margin-bottom: 12px;
@@ -781,7 +857,7 @@ select.ma-search-input option {
   border-radius: 8px;
   padding: 7px 10px 7px 28px;
   color: var(--text-primary); font-size: 12.5px;
-  outline: none; width: 200px;
+  outline: none; width: 100%; min-width: 160px; max-width: 280px;
   font-family: 'Plus Jakarta Sans', sans-serif;
   transition: border-color 0.18s, box-shadow 0.18s;
 }
@@ -1037,7 +1113,7 @@ select.ma-search-input option {
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  width: min(720px, 96vw);
+  width: min(820px, 96vw);
   max-height: 88vh;
   display: flex;
   flex-direction: column;
@@ -1083,6 +1159,34 @@ select.ma-search-input option {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.arp-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 4px;
+  color: var(--muted);
+}
+
+.arp-search {
+  flex: 1;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.arp-search:focus {
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 .arp-status {
   font-size: 13px;
@@ -1305,4 +1409,174 @@ select.ma-search-input option {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+/* Reports Sent tab */
+.ma-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ma-back-link:hover {
+  color: var(--primary);
+}
+
+.ma-sent-latest-card {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.ma-sent-latest-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--primary);
+}
+
+.ma-sent-latest-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ma-sent-latest-summary {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.ma-sent-latest-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ma-sent-assignment-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.ma-sent-history-section {
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.ma-sent-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ma-sent-history-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ma-sent-history-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ma-sent-table-wrap {
+  overflow-x: auto;
+}
+
+.ma-sent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ma-sent-table th,
+.ma-sent-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.ma-sent-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.ma-sent-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ma-sent-pill--parent {
+  background: color-mix(in srgb, #22c55e 18%, transparent);
+  color: #15803d;
+}
+
+.ma-sent-pill--teacher {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary);
+}
+
+.ma-sent-pill--custom {
+  background: color-mix(in srgb, #f97316 18%, transparent);
+  color: #c2410c;
+}
+
+.ma-sent-teacher-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .ma-sent-table thead {
+    display: none;
+  }
+
+  .ma-sent-table tr {
+    display: block;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .ma-sent-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border: none;
+    padding: 4px 0;
+  }
+
+  .ma-sent-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
 }

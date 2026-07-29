@@ -1,6 +1,6 @@
 import {
   FiHome, FiUsers, FiClipboard, FiFileText, FiBookOpen,
-  FiZap, FiEye, FiBarChart2, FiUploadCloud, FiMessageSquare, FiSend, FiCpu
+  FiZap, FiEye, FiBarChart2, FiUploadCloud, FiMessageSquare, FiSend, FiCpu, FiMessageCircle
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
 import { useGradingNotifications } from "../context/GradingNotificationContext";
@@ -22,6 +22,8 @@ const NAV_ITEMS = [
   { icon: <FiBarChart2 />, label: "Token Usage",        path: "/manager/token-usage"    },
   { icon: <FiMessageSquare />, label: "Report Feedback", path: "/manager/feedback"   },
   { icon: <FiSend />,      label: "WhatsApp Scheduler", path: "/manager/whatsapp-scheduler" },
+  { icon: <FiCpu />,       label: "AI Agent",           path: "/manager/ai-agent"           },
+  { icon: <FiMessageCircle />, label: "Chatbot",        path: "/manager/chatbot"            },
   { icon: <FiFileText />,  label: "Gemini AI Marking",  path: "/manager/marking"        },
   { icon: <FiFileText />,  label: "Claude AI Marking",  path: "/manager/markingclaude"  },
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },

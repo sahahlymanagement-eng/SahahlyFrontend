@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import api from "../api/api";
 import { toast } from "react-toastify";
@@ -250,6 +251,9 @@ export default function TeacherExecutiveAnalysisWorkspace({
               </button>
               <button type="button" className="ma-report-tab ma-report-tab--active">
                 <FiBarChart2 size={12} /> Teacher Executive Analysis
+              </button>
+              <button type="button" className="ma-report-tab" onClick={() => onNavigate?.("sent")}>
+                <FiSend size={12} /> Reports Sent
               </button>
             </div>
           </div>

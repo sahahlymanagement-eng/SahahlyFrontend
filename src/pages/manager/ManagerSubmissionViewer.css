@@ -906,8 +906,12 @@
 
 .pdf-preview-canvas {
   display: block;
-  max-width: 100%;
+  width: auto;
   height: auto;
+}
+
+.pdf-preview-root--placeable .pdf-preview-page {
+  overflow: visible;
 }
 
 .pdf-preview-root--placeable .pdf-preview-scroll {
@@ -941,6 +945,12 @@
   inset: 0;
   pointer-events: none;
   z-index: 2;
+  overflow: visible;
+}
+
+.pdf-place-handle-group {
+  position: static;
+  pointer-events: none;
 }
 
 .pdf-place-handle {
@@ -950,6 +960,7 @@
   align-items: center;
   gap: 4px;
   min-height: 28px;
+  min-width: 52px;
   padding: 3px 6px;
   border-radius: 6px;
   border: 1.5px dashed rgba(57, 156, 242, 0.85);
@@ -987,12 +998,18 @@
 }
 
 .pdf-place-handle__grip {
-  opacity: 0.75;
-  font-size: 11px;
-  letter-spacing: -1px;
+  flex-shrink: 0;
+  opacity: 0.9;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: #e2e8f0;
 }
 
 .pdf-place-handle__label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

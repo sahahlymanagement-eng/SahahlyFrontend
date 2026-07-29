@@ -8,7 +8,7 @@ import { toast } from "react-toastify";
 
 import {
 
-  FiUsers, FiDownload, FiFileText, FiCalendar, FiArrowLeft, FiCopy, FiSend,
+  FiUsers, FiDownload, FiFileText, FiCalendar, FiArrowLeft, FiCopy, FiSend, FiBarChart2,
 
 } from "react-icons/fi";
 
@@ -78,6 +78,7 @@ export default function MonthlyParentReportWorkspace({
   variant = "manager",
 
   onBack,
+  onNavigate,
 
 }) {
 
@@ -770,6 +771,20 @@ export default function MonthlyParentReportWorkspace({
               Branded PDF progress report with summary message for parents
 
             </p>
+            <div className="ma-report-tabs" style={{ marginTop: 10 }}>
+              <button type="button" className="ma-report-tab" onClick={() => onNavigate?.("assignment")}>
+                Assignment Reports
+              </button>
+              <button type="button" className="ma-report-tab ma-report-tab--active">
+                <FiCalendar size={12} /> Monthly Parent Reports
+              </button>
+              <button type="button" className="ma-report-tab" onClick={() => onNavigate?.("executive")}>
+                <FiBarChart2 size={12} /> Teacher Executive Analysis
+              </button>
+              <button type="button" className="ma-report-tab" onClick={() => onNavigate?.("sent")}>
+                <FiSend size={12} /> Reports Sent
+              </button>
+            </div>
 
           </div>
 

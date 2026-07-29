@@ -72,9 +72,15 @@ export function confirmToast(message, options = {}) {
     confirmLabel = "Confirm",
     cancelLabel = "Cancel",
     danger = false,
+    toastId = "confirm-dialog",
   } = options;
 
   return new Promise((resolve) => {
+    if (toastId && toast.isActive(toastId)) {
+      resolve(false);
+      return;
+    }
+
     toast(
       ({ closeToast }) => (
         <div className="confirm-toast">
@@ -107,6 +113,7 @@ export function confirmToast(message, options = {}) {
         </div>
       ),
       {
+        toastId,
         autoClose: false,
         closeOnClick: false,
         draggable: false,

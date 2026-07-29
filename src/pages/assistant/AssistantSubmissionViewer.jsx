@@ -77,6 +77,7 @@ import {
   resolveSavedMarkingGrade,
   getOutOfScopeNotes,
   getTeacherAnnotations,
+  prepareEditingQuestions,
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
@@ -96,7 +97,13 @@ import {
   sahahlyModelLabel,
 } from "../../utils/markingCost";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
-import { buildReturnAllQueue } from "../../utils/returnAllQueue";
+import {
+  buildFreshReturnAllQueue,
+  runReturnAllQueue,
+  saveReturnSummaries,
+  formatReturnFailuresMessage,
+} from "../../utils/returnAllExecution";
+import { sortQuestionsByPlacement } from "../../utils/normalizeQuestionPlacement";
 import { confirmReturnAll, confirmReturnSingle } from "../../utils/returnConfirmation";
 import {
   useMarkingStudentSelection,
@@ -165,6 +172,17 @@ export default function AssignmentSubmissionViewer() {
 
   const batchStarting =
     batchJob?.phase === "uploading" || batchJob?.phase === "submitting";
+
+  const hasGradedWork = useMemo(() => {
+    const fromSaved = Object.values(savedResults).some((s) => s?.result);
+    const fromBulk = Object.values(bulkProgress).some(
+      (b) => b?.status === "done" && b?.result
+    );
+    const fromBatch = Object.values(batchJob?.results || {}).some(
+      (b) => b?.status === "done" && b?.result
+    );
+    return fromSaved || fromBulk || fromBatch;
+  }, [savedResults, bulkProgress, batchJob]);
  
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
@@ -646,10 +664,11 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     setPendingRemovedIndices(new Set());
   }, [resultModalSubmissionId]);
 
-  const questionsForDisplay = useMemo(
-    () => filterQuestionsPendingRemoval(editingQuestions, pendingRemovedIndices),
-    [editingQuestions, pendingRemovedIndices]
-  );
+  const questionsForDisplay = useMemo(() => {
+    const withIdx = editingQuestions.map((q, i) => ({ ...q, _placementIndex: i }));
+    const filtered = withIdx.filter((q) => !pendingRemovedIndices.has(q._placementIndex));
+    return sortQuestionsByPlacement(filtered);
+  }, [editingQuestions, pendingRemovedIndices]);
 
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
@@ -1230,7 +1249,7 @@ window.open(url);
         )
       );
 
-      setEditingQuestions((res.data.questions || []).map(q => ({ ...q })));
+      setEditingQuestions(prepareEditingQuestions(res.data.questions || []));
       setEditingAnnotations(getTeacherAnnotations(res.data).map((a) => ({ ...a })));
 
     } catch (err) {
@@ -1933,7 +1952,7 @@ const isUngraded =
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
-    setEditingQuestions(questions.map((q) => ({ ...q })));
+    setEditingQuestions(prepareEditingQuestions(questions));
     if (summary) {
       setEditingSummary(summary);
       setSummaryTouched(true);
@@ -2103,10 +2122,10 @@ const isUngraded =
     return { submissionId, name: "Student" };
   };
 
-  const returnAllToStudents = async (prebuiltQueue = null) => {
-    if (!studentsMarkingUrl) {
+  const returnAllToStudents = async (prebuiltQueue, freshSavedResults = null) => {
+    if (!assignmentId) {
       toast.error("Assignment not loaded");
-      return;
+      return { successCount: 0, failures: [{ reason: "Assignment not loaded" }] };
     }
 
     let bulkQueue;
@@ -2115,215 +2134,93 @@ const isUngraded =
     if (prebuiltQueue) {
       ({ bulkQueue, batchQueue } = prebuiltQueue);
     } else {
-      let allStudents = [];
       try {
-        allStudents = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
-      } catch (err) {
-        console.error(err);
+        const built = await buildFreshReturnAllQueue({
+          api,
+          assignmentId,
+          studentsMarkingUrl,
+          fetchAllPaginated,
+          bulkProgress,
+          batchJob,
+          singleProgress,
+          localSavedResults: savedResults,
+        });
+        ({ bulkQueue, batchQueue } = built.queue);
+      } catch {
         toast.error("Failed to load all students for return");
-        return;
+        return { successCount: 0, failures: [{ reason: "Failed to load students" }] };
       }
-
-      ({ bulkQueue, batchQueue } = buildReturnAllQueue({
-        bulkProgress,
-        batchJob,
-        savedResults,
-        singleProgress,
-        allStudents,
-      }));
     }
 
     if (!bulkQueue.length && !batchQueue.length) {
       toast.warn("No new graded students to return");
-      return;
+      return { successCount: 0, failures: [] };
     }
 
-    setReturning(true);
+    const mergedSaved = { ...savedResults, ...(freshSavedResults || {}) };
 
-    const computeReturnMarks = (result, editingQs) => ({
-      total: resolveTotalMarksFromResult(result) ??
-        editingQs.reduce((s, q) => s + (Number(q.marksAwarded) || 0), 0),
-      max:
-        result?.criteriaGrade?.maxTotalMarks ??
-        result?.maxTotalMarks ??
-        maxGrade ??
-        0,
+    const { successCount, failures, outcomes } = await runReturnAllQueue({
+      api,
+      assignmentId,
+      bulkQueue,
+      batchQueue,
+      maxGradeFallback: maxGrade,
+      gradeContext: {
+        gradeOverrides,
+        savedResults: mergedSaved,
+        classroomSyncedGrades,
+      },
+      annotatePdf,
+      resolvePdfSummary,
+      getOutOfScopeNotes,
+      getTeacherAnnotations,
+      appendClassroomGradeToFormData,
+      resolveTotalMarksFromResult,
     });
 
-    try {
-      for (const { submissionId, student, bulk } of bulkQueue) {
-
-        if (!bulk?.result) {
-          toast.error(`Missing data for ${student.name}. Stopping return process.`);
-          throw new Error("Missing bulk data");
+    for (const outcome of outcomes) {
+      const keys = new Set(
+        [outcome.submissionId, outcome.storedSubmissionId].filter(Boolean).map(String)
+      );
+      setSavedResults((prev) => {
+        const next = { ...prev };
+        for (const key of keys) {
+          next[key] = {
+            ...(prev[key] || {}),
+            returnedAt: outcome.returnedAt,
+          };
         }
+        return next;
+      });
 
-        let studentFile = bulk.studentFile;
-        if (!studentFile) {
-          const pdfRes = await api.get("/submission-files/pdf", {
-            params: {
-              assignmentId,
-              submissionId: student.submissionId,
-            },
-            responseType: "blob",
-          });
-          studentFile = new File(
-            [pdfRes.data],
-            `${student.name || "student"}.pdf`,
-            { type: "application/pdf" }
-          );
-        }
-
-        const editingQs = bulk.result.questions || [];
-        const { total, max } = computeReturnMarks(bulk.result, editingQs);
-
-        let pdfBytes;
-        try {
-          pdfBytes = await annotatePdf({
-            studentFile,
-            questions: editingQs,
-            totalMarks: total,
-            maxTotalMarks: max,
-            summary: resolvePdfSummary(student.submissionId, bulk.result),
-            outOfScopeNotes: getOutOfScopeNotes(bulk.result),
-            teacherAnnotations: getTeacherAnnotations(bulk.result),
-          });
-        } catch (err) {
-          console.error("PDF annotation failed for:", student.name, err);
-          toast.error(`Failed to generate PDF for ${student.name}. Stopping process.`);
-          throw err;
-        }
-
-        const fd = new FormData();
-        fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
-        fd.append("assignmentId", assignmentId);
-        fd.append("submissionId", student.submissionId);
-        fd.append("totalMarks", total);
-        fd.append("maxTotalMarks", max);
-        fd.append("studentName", student.name || "Student");
-        appendClassroomGradeToFormData(fd, {
-          submissionId: student.submissionId,
-          student,
-          gradeOverrides,
-          savedResults,
-          classroomSyncedGrades,
-          fallbackTotal: total,
+      if (outcome.source === "bulk" && outcome.bulk) {
+        setBulkProgress((p) => {
+          const next = { ...p };
+          for (const key of keys) {
+            if (next[key]) {
+              next[key] = {
+                ...next[key],
+                returned: true,
+                result: outcome.bulk.result,
+              };
+            }
+          }
+          return next;
         });
-
-        try {
-          await api.post("/submission-files/return-marked", fd, {
-            headers: { "Content-Type": "multipart/form-data" },
-            timeout: 120000
-          });
-        } catch (err) {
-          console.error("Return failed for:", student.name, err);
-          toast.error(`Return failed for ${student.name}. Stopping process.`);
-          throw err;
-        }
-
-        const returnedAt = new Date().toISOString();
-        setSavedResults((prev) => ({
-          ...prev,
-          [submissionId]: {
-            ...(prev[submissionId] || {}),
-            returnedAt,
-          },
-        }));
-
-        setBulkProgress(p => ({
-          ...p,
-          [submissionId]: { ...bulk, returned: true, result: bulk.result }
-        }));
       }
 
-      for (const { student, batch, submissionId } of batchQueue) {
-        if (!batch?.result) {
-          toast.error(`Missing data for ${student.name || submissionId}. Stopping return process.`);
-          throw new Error("Missing batch data");
-        }
-
-        const editingQs = batch.result.questions || [];
-        const { total, max } = computeReturnMarks(batch.result, editingQs);
-
-        let pdfBytes;
-        try {
-          const pdfRes = await api.get("/submission-files/pdf", {
-            params: { assignmentId, submissionId },
-            responseType: "blob",
-          });
-          const studentFile = new File(
-            [pdfRes.data],
-            `${student.name || "student"}.pdf`,
-            { type: "application/pdf" }
-          );
-          pdfBytes = await annotatePdf({
-            studentFile,
-            questions: editingQs,
-            totalMarks: total,
-            maxTotalMarks: max,
-            summary: resolvePdfSummary(submissionId, batch.result),
-            outOfScopeNotes: getOutOfScopeNotes(batch.result),
-            teacherAnnotations: getTeacherAnnotations(batch.result),
-          });
-        } catch (err) {
-          console.error("PDF annotation failed for:", student.name, err);
-          toast.error(`Failed to generate PDF for ${student.name || submissionId}. Stopping process.`);
-          throw err;
-        }
-
-        const fd = new FormData();
-        fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
-        fd.append("assignmentId", assignmentId);
-        fd.append("submissionId", submissionId);
-        fd.append("totalMarks", total);
-        fd.append("maxTotalMarks", max);
-        fd.append("studentName", student.name || "Student");
-        appendClassroomGradeToFormData(fd, {
-          submissionId,
-          student,
-          gradeOverrides,
-          savedResults,
-          classroomSyncedGrades,
-          fallbackTotal: total,
-        });
-
-        try {
-          await api.post("/submission-files/return-marked", fd, {
-            headers: { "Content-Type": "multipart/form-data" },
-            timeout: 120000
-          });
-        } catch (err) {
-          console.error("Return failed for:", student.name, err);
-          toast.error(`Return failed for ${student.name || submissionId}. Stopping process.`);
-          throw err;
-        }
-
-        const returnedAt = new Date().toISOString();
-        setSavedResults((prev) => ({
-          ...prev,
-          [submissionId]: {
-            ...(prev[submissionId] || {}),
-            returnedAt,
-          },
-        }));
-
+      if (outcome.source === "batch" && outcome.batch) {
         patchBatchJob(assignmentId, (prev) => ({
           ...prev,
           results: {
             ...prev?.results,
-            [submissionId]: { ...batch, returned: true },
+            [outcome.submissionId]: { ...outcome.batch, returned: true },
           },
         }));
       }
-
-      toast.success(
-        `Returned ${bulkQueue.length + batchQueue.length} graded paper${
-          bulkQueue.length + batchQueue.length === 1 ? "" : "s"
-        }`
-      );
-    } finally {
-      setReturning(false);
     }
+
+    return { successCount, failures };
   };
 
   const getStatusBadge = (s) => <SubmissionStatusBadge student={s} />;
@@ -2352,7 +2249,7 @@ const isUngraded =
   };
 
   const handleReturnAll = async () => {
-    if (!studentsMarkingUrl) {
+    if (!studentsMarkingUrl || !assignmentId) {
       toast.error("Assignment not loaded");
       return;
     }
@@ -2363,24 +2260,20 @@ const isUngraded =
     }
 
     try {
-      const allStudents = await fetchAllPaginated(
+      const { queue, savedResults: freshSaved } = await buildFreshReturnAllQueue({
         api,
+        assignmentId,
         studentsMarkingUrl,
-        {},
-        "students"
-      );
-
-      const queue = buildReturnAllQueue({
+        fetchAllPaginated,
         bulkProgress,
         batchJob,
-        savedResults,
         singleProgress,
-        allStudents,
+        localSavedResults: savedResults,
       });
 
       const returnCount = queue.bulkQueue.length + queue.batchQueue.length;
       if (returnCount === 0) {
-        const gradedCount = Object.values(savedResults).filter((s) => s?.result).length;
+        const gradedCount = Object.values(freshSaved).filter((s) => s?.result).length;
         if (gradedCount > 0) {
           toast.warn(
             "All graded papers were already returned. Re-mark or edit a student to return updated papers."
@@ -2395,35 +2288,25 @@ const isUngraded =
       if (!confirmed) return;
 
       setReturning(true);
+      setSavedResults((prev) => ({ ...prev, ...freshSaved }));
 
-      const saveRequests = [
-        ...queue.bulkQueue
-          .map(({ submissionId, bulk }) => {
-            const summary = resolvePdfSummary(submissionId, bulk?.result);
-            if (!summary) return null;
-            return api.post("/submission-files/save-summary", {
-              assignmentId,
-              submissionId,
-              summary,
-            });
-          })
-          .filter(Boolean),
-        ...queue.batchQueue
-          .map(({ submissionId, batch }) => {
-            const summary = resolvePdfSummary(submissionId, batch?.result);
-            if (!summary) return null;
-            return api.post("/submission-files/save-summary", {
-              assignmentId,
-              submissionId,
-              summary,
-            });
-          })
-          .filter(Boolean),
-      ];
+      await saveReturnSummaries(api, assignmentId, queue, resolvePdfSummary);
 
-      await Promise.all(saveRequests);
+      const { successCount, failures } = await returnAllToStudents(queue, freshSaved);
 
-      await returnAllToStudents(queue);
+      await fetchSavedResults();
+
+      if (successCount === 0) {
+        toast.error(failures[0]?.reason || "Return all failed");
+      } else if (failures.length) {
+        toast.warn(formatReturnFailuresMessage(successCount, failures), {
+          autoClose: 12000,
+        });
+      } else {
+        toast.success(
+          `Returned ${successCount} graded paper${successCount === 1 ? "" : "s"}`
+        );
+      }
     } catch (err) {
       console.error("Return all failed:", err);
       toast.error((await getApiErrorMessage(err)) || "Return all failed");
@@ -2579,7 +2462,7 @@ return (
               )}
 
               {/* Return All */}
-              {msInfo && !bulkMarking && (
+              {!bulkMarking && (msInfo || hasGradedWork) && (
                 <button
                   type="button"
                   className="msv-btn-ai"
@@ -2999,7 +2882,9 @@ return (
                                                 studentFile,
                                               });
                                               setEditingQuestions(
-                                                enrichMarkingQuestions(result.questions || []).map((q) => ({ ...q }))
+                                                prepareEditingQuestions(
+                                                  enrichMarkingQuestions(result.questions || [])
+                                                )
                                               );
                                               setEditingCriteriaGrade(cloneCriteriaGrade(result.criteriaGrade));
                                               setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
@@ -3519,7 +3404,7 @@ return (
                                 onClick={() => {
                                   const reset = resetToConfirmed();
                                   if (reset) {
-                                    setEditingQuestions(reset.questions);
+                                    setEditingQuestions(prepareEditingQuestions(reset.questions));
                                     setEditingCriteriaGrade(cloneCriteriaGrade(reset.criteriaGrade));
                                     setEditingAnnotations(reset.teacherAnnotations || []);
                                     setEditingSummary(reset.summary || "");
@@ -3686,25 +3571,22 @@ return (
                       }}
                     />
                     <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                      {editingQuestions.map((q, idx) => {
-                        if (pendingRemovedIndices.has(idx)) return null;
-                        return (
-                          <MarkingQuestionCard
-                            key={idx}
-                            question={q}
-                            index={idx}
-                            guidance={assignmentPrompt.content}
-                            allQuestions={questionsForDisplay}
-                            getScoreColor={getScoreColor}
-                            onChange={(index, updated) =>
-                              setEditingQuestions((prev) =>
-                                prev.map((x, i) => (i === index ? updated : x))
-                              )
-                            }
-                            onRemove={(questionIndex) => handleQuestionRemove(questionIndex)}
-                          />
-                        );
-                      })}
+                      {questionsForDisplay.map((q) => (
+                        <MarkingQuestionCard
+                          key={q._placementIndex}
+                          question={q}
+                          index={q._placementIndex}
+                          guidance={assignmentPrompt.content}
+                          allQuestions={questionsForDisplay}
+                          getScoreColor={getScoreColor}
+                          onChange={(index, updated) =>
+                            setEditingQuestions((prev) =>
+                              prev.map((x, i) => (i === index ? updated : x))
+                            )
+                          }
+                          onRemove={(questionIndex) => handleQuestionRemove(questionIndex)}
+                        />
+                      ))}
                     </div>
 
                   </div>

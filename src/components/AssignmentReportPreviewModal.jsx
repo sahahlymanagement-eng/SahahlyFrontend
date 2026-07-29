@@ -1,13 +1,8 @@
-import { FiSend, FiX, FiUser, FiPhone } from "react-icons/fi";
+import { useMemo, useState, useEffect } from "react";
+import { FiSend, FiX, FiUser, FiPhone, FiSearch } from "react-icons/fi";
 
 /**
  * Preview modal for Assignment Reports (manager / teacher / assistant).
- *
- * Loads exact WhatsApp text via POST /manager-assignments/report-preview,
- * allows editing each message in place, then confirms with
- * POST /manager-assignments/send-report (messageOverrides from edits).
- *
- * previews: [{ name, studentId, phone, parentPhone, message, error }]
  */
 export default function AssignmentReportPreviewModal({
   open,
@@ -19,6 +14,22 @@ export default function AssignmentReportPreviewModal({
   onConfirm,
   onChangeMessage,
 }) {
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!open) setSearch("");
+  }, [open]);
+
+  const filteredPreviews = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return previews;
+    return previews.filter((p) => {
+      const name = String(p?.name || "").toLowerCase();
+      const phone = String(p?.phone || p?.parentPhone || "").toLowerCase();
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [previews, search]);
+
   if (!open) return null;
 
   const sendable = previews.filter((p) => p && !p.error && String(p.message || "").trim());
@@ -44,6 +55,20 @@ export default function AssignmentReportPreviewModal({
         </div>
 
         <div className="arp-body">
+          {!loading && !error && previews.length > 1 && (
+            <label className="arp-search-wrap">
+              <FiSearch size={14} aria-hidden="true" />
+              <input
+                type="search"
+                className="arp-search"
+                placeholder="Search by student name or phone…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                disabled={sending}
+              />
+            </label>
+          )}
+
           {loading && <p className="arp-status">Building the exact WhatsApp text for each student…</p>}
 
           {!loading && error && <p className="arp-status arp-status--error">{error}</p>}
@@ -52,45 +77,52 @@ export default function AssignmentReportPreviewModal({
             <p className="arp-status">No messages to preview.</p>
           )}
 
+          {!loading && !error && previews.length > 0 && filteredPreviews.length === 0 && (
+            <p className="arp-status">No students match your search.</p>
+          )}
+
           {!loading &&
             !error &&
-            previews.map((p, i) => (
-              <div
-                key={`${p.studentId || p.name || "student"}-${i}`}
-                className={`arp-card ${p.error ? "arp-card--error" : ""}`}
-              >
-                <div className="arp-card-head">
-                  <span className="arp-card-name">
-                    <FiUser size={12} /> {p.name || "Unnamed student"}
-                  </span>
-                  <span className="arp-card-phones">
-                    {p.phone && (
-                      <span className="arp-phone">
-                        <FiPhone size={11} /> {p.phone}
-                      </span>
-                    )}
-                    {p.parentPhone && (
-                      <span className="arp-phone">
-                        <FiPhone size={11} /> Parent: {p.parentPhone}
-                      </span>
-                    )}
-                  </span>
+            filteredPreviews.map((p) => {
+              const i = previews.indexOf(p);
+              return (
+                <div
+                  key={`${p.studentId || p.name || "student"}-${i}`}
+                  className={`arp-card ${p.error ? "arp-card--error" : ""}`}
+                >
+                  <div className="arp-card-head">
+                    <span className="arp-card-name">
+                      <FiUser size={12} /> {p.name || "Unnamed student"}
+                    </span>
+                    <span className="arp-card-phones">
+                      {p.phone && (
+                        <span className="arp-phone">
+                          <FiPhone size={11} /> {p.phone}
+                        </span>
+                      )}
+                      {p.parentPhone && (
+                        <span className="arp-phone">
+                          <FiPhone size={11} /> Parent: {p.parentPhone}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {p.error ? (
+                    <p className="arp-card-error">⚠ {p.error}</p>
+                  ) : (
+                    <textarea
+                      className="arp-message arp-message--editable"
+                      value={p.message || ""}
+                      onChange={(e) => onChangeMessage?.(i, e.target.value)}
+                      rows={Math.min(24, Math.max(8, String(p.message || "").split("\n").length + 1))}
+                      spellCheck
+                      disabled={sending}
+                      aria-label={`Edit WhatsApp message for ${p.name || "student"}`}
+                    />
+                  )}
                 </div>
-                {p.error ? (
-                  <p className="arp-card-error">⚠ {p.error}</p>
-                ) : (
-                  <textarea
-                    className="arp-message arp-message--editable"
-                    value={p.message || ""}
-                    onChange={(e) => onChangeMessage?.(i, e.target.value)}
-                    rows={Math.min(24, Math.max(8, String(p.message || "").split("\n").length + 1))}
-                    spellCheck
-                    disabled={sending}
-                    aria-label={`Edit WhatsApp message for ${p.name || "student"}`}
-                  />
-                )}
-              </div>
-            ))}
+              );
+            })}
         </div>
 
         <div className="arp-footer">
