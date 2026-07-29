@@ -61,6 +61,11 @@ import {
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { isGradingManager } from "../../utils/gradingAccess";
+import {
+  useMarkingStudentSelection,
+  markingActionLabel,
+} from "../../utils/markingStudentSelection";
+import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
 import GradingAssignmentSettingsBar from "../../components/GradingAssignmentSettingsBar";
@@ -152,6 +157,12 @@ export default function ManagerLoginCss() {
 
   // ── Server-side batch marking (Gemini batch API via external-grading) ──
   const [batchJob, setBatchJob] = useState(null);
+
+  // ── Row selection for marking (same behaviour as the submission viewer) ──
+  // An empty selection means "the whole assignment", so every marking action
+  // keeps working exactly as before until the manager ticks something.
+  const markingSelection = useMarkingStudentSelection();
+  const [selectingMarkingAll, setSelectingMarkingAll] = useState(false);
 
   const [resultModal, setResultModal] = useState(null);
   const [editingQuestions, setEditingQuestions] = useState([]);
@@ -598,6 +609,68 @@ export default function ManagerLoginCss() {
     pageRef.current = page;
   }, [page]);
 
+  // A selection belongs to one assignment — never carry it across a switch.
+  useEffect(() => {
+    markingSelection.clear();
+  }, [selectedAssignment?.id]);
+
+  // "Select all" spans the whole assignment, not the page on screen, so it needs
+  // the full roster rather than the ten rows currently loaded.
+  const selectAllSubmissionsForMarking = async () => {
+    if (!selectedAssignment) return;
+    setSelectingMarkingAll(true);
+    try {
+      const roster = await fetchAssignmentRoster(selectedAssignment);
+      const ids = roster.map((s) => s.submissionId).filter((id) => id != null);
+      markingSelection.selectIds(ids);
+      toast.success(`Selected ${ids.length} submission(s)`);
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to load all submissions");
+    } finally {
+      setSelectingMarkingAll(false);
+    }
+  };
+
+  // Narrow a roster to the ticked rows (an empty selection means the whole
+  // assignment) and drop anything already marked or published. Returns null —
+  // after explaining why — when nothing is left to mark.
+  const resolveEligibleForMarking = (roster) => {
+    const selectedIds = markingSelection.selectedIds;
+    const pool = selectedIds.size
+      ? roster.filter((s) => s.submissionId != null && selectedIds.has(s.submissionId))
+      : roster;
+
+    if (selectedIds.size && !pool.length) {
+      toast.warn("Selected submissions were not found in this assignment");
+      return null;
+    }
+
+    const eligible = pool.filter(
+      (s) =>
+        s.submissionId &&
+        s.localStatus !== "done" &&
+        !s.hasDraft &&
+        !results[s.submissionId]?.result
+    );
+
+    if (!eligible.length) {
+      toast.warn(
+        selectedIds.size
+          ? "Selected submissions are already marked"
+          : "No submissions left to mark in this assignment"
+      );
+      return null;
+    }
+
+    if (selectedIds.size && eligible.length < pool.length) {
+      toast.info(
+        `${eligible.length} of ${pool.length} selected will be marked (others already marked)`
+      );
+    }
+
+    return eligible;
+  };
+
   useEffect(() => {
     loadAssignments();
     // An assignment persisted from a previous visit is still open on mount, so
@@ -826,19 +899,10 @@ export default function ManagerLoginCss() {
     else setBulkMarking(true);
     try {
       // The whole assignment, not the page on screen — `submissions` only holds
-      // the current page now.
+      // the current page now. Ticked rows narrow it further.
       const roster = await fetchAssignmentRoster(selectedAssignment);
-      const eligible = roster.filter(
-        (s) =>
-          s.submissionId &&
-          s.localStatus !== "done" &&
-          !s.hasDraft &&
-          !results[s.submissionId]?.result
-      );
-      if (!eligible.length) {
-        toast.warn("No submissions left to mark in this assignment");
-        return;
-      }
+      const eligible = resolveEligibleForMarking(roster);
+      if (!eligible) return;
 
       // Advisory page-count review before any tokens are spent. Returning here
       // still runs the finally block, which clears the running flags.
@@ -973,19 +1037,10 @@ export default function ManagerLoginCss() {
     const assignId = String(selectedAssignment.id);
 
     // The whole assignment, not the page on screen — `submissions` only holds
-    // the current page now.
+    // the current page now. Ticked rows narrow it further.
     const roster = await fetchAssignmentRoster(selectedAssignment);
-    const eligible = roster.filter(
-      (s) =>
-        s.submissionId &&
-        s.localStatus !== "done" &&
-        !s.hasDraft &&
-        !results[s.submissionId]?.result
-    );
-    if (!eligible.length) {
-      toast.warn("No submissions left to mark in this assignment");
-      return;
-    }
+    const eligible = resolveEligibleForMarking(roster);
+    if (!eligible) return;
 
     // Advisory page-count review before any tokens are spent. Passes silently
     // when this assignment has no expectedPages set or nothing is flagged.
@@ -1476,6 +1531,24 @@ export default function ManagerLoginCss() {
   const safePage = Math.min(page, clientTotalPages);
   const visibleSubmissions = filteredSubmissions;
 
+  // "Select page" only ever covers the rows on screen; "Select all" (above)
+  // reaches the rest of the assignment.
+  const pageSelectableIds = visibleSubmissions
+    .map((s) => s.submissionId)
+    .filter((id) => id != null);
+  const pageAllMarkingSelected =
+    pageSelectableIds.length > 0 &&
+    pageSelectableIds.every((id) => markingSelection.isSelected(id));
+  const toggleMarkingSelectPage = () => {
+    if (pageAllMarkingSelected) {
+      markingSelection.selectIds(
+        [...markingSelection.selectedIds].filter((id) => !pageSelectableIds.includes(id))
+      );
+    } else {
+      markingSelection.mergeIds(pageSelectableIds);
+    }
+  };
+
   const isCriteria = resultModal?.result?.markingMode === "criteria";
   const total = sumQuestionMarks(questionsForDisplay);
   const pct = gradeScorePercent(total, effectiveMaxTotal);
@@ -1677,7 +1750,8 @@ export default function ManagerLoginCss() {
                         </>
                       ) : (
                         <>
-                          <FiCpu size={13} /> Mark All
+                          <FiCpu size={13} />{" "}
+                          {markingActionLabel("Mark All", "Mark Selected", markingSelection.selectedCount)}
                         </>
                       )}
                     </button>
@@ -1702,7 +1776,12 @@ export default function ManagerLoginCss() {
                         </>
                       ) : (
                         <>
-                          <FiSend size={13} /> Mark All (Priority)
+                          <FiSend size={13} />{" "}
+                          {markingActionLabel(
+                            "Mark All (Priority)",
+                            "Mark Selected (Priority)",
+                            markingSelection.selectedCount
+                          )}
                         </>
                       )}
                     </button>
@@ -1739,7 +1818,9 @@ export default function ManagerLoginCss() {
                       title={
                         selectedAssignment.id == null
                           ? "Batch marking needs an assignment with a LoginCSS id"
-                          : "Submit one Gemini batch job for all unmarked submissions"
+                          : markingSelection.selectedCount
+                            ? "Submit one Gemini batch job for the selected submissions"
+                            : "Submit one Gemini batch job for all unmarked submissions"
                       }
                       style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                     >
@@ -1747,7 +1828,12 @@ export default function ManagerLoginCss() {
                       {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                       {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                       {batchJob?.phase === "error" && <>⚡ Batch failed — retry?</>}
-                      {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> Mark batch</>}
+                      {(!batchJob || batchJob.phase === "done") && (
+                        <>
+                          <FiLayers size={13} />{" "}
+                          {markingActionLabel("Mark batch", "Mark Selected (Batch)", markingSelection.selectedCount)}
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1758,6 +1844,16 @@ export default function ManagerLoginCss() {
                     partnerGrade={selectedAssignment.grade ?? null}
                   />
                 )}
+
+                <MarkingSelectionBar
+                  selectedCount={markingSelection.selectedCount}
+                  pageSelectableCount={pageSelectableIds.length}
+                  pageAllSelected={pageAllMarkingSelected}
+                  onTogglePage={toggleMarkingSelectPage}
+                  onSelectAll={selectAllSubmissionsForMarking}
+                  onClear={markingSelection.clear}
+                  selectingAll={selectingMarkingAll}
+                />
 
                 {batchJob && batchJob.phase !== "done" && (
                   <div
@@ -1817,6 +1913,7 @@ export default function ManagerLoginCss() {
                       <table className="ma-table ma-table--cards">
                         <thead>
                           <tr>
+                            <th style={{ width: 44 }} aria-label="Select for marking" />
                             <th>Name</th>
                             <th>Status</th>
                             <th>Submitted At</th>
@@ -1846,6 +1943,18 @@ export default function ManagerLoginCss() {
                                 className="ma-row"
                                 style={{ animationDelay: `${i * 0.025}s` }}
                               >
+                                <td>
+                                  {s.submissionId != null ? (
+                                    <button
+                                      type="button"
+                                      className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                                      onClick={() => markingSelection.toggle(s.submissionId)}
+                                      aria-label={`Select ${s.name || "submission"} for marking`}
+                                    >
+                                      {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                                    </button>
+                                  ) : null}
+                                </td>
                                 <td>
                                   <div className="ma-avatar-cell">
                                     <div className="ma-avatar">
@@ -2079,11 +2188,11 @@ export default function ManagerLoginCss() {
             <div className="msv-guidance-header">
               <div style={{ fontSize: 15, fontWeight: 700 }}>
                 {guidanceModal.batch
-                  ? "📦 Mark Batch (Gemini)"
+                  ? markingActionLabel("📦 Mark Batch (Gemini)", "📦 Mark Batch — Selected", markingSelection.selectedCount)
                   : guidanceModal.priorityBulk
-                  ? "🚀 Mark All (Priority)"
+                  ? markingActionLabel("🚀 Mark All (Priority)", "🚀 Mark Selected (Priority)", markingSelection.selectedCount)
                   : guidanceModal.bulk
-                  ? "🤖 Mark All Submissions"
+                  ? markingActionLabel("🤖 Mark All Submissions", "🤖 Mark Selected Submissions", markingSelection.selectedCount)
                   : guidanceModal.priority
                   ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}`
                   : `🤖 Mark — ${guidanceModal.student?.name}`}
