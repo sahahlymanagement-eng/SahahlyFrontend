@@ -501,7 +501,16 @@ export default function Coursework() {
         );
         if (res.data?.warning) toast.warn(res.data.warning);
         if (res.data?.materialWarning) toast.warn(res.data.materialWarning);
-        toast.success("Coursework updated successfully");
+        if (res.data?.syncedToDb) {
+          toast.info("Assignment was missing from Sahahly — it has been synced to your system.");
+        }
+        if (scheduleEnabled) {
+          toast.success("Scheduled publish time updated in Google Classroom and Sahahly");
+        } else if (initialHadSchedule && !scheduleEnabled) {
+          toast.success("Schedule removed — assignment published now");
+        } else {
+          toast.success("Coursework updated successfully");
+        }
         const viewPath =
           role === "manager"
             ? `/manager/view-coursework/${courseId}`
@@ -861,6 +870,11 @@ export default function Coursework() {
 
       {scheduleEnabled && (
         <>
+          {isEditMode && (
+            <p style={{ fontSize: 13, opacity: 0.75, margin: "0 0 8px" }}>
+              Change the publish date or time below and save — Google Classroom will update when this assignment goes live.
+            </p>
+          )}
           <div className={isTeacherShell ? "tch-field" : "pm-input-group"}>
             <label className={isTeacherShell ? "tch-label" : "pm-input-label"}>
               Publish date

@@ -10,6 +10,22 @@ import Pagination from "../../components/Pagination";
 import { TeacherPageHeader, TeacherLoading, TeacherEmpty } from "../../pages/teacher/TeacherUI";
 import { isDirectorLikeRole, roleShellPath } from "../../utils/directorLikeAccess";
 
+function formatScheduledTime(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function isScheduledCoursework(cw) {
+  return cw?.state === "DRAFT" || Boolean(cw?.scheduledTime);
+}
+
 export default function ViewCoursework() {
   const { courseId } = useParams();
   const navigate = useNavigate();
@@ -30,7 +46,22 @@ export default function ViewCoursework() {
   const [excludedGoogleIds, setExcludedGoogleIds] = useState([]);
   const [dbLoading, setDbLoading] = useState(canDelete || showSubmissionStats);
   const [deletingId, setDeletingId] = useState(null);
+  const [syncingId, setSyncingId] = useState(null);
   const [submissionCounts, setSubmissionCounts] = useState({});
+
+  const loadDbAssignments = async () => {
+    if (!courseId) return;
+    setDbLoading(true);
+    try {
+      const res = await api.get(`/assignments/by-google-course/${courseId}`);
+      setDbAssignments(res.data?.data || []);
+      setExcludedGoogleIds(res.data?.excludedGoogleCourseWorkIds || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load Sahahly assignments");
+    } finally {
+      setDbLoading(false);
+    }
+  };
 
   const { data: courseworkList, page, totalPages, loading, fetchPage } =
     usePagination(`/google-classroom/coursework`, { courseId });
@@ -59,21 +90,24 @@ export default function ViewCoursework() {
       return;
     }
 
-    const loadDbAssignments = async () => {
-      setDbLoading(true);
-      try {
-        const res = await api.get(`/assignments/by-google-course/${courseId}`);
-        setDbAssignments(res.data?.data || []);
-        setExcludedGoogleIds(res.data?.excludedGoogleCourseWorkIds || []);
-      } catch (err) {
-        toast.error(err.response?.data?.message || "Failed to load Sahahly assignments");
-      } finally {
-        setDbLoading(false);
-      }
-    };
-
     loadDbAssignments();
   }, [courseId, canDelete, showSubmissionStats]);
+
+  const handleSyncToSahahly = async (googleCourseWorkId) => {
+    setSyncingId(googleCourseWorkId);
+    try {
+      const res = await api.post(
+        `/google-classroom/coursework/${googleCourseWorkId}/sync-db`,
+        { courseId }
+      );
+      toast.success(res.data?.message || "Assignment synced to Sahahly");
+      await loadDbAssignments();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to sync assignment to Sahahly");
+    } finally {
+      setSyncingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!showSubmissionStats || dbLoading) return;
@@ -234,6 +268,11 @@ export default function ViewCoursework() {
                     </div>
 
                     <div className="tch-assignment-meta">
+                      {isScheduledCoursework(cw) && (
+                        <span style={{ color: "#b45309", fontWeight: 600 }}>
+                          Scheduled · publishes {formatScheduledTime(cw.scheduledTime) || "later"}
+                        </span>
+                      )}
                       {cw.dueDate && (
                         <span>
                           <FiCalendar size={13} />
@@ -271,18 +310,28 @@ export default function ViewCoursework() {
                       <TeacherSubmissionStats counts={submissionCounts[dbAssignment._id]} />
                     ) : (
                       <p className="tch-stats-hint">
-                        Stats appear once this assignment is tracked in Sahahly.
+                        Not tracked in Sahahly yet — use Sync or Edit to add it to your system.
                       </p>
                     )}
 
                     <div className="tch-assignment-footer">
+                      {!dbAssignment && canEdit && (
+                        <button
+                          type="button"
+                          className="tch-btn tch-btn--secondary"
+                          onClick={() => handleSyncToSahahly(cw.id)}
+                          disabled={syncingId === cw.id}
+                        >
+                          {syncingId === cw.id ? "Syncing…" : "Sync to Sahahly"}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="tch-btn tch-btn--secondary"
                         onClick={() => handleEditAssignment(cw.id)}
                       >
                         <FiEdit3 size={14} />
-                        Edit
+                        {isScheduledCoursework(cw) ? "Edit schedule" : "Edit"}
                       </button>
                       {dbAssignment ? (
                         <button
@@ -341,7 +390,16 @@ export default function ViewCoursework() {
                     <p style={{ opacity: 0.5, fontSize: 13 }}>
                       {cw.maxPoints ? `Max Points: ${cw.maxPoints}` : "Ungraded"}
                       {cw.dueDate ? ` · Due: ${cw.dueDate.month}/${cw.dueDate.day}/${cw.dueDate.year}` : ""}
+                      {isScheduledCoursework(cw)
+                        ? ` · Scheduled: ${formatScheduledTime(cw.scheduledTime) || "pending publish"}`
+                        : ""}
                     </p>
+
+                    {!dbAssignment && !dbLoading && canEdit && (
+                      <p style={{ color: "#b45309", fontSize: 13, margin: "6px 0" }}>
+                        Visible in Google Classroom but not in Sahahly yet.
+                      </p>
+                    )}
 
                     {dbAssignment?.assignmentWebLink && (
                       <p style={{ margin: "4px 0" }}>
@@ -370,12 +428,22 @@ export default function ViewCoursework() {
 
                     {canEdit && (
                       <div className="vcw-actions">
+                        {!dbAssignment && (
+                          <button
+                            type="button"
+                            className="vcw-edit-btn"
+                            onClick={() => handleSyncToSahahly(cw.id)}
+                            disabled={syncingId === cw.id || dbLoading}
+                          >
+                            {syncingId === cw.id ? "Syncing…" : "Sync to Sahahly"}
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="vcw-edit-btn"
                           onClick={() => handleEditAssignment(cw.id)}
                         >
-                          Edit Assignment
+                          {isScheduledCoursework(cw) ? "Edit publish time" : "Edit Assignment"}
                         </button>
 
                         {canDelete && (
