@@ -17,6 +17,7 @@ import {
   sendTeacherCollectiveReport,
   syncClassroom,
 } from "./managerChatbotActionsClient";
+import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
 import "../teacher/TeacherChatbot.css";
 
@@ -291,9 +292,32 @@ export default function ManagerChatbot() {
       switch (actionProposal.type) {
         case "send_assignment_report": {
           const overrides = buildMessageOverrides();
-          const result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides);
+          let result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides);
+          const skipped = result.skippedCount || 0;
+          if (skipped > 0) {
+            const sent = result.sentCount ?? 0;
+            const confirmed = await confirmToast(
+              sent > 0
+                ? `Sent to ${sent}. ${skipped} were skipped because they were already sent recently. Send those again too?`
+                : "This report was already sent recently. Are you sure you want to send it again?",
+              {
+                title: "Already sent recently",
+                confirmLabel: "Send again",
+                cancelLabel: sent > 0 ? "Keep as is" : "Cancel",
+                toastId: "manager-agent-force-resend",
+              }
+            );
+            if (confirmed) {
+              result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides, {
+                forceResend: true,
+              });
+            } else if (sent === 0) {
+              successMsg = "Send cancelled — nothing was resent.";
+              break;
+            }
+          }
           const summary = result.summary || [];
-          const ok = summary.filter((r) => r.status === "fulfilled").length;
+          const ok = result.sentCount ?? summary.filter((r) => r.status === "fulfilled").length;
           const fail = summary.filter((r) => r.status === "rejected").length;
           successMsg = `Sent **${ok}** report(s)${fail ? `, **${fail}** failed` : ""}.`;
           break;

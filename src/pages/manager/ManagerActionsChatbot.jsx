@@ -18,6 +18,7 @@ import {
   sendAssignmentReport,
   sendMonthly,
 } from "./managerChatbotActionsClient";
+import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
 import "../teacher/TeacherChatbot.css";
 
@@ -230,8 +231,33 @@ export default function ManagerActionsChatbot() {
           pushBot("Reply **1** to send or **2** to cancel.");
           return;
         }
-        const result = await sendAssignmentReport(s.classroom._id, s.reports);
-        const ok = (result.summary || []).filter((r) => r.status === "fulfilled").length;
+        let result = await sendAssignmentReport(s.classroom._id, s.reports);
+        const skipped = result.skippedCount || 0;
+        if (skipped > 0) {
+          const sent = result.sentCount ?? 0;
+          const confirmed = await confirmToast(
+            sent > 0
+              ? `Sent to ${sent}. ${skipped} were skipped because they were already sent recently. Send those again too?`
+              : "This report was already sent recently. Are you sure you want to send it again?",
+            {
+              title: "Already sent recently",
+              confirmLabel: "Send again",
+              cancelLabel: sent > 0 ? "Keep as is" : "Cancel",
+              toastId: "manager-menu-force-resend",
+            }
+          );
+          if (confirmed) {
+            result = await sendAssignmentReport(s.classroom._id, s.reports, null, {
+              forceResend: true,
+            });
+          } else if (sent === 0) {
+            setEditPreview(null);
+            pushBot("Cancelled — nothing was resent. Type **menu** for more actions.");
+            s.step = STEPS.MENU;
+            return;
+          }
+        }
+        const ok = result.sentCount ?? (result.summary || []).filter((r) => r.status === "fulfilled").length;
         setEditPreview(null);
         pushBot(`Sent **${ok}** report(s). Type **menu** for more actions.`);
         s.step = STEPS.MENU;

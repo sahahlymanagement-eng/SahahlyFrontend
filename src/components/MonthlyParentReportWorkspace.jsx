@@ -38,6 +38,7 @@ import {
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
 import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
+import { confirmToast } from "../utils/confirmToast";
 
 function newSchoolSessionId() {
   return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -612,61 +613,43 @@ export default function MonthlyParentReportWorkspace({
 
 
 
-  const sendWhatsApp = async (studentIds) => {
+  const sendWhatsApp = async (studentIds, options = {}) => {
     if (sendingWhatsApp) return;
     if (!selectedClassroom?._id || !studentIds.length) return;
 
-
+    const forceResend = options.forceResend === true;
 
     const withoutPhone = students.filter(
-
       (s) => studentIds.includes(String(s._id)) && !s.parentPhone
-
     );
 
     if (withoutPhone.length) {
-
       toast.warn(
-
         `${withoutPhone.length} student(s) skipped — no parent phone on file`
-
       );
-
     }
-
-
 
     const idsToSend = studentIds.filter((id) => {
-
       const student = students.find((s) => String(s._id) === String(id));
-
       return student?.parentPhone;
-
     });
 
-
-
     if (!idsToSend.length) {
-
       toast.error("No selected students have a parent phone number");
-
       return;
-
     }
 
-
-
-    const clientSendId = activeSendIdRef.current || crypto.randomUUID();
+    const clientSendId = crypto.randomUUID();
     activeSendIdRef.current = clientSendId;
     setSendingWhatsApp(true);
 
     try {
-
       const payload = {
         classroomId: selectedClassroom._id,
         year,
         month,
         clientSendId,
+        ...(forceResend ? { forceResend: true } : {}),
       };
 
       if (idsToSend.length === 1) {
@@ -681,9 +664,36 @@ export default function MonthlyParentReportWorkspace({
       const failed = data.failed ?? 0;
       const skipped = data.skipped ?? 0;
 
-      if (sent > 0 || skipped > 0) {
+      if (skipped > 0 && !forceResend) {
+        setSendingWhatsApp(false);
+        const confirmMsg =
+          sent > 0
+            ? `Sent to ${sent} parent(s). ${skipped} were skipped because they were already sent recently. Send those again too?`
+            : `This report was already sent recently. Are you sure you want to send it again?`;
+        const confirmed = await confirmToast(confirmMsg, {
+          title: "Already sent recently",
+          confirmLabel: "Send again",
+          cancelLabel: sent > 0 ? "Keep as is" : "Cancel",
+          toastId: "monthly-parent-force-resend",
+        });
+        if (confirmed) {
+          return sendWhatsApp(studentIds, { forceResend: true });
+        }
+        if (sent > 0) {
+          let msg = `Sent to ${sent} parent(s) on WhatsApp`;
+          if (failed > 0) msg += ` (${failed} failed)`;
+          toast.success(msg);
+          if (idsToSend.length > 1) clearSelection();
+          activeSendIdRef.current = null;
+        } else {
+          toast.info("Send cancelled — nothing was resent");
+          activeSendIdRef.current = null;
+        }
+        return;
+      }
+
+      if (sent > 0 || forceResend) {
         let msg = `Sent to ${sent} parent(s) on WhatsApp`;
-        if (skipped > 0) msg += ` (${skipped} skipped — already sent recently)`;
         if (failed > 0) msg += ` (${failed} failed)`;
         toast.success(msg);
       } else {
@@ -693,15 +703,11 @@ export default function MonthlyParentReportWorkspace({
       if (idsToSend.length > 1) clearSelection();
       activeSendIdRef.current = null;
     } catch (err) {
-
       toast.error(err.response?.data?.message || "Failed to send on WhatsApp");
       activeSendIdRef.current = null;
     } finally {
-
       setSendingWhatsApp(false);
-
     }
-
   };
 
 

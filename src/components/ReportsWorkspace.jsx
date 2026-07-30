@@ -42,6 +42,7 @@ import {
 import { isDirectorLikeRole, isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import { getRoleName } from "../utils/authRoutes";
 import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
+import { confirmToast } from "../utils/confirmToast";
 
 
 export default function ReportsWorkspace({ variant = "manager" }) {
@@ -765,12 +766,15 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   };
 
   /* SEND — from cart bar (no preview edits) or from preview confirm (with edits) */
-  const sendReport = async (options) => {
+  const sendReport = async (options = {}) => {
     if (sending) return;
-    const fromPreview = options && options.fromPreview === true;
+    const fromPreview = options.fromPreview === true;
+    const forceResend = options.forceResend === true;
     const reports = await resolveReports();
     if (!reports) { toast.warn("No students selected"); return; }
-    const clientSendId = activeSendIdRef.current || crypto.randomUUID();
+    // Always mint a fresh clientSendId — reusing the first attempt's id would
+    // hit the idempotent-batch cache and return the skipped result again.
+    const clientSendId = crypto.randomUUID();
     activeSendIdRef.current = clientSendId;
     setSending(true);
     try {
@@ -778,6 +782,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
         reports,
         classroomId: selectedClassroom?._id,
         clientSendId,
+        ...(forceResend ? { forceResend: true } : {}),
       };
       if (fromPreview) {
         if (
@@ -797,8 +802,38 @@ export default function ReportsWorkspace({ variant = "manager" }) {
       const failed = summary.filter(r => r.status === "rejected").length;
       const skipped = res.data.skippedCount || 0;
       const sent = res.data.sentCount ?? succeeded;
+
+      if (skipped > 0 && !forceResend) {
+        setSending(false);
+        const confirmMsg =
+          sent > 0
+            ? `Sent to ${sent}. ${skipped} were skipped because they were already sent recently. Send those again too?`
+            : `This report was already sent recently. Are you sure you want to send it again?`;
+        const confirmed = await confirmToast(confirmMsg, {
+          title: "Already sent recently",
+          confirmLabel: "Send again",
+          cancelLabel: sent > 0 ? "Keep as is" : "Cancel",
+          toastId: "reports-force-resend",
+        });
+        if (confirmed) {
+          return sendReport({ ...options, forceResend: true });
+        }
+        if (sent > 0) {
+          let msg = `✅ Sent to ${sent} student(s)`;
+          if (failed) msg += `, ${failed} failed`;
+          toast.success(msg);
+          setReportCart({});
+          closePreview();
+          activeSendIdRef.current = null;
+          if (selectedAssignment?._id) fetchStudentPage(studentPage);
+        } else {
+          toast.info("Send cancelled — nothing was resent");
+          activeSendIdRef.current = null;
+        }
+        return;
+      }
+
       let msg = `✅ Sent to ${sent} student(s)`;
-      if (skipped > 0) msg += ` (${skipped} skipped — already sent recently)`;
       if (failed) msg += `, ${failed} failed`;
       toast.success(msg);
       setReportCart({});
@@ -950,8 +985,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     filteredAssignments.length > 0 &&
     filteredAssignments.every((a) => checkedAssignments[String(a._id)]);
 
-  const sendTeacherCollectiveReport = async () => {
+  const sendTeacherCollectiveReport = async (options = {}) => {
     if (sending) return;
+    const forceResend = options.forceResend === true;
     const cartEntries = Object.entries(reportCart);
 
     if (cartEntries.length === 0) {
@@ -967,14 +1003,31 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setSending(true);
 
     try {
-      await api.post(
+      const { data } = await api.post(
         "/manager-assignments/send-teacher-collective-report",
         {
           reports,
           classroomId: selectedClassroom?._id,
           clientSendId: crypto.randomUUID(),
+          ...(forceResend ? { forceResend: true } : {}),
         }
       );
+
+      if (data?.skipped && !forceResend) {
+        setSending(false);
+        const confirmed = await confirmToast(
+          "This teacher collective report was already sent recently. Are you sure you want to send it again?",
+          {
+            title: "Already sent recently",
+            confirmLabel: "Send again",
+            cancelLabel: "Cancel",
+            toastId: "teacher-collective-force-resend",
+          }
+        );
+        if (confirmed) return sendTeacherCollectiveReport({ forceResend: true });
+        toast.info("Send cancelled — nothing was resent");
+        return;
+      }
 
       toast.success("Teacher collective PDF report sent");
     } catch {
@@ -984,8 +1037,9 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
-  const sendCustomCollectiveReport = async () => {
+  const sendCustomCollectiveReport = async (options = {}) => {
     if (sending) return;
+    const forceResend = options.forceResend === true;
     const cartEntries = Object.entries(reportCart);
 
     if (cartEntries.length === 0) {
@@ -1006,15 +1060,32 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     setSending(true);
 
     try {
-      await api.post(
+      const { data } = await api.post(
         "/manager-assignments/send-custom-collective-report",
         {
           reports,
           classroomId: selectedClassroom?._id,
           phone: customPhone,
           clientSendId: crypto.randomUUID(),
+          ...(forceResend ? { forceResend: true } : {}),
         }
       );
+
+      if (data?.skipped && !forceResend) {
+        setSending(false);
+        const confirmed = await confirmToast(
+          "This report was already sent recently. Are you sure you want to send it again?",
+          {
+            title: "Already sent recently",
+            confirmLabel: "Send again",
+            cancelLabel: "Cancel",
+            toastId: "custom-collective-force-resend",
+          }
+        );
+        if (confirmed) return sendCustomCollectiveReport({ forceResend: true });
+        toast.info("Send cancelled — nothing was resent");
+        return;
+      }
 
       toast.success("Custom PDF report sent");
     } catch {

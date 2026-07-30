@@ -28,6 +28,7 @@ import {
   useReportTeacherOptions,
   useClearClassroomOnTeacherFilter,
 } from "../hooks/useReportTeacherFilter";
+import { confirmToast } from "../utils/confirmToast";
 import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 
 const TRIGGERS = [
@@ -196,8 +197,9 @@ export default function TeacherExecutiveAnalysisWorkspace({
     }
   };
 
-  const sendToTeacher = async () => {
+  const sendToTeacher = async (options = {}) => {
     if (!selectedAssignment?._id || sending) return;
+    const forceResend = options.forceResend === true;
     if (!report?.meta?.teacherPhone) {
       toast.error("Teacher has no WhatsApp number on file");
       return;
@@ -210,9 +212,23 @@ export default function TeacherExecutiveAnalysisWorkspace({
         trigger,
         sendEmail: sendEmailToo,
         clientSendId: crypto.randomUUID(),
+        ...(forceResend ? { forceResend: true } : {}),
       });
       if (data.result?.whatsApp?.sent) {
         toast.success("Executive report sent to teacher on WhatsApp");
+      } else if (data.result?.whatsApp?.skipped && !forceResend) {
+        setSending(false);
+        const confirmed = await confirmToast(
+          "This executive report was already sent recently. Are you sure you want to send it again?",
+          {
+            title: "Already sent recently",
+            confirmLabel: "Send again",
+            cancelLabel: "Cancel",
+            toastId: "executive-force-resend",
+          }
+        );
+        if (confirmed) return sendToTeacher({ forceResend: true });
+        toast.info("Send cancelled — nothing was resent");
       } else if (data.result?.whatsApp?.skipped) {
         toast.info("Executive report was already sent recently — skipped duplicate");
       } else {

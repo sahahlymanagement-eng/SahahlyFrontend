@@ -62,11 +62,17 @@ export async function previewAssignmentReport(classroomId, reports) {
   return data.previews || [];
 }
 
-export async function sendAssignmentReport(classroomId, reports, messageOverrides) {
+export async function sendAssignmentReport(
+  classroomId,
+  reports,
+  messageOverrides,
+  options = {}
+) {
   const payload = {
     classroomId,
     reports,
     clientSendId: crypto.randomUUID(),
+    ...(options.forceResend ? { forceResend: true } : {}),
   };
   if (messageOverrides) payload.messageOverrides = messageOverrides;
   const { data } = await api.post("/manager-assignments/send-report", payload);
