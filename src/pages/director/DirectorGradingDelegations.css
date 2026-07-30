@@ -1,0 +1,162 @@
+/* Extras for the grading-partner delegation page. The page reuses the shared
+   .dm-* director table styling (DirectorClassroomManagers.css); everything here
+   is what that sheet has no equivalent for: the partner tab strip, the delegate
+   tags, and the three-control assign cell. */
+
+.dgd-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dgd-tab {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.dgd-tab:hover {
+  color: var(--text-primary);
+  border-color: var(--primary);
+}
+
+.dgd-tab--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.dgd-hint {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 76ch;
+}
+
+.dgd-name {
+  font-weight: 600;
+}
+
+.dgd-id {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dgd-of {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dgd-empty {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ─── Delegate tags ─── */
+
+.dgd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dgd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+
+.dgd-tag--manager {
+  background: var(--info-bg);
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
+  color: var(--text-primary);
+}
+
+.dgd-tag--assistant {
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--text-primary);
+}
+
+.dgd-tag-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.dgd-tag-due--overdue {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.dgd-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.dgd-tag-remove:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.dgd-tag-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─── Assign cell ─── */
+
+.dgd-assign-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dgd-assign-cell .dm-select {
+  min-width: 150px;
+}
+
+.dgd-deadline-input {
+  min-width: 200px;
+  /* The native picker indicator is near-invisible on the dark surface. */
+  color-scheme: light dark;
+}
+
+@media (max-width: 640px) {
+  .dgd-assign-cell {
+    width: 100%;
+  }
+
+  .dgd-assign-cell .dm-select,
+  .dgd-deadline-input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}

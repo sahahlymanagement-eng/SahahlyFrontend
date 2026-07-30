@@ -61,6 +61,8 @@ import {
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
+import { useGradingDelegations } from "../../context/GradingNotificationContext";
+import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
 import {
   useMarkingStudentSelection,
@@ -128,10 +130,15 @@ export default function GradingProviderPage({ slug, label }) {
   // still send the raw numeric id.
   const batchKey = useCallback((assignmentId) => `${slug}:${assignmentId}`, [slug]);
 
-  // Marking itself is manager01's job (see gradingAccess). Accounts without it
-  // review what manager01 produced: open the results modal, edit it, publish it.
-  // Every control that would start or undo a marking run hangs off this flag.
-  const canMark = canRunGradingMarking();
+  // Access for this tab comes either from the static allow-list or from a
+  // director delegation, and the latter is fetched — see gradingAccess.
+  const { delegations, delegationsLoaded } = useGradingDelegations();
+
+  // Marking itself is manager01's job (see gradingAccess), or that of someone
+  // the director delegated this partner to AS A MANAGER. Everyone else reviews
+  // what was produced: open the results modal, edit it, publish it. Every
+  // control that would start or undo a marking run hangs off this flag.
+  const canMark = canRunGradingMarking(slug, delegations);
 
   const [user, setUser] = useState(null);
 
@@ -510,6 +517,9 @@ export default function GradingProviderPage({ slug, label }) {
           dueDate: a.due_date || null,
           count: a.count ?? 0,
           graded: a.graded ?? 0,
+          // Present only when the director delegated this assignment to the
+          // signed-in account: { role, deadline, status }.
+          myDelegation: a.myDelegation || null,
         }))
       );
       setListTotal(data?.total ?? 0);
@@ -630,14 +640,19 @@ export default function GradingProviderPage({ slug, label }) {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
     const parsed = JSON.parse(stored);
-    if (!canGradeProvider(slug)) {
-      // This tab is served by both the manager and assistant portals, so bounce a
-      // denied user to their own dashboard rather than the manager one, which
-      // RoleProtectedRoute would reject for them anyway.
-      return navigate(getDashboardPathForUser(parsed) || "/login", { replace: true });
+    if (canGradeProvider(slug, delegations)) {
+      setUser(parsed);
+      return;
     }
-    setUser(parsed);
-  }, [navigate, slug]);
+    // A director delegation can still grant this tab, and it arrives with a
+    // fetch — bouncing before it lands would eject the very people this page
+    // was just handed to. Until then the page renders nothing (user is null).
+    if (!delegationsLoaded) return;
+    // This tab is served by both the manager and assistant portals, so bounce a
+    // denied user to their own dashboard rather than the manager one, which
+    // RoleProtectedRoute would reject for them anyway.
+    navigate(getDashboardPathForUser(parsed) || "/login", { replace: true });
+  }, [navigate, slug, delegations, delegationsLoaded]);
 
   useEffect(() => {
     selectedAssignmentRef.current = selectedAssignment;
@@ -1682,6 +1697,9 @@ export default function GradingProviderPage({ slug, label }) {
                               </>
                             ) : ""}
                           </span>
+                          {/* Renders only when the director delegated this
+                              assignment to the signed-in account. */}
+                          <GradingDeadlineBadge delegation={a.myDelegation} />
                         </div>
                       </div>
                     ))

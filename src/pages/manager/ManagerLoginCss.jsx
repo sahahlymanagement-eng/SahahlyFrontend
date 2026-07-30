@@ -60,8 +60,10 @@ import {
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
-import { canGradeProvider } from "../../utils/gradingAccess";
+import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
+import { useGradingDelegations } from "../../context/GradingNotificationContext";
+import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
 import {
   useMarkingStudentSelection,
   markingActionLabel,
@@ -102,6 +104,16 @@ const getScoreColor = (awarded, max) => {
 
 export default function ManagerLoginCss() {
   const navigate = useNavigate();
+
+  // Access to this tab comes either from the static allow-list or from a
+  // director delegation, and the latter is fetched — see gradingAccess.
+  const { delegations, delegationsLoaded } = useGradingDelegations();
+
+  // Marking is manager01's job, or that of someone the director delegated
+  // LoginCSS to AS A MANAGER. A delegated assistant only reviews what was
+  // produced: open the results modal, edit it, publish it. Every control that
+  // would start or undo a marking run hangs off this flag.
+  const canMark = canRunGradingMarking("logincss", delegations);
 
   const [user, setUser] = useState(null);
 
@@ -477,6 +489,9 @@ export default function ManagerLoginCss() {
           dueDate: a.due_date || null,
           count: a.count ?? 0,
           graded: a.graded ?? 0,
+          // Present only when the director delegated this assignment to the
+          // signed-in account: { role, deadline, status }.
+          myDelegation: a.myDelegation || null,
         }))
       );
       setListTotal(data?.total ?? 0);
@@ -597,14 +612,19 @@ export default function ManagerLoginCss() {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
     const parsed = JSON.parse(stored);
-    if (!canGradeProvider("logincss")) {
-      // This tab is served by both the manager and assistant portals, so bounce a
-      // denied user to their own dashboard rather than the manager one, which
-      // RoleProtectedRoute would reject for them anyway.
-      return navigate(getDashboardPathForUser(parsed) || "/login", { replace: true });
+    if (canGradeProvider("logincss", delegations)) {
+      setUser(parsed);
+      return;
     }
-    setUser(parsed);
-  }, [navigate]);
+    // A director delegation can still grant this tab, and it arrives with a
+    // fetch — bouncing before it lands would eject the very people this page
+    // was just handed to. Until then the page renders nothing (user is null).
+    if (!delegationsLoaded) return;
+    // This tab is served by both the manager and assistant portals, so bounce a
+    // denied user to their own dashboard rather than the manager one, which
+    // RoleProtectedRoute would reject for them anyway.
+    navigate(getDashboardPathForUser(parsed) || "/login", { replace: true });
+  }, [navigate, delegations, delegationsLoaded]);
 
   useEffect(() => {
     selectedAssignmentRef.current = selectedAssignment;
@@ -685,7 +705,9 @@ export default function ManagerLoginCss() {
     }
   }, [loadAssignments, loadAssignmentSubmissions]);
 
+  // Saved prompts and the model list only feed the marking controls.
   useEffect(() => {
+    if (!canMark) return;
     api.get("/marking/prompts").then((r) => setSavedPrompts(r.data || [])).catch(() => {});
     api.get("/marking/gemini-models")
       .then((r) => {
@@ -694,7 +716,7 @@ export default function ManagerLoginCss() {
         setGeminiModel((prev) => pickValidGeminiModel(models, prev));
       })
       .catch(() => {});
-  }, []);
+  }, [canMark]);
 
   useEffect(() => {
     if (!promptDropdownOpen) return;
@@ -1172,6 +1194,7 @@ export default function ManagerLoginCss() {
   };
 
   const checkForActiveJob = useCallback(async () => {
+    if (!canMark) return;
     if (!selectedAssignment || selectedAssignment.id == null) return;
     const assignId = String(selectedAssignment.id);
     try {
@@ -1191,7 +1214,7 @@ export default function ManagerLoginCss() {
     } catch (err) {
       console.error("checkForActiveJob:", err?.message);
     }
-  }, [selectedAssignment?.id, geminiModels, geminiModel, pollBatchJob]);
+  }, [canMark, selectedAssignment?.id, geminiModels, geminiModel, pollBatchJob]);
 
   // Subscribe the panel to this assignment's batch job (survives navigation).
   useEffect(() => {
@@ -1648,6 +1671,9 @@ export default function ManagerLoginCss() {
                               </>
                             ) : ""}
                           </span>
+                          {/* Renders only when the director delegated this
+                              assignment to the signed-in account. */}
+                          <GradingDeadlineBadge delegation={a.myDelegation} />
                         </div>
                       </div>
                     ))
@@ -1701,6 +1727,8 @@ export default function ManagerLoginCss() {
                       value={search}
                       onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                     />
+                    {canMark && (
+                    <>
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
@@ -1840,6 +1868,8 @@ export default function ManagerLoginCss() {
                         </>
                       )}
                     </button>
+                    </>
+                    )}
                   </div>
                 </div>
 
@@ -1850,6 +1880,8 @@ export default function ManagerLoginCss() {
                   />
                 )}
 
+                {/* Row selection only exists to narrow a marking run. */}
+                {canMark && (
                 <MarkingSelectionBar
                   selectedCount={markingSelection.selectedCount}
                   pageSelectableCount={pageSelectableIds.length}
@@ -1859,8 +1891,9 @@ export default function ManagerLoginCss() {
                   onClear={markingSelection.clear}
                   selectingAll={selectingMarkingAll}
                 />
+                )}
 
-                {batchJob && batchJob.phase !== "done" && (
+                {canMark && batchJob && batchJob.phase !== "done" && (
                   <div
                     style={{
                       marginTop: 8,
@@ -1918,7 +1951,7 @@ export default function ManagerLoginCss() {
                       <table className="ma-table ma-table--cards">
                         <thead>
                           <tr>
-                            <th style={{ width: 44 }} aria-label="Select for marking" />
+                            {canMark && <th style={{ width: 44 }} aria-label="Select for marking" />}
                             <th>Name</th>
                             <th>Status</th>
                             <th>Submitted At</th>
@@ -1948,18 +1981,20 @@ export default function ManagerLoginCss() {
                                 className="ma-row"
                                 style={{ animationDelay: `${i * 0.025}s` }}
                               >
-                                <td>
-                                  {s.submissionId != null ? (
-                                    <button
-                                      type="button"
-                                      className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
-                                      onClick={() => markingSelection.toggle(s.submissionId)}
-                                      aria-label={`Select ${s.name || "submission"} for marking`}
-                                    >
-                                      {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
-                                    </button>
-                                  ) : null}
-                                </td>
+                                {canMark && (
+                                  <td>
+                                    {s.submissionId != null ? (
+                                      <button
+                                        type="button"
+                                        className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                                        onClick={() => markingSelection.toggle(s.submissionId)}
+                                        aria-label={`Select ${s.name || "submission"} for marking`}
+                                      >
+                                        {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                )}
                                 <td>
                                   <div className="ma-avatar-cell">
                                     <div className="ma-avatar">
@@ -2075,43 +2110,50 @@ export default function ManagerLoginCss() {
                                       </button>
                                     )}
 
-                                    <button
-                                      className={`msv-action-btn msv-action-btn--ai ${
-                                        hasError ? "msv-action-btn--error" : ""
-                                      }`}
-                                      title="Mark with AI"
-                                      onClick={() => openGuidanceModal(s)}
-                                      disabled={isMarking}
-                                    >
-                                      {isMarking ? (
-                                        <span className="pm-spinner" />
-                                      ) : hasError ? (
-                                        <>❌ Retry</>
-                                      ) : (
-                                        <>
-                                          <FiCpu size={12} /> Mark
-                                        </>
-                                      )}
-                                    </button>
+                                    {canMark && (
+                                      <>
+                                        <button
+                                          className={`msv-action-btn msv-action-btn--ai ${
+                                            hasError ? "msv-action-btn--error" : ""
+                                          }`}
+                                          title="Mark with AI"
+                                          onClick={() => openGuidanceModal(s)}
+                                          disabled={isMarking}
+                                        >
+                                          {isMarking ? (
+                                            <span className="pm-spinner" />
+                                          ) : hasError ? (
+                                            <>❌ Retry</>
+                                          ) : (
+                                            <>
+                                              <FiCpu size={12} /> Mark
+                                            </>
+                                          )}
+                                        </button>
 
-                                    <button
-                                      className="msv-action-btn msv-action-btn--ai"
-                                      title="Mark on Gemini priority tier (fastest)"
-                                      onClick={() => openGuidanceModal(s, { priority: true })}
-                                      disabled={isMarking}
-                                      style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
-                                    >
-                                      <FiSend size={12} /> Priority
-                                    </button>
+                                        <button
+                                          className="msv-action-btn msv-action-btn--ai"
+                                          title="Mark on Gemini priority tier (fastest)"
+                                          onClick={() => openGuidanceModal(s, { priority: true })}
+                                          disabled={isMarking}
+                                          style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
+                                        >
+                                          <FiSend size={12} /> Priority
+                                        </button>
 
-                                    {hasResult && (
-                                      <button
-                                        className="msv-action-btn msv-action-btn--delete"
-                                        title="Delete result and mark again"
-                                        onClick={() => deleteResult(s)}
-                                      >
-                                        🗑 Delete
-                                      </button>
+                                        {/* Clearing a result only makes sense next to a "mark
+                                            again" button, and the draft belongs to whoever ran
+                                            the marking. */}
+                                        {hasResult && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--delete"
+                                            title="Delete result and mark again"
+                                            onClick={() => deleteResult(s)}
+                                          >
+                                            🗑 Delete
+                                          </button>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 </td>
@@ -2187,7 +2229,7 @@ export default function ManagerLoginCss() {
       )}
 
       {/* ── GUIDANCE MODAL ── */}
-      {guidanceModal && (
+      {canMark && guidanceModal && (
         <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
           <div className="msv-guidance-modal" onClick={(e) => e.stopPropagation()}>
             <div className="msv-guidance-header">
@@ -2481,6 +2523,7 @@ export default function ManagerLoginCss() {
         </div>
       )}
 
+      {canMark && (
       <AssignmentPromptGeneration
         open={promptGenOpen}
         onClose={() => setPromptGenOpen(false)}
@@ -2503,7 +2546,9 @@ export default function ManagerLoginCss() {
           await assignmentPrompt.save(promptDraft);
         }}
       />
+      )}
 
+      {canMark && (
       <MarkSchemeVerificationModal
         open={msVerifyOpen}
         onClose={() => setMsVerifyOpen(false)}
@@ -2513,6 +2558,7 @@ export default function ManagerLoginCss() {
         result={msVerifyResult}
         onRun={handleRunMsVerification}
       />
+      )}
 
       {/* ── PRE-GRADING PAGE-COUNT REVIEW ── */}
       <PageCountCheckModal

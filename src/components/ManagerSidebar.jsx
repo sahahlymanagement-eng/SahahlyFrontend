@@ -3,7 +3,10 @@ import {
   FiZap, FiEye, FiBarChart2, FiUploadCloud, FiMessageSquare, FiSend, FiCpu, FiMessageCircle
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
-import { useGradingNotifications } from "../context/GradingNotificationContext";
+import {
+  useGradingNotifications,
+  useGradingDelegations,
+} from "../context/GradingNotificationContext";
 import { canGradeProvider } from "../utils/gradingAccess";
 
 // External grading company tabs — each visible only to the accounts allowed to
@@ -36,11 +39,15 @@ const NAV_ITEMS = [
 ];
 
 export default function ManagerSidebar() {
+  // The delegation grant is passed explicitly rather than left to
+  // canGradeProvider's module cache, so this render is tied to it and a
+  // director-delegated tab appears the moment the grant resolves.
   const { counts } = useGradingNotifications();
+  const { delegations } = useGradingDelegations();
 
   const navItems = NAV_ITEMS.filter((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
-    return !slug || canGradeProvider(slug);
+    return !slug || canGradeProvider(slug, delegations);
   }).map((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
     const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;

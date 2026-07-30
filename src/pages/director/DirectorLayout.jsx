@@ -25,6 +25,8 @@ import {
 
   FiClipboard,
 
+  FiUploadCloud,
+
 } from "react-icons/fi";
 
 import RoleSidebar from "../../components/RoleSidebar";
@@ -79,6 +81,7 @@ const NAV_SECTIONS = [
 
       { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
       { icon: <FiUser />, label: "Assign Assistants", path: "/director/assign-assistants" },
+      { icon: <FiUploadCloud />, label: "Assign Grading Partners", path: "/director/grading-delegations" },
 
     ],
 

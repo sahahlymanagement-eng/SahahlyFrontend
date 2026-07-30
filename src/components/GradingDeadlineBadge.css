@@ -1,0 +1,34 @@
+/* Deadline pill for a director-delegated external grading assignment.
+   Colour comes entirely from the theme tokens, so it reads correctly in both
+   light and dark without a second rule set. */
+
+.gdl-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.gdl-deadline--due {
+  color: var(--info);
+  background: var(--info-bg);
+  border-color: var(--info-bg);
+}
+
+.gdl-deadline--overdue {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger-bg);
+}
+
+.gdl-deadline--done {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-bg);
+}

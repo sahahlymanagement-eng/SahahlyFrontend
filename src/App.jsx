@@ -46,6 +46,7 @@ import DirectorLayout from "./pages/director/DirectorLayout";
 import DirectorSubjects from "./pages/director/DirectorSubjects";
 import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
 import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
+import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegations";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
@@ -223,7 +224,10 @@ function App() {
           <Route path="chatbot" element={<AssistantChatbot />} />
           {/* External grading company tabs — the same pages the manager portal
               serves, gated per-account by canGradeProvider() inside each page.
-              No LoginCSS here: that partner is manager01's alone. */}
+              LoginCSS is here too now: it used to be manager01's alone, but the
+              director can delegate a LoginCSS assignment to an assistant, and
+              the tab has to exist for them to land on. */}
+          <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="drpeter" element={<ManagerDrPeter />} />
         </Route>
@@ -323,6 +327,9 @@ function App() {
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
           <Route path="assign-assistants" element={<ManagerDashboard scope="director" />} />
+          {/* The same idea as "assign-assistants", for external grading partner
+              assignments (LoginCSS / Mariam Gabalawy / Dr Peter). */}
+          <Route path="grading-delegations" element={<DirectorGradingDelegations />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
           <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
