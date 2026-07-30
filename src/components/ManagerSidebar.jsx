@@ -4,13 +4,15 @@ import {
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
 import { useGradingNotifications } from "../context/GradingNotificationContext";
-import { isGradingManager } from "../utils/gradingAccess";
+import { canGradeProvider } from "../utils/gradingAccess";
 
-// External grading company tabs — visible only to grading managers, each badged
-// with its own unread count. Keyed by provider slug (see GRADING_PROVIDERS).
+// External grading company tabs — each visible only to the accounts allowed to
+// grade for that particular partner, and badged with its own unread count. Keyed
+// by provider slug (see GRADING_PROVIDERS).
 const GRADING_NAV_PATHS = {
   "/manager/logincss": "logincss",
   "/manager/mariamgabalawy": "mariamgabalawy",
+  "/manager/drpeter": "drpeter",
 };
 
 const NAV_ITEMS = [
@@ -28,18 +30,18 @@ const NAV_ITEMS = [
   { icon: <FiFileText />,  label: "Claude AI Marking",  path: "/manager/markingclaude"  },
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },
   { icon: <FiUploadCloud />, label: "Mariam Gabalawy",  path: "/manager/mariamgabalawy" },
+  { icon: <FiUploadCloud />, label: "Dr Peter",         path: "/manager/drpeter"        },
   { icon: <FiZap />,       label: "Question Bank",      path: "/questionbank/manage"    },
   { icon: <FiBookOpen />,  label: "Course Management",  path: "/manager/courses" },
 ];
 
 export default function ManagerSidebar() {
   const { counts } = useGradingNotifications();
-  const showGrading = isGradingManager();
 
-  const navItems = (showGrading
-    ? NAV_ITEMS
-    : NAV_ITEMS.filter((item) => !GRADING_NAV_PATHS[item.path])
-  ).map((item) => {
+  const navItems = NAV_ITEMS.filter((item) => {
+    const slug = GRADING_NAV_PATHS[item.path];
+    return !slug || canGradeProvider(slug);
+  }).map((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
     const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;
     return unread > 0 ? { ...item, badge: unread } : item;

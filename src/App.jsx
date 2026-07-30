@@ -25,6 +25,7 @@ import QualityChecklistItemsTest from "./pages/QualityChecklistItemsTest";
 import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
 import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
 import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
+import ManagerDrPeter from "./pages/manager/ManagerDrPeter";
 import Login from "./pages/Login";
 import LandingPage from "./pages/LandingPage";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -221,9 +222,10 @@ function App() {
           <Route path="reports" element={<AssistantReports />} />
           <Route path="chatbot" element={<AssistantChatbot />} />
           {/* External grading company tabs — the same pages the manager portal
-              serves, gated per-account by isGradingManager() inside each page. */}
-          <Route path="logincss" element={<ManagerLoginCss />} />
+              serves, gated per-account by canGradeProvider() inside each page.
+              No LoginCSS here: that partner is manager01's alone. */}
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
+          <Route path="drpeter" element={<ManagerDrPeter />} />
         </Route>
 
 
@@ -250,6 +252,7 @@ function App() {
           <Route path="marking" element={<PaperMarking />} />
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
+          <Route path="drpeter" element={<ManagerDrPeter />} />
           <Route path="markingclaude" element={<PaperMarkingClaude />} />
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />

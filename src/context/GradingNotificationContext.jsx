@@ -3,7 +3,7 @@ import {
 } from "react";
 import { toast } from "react-toastify";
 import api from "../api/api";
-import { isGradingManager } from "../utils/gradingAccess";
+import { canGradeProvider } from "../utils/gradingAccess";
 
 // One entry per external grading company. Each has its own backend collection and
 // its own counts, so they are polled and badged independently. LoginCSS keeps its
@@ -11,6 +11,9 @@ import { isGradingManager } from "../utils/gradingAccess";
 const GRADING_PROVIDERS = [
   { slug: "logincss", label: "LoginCSS", base: "/external-grading" },
   { slug: "mariamgabalawy", label: "Mariam Gabalawy", base: "/grading/mariamgabalawy" },
+  // Second teacher on the same platform as Mariam Gabalawy, separated by the
+  // webhook key the partner sends — so his counts are genuinely independent.
+  { slug: "drpeter", label: "Dr Peter", base: "/grading/drpeter" },
 ];
 
 const emptyCounts = () =>
@@ -62,15 +65,18 @@ async function countOutstanding(base) {
 
 export function GradingNotificationProvider({ children }) {
   const [counts, setCounts] = useState(emptyCounts);
-  const enabled = useRef(isGradingManager());
+  // Only the partners this account may actually open — polling one it cannot see
+  // would 403 quietly and, worse, toast it about arrivals in someone else's tab.
+  // Resolved once (lazy initial state) because it depends on the stored user.
+  const [providers] = useState(() => GRADING_PROVIDERS.filter((p) => canGradeProvider(p.slug)));
   // Previous ungraded count per provider, to detect arrivals between polls.
   // null until the first poll seeds it, so a standing backlog doesn't toast on load.
   const prevUngraded = useRef({});
 
   const refresh = useCallback(async () => {
-    if (!enabled.current) return;
+    if (!providers.length) return;
     await Promise.all(
-      GRADING_PROVIDERS.map(async ({ slug, label, base }) => {
+      providers.map(async ({ slug, label, base }) => {
         try {
           const next = await countOutstanding(base);
           setCounts((prev) => ({
@@ -87,10 +93,10 @@ export function GradingNotificationProvider({ children }) {
         }
       })
     );
-  }, []);
+  }, [providers]);
 
   useEffect(() => {
-    if (!enabled.current) return;
+    if (!providers.length) return;
     refresh();
     const id = setInterval(refresh, POLL_MS);
     const onVisible = () => {
@@ -101,7 +107,7 @@ export function GradingNotificationProvider({ children }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [refresh]);
+  }, [providers, refresh]);
 
   return (
     <GradingNotificationContext.Provider value={{ counts, refresh }}>

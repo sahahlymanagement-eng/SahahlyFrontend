@@ -60,7 +60,7 @@ import {
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
-import { canGradeProvider } from "../../utils/gradingAccess";
+import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
 import {
   useMarkingStudentSelection,
@@ -76,10 +76,6 @@ import {
   buildPageCountFlagMap,
   pageCountWarningText,
 } from "../../hooks/usePageCountCheck";
-
-// LoginCSS keeps its own /external-grading routes rather than the shared
-// /grading/:provider registry — a null slug selects them.
-const PROVIDER = null;
 
 const PER_PAGE = 10;
 const ASSIGNMENTS_PER_PAGE = 15;
@@ -100,12 +96,46 @@ const getScoreColor = (awarded, max) => {
   return "var(--danger)";
 };
 
-export default function ManagerLoginCss() {
+/**
+ * One grading partner's submissions tab, parameterized by provider.
+ *
+ * Originally this file was the Mariam Gabalawy tab. When a second teacher
+ * (Dr Peter) was added on the same partner platform, everything about the tab
+ * was already identical except the provider slug and the labels — the backend
+ * layer at /grading/:provider is generic — so the page became a component and
+ * the per-partner pages (ManagerMariamGabalawy, ManagerDrPeter) are thin
+ * wrappers that supply these two props.
+ *
+ * @param {object} props
+ * @param {string} props.slug  backend provider slug, e.g. "mariamgabalawy"
+ * @param {string} props.label human-readable partner name shown in the UI
+ */
+export default function GradingProviderPage({ slug, label }) {
   const navigate = useNavigate();
+
+  // Every backend call for this tab lives under the provider-parameterized
+  // grading layer. LoginCSS keeps its own /external-grading routes; the
+  // request/response shapes are identical.
+  const BASE = `/grading/${slug}`;
+
+  // Provider slug for the shared settings + page-count endpoints (null = LoginCSS).
+  const PROVIDER = slug;
+
+  // assignmentBatchJobStore is a module-level singleton shared with the LoginCSS
+  // and internal viewers. Assignment ids are only unique *within* a partner, so
+  // prefix the store key — otherwise this partner's assignment 12 and another
+  // partner's assignment 12 would drive each other's batch-job panel. API calls
+  // still send the raw numeric id.
+  const batchKey = useCallback((assignmentId) => `${slug}:${assignmentId}`, [slug]);
+
+  // Marking itself is manager01's job (see gradingAccess). Accounts without it
+  // review what manager01 produced: open the results modal, edit it, publish it.
+  // Every control that would start or undo a marking run hangs off this flag.
+  const canMark = canRunGradingMarking();
 
   const [user, setUser] = useState(null);
 
-  // ── LoginCSS submissions list ──
+  // ── submissions list ──
   const [submissions, setSubmissions] = useState([]);
   const [page, setPage] = useState(1);
   // Lets loadAll refresh the page currently on screen without depending on it.
@@ -119,7 +149,7 @@ export default function ManagerLoginCss() {
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
-  const [selectedAssignment, setSelectedAssignment] = usePersistedState("logincss:assignment", null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState(`${slug}:assignment`, null);
   // Read by loadAll and the mount effect so neither has to re-create itself
   // every time the selection changes. Seeded with the persisted value, then
   // kept in sync from an effect — assigning during render is not allowed.
@@ -156,7 +186,7 @@ export default function ManagerLoginCss() {
   const bulkStopRef = useRef(false);
   const priorityStopRef = useRef(false);
 
-  // ── Server-side batch marking (Gemini batch API via external-grading) ──
+  // ── Server-side batch marking (Gemini batch API via the grading provider) ──
   const [batchJob, setBatchJob] = useState(null);
 
   // ── Row selection for marking (same behaviour as the submission viewer) ──
@@ -195,7 +225,7 @@ export default function ManagerLoginCss() {
     []
   );
 
-  // Cache of fetched PDFs per submission (avoids re-downloading base64 from LoginCSS).
+  // Cache of fetched PDFs per submission (avoids re-downloading base64 from the partner).
   const pdfCacheRef = useRef({});
 
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
@@ -251,7 +281,7 @@ export default function ManagerLoginCss() {
   // Fallback when /pdfs is blocked (e.g. "already marked"): use fresh pre-signed
   // URLs from GET /submissions/:id and download the PDFs directly in the browser.
   const fetchPdfsViaSubmission = async (submissionId) => {
-    const res = await api.get(`/external-grading/submissions/${submissionId}`);
+    const res = await api.get(`${BASE}/submissions/${submissionId}`);
     const body = res.data?.data || res.data || {};
     let submissionUrl =
       body.submission?.url || body.submission?.presignedUrl || body.submissionUrl ||
@@ -279,7 +309,7 @@ export default function ManagerLoginCss() {
 
     let entry = null;
     try {
-      const res = await api.get(`/external-grading/submissions/${submissionId}/pdfs`, { timeout: 120000 });
+      const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs`, { timeout: 120000 });
       const data = res.data || {};
       if (!data.submission?.available || !data.submission?.base64) {
         throw new Error("Student submission PDF is not available for this entry");
@@ -304,7 +334,7 @@ export default function ManagerLoginCss() {
     if (entry.msFile) await assertPdfBlob(entry.msFile, "Mark scheme");
     pdfCacheRef.current[submissionId] = entry;
     return entry;
-  }, []);
+  }, [BASE]);
 
   const getStudentFile = useCallback(
     async (submissionId) => (await fetchPdfs(submissionId)).studentFile,
@@ -430,7 +460,7 @@ export default function ManagerLoginCss() {
     );
   }, [resultModal, questionsForDisplay, effectiveMaxTotal, summaryTouched]);
 
-  // ── Defensive normalisation of the LoginCSS list envelope ──
+  // ── Defensive normalisation of the partner list envelope ──
   const normalizeItem = (raw) => {
     const id = raw.id ?? raw.submissionId ?? raw._id;
     const draftResult = raw.draftResult ?? null;
@@ -443,7 +473,7 @@ export default function ManagerLoginCss() {
         raw.name ||
         raw.title ||
         (id != null ? `Submission #${id}` : "Submission"),
-      // LoginCSS names this `submission_date` — the other three are never
+      // The provider names this `submission_date` — the other three are never
       // present in its payload, which is why this column read empty.
       submittedAt:
         raw.submission_date ||
@@ -459,6 +489,9 @@ export default function ManagerLoginCss() {
     };
   };
 
+  // Load EVERY submission (paging through the partner list) so we can group by
+  // assignment and let the manager drill into one assignment at a time. Drafts
+  // are hydrated into React state so "✅ Results" + grades survive refresh.
   // The assignment index — one row per assignment, grouped by the server.
   //
   // This used to download every submission and group them client-side. With the
@@ -467,7 +500,7 @@ export default function ManagerLoginCss() {
   const loadAssignments = useCallback(async () => {
     setLoadingAssignments(true);
     try {
-      const { data } = await api.get("/external-grading/submissions/assignments");
+      const { data } = await api.get(`${BASE}/submissions/assignments`);
       setAssignmentIndex(
         (data?.assignments || []).map((a) => ({
           key: a.id != null ? String(a.id) : "__none__",
@@ -486,7 +519,7 @@ export default function ManagerLoginCss() {
     } finally {
       setLoadingAssignments(false);
     }
-  }, []);
+  }, [BASE]);
 
   // ONE page of ONE assignment's submissions.
   //
@@ -500,7 +533,7 @@ export default function ManagerLoginCss() {
     if (!assignment) return;
     setLoadingList(true);
     try {
-      const { data } = await api.get("/external-grading/submissions", {
+      const { data } = await api.get(`${BASE}/submissions`, {
         params: {
           ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
           page: pageNum,
@@ -537,7 +570,7 @@ export default function ManagerLoginCss() {
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [BASE]);
 
   // Every submission in the open assignment, without the draft payloads.
   //
@@ -546,7 +579,7 @@ export default function ManagerLoginCss() {
   // roster — `hasDraft` stands in for "already has a result", which is in fact
   // more accurate than the old check, since that only saw loaded pages.
   const fetchAssignmentRoster = useCallback(async (assignment) => {
-    const { data } = await api.get("/external-grading/submissions", {
+    const { data } = await api.get(`${BASE}/submissions`, {
       params: {
         ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
         per_page: 1000,
@@ -554,7 +587,7 @@ export default function ManagerLoginCss() {
       timeout: 120000,
     });
     return (data?.data || []).map(normalizeItem);
-  }, []);
+  }, [BASE]);
 
   // Reload whatever the manager is currently looking at.
   const loadAll = useCallback(async () => {
@@ -564,16 +597,16 @@ export default function ManagerLoginCss() {
     }
   }, [loadAssignments, loadAssignmentSubmissions]);
 
-  // ── Reconcile our copy against LoginCSS ──
+  // ── Reconcile our copy against the provider ──
   // The list above is served from our own database, which the webhook keeps in
-  // step. This pulls LoginCSS's full list to recover anything a delivery missed
-  // (e.g. dropped while the server was restarting). Grading work is never
-  // overwritten — only LoginCSS-owned fields are refreshed — so it is always
+  // step. This pulls the provider's full list to recover anything a delivery
+  // missed (e.g. dropped while the server was restarting). Grading work is never
+  // overwritten — only provider-owned fields are refreshed — so it is always
   // safe to run. Reloads the list afterwards only when something actually moved.
   const syncFromProvider = useCallback(async () => {
     setSyncing(true);
     try {
-      const { data } = await api.post("/external-grading/sync", null, { timeout: 120000 });
+      const { data } = await api.post(`${BASE}/sync`, null, { timeout: 120000 });
       const inserted = data?.inserted ?? 0;
       const updated = data?.updated ?? 0;
 
@@ -586,25 +619,25 @@ export default function ManagerLoginCss() {
         toast.info(`Already up to date — ${data?.fetched ?? 0} submissions in sync`);
       }
     } catch (err) {
-      console.error("Failed to sync from LoginCSS", err);
-      toast.error((await getApiErrorMessage(err)) || "Failed to sync from LoginCSS");
+      console.error("Failed to sync from provider", err);
+      toast.error((await getApiErrorMessage(err)) || "Failed to sync from provider");
     } finally {
       setSyncing(false);
     }
-  }, [loadAll]);
+  }, [loadAll, BASE]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
     const parsed = JSON.parse(stored);
-    if (!canGradeProvider("logincss")) {
+    if (!canGradeProvider(slug)) {
       // This tab is served by both the manager and assistant portals, so bounce a
       // denied user to their own dashboard rather than the manager one, which
       // RoleProtectedRoute would reject for them anyway.
       return navigate(getDashboardPathForUser(parsed) || "/login", { replace: true });
     }
     setUser(parsed);
-  }, [navigate]);
+  }, [navigate, slug]);
 
   useEffect(() => {
     selectedAssignmentRef.current = selectedAssignment;
@@ -685,7 +718,9 @@ export default function ManagerLoginCss() {
     }
   }, [loadAssignments, loadAssignmentSubmissions]);
 
+  // Saved prompts and the model list only feed the marking controls.
   useEffect(() => {
+    if (!canMark) return;
     api.get("/marking/prompts").then((r) => setSavedPrompts(r.data || [])).catch(() => {});
     api.get("/marking/gemini-models")
       .then((r) => {
@@ -694,7 +729,7 @@ export default function ManagerLoginCss() {
         setGeminiModel((prev) => pickValidGeminiModel(models, prev));
       })
       .catch(() => {});
-  }, []);
+  }, [canMark]);
 
   useEffect(() => {
     if (!promptDropdownOpen) return;
@@ -825,10 +860,10 @@ export default function ManagerLoginCss() {
   };
 
   // ── Server-side draft persistence (survives refresh / other devices) ──
-  // Only the result JSON is stored; studentFile is always re-fetchable from LoginCSS.
+  // Only the result JSON is stored; studentFile is always re-fetchable from the partner.
   const saveDraft = (submissionId, result, originalAiResult) => {
     api
-      .put(`/external-grading/submissions/${submissionId}/draft`, {
+      .put(`${BASE}/submissions/${submissionId}/draft`, {
         result,
         originalAiResult: originalAiResult || result,
       })
@@ -838,7 +873,7 @@ export default function ManagerLoginCss() {
   };
 
   const deleteDraft = (submissionId) =>
-    api.delete(`/external-grading/submissions/${submissionId}/draft`).catch(() => {});
+    api.delete(`${BASE}/submissions/${submissionId}/draft`).catch(() => {});
 
   const recordMarkResult = (submissionId, result, studentFile, { persist = true } = {}) => {
     const originalAiResult = JSON.parse(JSON.stringify(result));
@@ -959,14 +994,14 @@ export default function ManagerLoginCss() {
   };
 
   // ── Server-side batch marking (upload → submit → poll) ──
-  // Results are written to each submission's LoginCSS draft server-side, so on
+  // Results are written to each submission's partner draft server-side, so on
   // success we hydrate straight from the returned results (falling back to a full
   // re-fetch of the drafts). The per-assignment job lives in assignmentBatchJobStore
   // so it survives navigation between assignments and page reloads.
 
   const pollBatchJob = useCallback(
     (jobId, jobMeta = {}) => {
-      const assignId = jobMeta.assignmentId || (selectedAssignment?.id != null ? String(selectedAssignment.id) : null);
+      const assignId = jobMeta.assignmentId || (selectedAssignment?.id != null ? batchKey(selectedAssignment.id) : null);
       if (!assignId || !jobId) return;
       if (isBatchStopped(assignId)) return;
 
@@ -975,7 +1010,7 @@ export default function ManagerLoginCss() {
       const doPoll = async () => {
         if (isBatchStopped(assignId)) return;
         try {
-          const { data } = await api.get(`/external-grading/mark-batch/status/${jobId}`);
+          const { data } = await api.get(`${BASE}/mark-batch/status/${jobId}`);
 
           if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
             patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
@@ -1031,15 +1066,15 @@ export default function ManagerLoginCss() {
       doPoll();
       registerBatchPoll(jobId, setInterval(doPoll, 15000));
     },
-    [selectedAssignment?.id, loadAll]
+    [selectedAssignment?.id, loadAll, BASE, batchKey]
   );
 
   const runBatchMark = async (guidanceText, mode = "normal") => {
     if (!selectedAssignment || selectedAssignment.id == null) {
-      toast.warn("Batch marking needs a real assignment — pick an assignment with a LoginCSS id.");
+      toast.warn(`Batch marking needs a real assignment — pick an assignment with a ${label} id.`);
       return;
     }
-    const assignId = String(selectedAssignment.id);
+    const assignId = batchKey(selectedAssignment.id);
 
     // The whole assignment, not the page on screen — `submissions` only holds
     // the current page now. Ticked rows narrow it further.
@@ -1074,7 +1109,7 @@ export default function ManagerLoginCss() {
     let succeeded;
     let failed;
     try {
-      const res = await api.post("/external-grading/mark-batch/upload", {
+      const res = await api.post(`${BASE}/mark-batch/upload`, {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
@@ -1113,7 +1148,7 @@ export default function ManagerLoginCss() {
 
     let jobId;
     try {
-      const res = await api.post("/external-grading/mark-batch/submit", {
+      const res = await api.post(`${BASE}/mark-batch/submit`, {
         assignmentId: selectedAssignment.id,
         msUri,
         succeeded,
@@ -1150,7 +1185,7 @@ export default function ManagerLoginCss() {
 
   const stopBatchMark = async () => {
     if (!selectedAssignment || selectedAssignment.id == null) return;
-    const assignId = String(selectedAssignment.id);
+    const assignId = batchKey(selectedAssignment.id);
     setBatchStopped(assignId, true);
 
     const jobId = batchJob?.jobId;
@@ -1159,7 +1194,7 @@ export default function ManagerLoginCss() {
 
     if (jobId) {
       try {
-        await api.delete(`/external-grading/mark-batch/cancel/${jobId}`);
+        await api.delete(`${BASE}/mark-batch/cancel/${jobId}`);
         toast.info("Batch marking cancelled");
       } catch (err) {
         toast.warning(
@@ -1172,10 +1207,11 @@ export default function ManagerLoginCss() {
   };
 
   const checkForActiveJob = useCallback(async () => {
+    if (!canMark) return;
     if (!selectedAssignment || selectedAssignment.id == null) return;
-    const assignId = String(selectedAssignment.id);
+    const assignId = batchKey(selectedAssignment.id);
     try {
-      const { data } = await api.get(`/external-grading/mark-batch/active/${selectedAssignment.id}`);
+      const { data } = await api.get(`${BASE}/mark-batch/active/${selectedAssignment.id}`);
       const active = data?.active;
       const jobId = active?.jobId || (data?.jobId && data?.active !== false ? data.jobId : null);
       if (active && jobId) {
@@ -1191,7 +1227,7 @@ export default function ManagerLoginCss() {
     } catch (err) {
       console.error("checkForActiveJob:", err?.message);
     }
-  }, [selectedAssignment?.id, geminiModels, geminiModel, pollBatchJob]);
+  }, [canMark, selectedAssignment?.id, geminiModels, geminiModel, pollBatchJob, BASE, batchKey]);
 
   // Subscribe the panel to this assignment's batch job (survives navigation).
   useEffect(() => {
@@ -1199,8 +1235,8 @@ export default function ManagerLoginCss() {
       setBatchJob(null);
       return;
     }
-    return subscribeBatchJob(String(selectedAssignment.id), setBatchJob);
-  }, [selectedAssignment?.id]);
+    return subscribeBatchJob(batchKey(selectedAssignment.id), setBatchJob);
+  }, [selectedAssignment?.id, batchKey]);
 
   // Resume polling a running job whenever an assignment is selected.
   useEffect(() => {
@@ -1221,9 +1257,7 @@ export default function ManagerLoginCss() {
     if (!student.hasDraft) return;
 
     try {
-      const { data } = await api.get(
-        `/external-grading/submissions/${student.submissionId}/draft`
-      );
+      const { data } = await api.get(`${BASE}/submissions/${student.submissionId}/draft`);
       if (!data?.draftResult) return;
 
       const entry = {
@@ -1343,7 +1377,7 @@ export default function ManagerLoginCss() {
     }
   };
 
-  const uploadToLoginCss = async () => {
+  const uploadToProvider = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
       toast.warn("Confirm your edits first so the uploaded PDF matches the preview");
@@ -1353,7 +1387,7 @@ export default function ManagerLoginCss() {
 
     if (resultModal.student?.localStatus === "done") {
       const ok = await confirmToast("This submission was already graded. Re-upload and overwrite?", {
-        title: "Re-upload to LoginCSS",
+        title: `Re-upload to ${label}`,
         confirmLabel: "Re-upload",
       });
       if (!ok) return;
@@ -1381,13 +1415,13 @@ export default function ManagerLoginCss() {
       if (summary) fd.append("comments", summary);
       if (resultModal.student?.submittedAt) fd.append("submissionDate", resultModal.student.submittedAt);
 
-      await api.post("/external-grading/upload", fd, {
+      await api.post(`${BASE}/upload`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 120000,
       });
 
-      toast.success("Grade & feedback uploaded to LoginCSS");
-      // Published — free the draft (the annotated PDF now lives in LoginCSS).
+      toast.success(`Grade & feedback uploaded to ${label}`);
+      // Published — free the draft (the annotated PDF now lives with the partner).
       deleteDraft(submissionId);
       setSubmissions((prev) =>
         prev.map((s) =>
@@ -1399,7 +1433,7 @@ export default function ManagerLoginCss() {
       setResultModal(null);
       loadAll();
     } catch (err) {
-      toast.error((await getApiErrorMessage(err)) || "Failed to upload to LoginCSS");
+      toast.error((await getApiErrorMessage(err)) || `Failed to upload to ${label}`);
     } finally {
       setReturning(false);
     }
@@ -1433,13 +1467,13 @@ export default function ManagerLoginCss() {
     }
   };
 
-  // Re-view the annotated feedback PDF that was published to LoginCSS (any device).
+  // Re-view the annotated feedback PDF that was published to the partner (any device).
   // Mirrors the /pdfs envelope: { feedback: { available, base64 } } — base64-only
   // (no presigned URL) to avoid the R2 CORS problem of fetching the URL in-browser.
   const viewFeedback = async (student) => {
     try {
       const res = await api.get(
-        `/external-grading/submissions/${student.submissionId}/feedback`,
+        `${BASE}/submissions/${student.submissionId}/feedback`,
         { timeout: 120000 }
       );
       const feedback = res.data?.feedback || {};
@@ -1565,7 +1599,7 @@ export default function ManagerLoginCss() {
       <main className="ma-main">
         <header className="ma-topbar">
           <div className="ma-topbar-left">
-            <h1 className="ma-topbar-title">LoginCSS Submissions</h1>
+            <h1 className="ma-topbar-title">{label} Submissions</h1>
             <span className="ma-topbar-sub">Welcome back, {user.name}</span>
           </div>
           <div className="ma-topbar-right">
@@ -1594,10 +1628,10 @@ export default function ManagerLoginCss() {
               onClick={syncFromProvider}
               disabled={loadingList || loadingAssignments || syncing}
               style={{ marginLeft: 8 }}
-              title="Fetch LoginCSS's full list and add anything missing from this view"
+              title="Fetch the provider's full list and add anything missing from this view"
             >
               <FiDownloadCloud size={13} className={syncing ? "msv-spin" : ""} />
-              {syncing ? "Syncing…" : "Sync from LoginCSS"}
+              {syncing ? "Syncing…" : "Sync from provider"}
             </button>
           </div>
         </header>
@@ -1701,6 +1735,8 @@ export default function ManagerLoginCss() {
                       value={search}
                       onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                     />
+                    {canMark && (
+                    <>
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
@@ -1822,7 +1858,7 @@ export default function ManagerLoginCss() {
                       }
                       title={
                         selectedAssignment.id == null
-                          ? "Batch marking needs an assignment with a LoginCSS id"
+                          ? `Batch marking needs an assignment with a ${label} id`
                           : markingSelection.selectedCount
                             ? "Submit one Gemini batch job for the selected submissions"
                             : "Submit one Gemini batch job for all unmarked submissions"
@@ -1840,6 +1876,8 @@ export default function ManagerLoginCss() {
                         </>
                       )}
                     </button>
+                    </>
+                    )}
                   </div>
                 </div>
 
@@ -1850,17 +1888,20 @@ export default function ManagerLoginCss() {
                   />
                 )}
 
-                <MarkingSelectionBar
-                  selectedCount={markingSelection.selectedCount}
-                  pageSelectableCount={pageSelectableIds.length}
-                  pageAllSelected={pageAllMarkingSelected}
-                  onTogglePage={toggleMarkingSelectPage}
-                  onSelectAll={selectAllSubmissionsForMarking}
-                  onClear={markingSelection.clear}
-                  selectingAll={selectingMarkingAll}
-                />
+                {/* Row selection only exists to narrow a marking run. */}
+                {canMark && (
+                  <MarkingSelectionBar
+                    selectedCount={markingSelection.selectedCount}
+                    pageSelectableCount={pageSelectableIds.length}
+                    pageAllSelected={pageAllMarkingSelected}
+                    onTogglePage={toggleMarkingSelectPage}
+                    onSelectAll={selectAllSubmissionsForMarking}
+                    onClear={markingSelection.clear}
+                    selectingAll={selectingMarkingAll}
+                  />
+                )}
 
-                {batchJob && batchJob.phase !== "done" && (
+                {canMark && batchJob && batchJob.phase !== "done" && (
                   <div
                     style={{
                       marginTop: 8,
@@ -1918,7 +1959,7 @@ export default function ManagerLoginCss() {
                       <table className="ma-table ma-table--cards">
                         <thead>
                           <tr>
-                            <th style={{ width: 44 }} aria-label="Select for marking" />
+                            {canMark && <th style={{ width: 44 }} aria-label="Select for marking" />}
                             <th>Name</th>
                             <th>Status</th>
                             <th>Submitted At</th>
@@ -1948,18 +1989,20 @@ export default function ManagerLoginCss() {
                                 className="ma-row"
                                 style={{ animationDelay: `${i * 0.025}s` }}
                               >
-                                <td>
-                                  {s.submissionId != null ? (
-                                    <button
-                                      type="button"
-                                      className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
-                                      onClick={() => markingSelection.toggle(s.submissionId)}
-                                      aria-label={`Select ${s.name || "submission"} for marking`}
-                                    >
-                                      {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
-                                    </button>
-                                  ) : null}
-                                </td>
+                                {canMark && (
+                                  <td>
+                                    {s.submissionId != null ? (
+                                      <button
+                                        type="button"
+                                        className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                                        onClick={() => markingSelection.toggle(s.submissionId)}
+                                        aria-label={`Select ${s.name || "submission"} for marking`}
+                                      >
+                                        {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                )}
                                 <td>
                                   <div className="ma-avatar-cell">
                                     <div className="ma-avatar">
@@ -2043,7 +2086,7 @@ export default function ManagerLoginCss() {
                                     {s.hasFeedbackPdf && (
                                       <button
                                         className="msv-action-btn"
-                                        title="View the final graded PDF published to LoginCSS"
+                                        title={`View the final graded PDF published to ${label}`}
                                         onClick={() => viewFeedback(s)}
                                       >
                                         <FiEye size={13} /> Published PDF
@@ -2075,43 +2118,50 @@ export default function ManagerLoginCss() {
                                       </button>
                                     )}
 
-                                    <button
-                                      className={`msv-action-btn msv-action-btn--ai ${
-                                        hasError ? "msv-action-btn--error" : ""
-                                      }`}
-                                      title="Mark with AI"
-                                      onClick={() => openGuidanceModal(s)}
-                                      disabled={isMarking}
-                                    >
-                                      {isMarking ? (
-                                        <span className="pm-spinner" />
-                                      ) : hasError ? (
-                                        <>❌ Retry</>
-                                      ) : (
-                                        <>
-                                          <FiCpu size={12} /> Mark
-                                        </>
-                                      )}
-                                    </button>
+                                    {canMark && (
+                                      <>
+                                        <button
+                                          className={`msv-action-btn msv-action-btn--ai ${
+                                            hasError ? "msv-action-btn--error" : ""
+                                          }`}
+                                          title="Mark with AI"
+                                          onClick={() => openGuidanceModal(s)}
+                                          disabled={isMarking}
+                                        >
+                                          {isMarking ? (
+                                            <span className="pm-spinner" />
+                                          ) : hasError ? (
+                                            <>❌ Retry</>
+                                          ) : (
+                                            <>
+                                              <FiCpu size={12} /> Mark
+                                            </>
+                                          )}
+                                        </button>
 
-                                    <button
-                                      className="msv-action-btn msv-action-btn--ai"
-                                      title="Mark on Gemini priority tier (fastest)"
-                                      onClick={() => openGuidanceModal(s, { priority: true })}
-                                      disabled={isMarking}
-                                      style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
-                                    >
-                                      <FiSend size={12} /> Priority
-                                    </button>
+                                        <button
+                                          className="msv-action-btn msv-action-btn--ai"
+                                          title="Mark on Gemini priority tier (fastest)"
+                                          onClick={() => openGuidanceModal(s, { priority: true })}
+                                          disabled={isMarking}
+                                          style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
+                                        >
+                                          <FiSend size={12} /> Priority
+                                        </button>
 
-                                    {hasResult && (
-                                      <button
-                                        className="msv-action-btn msv-action-btn--delete"
-                                        title="Delete result and mark again"
-                                        onClick={() => deleteResult(s)}
-                                      >
-                                        🗑 Delete
-                                      </button>
+                                        {/* Clearing a result only makes sense next to a "mark
+                                            again" button, and the draft belongs to whoever ran
+                                            the marking. */}
+                                        {hasResult && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--delete"
+                                            title="Delete result and mark again"
+                                            onClick={() => deleteResult(s)}
+                                          >
+                                            🗑 Delete
+                                          </button>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 </td>
@@ -2187,7 +2237,7 @@ export default function ManagerLoginCss() {
       )}
 
       {/* ── GUIDANCE MODAL ── */}
-      {guidanceModal && (
+      {canMark && guidanceModal && (
         <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
           <div className="msv-guidance-modal" onClick={(e) => e.stopPropagation()}>
             <div className="msv-guidance-header">
@@ -2481,6 +2531,7 @@ export default function ManagerLoginCss() {
         </div>
       )}
 
+      {canMark && (
       <AssignmentPromptGeneration
         open={promptGenOpen}
         onClose={() => setPromptGenOpen(false)}
@@ -2503,7 +2554,9 @@ export default function ManagerLoginCss() {
           await assignmentPrompt.save(promptDraft);
         }}
       />
+      )}
 
+      {canMark && (
       <MarkSchemeVerificationModal
         open={msVerifyOpen}
         onClose={() => setMsVerifyOpen(false)}
@@ -2513,6 +2566,7 @@ export default function ManagerLoginCss() {
         result={msVerifyResult}
         onRun={handleRunMsVerification}
       />
+      )}
 
       {/* ── PRE-GRADING PAGE-COUNT REVIEW ── */}
       <PageCountCheckModal
@@ -2687,12 +2741,12 @@ export default function ManagerLoginCss() {
                 </button>
                 <button
                   className="msv-btn-ai"
-                  onClick={uploadToLoginCss}
+                  onClick={uploadToProvider}
                   disabled={returning || hasPendingEdits}
                   title={hasPendingEdits ? "Confirm edits first" : undefined}
                 >
                   <FiSend size={13} />
-                  {returning ? "Uploading…" : "Upload to LoginCSS"}
+                  {returning ? "Uploading…" : `Upload to ${label}`}
                 </button>
                 <button className="msv-icon-btn" onClick={() => setResultModal(null)}>
                   <FiX size={16} />
