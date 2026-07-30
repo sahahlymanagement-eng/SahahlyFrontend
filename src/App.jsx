@@ -61,6 +61,8 @@ import ManagerFeedback from "./pages/manager/ManagerFeedback";
 import ManagerAssignments from "./pages/manager/ManagerAssignments";
 import ManagerStudents from "./pages/manager/ManagerStudents";
 import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
+import DirectorChatbot from "./pages/director/DirectorChatbot";
+import DirectorActionsChatbot from "./pages/director/DirectorActionsChatbot";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
 import ManagerAutomation from "./pages/manager/ManagerAutomation";
@@ -327,8 +329,8 @@ function App() {
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
           <Route path="assign-assistants" element={<ManagerDashboard scope="director" />} />
-          {/* The same idea as "assign-assistants", for external grading partner
-              assignments (LoginCSS / Mariam Gabalawy / Dr Peter). */}
+          <Route path="ai-agent" element={<DirectorChatbot />} />
+          <Route path="chatbot" element={<DirectorActionsChatbot />} />
           <Route path="grading-delegations" element={<DirectorGradingDelegations />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
           <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />

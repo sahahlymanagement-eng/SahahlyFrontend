@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { TeacherPageHeader } from "../teacher/TeacherUI";
 import { FiSend, FiPlus, FiCpu, FiUser } from "react-icons/fi";
 import {
-  MANAGER_ACTION_MENU,
+  DIRECTOR_ACTION_MENU,
   formatNumberedList,
   loadAssistantMetrics,
   loadAssignments,
@@ -17,7 +17,7 @@ import {
   previewMonthly,
   sendAssignmentReport,
   sendMonthly,
-} from "./managerChatbotActionsClient";
+} from "./directorChatbotActionsClient";
 import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
 import "../teacher/TeacherChatbot.css";
@@ -55,7 +55,7 @@ function userMsg(content) {
 
 const MENU_OPTIONS = ["1", "2", "3", "13"];
 
-const MENU_GREETING = `${MANAGER_ACTION_MENU}\n\nTip: For delegations, automation, collective reports, and more — use the **AI Agent** tab for natural language.`;
+const MENU_GREETING = `${DIRECTOR_ACTION_MENU}\n\nTip: For delegations, automation, collective reports, and more — use the **AI Agent** tab for natural language.`;
 
 function readStoredUser() {
   try {
@@ -66,7 +66,7 @@ function readStoredUser() {
   }
 }
 
-export default function ManagerActionsChatbot() {
+export default function DirectorActionsChatbot() {
   const [user] = useState(readStoredUser);
   const [messages, setMessages] = useState(() => [
     botMsg(MENU_GREETING, { options: MENU_OPTIONS }),
@@ -160,7 +160,7 @@ export default function ManagerActionsChatbot() {
         if (choice >= 4 && choice <= 12) {
           pushBot(
             `For option **${choice}** (delegations, exports, collective/executive reports, automation, Classroom sync), please use the **AI Agent** tab — you can say exactly what you want in plain language.\n\n` +
-              `[Open AI Agent](/manager/ai-agent)\n\nType **menu** to return.`,
+              `[Open AI Agent](/director/ai-agent)\n\nType **menu** to return.`,
             { clearOptions: true }
           );
           s.step = STEPS.MENU;
@@ -356,10 +356,10 @@ export default function ManagerActionsChatbot() {
       <TeacherPageHeader
         eyebrow="Actions"
         title="Chatbot"
-        subtitle="Numbered menu for common manager actions. Use AI Agent for full natural-language control."
+        subtitle="Numbered menu for common director actions. Use AI Agent for full natural-language control."
         actions={
           <>
-            <Link to="/manager/ai-agent" className="tch-btn tch-btn--ghost">
+            <Link to="/director/ai-agent" className="tch-btn tch-btn--ghost">
               AI Agent
             </Link>
             <button type="button" className="tch-btn tch-btn--ghost" onClick={resetToMenu}>

@@ -26,6 +26,9 @@ import {
   FiClipboard,
 
   FiUploadCloud,
+  FiCpu,
+
+  FiMessageCircle,
 
 } from "react-icons/fi";
 
@@ -104,6 +107,10 @@ const NAV_SECTIONS = [
       { icon: <FiBarChart2 />, label: "Token Usage", path: "/director/token-usage" },
 
       { icon: <FiMessageSquare />, label: "Report Feedback", path: "/director/feedback" },
+
+      { icon: <FiCpu />, label: "AI Agent", path: "/director/ai-agent" },
+
+      { icon: <FiMessageCircle />, label: "Chatbot", path: "/director/chatbot" },
 
     ],
 
