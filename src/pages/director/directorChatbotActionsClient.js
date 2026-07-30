@@ -1,5 +1,5 @@
 /**
- * Frontend helpers for manager AI Agent actions.
+ * Frontend helpers for director AI Agent actions (org-wide).
  */
 
 import api from "../../api/api";
@@ -25,28 +25,28 @@ export function parseYesNo(input) {
 }
 
 export async function loadClassrooms(personId) {
-  const { data } = await api.get("/manager-chatbot/actions/classrooms", {
+  const { data } = await api.get("/director-chatbot/actions/classrooms", {
     params: { personId },
   });
   return data.classrooms || [];
 }
 
 export async function loadAssignments(personId, classroomId) {
-  const { data } = await api.get("/manager-chatbot/actions/assignments", {
+  const { data } = await api.get("/director-chatbot/actions/assignments", {
     params: { personId, classroomId },
   });
   return data.assignments || [];
 }
 
 export async function loadStudents(personId, { assignmentId, classroomId }) {
-  const { data } = await api.get("/manager-chatbot/actions/students", {
+  const { data } = await api.get("/director-chatbot/actions/students", {
     params: { personId, assignmentId, classroomId },
   });
   return data.students || [];
 }
 
 export async function loadSentHistory(personId, classroomId) {
-  const { data } = await api.get("/manager-chatbot/actions/sent-history", {
+  const { data } = await api.get("/director-chatbot/actions/sent-history", {
     params: { personId, classroomId: classroomId || undefined },
   });
   return data;
@@ -54,7 +54,7 @@ export async function loadSentHistory(personId, classroomId) {
 
 export async function prepareAssignmentReport(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/prepare-assignment-report",
+    "/director-chatbot/actions/prepare-assignment-report",
     body
   );
   return data;
@@ -86,14 +86,14 @@ export async function sendAssignmentReport(
 }
 
 export async function previewMonthly(params) {
-  const { data } = await api.get("/manager-chatbot/actions/monthly-preview", {
+  const { data } = await api.get("/director-chatbot/actions/monthly-preview", {
     params,
   });
   return data.report;
 }
 
 export async function sendMonthly(body) {
-  const { data } = await api.post("/manager-chatbot/actions/send-monthly", {
+  const { data } = await api.post("/director-chatbot/actions/send-monthly", {
     ...body,
     clientSendId: body.clientSendId || crypto.randomUUID(),
   });
@@ -101,7 +101,7 @@ export async function sendMonthly(body) {
 }
 
 export async function loadAssistantMetrics(personId) {
-  const { data } = await api.get("/manager-chatbot/actions/assistant-metrics", {
+  const { data } = await api.get("/director-chatbot/actions/assistant-metrics", {
     params: { personId },
   });
   return data;
@@ -109,7 +109,7 @@ export async function loadAssistantMetrics(personId) {
 
 export async function createCoursework(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/create-coursework",
+    "/director-chatbot/actions/create-coursework",
     body
   );
   return data;
@@ -117,7 +117,7 @@ export async function createCoursework(body) {
 
 export async function downloadGradesExcel(personId, assignmentId, targetMax) {
   const res = await api.get(
-    `/manager-chatbot/actions/export-grades/${assignmentId}`,
+    `/director-chatbot/actions/export-grades/${assignmentId}`,
     {
       params: { personId, targetMax },
       responseType: "blob",
@@ -131,42 +131,42 @@ export async function downloadGradesExcel(personId, assignmentId, targetMax) {
 }
 
 export async function assignAssistant(body) {
-  const { data } = await api.post("/manager-chatbot/actions/assign-assistant", body);
+  const { data } = await api.post("/director-chatbot/actions/assign-assistant", body);
   return data;
 }
 
 export async function changeAssistant(body) {
-  const { data } = await api.put("/manager-chatbot/actions/change-assistant", body);
+  const { data } = await api.put("/director-chatbot/actions/change-assistant", body);
   return data;
 }
 
 export async function removeAssistant(body) {
-  const { data } = await api.delete("/manager-chatbot/actions/remove-assistant", {
+  const { data } = await api.delete("/director-chatbot/actions/remove-assistant", {
     data: body,
   });
   return data;
 }
 
 export async function runAutomation(body) {
-  const { data } = await api.post("/manager-chatbot/actions/run-automation", body);
+  const { data } = await api.post("/director-chatbot/actions/run-automation", body);
   return data;
 }
 
 export async function pushClassroomGrades(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/push-classroom-grades",
+    "/director-chatbot/actions/push-classroom-grades",
     body
   );
   return data;
 }
 
 export async function syncClassroom(body) {
-  const { data } = await api.post("/manager-chatbot/actions/sync-classroom", body);
+  const { data } = await api.post("/director-chatbot/actions/sync-classroom", body);
   return data;
 }
 
 export async function sendExecutiveReport(body) {
-  const { data } = await api.post("/manager-chatbot/actions/send-executive-report", {
+  const { data } = await api.post("/director-chatbot/actions/send-executive-report", {
     ...body,
     clientSendId: body.clientSendId || crypto.randomUUID(),
   });
@@ -175,7 +175,7 @@ export async function sendExecutiveReport(body) {
 
 export async function sendTeacherCollectiveReport(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/send-teacher-collective-report",
+    "/director-chatbot/actions/send-teacher-collective-report",
     {
       ...body,
       clientSendId: body.clientSendId || crypto.randomUUID(),
@@ -188,7 +188,7 @@ export async function sendTeacherCollectiveReport(body) {
 
 export async function loadSubmissionOverview(personId, assignmentId) {
   const { data } = await api.get(
-    `/manager-chatbot/actions/submissions/${assignmentId}`,
+    `/director-chatbot/actions/submissions/${assignmentId}`,
     { params: { personId } }
   );
   return data;
@@ -196,7 +196,7 @@ export async function loadSubmissionOverview(personId, assignmentId) {
 
 export async function loadStudentSubmission(personId, assignmentId, studentName) {
   const { data } = await api.get(
-    `/manager-chatbot/actions/submissions/${assignmentId}`,
+    `/director-chatbot/actions/submissions/${assignmentId}`,
     { params: { personId, studentName } }
   );
   return data;
@@ -206,7 +206,7 @@ export async function loadStudentSubmission(personId, assignmentId, studentName)
 
 export async function loadStudentContacts(personId, classroomId) {
   const { data } = await api.get(
-    `/manager-chatbot/actions/student-contacts/${classroomId}`,
+    `/director-chatbot/actions/student-contacts/${classroomId}`,
     { params: { personId } }
   );
   return data;
@@ -214,7 +214,7 @@ export async function loadStudentContacts(personId, classroomId) {
 
 export async function syncStudentRoster(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/sync-student-roster",
+    "/director-chatbot/actions/sync-student-roster",
     body
   );
   return data;
@@ -222,7 +222,7 @@ export async function syncStudentRoster(body) {
 
 export async function updateStudentContact(body) {
   const { data } = await api.put(
-    "/manager-chatbot/actions/update-student-contact",
+    "/director-chatbot/actions/update-student-contact",
     body
   );
   return data;
@@ -231,14 +231,14 @@ export async function updateStudentContact(body) {
 /* ── WhatsApp Scheduler ── */
 
 export async function loadWhatsAppGroups(includeInactive = false) {
-  const { data } = await api.get("/manager-chatbot/actions/whatsapp-groups", {
+  const { data } = await api.get("/director-chatbot/actions/whatsapp-groups", {
     params: includeInactive ? { includeInactive: true } : {},
   });
   return data;
 }
 
 export async function loadScheduledWhatsApp(params = {}) {
-  const { data } = await api.get("/manager-chatbot/actions/scheduled-whatsapp", {
+  const { data } = await api.get("/director-chatbot/actions/scheduled-whatsapp", {
     params,
   });
   return data;
@@ -246,7 +246,7 @@ export async function loadScheduledWhatsApp(params = {}) {
 
 export async function scheduleWhatsAppMessage(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/schedule-whatsapp",
+    "/director-chatbot/actions/schedule-whatsapp",
     body
   );
   return data;
@@ -255,7 +255,7 @@ export async function scheduleWhatsAppMessage(body) {
 /** @param {"send-now"|"cancel"|"delete"} action */
 export async function actOnScheduledWhatsApp(scheduledMessageId, action, body) {
   const { data } = await api.post(
-    `/manager-chatbot/actions/scheduled-whatsapp/${scheduledMessageId}/${action}`,
+    `/director-chatbot/actions/scheduled-whatsapp/${scheduledMessageId}/${action}`,
     body
   );
   return data;
@@ -265,7 +265,7 @@ export async function actOnScheduledWhatsApp(scheduledMessageId, action, body) {
 
 export async function loadAutomationStatus(personId, assignmentId) {
   const { data } = await api.get(
-    `/manager-chatbot/actions/automation-status/${assignmentId}`,
+    `/director-chatbot/actions/automation-status/${assignmentId}`,
     { params: { personId } }
   );
   return data;
@@ -273,7 +273,7 @@ export async function loadAutomationStatus(personId, assignmentId) {
 
 export async function continueAutomation(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/continue-automation",
+    "/director-chatbot/actions/continue-automation",
     body
   );
   return data;
@@ -281,13 +281,13 @@ export async function continueAutomation(body) {
 
 export async function syncCourseworkFromGoogle(body) {
   const { data } = await api.post(
-    "/manager-chatbot/actions/sync-coursework-from-google",
+    "/director-chatbot/actions/sync-coursework-from-google",
     body
   );
   return data;
 }
 
-export const MANAGER_ACTION_MENU =
+export const DIRECTOR_ACTION_MENU =
   "What would you like to do?\n\n" +
   "1. Send assignment grade reports (WhatsApp)\n" +
   "2. Send monthly parent report (WhatsApp)\n" +
@@ -309,3 +309,49 @@ export const MANAGER_ACTION_MENU =
   "18. View student contacts (parent phones)\n" +
   "19. Import all Google Classroom assignments\n\n" +
   "Reply with a number. Preview always comes before any send.";
+
+/* ── Director-only ── */
+
+export async function createPerson(body) {
+  const { data } = await api.post("/director-chatbot/actions/create-person", body);
+  return data;
+}
+
+export async function assignRole(body) {
+  const { data } = await api.patch("/director-chatbot/actions/assign-role", body);
+  return data;
+}
+
+export async function setPersonStatus(body) {
+  const { data } = await api.patch("/director-chatbot/actions/set-person-status", body);
+  return data;
+}
+
+export async function assignClassroomManager(body) {
+  const { data } = await api.post("/director-chatbot/actions/assign-classroom-manager", body);
+  return data;
+}
+
+export async function removeClassroomManager(body) {
+  const { data } = await api.delete("/director-chatbot/actions/remove-classroom-manager", {
+    data: body,
+  });
+  return data;
+}
+
+export async function assignQualityManager(body) {
+  const { data } = await api.post("/director-chatbot/actions/assign-quality-manager", body);
+  return data;
+}
+
+export async function removeQualityManager(body) {
+  const { data } = await api.delete("/director-chatbot/actions/remove-quality-manager", {
+    data: body,
+  });
+  return data;
+}
+
+export async function createSubject(body) {
+  const { data } = await api.post("/director-chatbot/actions/create-subject", body);
+  return data;
+}

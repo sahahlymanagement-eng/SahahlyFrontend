@@ -3,19 +3,26 @@ import api from "../../api/api";
 import { TeacherPageHeader } from "../teacher/TeacherUI";
 import { FiSend, FiPlus, FiCpu, FiUser, FiZap } from "react-icons/fi";
 import {
+  actOnScheduledWhatsApp,
   assignAssistant,
   changeAssistant,
+  continueAutomation,
   createCoursework,
   downloadGradesExcel,
+  loadAutomationStatus,
   previewAssignmentReport,
   pushClassroomGrades,
   removeAssistant,
   runAutomation,
+  scheduleWhatsAppMessage,
   sendAssignmentReport,
   sendExecutiveReport,
   sendMonthly,
   sendTeacherCollectiveReport,
   syncClassroom,
+  syncCourseworkFromGoogle,
+  syncStudentRoster,
+  updateStudentContact,
 } from "./managerChatbotActionsClient";
 import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
@@ -23,11 +30,14 @@ import "../teacher/TeacherChatbot.css";
 
 const SUGGESTIONS = [
   "Give me today's briefing",
+  "Schedule a WhatsApp message to the Parents group tomorrow at 6pm",
+  "Show me the submissions for the Physics test in Grade 10A",
+  "Show Omar's marked submission for the last Chemistry homework",
   "Assign Raghad to mark the Physics test in Grade 10A",
-  "Show assistant workload across my classes",
-  "Send teacher collective report for Class 9B",
+  "Which questions did Class 9B struggle with most?",
+  "List the scheduled WhatsApp messages",
+  "Which students are missing a parent phone number in Grade 10A?",
   "Run automation on the last homework in Chemistry",
-  "Who is behind on deadlines?",
 ];
 
 const STORAGE_KEY = "sahahly-manager-ai-agent";
@@ -103,9 +113,45 @@ function confirmLabelFor(type) {
       return "Send collective PDF";
     case "send_executive_report":
       return "Send executive report";
+    case "sync_student_roster":
+      return "Sync roster";
+    case "update_student_contact":
+      return "Save contact";
+    case "schedule_whatsapp_message":
+      return "Schedule message";
+    case "send_scheduled_message_now":
+      return "Send now";
+    case "cancel_scheduled_message":
+      return "Cancel message";
+    case "delete_scheduled_message":
+      return "Delete message";
+    case "get_automation_status":
+      return "Check status";
+    case "continue_automation":
+      return "Resume automation";
+    case "sync_coursework_from_google":
+      return "Import assignments";
     default:
       return "Confirm";
   }
+}
+
+function formatAutomationStatus(status, assignmentTitle) {
+  if (!status || status.ok === false) {
+    return `No automation run found for **${assignmentTitle}**.`;
+  }
+  const run = status.run || status;
+  const parts = [
+    `**${assignmentTitle}** automation status:`,
+    `- Stage: ${run.stage || run.status || "unknown"}`,
+  ];
+  if (run.markedCount != null || run.totalCount != null) {
+    parts.push(`- Marked: ${run.markedCount ?? 0} / ${run.totalCount ?? "?"}`);
+  }
+  if (run.startedAt) parts.push(`- Started: ${new Date(run.startedAt).toLocaleString()}`);
+  if (run.finishedAt) parts.push(`- Finished: ${new Date(run.finishedAt).toLocaleString()}`);
+  if (run.error || run.lastError) parts.push(`- Error: ${run.error || run.lastError}`);
+  return parts.join("\n");
 }
 
 export default function ManagerChatbot() {
@@ -418,6 +464,85 @@ export default function ManagerChatbot() {
           });
           successMsg = `Teacher collective PDF sent for **${ex.classroomName}**.`;
           break;
+        case "sync_student_roster": {
+          const result = await syncStudentRoster({
+            personId: user.id,
+            classroomId: ex.classroomId,
+          });
+          successMsg = `Roster synced for **${ex.classroomName}** — ${
+            result.synced ?? 0
+          } student(s) updated${result.removed ? `, ${result.removed} removed` : ""}.`;
+          break;
+        }
+        case "update_student_contact":
+          await updateStudentContact({
+            personId: user.id,
+            classroomId: ex.classroomId,
+            studentId: ex.studentId,
+            updates: ex.updates,
+          });
+          successMsg = `Updated contact details for **${ex.studentName}**.`;
+          break;
+        case "schedule_whatsapp_message": {
+          await scheduleWhatsAppMessage({
+            personId: user.id,
+            payload: ex.payload,
+          });
+          successMsg = `Scheduled a WhatsApp message to **${ex.groupName}** — ${ex.when}.`;
+          break;
+        }
+        case "send_scheduled_message_now": {
+          const result = await actOnScheduledWhatsApp(
+            ex.scheduledMessageId,
+            "send-now",
+            { personId: user.id }
+          );
+          successMsg = result?.skipped
+            ? `WhatsApp skipped this send (duplicate guard) for **${ex.groupName}**.`
+            : `Message sent now to **${ex.groupName}**.`;
+          break;
+        }
+        case "cancel_scheduled_message":
+          await actOnScheduledWhatsApp(ex.scheduledMessageId, "cancel", {
+            personId: user.id,
+          });
+          successMsg = `Cancelled the scheduled message to **${ex.groupName}**.`;
+          break;
+        case "delete_scheduled_message":
+          await actOnScheduledWhatsApp(ex.scheduledMessageId, "delete", {
+            personId: user.id,
+          });
+          successMsg = `Deleted the scheduled message to **${ex.groupName}**.`;
+          break;
+        case "get_automation_status": {
+          const status = await loadAutomationStatus(user.id, ex.assignmentId);
+          successMsg = formatAutomationStatus(status, ex.assignmentTitle);
+          break;
+        }
+        case "continue_automation": {
+          const result = await continueAutomation({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            remark: ex.remark,
+          });
+          successMsg =
+            result.message ||
+            `Automation resumed for **${ex.assignmentTitle}**. Track it in the Automation tab.`;
+          break;
+        }
+        case "sync_coursework_from_google": {
+          const result = await syncCourseworkFromGoogle({
+            personId: user.id,
+            courseId: ex.courseId,
+            classroomId: ex.classroomId,
+          });
+          successMsg = `Imported Google Classroom assignments for **${ex.classroomName}** — ${
+            result.synced ?? 0
+          } synced${result.added ? `, ${result.added} new` : ""}${
+            result.restored ? `, ${result.restored} restored` : ""
+          }.`;
+          break;
+        }
         default:
           throw new Error("Unknown action type");
       }
