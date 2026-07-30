@@ -220,6 +220,10 @@ function App() {
           />
           <Route path="reports" element={<AssistantReports />} />
           <Route path="chatbot" element={<AssistantChatbot />} />
+          {/* External grading company tabs — the same pages the manager portal
+              serves, gated per-account by isGradingManager() inside each page. */}
+          <Route path="logincss" element={<ManagerLoginCss />} />
+          <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
         </Route>
 
 

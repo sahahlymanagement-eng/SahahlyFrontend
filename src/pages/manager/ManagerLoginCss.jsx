@@ -61,6 +61,7 @@ import {
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { isGradingManager } from "../../utils/gradingAccess";
+import { getDashboardPathForUser } from "../../utils/authRoutes";
 import {
   useMarkingStudentSelection,
   markingActionLabel,
@@ -595,10 +596,14 @@ export default function ManagerLoginCss() {
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (!stored) return navigate("/login");
+    const parsed = JSON.parse(stored);
     if (!isGradingManager()) {
-      return navigate("/manager/dashboard", { replace: true });
+      // This tab is served by both the manager and assistant portals, so bounce a
+      // denied user to their own dashboard rather than the manager one, which
+      // RoleProtectedRoute would reject for them anyway.
+      return navigate(getDashboardPathForUser(parsed) || "/login", { replace: true });
     }
-    setUser(JSON.parse(stored));
+    setUser(parsed);
   }, [navigate]);
 
   useEffect(() => {
