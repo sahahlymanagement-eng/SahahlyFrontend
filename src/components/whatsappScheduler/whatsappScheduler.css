@@ -328,6 +328,76 @@
   gap: 10px;
 }
 
+/* ─── Attachment picker ─── */
+
+/* The real input is driven by the buttons; keeping it in the DOM (rather than
+   re-creating it) is what lets `.click()` reopen the file dialog. */
+.mws-file-input {
+  display: none;
+}
+
+.mws-attachment-add {
+  align-self: flex-start;
+}
+
+.mws-attachment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.mws-attachment-thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--surface);
+}
+
+.mws-attachment-thumb--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--text-secondary);
+}
+
+/* min-width:0 lets the long filename below actually ellipsize inside the flex row. */
+.mws-attachment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mws-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mws-attachment-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mws-attachment-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 /* ─── Filters ─── */
 
 .mws-filters {
@@ -410,6 +480,30 @@
   border: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Attachment chip in the message cell — a button, so it must shed the UA styling
+   the plain `.mws-chip` span never needed. */
+.mws-chip--attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  margin-top: 6px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mws-chip--attachment:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.mws-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -509,8 +603,19 @@
 
   /* Cards mode gives each cell the full row width — let text use it. */
   .mws-message,
-  .mws-error {
+  .mws-error,
+  .mws-chip--attachment {
     max-width: none;
+  }
+
+  /* Stack the attachment row so the filename is not squeezed to an ellipsis. */
+  .mws-attachment {
+    flex-wrap: wrap;
+  }
+
+  .mws-attachment-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .mws-row-actions {

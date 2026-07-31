@@ -100,7 +100,20 @@ export function emptyForm() {
     time: "08:00",
     daysOfWeek: [],
     timezone: DEFAULT_TIMEZONE,
+    // Attachment metadata as the backend returns it — { attachmentId, kind,
+    // filename, mimetype, size } — or null. The bytes are already uploaded by
+    // the time this is set; only the id is submitted with the schedule.
+    attachment: null,
   };
+}
+
+/** Human file size for the attachment chip: `842 KB`, `1.4 MB`. */
+export function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
@@ -122,6 +135,7 @@ export function formFromMessage(msg) {
     time: rec.time || base.time,
     daysOfWeek: Array.isArray(rec.daysOfWeek) ? [...rec.daysOfWeek] : [],
     timezone: msg.timezone || base.timezone,
+    attachment: msg.attachment?.attachmentId ? { ...msg.attachment } : null,
   };
 }
 
@@ -132,7 +146,8 @@ export function formFromMessage(msg) {
  */
 export function validateForm(form) {
   if (!form.chatId) return "Pick a group";
-  if (!form.text.trim()) return "Type a message";
+  // With an attachment the text is just the caption, so it may be left empty.
+  if (!form.text.trim() && !form.attachment) return "Type a message or attach a file";
 
   if (form.scheduleType === "once") {
     if (!form.sendAt) return "Pick a date and time";
@@ -150,15 +165,21 @@ export function validateForm(form) {
  * The create/patch body. A one-off carries an absolute instant, so it needs no
  * timezone; a recurring schedule carries wall-clock time plus the zone to read
  * it in.
+ *
+ * `attachmentId` is always sent — explicitly `null` when there is no file — so a
+ * patch that removes the attachment actually clears it. Omitting the key means
+ * "leave it alone" on the backend, which is not what an empty picker means.
  */
 export function buildPayload(form) {
   const chatId = form.chatId;
   const text = form.text.trim();
+  const attachmentId = form.attachment?.attachmentId ?? null;
 
   if (form.scheduleType === "once") {
     return {
       chatId,
       text,
+      attachmentId,
       scheduleType: "once",
       sendAt: form.sendAt.toISOString(),
     };
@@ -172,6 +193,7 @@ export function buildPayload(form) {
   return {
     chatId,
     text,
+    attachmentId,
     scheduleType: "recurring",
     recurrence,
     timezone: form.timezone,

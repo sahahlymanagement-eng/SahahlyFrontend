@@ -3,6 +3,8 @@ import Select from "react-select";
 import {
   FiClock,
   FiEdit2,
+  FiFile,
+  FiImage,
   FiRefreshCw,
   FiSend,
   FiSlash,
@@ -10,11 +12,13 @@ import {
 } from "react-icons/fi";
 import { selectStyles } from "../../utils/selectTheme";
 import { confirmToast } from "../../utils/confirmToast";
+import { attachmentObjectUrl } from "../../api/scheduledWhatsapp";
 import {
   CANCELLABLE,
   STATUS_OPTIONS,
   STATUS_TONE,
   describeRecurrence,
+  formatBytes,
   formatDateTime,
   groupLabel,
 } from "./recurrence";
@@ -31,6 +35,37 @@ function StatusBadge({ status }) {
     >
       {status || "unknown"}
     </span>
+  );
+}
+
+/**
+ * The attachment that goes out with a row, as a chip that opens the stored file.
+ *
+ * The bytes endpoint is token-authenticated, so this cannot be a plain link — it
+ * fetches a blob, opens that, and releases the object URL once the new tab has
+ * had a chance to take it.
+ */
+function AttachmentChip({ attachment }) {
+  const open = async () => {
+    try {
+      const url = await attachmentObjectUrl(attachment.attachmentId);
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      /* Opening the preview is a convenience; the schedule itself is unaffected. */
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className="mws-chip mws-chip--attachment"
+      onClick={open}
+      title={`${attachment.filename}${attachment.size ? ` · ${formatBytes(attachment.size)}` : ""}`}
+    >
+      {attachment.kind === "image" ? <FiImage aria-hidden="true" /> : <FiFile aria-hidden="true" />}
+      <span className="mws-chip-text">{attachment.filename}</span>
+    </button>
   );
 }
 
@@ -143,6 +178,9 @@ export default function ScheduledMessagesTable({
                     <span className="mws-message" title={m.text}>
                       {m.text}
                     </span>
+                    {m.attachment?.attachmentId && (
+                      <AttachmentChip attachment={m.attachment} />
+                    )}
                     {m.status === "failed" && m.lastError && (
                       <span className="mws-error" title={m.lastError}>
                         {m.lastError}

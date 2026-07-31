@@ -27,6 +27,9 @@ export default function ManagerWhatsAppScheduler() {
 
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  // Kept apart from `busy` so picking a file only disables the attachment
+  // controls, not the whole composer.
+  const [uploading, setUploading] = useState(false);
 
   const [statusFilter, setStatusFilter] = usePersistedState("mws:status", "");
   const [groupFilter, setGroupFilter] = usePersistedState("mws:group", "");
@@ -179,6 +182,23 @@ export default function ManagerWhatsAppScheduler() {
     setForm(emptyForm());
   };
 
+  // Uploads immediately and stores only the metadata the backend returns, so the
+  // save request stays plain JSON. Resolves the stored attachment (or null when
+  // the upload failed) — the picker keys its thumbnail on the returned id.
+  const handlePickAttachment = async (file) => {
+    setUploading(true);
+    try {
+      const attachment = await swApi.uploadAttachment(file);
+      patchForm({ attachment });
+      return attachment;
+    } catch (err) {
+      toast.error(swErr(err, "Failed to upload the attachment"));
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -270,7 +290,8 @@ export default function ManagerWhatsAppScheduler() {
       <header className="mws-page-header">
         <h1 className="mws-page-title">WhatsApp Scheduler</h1>
         <p className="mws-page-subtitle">
-          Queue a message to a WhatsApp group — once, or on a repeating schedule.
+          Queue a message — with an optional image or file — to a WhatsApp group,
+          once or on a repeating schedule.
         </p>
       </header>
 
@@ -288,6 +309,8 @@ export default function ManagerWhatsAppScheduler() {
         groups={activeGroups}
         editing={editing}
         busy={busy}
+        uploading={uploading}
+        onPickAttachment={handlePickAttachment}
         onSubmit={handleSubmit}
         onCancelEdit={resetComposer}
       />

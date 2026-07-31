@@ -4,6 +4,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { FiEdit2, FiSend, FiX } from "react-icons/fi";
 import { selectStyles } from "../../utils/selectTheme";
+import AttachmentPicker from "./AttachmentPicker";
 import {
   DAYS,
   browserTimezone,
@@ -25,6 +26,8 @@ export default function ScheduleComposer({
   groups,
   editing,
   busy,
+  uploading,
+  onPickAttachment,
   onSubmit,
   onCancelEdit,
 }) {
@@ -89,7 +92,7 @@ export default function ScheduleComposer({
 
         <label className="mws-field">
           <span className="mws-label">
-            Message
+            {form.attachment ? "Caption" : "Message"}
             <span className="mws-charcount">{form.text.length} chars</span>
           </span>
           <textarea
@@ -97,9 +100,21 @@ export default function ScheduleComposer({
             rows={5}
             value={form.text}
             onChange={(e) => onPatch({ text: e.target.value })}
-            placeholder="Type the message to send…"
+            placeholder={
+              form.attachment
+                ? "Caption for the attachment (optional)…"
+                : "Type the message to send…"
+            }
           />
         </label>
+
+        <AttachmentPicker
+          attachment={form.attachment}
+          busy={busy}
+          uploading={uploading}
+          onPick={onPickAttachment}
+          onRemove={() => onPatch({ attachment: null })}
+        />
 
         <div className="mws-field">
           <span className="mws-label">Schedule</span>

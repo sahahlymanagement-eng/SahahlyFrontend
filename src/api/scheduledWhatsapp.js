@@ -28,6 +28,33 @@ export const addGroup = (chatId, name) =>
 export const deleteGroup = (chatId) =>
   api.delete(`${BASE}/groups/${encodeURIComponent(chatId)}`).then((r) => r.data);
 
+/* ── Attachments ─────────────────────────────────────────────────────────────
+ * Uploading is its own round-trip: the file goes up first and the schedule is
+ * saved with the returned `attachmentId`. An id that never reaches a schedule
+ * is reaped server-side, so abandoning the composer leaks nothing.
+ */
+
+/**
+ * @param {File} file
+ * @returns {Promise<{ attachmentId: string, kind: "image"|"file", filename: string, mimetype: string, size: number }>}
+ */
+export const uploadAttachment = (file) => {
+  const body = new FormData();
+  body.append("file", file);
+  // The axios interceptor strips Content-Type for FormData so the browser sets the boundary.
+  return api.post(`${BASE}/attachments`, body).then((r) => r.data?.attachment);
+};
+
+/**
+ * Object URL for a stored attachment. Fetched as a blob rather than used as a bare
+ * `src`, because the endpoint needs the bearer token an <img> tag cannot send.
+ * Callers must `URL.revokeObjectURL` when done.
+ */
+export const attachmentObjectUrl = (attachmentId) =>
+  api
+    .get(`${BASE}/attachments/${attachmentId}`, { responseType: "blob" })
+    .then((r) => URL.createObjectURL(r.data));
+
 /** @param {{ status?: string, chatId?: string }} [filters] */
 export const listSchedules = (filters) =>
   api.get(BASE, { params: filters }).then((r) => r.data?.scheduledMessages ?? []);
