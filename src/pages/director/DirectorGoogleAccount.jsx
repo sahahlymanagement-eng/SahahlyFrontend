@@ -84,11 +84,15 @@ export default function DirectorGoogleAccountsPage() {
 
       const res = await api.post(`/classrooms/sync/${account._id}`);
       const total = res.data?.total ?? 0;
+      const deactivated = res.data?.deactivated ?? 0;
 
       toast.success(
         total > 0
-          ? `Fetched ${total} classroom${total === 1 ? "" : "s"} for ${account.email}`
-          : `No classrooms found for ${account.email}`
+          ? `Fetched ${total} classroom${total === 1 ? "" : "s"} for ${account.email}` +
+            (deactivated > 0
+              ? ` — ${deactivated} archived classroom${deactivated === 1 ? "" : "s"} hidden`
+              : "")
+          : `No active classrooms found for ${account.email}`
       );
 
       await loadClassrooms(account);
