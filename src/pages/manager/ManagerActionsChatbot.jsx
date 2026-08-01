@@ -4,19 +4,27 @@ import { TeacherPageHeader } from "../teacher/TeacherUI";
 import { FiSend, FiPlus, FiCpu, FiUser } from "react-icons/fi";
 import {
   MANAGER_ACTION_MENU,
+  actOnScheduledWhatsApp,
   formatNumberedList,
   loadAssistantMetrics,
   loadAssignments,
   loadClassrooms,
+  loadScheduledWhatsApp,
   loadSentHistory,
+  loadStudentContacts,
+  loadStudentSubmission,
   loadStudents,
+  loadSubmissionOverview,
+  loadWhatsAppGroups,
   parseChoice,
   parseYesNo,
   prepareAssignmentReport,
   previewAssignmentReport,
   previewMonthly,
+  scheduleWhatsAppMessage,
   sendAssignmentReport,
   sendMonthly,
+  syncCourseworkFromGoogle,
 } from "./managerChatbotActionsClient";
 import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
@@ -32,6 +40,20 @@ const STEPS = {
   WL_CONFIRM: "wl_confirm",
   SH_CLASS: "sh_class",
   SH_SHOW: "sh_show",
+  VS_CLASS: "vs_class",
+  VS_ASG: "vs_asg",
+  SS_CLASS: "ss_class",
+  SS_ASG: "ss_asg",
+  SS_NAME: "ss_name",
+  WA_GROUP: "wa_group",
+  WA_TEXT: "wa_text",
+  WA_TIME: "wa_time",
+  WA_CONFIRM: "wa_confirm",
+  WC_PICK: "wc_pick",
+  WC_CONFIRM: "wc_confirm",
+  SC_CLASS: "sc_class",
+  IM_CLASS: "im_class",
+  IM_CONFIRM: "im_confirm",
 };
 
 function renderMarkdown(text) {
@@ -53,7 +75,62 @@ function userMsg(content) {
   return { role: "user", content, at: Date.now() };
 }
 
-const MENU_OPTIONS = ["1", "2", "3", "13"];
+const MENU_OPTIONS = ["1", "2", "3", "13", "14", "15", "16", "17", "18", "19"];
+const MENU_MAX = 19;
+
+function fmtWhen(value) {
+  return value ? new Date(value).toLocaleString() : "—";
+}
+
+function isInPast(date) {
+  return date.getTime() < Date.now();
+}
+
+/** Accepts "YYYY-MM-DD HH:mm" (local time) and returns a Date, or null. */
+function parseLocalDateTime(text) {
+  const m = String(text || "")
+    .trim()
+    .match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T ]+(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatSubmissionOverview(data) {
+  const t = data.totals || {};
+  const markedLines = (data.marked || []).slice(0, 300).map(
+    (m, i) =>
+      `${i + 1}. **${m.studentName}** — ${m.totalMarks ?? "?"}/${m.maxPoints ?? "?"}` +
+      (m.percent != null ? ` (${m.percent}%)` : "") +
+      (m.returnedToStudent ? " — returned" : "")
+  );
+  const notMarked = (data.notMarked || []).slice(0, 300);
+  return (
+    `**${data.assignment?.title || "Assignment"}** — due ${fmtWhen(data.assignment?.dueDate)}\n\n` +
+    `Marked: **${t.markedCount ?? 0}/${t.rosterCount ?? 0}** · Returned: ${t.returnedCount ?? 0}` +
+    (t.averagePercent != null ? ` · Average: **${t.averagePercent}%**` : "") +
+    (markedLines.length ? `\n\n${markedLines.join("\n")}` : "\n\nNo marked submissions yet.") +
+    (notMarked.length ? `\n\nNot marked yet: ${notMarked.join(", ")}` : "") +
+    `\n\nType **menu**.`
+  );
+}
+
+function formatStudentDetail(data) {
+  const qLines = (data.questions || []).slice(0, 25).map(
+    (q) =>
+      `• Q${q.questionNumber}: ${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}` +
+      (q.topic ? ` — ${q.topic}` : "")
+  );
+  return (
+    `**${data.studentName}** — ${data.assignmentTitle}\n\n` +
+    `Total: **${data.totalMarks ?? "?"}/${data.maxPoints ?? "?"}**` +
+    (data.percent != null ? ` (${data.percent}%)` : "") +
+    (data.returnedToStudent ? " — returned to student" : "") +
+    (data.summary ? `\n\nSummary: ${String(data.summary).slice(0, 400)}` : "") +
+    (qLines.length ? `\n\n${qLines.join("\n")}` : "") +
+    `\n\nType **menu**.`
+  );
+}
 
 const MENU_GREETING = `${MANAGER_ACTION_MENU}\n\nTip: For delegations, automation, collective reports, and more — use the **AI Agent** tab for natural language.`;
 
@@ -115,9 +192,9 @@ export default function ManagerActionsChatbot() {
       }
 
       if (s.step === STEPS.MENU) {
-        const choice = parseChoice(text, 13);
+        const choice = parseChoice(text, MENU_MAX);
         if (!choice) {
-          pushBot("Reply with a number from the menu (1–13), or type **menu**.");
+          pushBot(`Reply with a number from the menu (1–${MENU_MAX}), or type **menu**.`);
           return;
         }
         if (choice === 1) {
@@ -172,6 +249,95 @@ export default function ManagerActionsChatbot() {
           s.classrooms = classrooms;
           pushBot(
             `Filter by classroom (optional):\n\n1. All classrooms\n${classrooms.map((c, i) => `${i + 2}. ${c.name}`).join("\n")}`
+          );
+          return;
+        }
+        if (choice === 14 || choice === 15) {
+          const classrooms = await loadClassrooms(user.id);
+          if (!classrooms.length) {
+            pushBot("No active classrooms found. Type **menu**.", { clearOptions: true });
+            return;
+          }
+          s.classrooms = classrooms;
+          s.step = choice === 14 ? STEPS.VS_CLASS : STEPS.SS_CLASS;
+          pushBot(
+            `Choose a classroom:\n\n${formatNumberedList(classrooms, (c) => c.name)}\n\nReply with the number.`,
+            { clearOptions: true }
+          );
+          return;
+        }
+        if (choice === 16) {
+          const { groups } = await loadWhatsAppGroups();
+          if (!groups?.length) {
+            pushBot(
+              "No WhatsApp groups are registered yet. Open WhatsApp Scheduler → Groups to add them. Type **menu**.",
+              { clearOptions: true }
+            );
+            return;
+          }
+          s.groups = groups;
+          s.step = STEPS.WA_GROUP;
+          pushBot(
+            `Which group?\n\n${formatNumberedList(groups, (g) => g.name)}\n\nReply with the number.`,
+            { clearOptions: true }
+          );
+          return;
+        }
+        if (choice === 17) {
+          const { scheduledMessages } = await loadScheduledWhatsApp({ limit: 100 });
+          const rows = (scheduledMessages || []).filter((m) =>
+            ["pending", "active"].includes(m.status)
+          );
+          if (!rows.length) {
+            pushBot("No pending or active scheduled WhatsApp messages. Type **menu**.", {
+              clearOptions: true,
+            });
+            return;
+          }
+          s.scheduled = rows;
+          s.step = STEPS.WC_PICK;
+          pushBot(
+            `**Scheduled WhatsApp messages**\n\n${rows
+              .map(
+                (m, i) =>
+                  `${i + 1}. ${m.group} — "${m.text.slice(0, 60)}${m.text.length > 60 ? "…" : ""}" — ` +
+                  (m.scheduleType === "recurring"
+                    ? `recurring, next ${fmtWhen(m.nextRunAt)}`
+                    : fmtWhen(m.sendAt)) +
+                  ` (${m.status})`
+              )
+              .join("\n")}\n\nReply with a number to cancel one, or type **menu**.`,
+            { clearOptions: true }
+          );
+          return;
+        }
+        if (choice === 18) {
+          const classrooms = await loadClassrooms(user.id);
+          if (!classrooms.length) {
+            pushBot("No active classrooms found. Type **menu**.", { clearOptions: true });
+            return;
+          }
+          s.classrooms = classrooms;
+          s.step = STEPS.SC_CLASS;
+          pushBot(
+            `Contacts for which classroom?\n\n${formatNumberedList(classrooms, (c) => c.name)}\n\nReply with the number.`,
+            { clearOptions: true }
+          );
+          return;
+        }
+        if (choice === 19) {
+          const classrooms = (await loadClassrooms(user.id)).filter((c) => c.googleCourseId);
+          if (!classrooms.length) {
+            pushBot("No classrooms linked to Google Classroom found. Type **menu**.", {
+              clearOptions: true,
+            });
+            return;
+          }
+          s.classrooms = classrooms;
+          s.step = STEPS.IM_CLASS;
+          pushBot(
+            `Import all Google Classroom assignments for which classroom?\n\n${formatNumberedList(classrooms, (c) => c.name)}\n\nReply with the number.`,
+            { clearOptions: true }
           );
           return;
         }
@@ -337,6 +503,229 @@ export default function ManagerActionsChatbot() {
             `\n\nType **menu**.`,
           { clearOptions: true }
         );
+        s.step = STEPS.MENU;
+        return;
+      }
+
+      if (s.step === STEPS.VS_CLASS || s.step === STEPS.SS_CLASS) {
+        const idx = parseChoice(text, s.classrooms.length);
+        if (!idx) {
+          pushBot("Invalid choice. Reply with a classroom number.");
+          return;
+        }
+        s.classroom = s.classrooms[idx - 1];
+        const assignments = await loadAssignments(user.id, s.classroom._id);
+        if (!assignments.length) {
+          pushBot(`No assignments in **${s.classroom.name}**. Type **menu**.`);
+          s.step = STEPS.MENU;
+          return;
+        }
+        s.assignments = assignments;
+        s.step = s.step === STEPS.VS_CLASS ? STEPS.VS_ASG : STEPS.SS_ASG;
+        pushBot(
+          `Which assignment?\n\n${formatNumberedList(assignments, (a) => a.title || "Untitled")}\n\nReply with the number.`
+        );
+        return;
+      }
+
+      if (s.step === STEPS.VS_ASG) {
+        const idx = parseChoice(text, s.assignments.length);
+        if (!idx) {
+          pushBot("Invalid choice. Reply with an assignment number.");
+          return;
+        }
+        const data = await loadSubmissionOverview(user.id, s.assignments[idx - 1]._id);
+        pushBot(data.error ? `${data.error} Type **menu**.` : formatSubmissionOverview(data), {
+          clearOptions: true,
+        });
+        s.step = STEPS.MENU;
+        return;
+      }
+
+      if (s.step === STEPS.SS_ASG) {
+        const idx = parseChoice(text, s.assignments.length);
+        if (!idx) {
+          pushBot("Invalid choice. Reply with an assignment number.");
+          return;
+        }
+        s.assignment = s.assignments[idx - 1];
+        s.step = STEPS.SS_NAME;
+        pushBot("Type the student's name.", { clearOptions: true });
+        return;
+      }
+
+      if (s.step === STEPS.SS_NAME) {
+        const data = await loadStudentSubmission(user.id, s.assignment._id, text);
+        if (data.error || data.ambiguous) {
+          const names = (data.markedStudents || data.options || []).slice(0, 150);
+          pushBot(
+            (data.error || "Multiple students match that name.") +
+              (names.length ? `\n\nMarked students:\n${names.map((n) => `• ${n}`).join("\n")}` : "") +
+              "\n\nType another name, or **menu**."
+          );
+          return;
+        }
+        pushBot(formatStudentDetail(data), { clearOptions: true });
+        s.step = STEPS.MENU;
+        return;
+      }
+
+      if (s.step === STEPS.WA_GROUP) {
+        const idx = parseChoice(text, s.groups.length);
+        if (!idx) {
+          pushBot("Invalid choice. Reply with a group number.");
+          return;
+        }
+        s.group = s.groups[idx - 1];
+        s.step = STEPS.WA_TEXT;
+        pushBot(`Type the message to send to **${s.group.name}**.`);
+        return;
+      }
+
+      if (s.step === STEPS.WA_TEXT) {
+        s.waText = text;
+        s.step = STEPS.WA_TIME;
+        pushBot(
+          "When should it be sent? Type date & time like **2026-08-05 18:30** (24-hour, your local time)."
+        );
+        return;
+      }
+
+      if (s.step === STEPS.WA_TIME) {
+        const when = parseLocalDateTime(text);
+        if (!when) {
+          pushBot("I couldn't read that. Use the format **YYYY-MM-DD HH:mm**, e.g. 2026-08-05 18:30.");
+          return;
+        }
+        if (isInPast(when)) {
+          pushBot("That time is in the past. Type a future date & time (**YYYY-MM-DD HH:mm**).");
+          return;
+        }
+        s.waSendAt = when;
+        s.step = STEPS.WA_CONFIRM;
+        pushBot(
+          `Schedule this message?\n\nGroup: **${s.group.name}**\nWhen: **${when.toLocaleString()}**\nMessage:\n${s.waText}\n\nReply **1** to schedule or **2** to cancel.`,
+          { options: ["1", "2"] }
+        );
+        return;
+      }
+
+      if (s.step === STEPS.WA_CONFIRM) {
+        const yn = parseYesNo(text);
+        if (yn === false) {
+          resetToMenu();
+          return;
+        }
+        if (yn !== true) {
+          pushBot("Reply **1** to schedule or **2** to cancel.");
+          return;
+        }
+        await scheduleWhatsAppMessage({
+          personId: user.id,
+          payload: {
+            chatId: s.group.chatId,
+            groupName: s.group.name,
+            text: s.waText,
+            scheduleType: "once",
+            sendAt: s.waSendAt.toISOString(),
+          },
+        });
+        pushBot(
+          `Scheduled for **${s.waSendAt.toLocaleString()}** to **${s.group.name}**. Type **menu**.`,
+          { clearOptions: true }
+        );
+        s.step = STEPS.MENU;
+        return;
+      }
+
+      if (s.step === STEPS.WC_PICK) {
+        const idx = parseChoice(text, s.scheduled.length);
+        if (!idx) {
+          pushBot("Reply with a message number to cancel it, or type **menu**.");
+          return;
+        }
+        s.toCancel = s.scheduled[idx - 1];
+        s.step = STEPS.WC_CONFIRM;
+        pushBot(
+          `Cancel this scheduled message?\n\nGroup: **${s.toCancel.group}**\nMessage: ${s.toCancel.text.slice(0, 120)}\n\nReply **1** to cancel it or **2** to keep it.`,
+          { options: ["1", "2"] }
+        );
+        return;
+      }
+
+      if (s.step === STEPS.WC_CONFIRM) {
+        const yn = parseYesNo(text);
+        if (yn === false) {
+          pushBot("Kept as scheduled. Type **menu**.", { clearOptions: true });
+          s.step = STEPS.MENU;
+          return;
+        }
+        if (yn !== true) {
+          pushBot("Reply **1** to cancel it or **2** to keep it.");
+          return;
+        }
+        await actOnScheduledWhatsApp(s.toCancel.id, "cancel", { personId: user.id });
+        pushBot(`Cancelled the scheduled message to **${s.toCancel.group}**. Type **menu**.`, {
+          clearOptions: true,
+        });
+        s.step = STEPS.MENU;
+        return;
+      }
+
+      if (s.step === STEPS.SC_CLASS) {
+        const idx = parseChoice(text, s.classrooms.length);
+        if (!idx) {
+          pushBot("Invalid choice. Reply with a classroom number.");
+          return;
+        }
+        const data = await loadStudentContacts(user.id, s.classrooms[idx - 1]._id);
+        const lines = (data.students || []).slice(0, 300).map(
+          (st) =>
+            `• **${st.name}** — parent: ${st.parentPhone || "no number"}` +
+            (st.parentName ? ` (${st.parentName})` : "") +
+            (st.studentPhone ? `, student: ${st.studentPhone}` : "")
+        );
+        pushBot(
+          `**Student contacts — ${data.classroom || "classroom"}** (${data.studentCount || 0} students, ${data.missingContactCount || 0} missing numbers)\n\n` +
+            (lines.join("\n") || "No students found.") +
+            `\n\nType **menu**.`,
+          { clearOptions: true }
+        );
+        s.step = STEPS.MENU;
+        return;
+      }
+
+      if (s.step === STEPS.IM_CLASS) {
+        const idx = parseChoice(text, s.classrooms.length);
+        if (!idx) {
+          pushBot("Invalid choice. Reply with a classroom number.");
+          return;
+        }
+        s.classroom = s.classrooms[idx - 1];
+        s.step = STEPS.IM_CONFIRM;
+        pushBot(
+          `Import all Google Classroom assignments into **${s.classroom.name}**? This also restores assignments deleted from Sahahly.\n\nReply **1** yes / **2** no.`,
+          { options: ["1", "2"] }
+        );
+        return;
+      }
+
+      if (s.step === STEPS.IM_CONFIRM) {
+        const yn = parseYesNo(text);
+        if (yn === false) {
+          resetToMenu();
+          return;
+        }
+        if (yn !== true) {
+          pushBot("Reply **1** yes or **2** no.");
+          return;
+        }
+        const result = await syncCourseworkFromGoogle({
+          personId: user.id,
+          courseId: s.classroom.googleCourseId,
+          classroomId: s.classroom._id,
+        });
+        pushBot(`${result.message || "Import finished."} Type **menu**.`, { clearOptions: true });
         s.step = STEPS.MENU;
         return;
       }

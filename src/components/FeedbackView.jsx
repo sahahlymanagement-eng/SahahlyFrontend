@@ -47,6 +47,14 @@ export default function FeedbackView({ apiBase, scope }) {
   const [loading, setLoading] = useState(false);
   const [recipientType, setRecipientType] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
+  const [managerFilter, setManagerFilter] = useState("");
+  const [teacherFilter, setTeacherFilter] = useState("");
+  const [classroomFilter, setClassroomFilter] = useState("");
+  const [filterOptions, setFilterOptions] = useState({
+    managers: [],
+    teachers: [],
+    classrooms: [],
+  });
   const [page, setPage] = useState(1);
   const limit = 50;
 
@@ -65,16 +73,14 @@ export default function FeedbackView({ apiBase, scope }) {
     setUser(parsed);
   }, [navigate, requiredRole]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    loadData();
-  }, [user, recipientType, lowOnly, page]);
-
   const params = () => {
     const p = { page, limit };
     if (scope === "manager") p.managerId = user.id;
     if (recipientType) p.recipientType = recipientType;
     if (lowOnly) p.lowOnly = "1";
+    if (managerFilter) p.filterManagerId = managerFilter;
+    if (teacherFilter) p.teacherId = teacherFilter;
+    if (classroomFilter) p.classroomId = classroomFilter;
     return p;
   };
 
@@ -94,6 +100,27 @@ export default function FeedbackView({ apiBase, scope }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadData();
+  }, [user, recipientType, lowOnly, managerFilter, teacherFilter, classroomFilter, page]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api
+      .get(`${apiBase}/filters`, {
+        params: scope === "manager" ? { managerId: user.id } : {},
+      })
+      .then(({ data }) =>
+        setFilterOptions({
+          managers: data.managers || [],
+          teachers: data.teachers || [],
+          classrooms: data.classrooms || [],
+        })
+      )
+      .catch(() => {});
+  }, [user, apiBase, scope]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -142,6 +169,59 @@ export default function FeedbackView({ apiBase, scope }) {
             <option value="parent">Parents only</option>
             <option value="student">Students only</option>
             <option value="teacher">Teachers only</option>
+          </select>
+        </label>
+        {scope !== "manager" && (
+          <label>
+            <span>Manager</span>
+            <select
+              value={managerFilter}
+              onChange={(e) => {
+                setManagerFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All managers</option>
+              {filterOptions.managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label>
+          <span>Teacher</span>
+          <select
+            value={teacherFilter}
+            onChange={(e) => {
+              setTeacherFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All teachers</option>
+            {filterOptions.teachers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Classroom</span>
+          <select
+            value={classroomFilter}
+            onChange={(e) => {
+              setClassroomFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All classrooms</option>
+            {filterOptions.classrooms.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
         </label>
         <label className="fb-check">

@@ -16,6 +16,7 @@ import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
 
 import Pagination from "./Pagination";
+import ReportPdfPreview from "./ReportPdfPreview";
 import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
 import MarksLostBreakdownPreview from "./MarksLostBreakdownPreview";
 import ReportDecisionGuide from "./ReportDecisionGuide";

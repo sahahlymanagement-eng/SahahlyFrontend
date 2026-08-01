@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { TeacherPageHeader } from "./TeacherUI";
 import { FiSend, FiPlus, FiCpu, FiUser } from "react-icons/fi";
 import {
@@ -8,7 +8,10 @@ import {
   loadAssistantMetrics,
   loadAssignments,
   loadClassrooms,
+  loadStudentContacts,
+  loadStudentSubmission,
   loadStudents,
+  loadSubmissionOverview,
   parseChoice,
   parseYesNo,
   prepareAssignmentReport,
@@ -39,6 +42,12 @@ const STEPS = {
   EX_CLASS: "ex_class",
   EX_ASG: "ex_asg",
   EX_CONFIRM: "ex_confirm",
+  VS_CLASS: "vs_class",
+  VS_ASG: "vs_asg",
+  SS_CLASS: "ss_class",
+  SS_ASG: "ss_asg",
+  SS_NAME: "ss_name",
+  SC_CLASS: "sc_class",
 };
 
 function renderMarkdown(text) {
@@ -52,7 +61,7 @@ function renderMarkdown(text) {
   let inList = false;
 
   for (const line of lines) {
-    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    const bullet = line.match(/^\s*[-*â€¢]\s+(.*)$/);
     const heading = line.match(/^\s*#{1,4}\s+(.*)$/);
 
     if (bullet) {
@@ -106,7 +115,8 @@ function nextSundayIso() {
   };
 }
 
-const MENU_OPTIONS = ["1", "2", "3", "4", "5"];
+const MENU_OPTIONS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const MENU_MAX = 8;
 
 /** Same menu as Actions, without "back to normal chat" (this page is actions-only). */
 const CHATBOT_MENU =
@@ -115,12 +125,67 @@ const CHATBOT_MENU =
   "2. Send monthly parent report (WhatsApp)\n" +
   "3. Show assistant workload\n" +
   "4. Create an assignment\n" +
-  "5. Export grades to Excel\n\n" +
+  "5. Export grades to Excel\n" +
+  "6. View submissions for an assignment\n" +
+  "7. View one student's marked submission\n" +
+  "8. View student contacts (parent phones)\n\n" +
   "Reply with a number. Preview always comes before any send.";
 
+function fmtWhen(value) {
+  return value ? new Date(value).toLocaleString() : "â€”";
+}
+
+/** Quick-reply chips for a numbered list â€” capped so huge rosters don't render hundreds of buttons (typed numbers still cover the full list). */
+function numberChips(count) {
+  return Array.from({ length: Math.min(count, 30) }, (_, i) => String(i + 1));
+}
+
+function formatSubmissionOverview(data) {
+  const t = data.totals || {};
+  const markedLines = (data.marked || []).slice(0, 300).map(
+    (m, i) =>
+      `${i + 1}. **${m.studentName}** â€” ${m.totalMarks ?? "?"}/${m.maxPoints ?? "?"}` +
+      (m.percent != null ? ` (${m.percent}%)` : "") +
+      (m.returnedToStudent ? " â€” returned" : "")
+  );
+  const notMarked = (data.notMarked || []).slice(0, 300);
+  return (
+    `**${data.assignment?.title || "Assignment"}** â€” due ${fmtWhen(data.assignment?.dueDate)}\n\n` +
+    `Marked: **${t.markedCount ?? 0}/${t.rosterCount ?? 0}** Â· Returned: ${t.returnedCount ?? 0}` +
+    (t.averagePercent != null ? ` Â· Average: **${t.averagePercent}%**` : "") +
+    (markedLines.length ? `\n\n${markedLines.join("\n")}` : "\n\nNo marked submissions yet.") +
+    (notMarked.length ? `\n\nNot marked yet: ${notMarked.join(", ")}` : "")
+  );
+}
+
+function formatStudentDetail(data) {
+  const qLines = (data.questions || []).slice(0, 25).map(
+    (q) =>
+      `â€¢ Q${q.questionNumber}: ${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}` +
+      (q.topic ? ` â€” ${q.topic}` : "")
+  );
+  return (
+    `**${data.studentName}** â€” ${data.assignmentTitle}\n\n` +
+    `Total: **${data.totalMarks ?? "?"}/${data.maxPoints ?? "?"}**` +
+    (data.percent != null ? ` (${data.percent}%)` : "") +
+    (data.returnedToStudent ? " â€” returned to student" : "") +
+    (data.summary ? `\n\nSummary: ${String(data.summary).slice(0, 400)}` : "") +
+    (qLines.length ? `\n\n${qLines.join("\n")}` : "")
+  );
+}
+
 export default function TeacherActionsChatbot() {
-  const [user, setUser] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [user] = useState(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [messages, setMessages] = useState(() => [
+    botMsg(CHATBOT_MENU, { options: MENU_OPTIONS }),
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionOptions, setActionOptions] = useState(MENU_OPTIONS);
@@ -202,13 +267,6 @@ export default function TeacherActionsChatbot() {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
-    setMessages([botMsg(CHATBOT_MENU, { options: MENU_OPTIONS })]);
-    setActionOptions(MENU_OPTIONS);
-  }, []);
-
-  useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
@@ -233,9 +291,9 @@ export default function TeacherActionsChatbot() {
 
       switch (s.step) {
         case STEPS.MENU: {
-          const c = parseChoice(text, 5);
+          const c = parseChoice(text, MENU_MAX);
           if (c === 3) {
-            pushBot("Loading assistant workload…", { clearOptions: true });
+            pushBot("Loading assistant workloadâ€¦", { clearOptions: true });
             const metrics = await loadAssistantMetrics(user.id);
             if (!metrics.assistants?.length) {
               pushBot("No assistants are assigned on your classrooms yet.");
@@ -243,9 +301,9 @@ export default function TeacherActionsChatbot() {
               const lines = metrics.assistants.map((a, i) => {
                 const sum = a.summary || {};
                 return (
-                  `${i + 1}. **${a.name}** — on time: ${sum.onTime || 0}, ` +
+                  `${i + 1}. **${a.name}** â€” on time: ${sum.onTime || 0}, ` +
                   `missed: ${sum.missedDeadline || 0}, pending: ${sum.pending || 0}, ` +
-                  `papers: ${a.papersCorrected ?? "—"}`
+                  `papers: ${a.papersCorrected ?? "â€”"}`
                 );
               });
               pushBot(`Assistant workload on your classes:\n\n${lines.join("\n")}`);
@@ -253,8 +311,8 @@ export default function TeacherActionsChatbot() {
             resetToMenu();
             break;
           }
-          if (c === 1 || c === 2 || c === 4 || c === 5) {
-            pushBot("Loading classrooms…", { clearOptions: true });
+          if (c === 1 || c === 2 || (c >= 4 && c <= 8)) {
+            pushBot("Loading classroomsâ€¦", { clearOptions: true });
             const classrooms = await loadClassrooms(user.id);
             if (!classrooms.length) {
               pushBot("You have no active classrooms.");
@@ -263,35 +321,39 @@ export default function TeacherActionsChatbot() {
             }
             s.classrooms = classrooms;
             s.flow = c;
-            s.step =
-              c === 1
-                ? STEPS.AR_CLASS
-                : c === 2
-                  ? STEPS.MR_CLASS
-                  : c === 4
-                    ? STEPS.CR_CLASS
-                    : STEPS.EX_CLASS;
+            s.step = {
+              1: STEPS.AR_CLASS,
+              2: STEPS.MR_CLASS,
+              4: STEPS.CR_CLASS,
+              5: STEPS.EX_CLASS,
+              6: STEPS.VS_CLASS,
+              7: STEPS.SS_CLASS,
+              8: STEPS.SC_CLASS,
+            }[c];
             pushBot(
               `Which classroom?\n\n${formatNumberedList(
                 classrooms,
                 (x) => (x.section ? `${x.name} (${x.section})` : x.name)
               )}\n\nReply with a number (0 = menu).`,
-              { options: classrooms.map((_, i) => String(i + 1)) }
+              { options: numberChips(classrooms.length) }
             );
             break;
           }
-          pushBot("Please reply 1–5.", { options: MENU_OPTIONS });
+          pushBot(`Please reply 1â€“${MENU_MAX}.`, { options: MENU_OPTIONS });
           break;
         }
 
         case STEPS.AR_CLASS:
         case STEPS.MR_CLASS:
         case STEPS.CR_CLASS:
-        case STEPS.EX_CLASS: {
+        case STEPS.EX_CLASS:
+        case STEPS.VS_CLASS:
+        case STEPS.SS_CLASS:
+        case STEPS.SC_CLASS: {
           const choice = parseChoice(text, s.classrooms.length);
           if (!choice) {
-            pushBot(`Pick 1–${s.classrooms.length} (or 0 for menu).`, {
-              options: s.classrooms.map((_, i) => String(i + 1)),
+            pushBot(`Pick 1â€“${s.classrooms.length} (or 0 for menu).`, {
+              options: numberChips(s.classrooms.length),
             });
             break;
           }
@@ -301,8 +363,24 @@ export default function TeacherActionsChatbot() {
             pushBot("Type the assignment title.", { clearOptions: true });
             break;
           }
+          if (s.step === STEPS.SC_CLASS) {
+            pushBot("Loading contactsâ€¦", { clearOptions: true });
+            const data = await loadStudentContacts(user.id, s.classroom._id);
+            const lines = (data.students || []).slice(0, 300).map(
+              (st) =>
+                `â€¢ **${st.name}** â€” parent: ${st.parentPhone || "no number"}` +
+                (st.parentName ? ` (${st.parentName})` : "") +
+                (st.studentPhone ? `, student: ${st.studentPhone}` : "")
+            );
+            pushBot(
+              `**Student contacts â€” ${data.classroom || s.classroom.name}** (${data.studentCount || 0} students, ${data.missingContactCount || 0} missing numbers)\n\n` +
+                (lines.join("\n") || "No students found.")
+            );
+            resetToMenu();
+            break;
+          }
           if (s.step === STEPS.MR_CLASS) {
-            pushBot("Loading students…", { clearOptions: true });
+            pushBot("Loading studentsâ€¦", { clearOptions: true });
             s.students = await loadStudents(user.id, {
               classroomId: s.classroom._id,
             });
@@ -315,20 +393,27 @@ export default function TeacherActionsChatbot() {
             );
             break;
           }
-          pushBot("Loading assignments…", { clearOptions: true });
+          pushBot("Loading assignmentsâ€¦", { clearOptions: true });
           s.assignments = await loadAssignments(user.id, s.classroom._id);
           if (!s.assignments.length) {
             pushBot("No assignments in that classroom.");
             resetToMenu();
             break;
           }
-          s.step = s.step === STEPS.AR_CLASS ? STEPS.AR_ASG : STEPS.EX_ASG;
+          s.step =
+            s.step === STEPS.AR_CLASS
+              ? STEPS.AR_ASG
+              : s.step === STEPS.VS_CLASS
+                ? STEPS.VS_ASG
+                : s.step === STEPS.SS_CLASS
+                  ? STEPS.SS_ASG
+                  : STEPS.EX_ASG;
           pushBot(
             `Which assignment?\n\n${formatNumberedList(
               s.assignments,
               (a) => a.title || "Untitled"
             )}\n\nReply with a number.`,
-            { options: s.assignments.map((_, i) => String(i + 1)) }
+            { options: numberChips(s.assignments.length) }
           );
           break;
         }
@@ -336,8 +421,8 @@ export default function TeacherActionsChatbot() {
         case STEPS.AR_ASG: {
           const choice = parseChoice(text, s.assignments.length);
           if (!choice) {
-            pushBot(`Pick 1–${s.assignments.length}.`, {
-              options: s.assignments.map((_, i) => String(i + 1)),
+            pushBot(`Pick 1â€“${s.assignments.length}.`, {
+              options: numberChips(s.assignments.length),
             });
             break;
           }
@@ -353,7 +438,7 @@ export default function TeacherActionsChatbot() {
         case STEPS.AR_SCOPE: {
           const choice = parseChoice(text, 2);
           if (choice === 2) {
-            pushBot("Preparing preview…", { clearOptions: true });
+            pushBot("Preparing previewâ€¦", { clearOptions: true });
             const prepared = await prepareAssignmentReport({
               personId: user.id,
               classroomId: s.classroom._id,
@@ -368,14 +453,14 @@ export default function TeacherActionsChatbot() {
             break;
           }
           if (choice === 1) {
-            pushBot("Loading students…", { clearOptions: true });
+            pushBot("Loading studentsâ€¦", { clearOptions: true });
             s.students = await loadStudents(user.id, {
               assignmentId: s.assignment._id,
             });
             s.step = STEPS.AR_STUDENT;
             pushBot(
               `Which student?\n\n${formatNumberedList(s.students, (st) => st.name)}\n\nReply with a number.`,
-              { options: s.students.map((_, i) => String(i + 1)) }
+              { options: numberChips(s.students.length) }
             );
             break;
           }
@@ -386,12 +471,12 @@ export default function TeacherActionsChatbot() {
         case STEPS.AR_STUDENT: {
           const choice = parseChoice(text, s.students.length);
           if (!choice) {
-            pushBot(`Pick 1–${s.students.length}.`, {
-              options: s.students.map((_, i) => String(i + 1)),
+            pushBot(`Pick 1â€“${s.students.length}.`, {
+              options: numberChips(s.students.length),
             });
             break;
           }
-          pushBot("Preparing preview…", { clearOptions: true });
+          pushBot("Preparing previewâ€¦", { clearOptions: true });
           const prepared = await prepareAssignmentReport({
             personId: user.id,
             classroomId: s.classroom._id,
@@ -410,7 +495,7 @@ export default function TeacherActionsChatbot() {
         case STEPS.AR_CONFIRM: {
           const yn = parseYesNo(text);
           if (yn === true) {
-            pushBot("Sending…", { clearOptions: true });
+            pushBot("Sendingâ€¦", { clearOptions: true });
             const overrides = buildOverrides();
             clearPreview();
             const result = await sendAssignmentReport(
@@ -421,7 +506,7 @@ export default function TeacherActionsChatbot() {
             const summary = result.summary || [];
             const ok = summary.filter((r) => r.status === "fulfilled").length;
             const fail = summary.filter((r) => r.status === "rejected").length;
-            pushBot(`Sent — ${ok} succeeded${fail ? `, ${fail} failed` : ""}.`);
+            pushBot(`Sent â€” ${ok} succeeded${fail ? `, ${fail} failed` : ""}.`);
             resetToMenu();
             break;
           }
@@ -441,7 +526,7 @@ export default function TeacherActionsChatbot() {
           const choice = parseChoice(text, 2);
           if (choice === 2) {
             s.studentIds = s.students.map((st) => st._id);
-            pushBot("Loading previews…", { clearOptions: true });
+            pushBot("Loading previewsâ€¦", { clearOptions: true });
             const items = [];
             for (const st of s.students) {
               try {
@@ -477,7 +562,7 @@ export default function TeacherActionsChatbot() {
             s.step = STEPS.MR_STUDENT;
             pushBot(
               `Which student?\n\n${formatNumberedList(s.students, (st) => st.name)}`,
-              { options: s.students.map((_, i) => String(i + 1)) }
+              { options: numberChips(s.students.length) }
             );
             break;
           }
@@ -488,14 +573,14 @@ export default function TeacherActionsChatbot() {
         case STEPS.MR_STUDENT: {
           const choice = parseChoice(text, s.students.length);
           if (!choice) {
-            pushBot(`Pick 1–${s.students.length}.`, {
-              options: s.students.map((_, i) => String(i + 1)),
+            pushBot(`Pick 1â€“${s.students.length}.`, {
+              options: numberChips(s.students.length),
             });
             break;
           }
           const student = s.students[choice - 1];
           s.studentIds = [student._id];
-          pushBot("Loading preview…", { clearOptions: true });
+          pushBot("Loading previewâ€¦", { clearOptions: true });
           const report = await previewMonthly({
             personId: user.id,
             classroomId: s.classroom._id,
@@ -518,7 +603,7 @@ export default function TeacherActionsChatbot() {
         case STEPS.MR_CONFIRM: {
           const yn = parseYesNo(text);
           if (yn === true) {
-            pushBot("Sending monthly reports…", { clearOptions: true });
+            pushBot("Sending monthly reportsâ€¦", { clearOptions: true });
             const overrides = buildOverrides();
             clearPreview();
             const result = await sendMonthly({
@@ -532,7 +617,7 @@ export default function TeacherActionsChatbot() {
             const ok = result?.sent ?? result?.succeeded ?? result?.ok;
             pushBot(
               typeof ok === "number"
-                ? `Monthly send finished — ${ok} sent.`
+                ? `Monthly send finished â€” ${ok} sent.`
                 : "Monthly send finished."
             );
             resetToMenu();
@@ -595,7 +680,7 @@ export default function TeacherActionsChatbot() {
               s.dueDate
                 ? `${s.dueDate.year}-${s.dueDate.month}-${s.dueDate.day}`
                 : "none"
-            }\n\n(Attach worksheets from Courses — chat creates the assignment only.)\n\n1. Yes\n2. No`,
+            }\n\n(Attach worksheets from Courses â€” chat creates the assignment only.)\n\n1. Yes\n2. No`,
             { options: ["1", "2"] }
           );
           break;
@@ -606,12 +691,12 @@ export default function TeacherActionsChatbot() {
           if (yn === true) {
             if (!s.classroom.googleCourseId) {
               pushBot(
-                "This classroom has no Google course id — open Courses to create it."
+                "This classroom has no Google course id â€” open Courses to create it."
               );
               resetToMenu();
               break;
             }
-            pushBot("Creating assignment…", { clearOptions: true });
+            pushBot("Creating assignmentâ€¦", { clearOptions: true });
             const courseworkData = {
               title: s.title,
               description: "",
@@ -644,8 +729,8 @@ export default function TeacherActionsChatbot() {
         case STEPS.EX_ASG: {
           const choice = parseChoice(text, s.assignments.length);
           if (!choice) {
-            pushBot(`Pick 1–${s.assignments.length}.`, {
-              options: s.assignments.map((_, i) => String(i + 1)),
+            pushBot(`Pick 1â€“${s.assignments.length}.`, {
+              options: numberChips(s.assignments.length),
             });
             break;
           }
@@ -661,7 +746,7 @@ export default function TeacherActionsChatbot() {
         case STEPS.EX_CONFIRM: {
           const yn = parseYesNo(text);
           if (yn === true) {
-            pushBot("Building Excel…", { clearOptions: true });
+            pushBot("Building Excelâ€¦", { clearOptions: true });
             const filename = await downloadGradesExcel(
               user.id,
               s.assignment._id,
@@ -677,6 +762,54 @@ export default function TeacherActionsChatbot() {
             break;
           }
           pushBot("1 = Yes, 2 = No.", { options: ["1", "2"] });
+          break;
+        }
+
+        case STEPS.VS_ASG: {
+          const choice = parseChoice(text, s.assignments.length);
+          if (!choice) {
+            pushBot(`Pick 1â€“${s.assignments.length}.`, {
+              options: numberChips(s.assignments.length),
+            });
+            break;
+          }
+          pushBot("Loading submissionsâ€¦", { clearOptions: true });
+          const data = await loadSubmissionOverview(user.id, s.assignments[choice - 1]._id);
+          pushBot(data.error ? data.error : formatSubmissionOverview(data));
+          resetToMenu();
+          break;
+        }
+
+        case STEPS.SS_ASG: {
+          const choice = parseChoice(text, s.assignments.length);
+          if (!choice) {
+            pushBot(`Pick 1â€“${s.assignments.length}.`, {
+              options: numberChips(s.assignments.length),
+            });
+            break;
+          }
+          s.assignment = s.assignments[choice - 1];
+          s.step = STEPS.SS_NAME;
+          pushBot("Type the student's name (0 = menu).", { clearOptions: true });
+          break;
+        }
+
+        case STEPS.SS_NAME: {
+          pushBot("Looking up submissionâ€¦", { clearOptions: true });
+          const data = await loadStudentSubmission(user.id, s.assignment._id, text);
+          if (data.error || data.ambiguous) {
+            const names = (data.markedStudents || data.options || []).slice(0, 150);
+            pushBot(
+              (data.error || "Multiple students match that name.") +
+                (names.length
+                  ? `\n\nMarked students:\n${names.map((n) => `â€¢ ${n}`).join("\n")}`
+                  : "") +
+                "\n\nType another name (0 = menu)."
+            );
+            break;
+          }
+          pushBot(formatStudentDetail(data));
+          resetToMenu();
           break;
         }
 
@@ -711,7 +844,7 @@ export default function TeacherActionsChatbot() {
       <TeacherPageHeader
         eyebrow="Actions"
         title="Chatbot"
-        subtitle="Number-driven actions — edit WhatsApp previews before sending."
+        subtitle="Number-driven actions â€” edit WhatsApp previews before sending."
         actions={
           <button type="button" className="tch-btn tch-btn--ghost" onClick={newChat}>
             <FiPlus size={15} /> Restart
@@ -756,7 +889,7 @@ export default function TeacherActionsChatbot() {
             {editPreview?.items?.length > 0 && (
               <div className="tchat-preview-editor">
                 <div className="tchat-preview-editor-title">
-                  Editable preview — change text before sending
+                  Editable preview â€” change text before sending
                 </div>
                 <div className="tchat-preview-list">
                   {editPreview.items.map((item) => (
@@ -837,7 +970,7 @@ export default function TeacherActionsChatbot() {
           <input
             ref={inputRef}
             className="tchat-input"
-            placeholder="Type a number (or title when asked)…"
+            placeholder="Type a number (or title when asked)â€¦"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}

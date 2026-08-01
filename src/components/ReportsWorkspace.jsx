@@ -400,6 +400,66 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     }
   };
 
+  /**
+   * Adds only the students already picked in the cart (from any open
+   * assignment's roster) to every checked assignment — so a collective
+   * report can target specific students instead of the whole class.
+   */
+  const addSelectedStudentsToCheckedAssignments = async () => {
+    const assignmentsToAdd = Object.values(checkedAssignments);
+    if (assignmentsToAdd.length === 0) {
+      toast.warn("Check one or more assignments first");
+      return;
+    }
+    const selectedIds = new Set(Object.keys(reportCart));
+    if (!selectedIds.size) {
+      toast.warn("Open an assignment and tick the students you want first");
+      return;
+    }
+
+    setSelectingAll(true);
+    try {
+      let nextCart = { ...reportCart };
+      let added = 0;
+
+      for (const assignment of assignmentsToAdd) {
+        const asgId = String(assignment._id);
+        const allStudents = await fetchAllPaginated(
+          api,
+          `/manager-assignments/${assignment._id}/full`,
+          {},
+          "students",
+          100
+        );
+
+        allStudents.forEach((student) => {
+          const stuId = String(student._id);
+          if (!selectedIds.has(stuId)) return;
+          if (nextCart[stuId]?.items[asgId]) return;
+          nextCart[stuId] = {
+            ...nextCart[stuId],
+            items: {
+              ...nextCart[stuId].items,
+              [asgId]: buildItem(student, assignment),
+            },
+          };
+          added += 1;
+        });
+      }
+
+      setReportCart(nextCart);
+      toast.success(
+        `Added ${selectedIds.size} selected student${selectedIds.size !== 1 ? "s" : ""} across ${assignmentsToAdd.length} assignment${assignmentsToAdd.length !== 1 ? "s" : ""}` +
+          (added === 0 ? " (already added)" : "")
+      );
+    } catch (err) {
+      console.error("Add selected students to checked assignments error:", err);
+      toast.error("Failed to add selected students to checked assignments");
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
   const buildItem = (student, assignment = selectedAssignment) => {
     const maxPoints =
       assignment?.maxPoints ?? studentExtra?.assignment?.maxPoints ?? null;
@@ -1327,7 +1387,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   <div className="rw-info-card">
                     <FiInfo size={14} />
                     <span>
-                      Check multiple assignments, then use <strong>Add all students</strong> to build a collective teacher report in one go.
+                      Check multiple assignments, then use <strong>Add all students</strong> — or tick specific students in an open assignment and use <strong>Add selected students</strong> to include only them.
                     </span>
                   </div>
 
@@ -1357,6 +1417,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                       {selectingAll
                         ? "Selecting…"
                         : `Add all students (${checkedAssignmentCount || 0})`}
+                    </button>
+                    <button
+                      type="button"
+                      className="ma-send-btn ma-send-btn--compact"
+                      onClick={addSelectedStudentsToCheckedAssignments}
+                      disabled={selectingAll || checkedAssignmentCount === 0 || cartCount === 0}
+                      title="Add only the students you already ticked to every checked assignment"
+                    >
+                      {selectingAll
+                        ? "Selecting…"
+                        : `Add selected students (${cartCount || 0})`}
                     </button>
                   </div>
 
