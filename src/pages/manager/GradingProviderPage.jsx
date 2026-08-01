@@ -7,10 +7,11 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
-  FiEdit3, FiShield, FiDownloadCloud,
+  FiEdit3, FiShield, FiDownloadCloud, FiRotateCcw, FiRotateCw,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
 import usePersistedState from "../../hooks/usePersistedState";
+import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import {
   assertPdfBlob,
   sumQuestionMarks,
@@ -213,6 +214,16 @@ export default function GradingProviderPage({ slug, label }) {
   const [downloading, setDownloading] = useState(false);
   const [returning, setReturning] = useState(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+
+  const editHistory = useMarkingEditHistory({
+    questions: editingQuestions,
+    summary: editingSummary,
+    setQuestions: setEditingQuestions,
+    setSummary: setEditingSummary,
+    resetKey: resultModal
+      ? resultModal.student?.submissionId || resultModal.submissionId || "open"
+      : null,
+  });
 
   const [errorViewer, setErrorViewer] = useState({ open: false, title: "", message: null });
 
@@ -2735,6 +2746,22 @@ export default function GradingProviderPage({ slug, label }) {
                 >
                   📝 Annotate
                   {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
+                </button>
+                <button
+                  className="msv-btn-ai"
+                  onClick={editHistory.undo}
+                  disabled={!editHistory.canUndo || confirmingEdits}
+                  title="Undo last edit"
+                >
+                  <FiRotateCcw size={13} />
+                </button>
+                <button
+                  className="msv-btn-ai"
+                  onClick={editHistory.redo}
+                  disabled={!editHistory.canRedo || confirmingEdits}
+                  title="Redo edit"
+                >
+                  <FiRotateCw size={13} />
                 </button>
                 {hasPendingEdits && (
                   <button

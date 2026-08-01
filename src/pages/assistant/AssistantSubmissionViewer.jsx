@@ -8,6 +8,7 @@ import { downloadBlob } from "../../utils/downloadBlob";
 
 import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
@@ -24,6 +25,8 @@ import {
   FiCheck,
   FiEdit3,
   FiShield,
+  FiRotateCcw,
+  FiRotateCw,
 } from "react-icons/fi";
 
 import "../manager/ManagerSubmissionViewer.css";
@@ -254,6 +257,16 @@ export default function AssignmentSubmissionViewer() {
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+
+  const editHistory = useMarkingEditHistory({
+    questions: editingQuestions,
+    summary: editingSummary,
+    setQuestions: setEditingQuestions,
+    setSummary: setEditingSummary,
+    resetKey: resultModal
+      ? resultModal.submissionId || resultModal.student?.submissionId || "open"
+      : null,
+  });
 
   const [studentErrors, setStudentErrors] = useState({});
 
@@ -3447,6 +3460,22 @@ return (
                           >
                             📝 Annotate
                             {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
+                          </button>
+                          <button
+                            className="msv-btn-ai"
+                            onClick={editHistory.undo}
+                            disabled={!editHistory.canUndo || confirmingEdits}
+                            title="Undo last edit"
+                          >
+                            <FiRotateCcw size={13} />
+                          </button>
+                          <button
+                            className="msv-btn-ai"
+                            onClick={editHistory.redo}
+                            disabled={!editHistory.canRedo || confirmingEdits}
+                            title="Redo edit"
+                          >
+                            <FiRotateCw size={13} />
                           </button>
                           {hasPendingEdits && (
                             <button

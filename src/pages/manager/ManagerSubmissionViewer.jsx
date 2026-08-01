@@ -7,11 +7,13 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
-  FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3, FiShield
+  FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3, FiShield,
+  FiRotateCcw, FiRotateCw
 } from "react-icons/fi";
 import { usePagination } from "../../hooks/usePagination";
 import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
@@ -481,6 +483,16 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+
+  const editHistory = useMarkingEditHistory({
+    questions: editingQuestions,
+    summary: editingSummary,
+    setQuestions: setEditingQuestions,
+    setSummary: setEditingSummary,
+    resetKey: resultModal
+      ? resultModal.student?.submissionId || resultModal.submissionId || "open"
+      : null,
+  });
 
   const [studentErrors, setStudentErrors] = useState({});
 
@@ -4573,6 +4585,26 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     📝 Annotate
                     {editingAnnotations.length > 0 ? ` (${editingAnnotations.length})` : ""}
                   </button>
+                )}
+                {showMarkingTools && (
+                  <>
+                    <button
+                      className="msv-btn-ai"
+                      onClick={editHistory.undo}
+                      disabled={!editHistory.canUndo || confirmingEdits}
+                      title="Undo last edit"
+                    >
+                      <FiRotateCcw size={13} />
+                    </button>
+                    <button
+                      className="msv-btn-ai"
+                      onClick={editHistory.redo}
+                      disabled={!editHistory.canRedo || confirmingEdits}
+                      title="Redo edit"
+                    >
+                      <FiRotateCw size={13} />
+                    </button>
+                  </>
                 )}
                 {showMarkingTools && hasPendingEdits && (
                   <button
