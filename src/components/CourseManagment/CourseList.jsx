@@ -200,10 +200,14 @@ export default function CoursesList() {
   };
 
   const saveRename = async (course) => {
-    const id = courseId(course);
+    const id = course.googleCourseId || courseId(course);
     const name = String(renameDraft.name || "").trim();
     if (!name) {
       toast.error("Course name cannot be empty");
+      return;
+    }
+    if (!course.googleCourseId) {
+      toast.error("This classroom has no Google Course id — reconnect / re-fetch classrooms first");
       return;
     }
 
