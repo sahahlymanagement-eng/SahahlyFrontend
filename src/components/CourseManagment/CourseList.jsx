@@ -13,6 +13,8 @@ import {
   FiBookOpen,
   FiEye,
   FiTrash2,
+  FiEdit2,
+  FiCheck,
 } from "react-icons/fi";
 import "./CourseManagement.css";
 import { usePagination } from "../../hooks/usePagination";
@@ -65,6 +67,9 @@ export default function CoursesList() {
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [allTeachers, setAllTeachers] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState({ name: "", section: "" });
+  const [savingRenameId, setSavingRenameId] = useState(null);
 
   const storedUser = localStorage.getItem("user");
   const user = storedUser ? JSON.parse(storedUser) : null;
@@ -180,6 +185,97 @@ export default function CoursesList() {
       setDeletingId(null);
     }
   };
+
+  const startRename = (course) => {
+    setRenamingId(courseId(course));
+    setRenameDraft({
+      name: course.name || "",
+      section: course.section || "",
+    });
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameDraft({ name: "", section: "" });
+  };
+
+  const saveRename = async (course) => {
+    const id = courseId(course);
+    const name = String(renameDraft.name || "").trim();
+    if (!name) {
+      toast.error("Course name cannot be empty");
+      return;
+    }
+
+    setSavingRenameId(id);
+    try {
+      const { data } = await api.patch(`/google-classroom/courses/${id}`, {
+        name,
+        section: String(renameDraft.section || "").trim(),
+      });
+      toast.success(
+        `Renamed to "${data.classroom?.name || name}" on Sahahly and Google Classroom`
+      );
+      cancelRename();
+      fetchPage(page);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.error || err.response?.data?.message || "Failed to rename classroom"
+      );
+    } finally {
+      setSavingRenameId(null);
+    }
+  };
+
+  const renderRenameForm = (course) => (
+    <div className="cm-rename-form" onClick={(e) => e.stopPropagation()}>
+      <label className="cm-rename-field">
+        <span>Name</span>
+        <input
+          type="text"
+          value={renameDraft.name}
+          onChange={(e) => setRenameDraft((d) => ({ ...d, name: e.target.value }))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveRename(course);
+            if (e.key === "Escape") cancelRename();
+          }}
+          autoFocus
+        />
+      </label>
+      <label className="cm-rename-field">
+        <span>Section (optional)</span>
+        <input
+          type="text"
+          value={renameDraft.section}
+          onChange={(e) => setRenameDraft((d) => ({ ...d, section: e.target.value }))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveRename(course);
+            if (e.key === "Escape") cancelRename();
+          }}
+        />
+      </label>
+      <div className="cm-rename-actions">
+        <button
+          type="button"
+          className="cm-courses-btn cm-courses-btn--primary"
+          onClick={() => saveRename(course)}
+          disabled={savingRenameId === courseId(course)}
+        >
+          <FiCheck />
+          {savingRenameId === courseId(course) ? "Saving…" : "Save name"}
+        </button>
+        <button
+          type="button"
+          className="cm-courses-btn cm-courses-btn--secondary"
+          onClick={cancelRename}
+          disabled={savingRenameId === courseId(course)}
+        >
+          <FiX />
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 
   const basePath = isManager ? "/manager" : isAdmin ? roleShellPath(role) : "/teacher";
 
@@ -329,35 +425,47 @@ export default function CoursesList() {
                             )}
                           </div>
 
-                          <div className="cm-course-actions">
-                            <button
-                              type="button"
-                              className="cm-courses-btn cm-courses-btn--primary"
-                              onClick={() => goCreateCoursework(course)}
-                            >
-                              <FiBookOpen />
-                              Create coursework
-                            </button>
-                            <button
-                              type="button"
-                              className="cm-courses-btn cm-courses-btn--secondary"
-                              onClick={() => goViewCoursework(course)}
-                            >
-                              <FiEye />
-                              View coursework
-                            </button>
-                            {isAdmin && (
+                          {renamingId === courseId(course) ? (
+                            renderRenameForm(course)
+                          ) : (
+                            <div className="cm-course-actions">
                               <button
                                 type="button"
-                                className="cm-courses-btn cm-courses-btn--danger"
-                                onClick={() => handleDeleteClassroom(course)}
-                                disabled={deletingId === course._id}
+                                className="cm-courses-btn cm-courses-btn--primary"
+                                onClick={() => goCreateCoursework(course)}
                               >
-                                <FiTrash2 />
-                                {deletingId === course._id ? "Deleting…" : "Delete classroom"}
+                                <FiBookOpen />
+                                Create coursework
                               </button>
-                            )}
-                          </div>
+                              <button
+                                type="button"
+                                className="cm-courses-btn cm-courses-btn--secondary"
+                                onClick={() => goViewCoursework(course)}
+                              >
+                                <FiEye />
+                                View coursework
+                              </button>
+                              <button
+                                type="button"
+                                className="cm-courses-btn cm-courses-btn--secondary"
+                                onClick={() => startRename(course)}
+                              >
+                                <FiEdit2 />
+                                Rename
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  className="cm-courses-btn cm-courses-btn--danger"
+                                  onClick={() => handleDeleteClassroom(course)}
+                                  disabled={deletingId === course._id}
+                                >
+                                  <FiTrash2 />
+                                  {deletingId === course._id ? "Deleting…" : "Delete classroom"}
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </article>
                       ))}
                     </div>
@@ -373,22 +481,34 @@ export default function CoursesList() {
             <article key={courseId(course)} className="cm-course-card">
               <h3>{course.name}</h3>
               <p>{course.section || "No section"}</p>
-              <div className="cm-course-actions">
-                <button
-                  type="button"
-                  className="cm-courses-btn cm-courses-btn--primary"
-                  onClick={() => goCreateCoursework(course)}
-                >
-                  Create coursework
-                </button>
-                <button
-                  type="button"
-                  className="cm-courses-btn cm-courses-btn--secondary"
-                  onClick={() => goViewCoursework(course)}
-                >
-                  View coursework
-                </button>
-              </div>
+              {renamingId === courseId(course) ? (
+                renderRenameForm(course)
+              ) : (
+                <div className="cm-course-actions">
+                  <button
+                    type="button"
+                    className="cm-courses-btn cm-courses-btn--primary"
+                    onClick={() => goCreateCoursework(course)}
+                  >
+                    Create coursework
+                  </button>
+                  <button
+                    type="button"
+                    className="cm-courses-btn cm-courses-btn--secondary"
+                    onClick={() => goViewCoursework(course)}
+                  >
+                    View coursework
+                  </button>
+                  <button
+                    type="button"
+                    className="cm-courses-btn cm-courses-btn--secondary"
+                    onClick={() => startRename(course)}
+                  >
+                    <FiEdit2 />
+                    Rename
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </div>

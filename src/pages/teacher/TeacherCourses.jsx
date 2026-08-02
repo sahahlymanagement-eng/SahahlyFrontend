@@ -1,12 +1,16 @@
 import { Fragment, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import api from "../../api/api";
 import {
   FiBookOpen,
+  FiCheck,
   FiChevronRight,
+  FiEdit2,
   FiEye,
   FiPlus,
   FiSearch,
+  FiX,
 } from "react-icons/fi";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
@@ -98,6 +102,10 @@ export default function TeacherCourses() {
   const { data: courses, page, totalPages, total, loading, fetchPage } =
     usePagination(`/google-classroom/teacher-courses/${user?.id}`, {}, 12);
 
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState({ name: "", section: "" });
+  const [savingRenameId, setSavingRenameId] = useState(null);
+
   const filteredCourses = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return courses;
@@ -109,6 +117,46 @@ export default function TeacherCourses() {
   }, [courses, search]);
 
   const courseIdOf = (course) => course.googleCourseId || course.id || course._id;
+
+  const startRename = (course) => {
+    setRenamingId(courseIdOf(course));
+    setRenameDraft({
+      name: course.name || "",
+      section: course.section || "",
+    });
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameDraft({ name: "", section: "" });
+  };
+
+  const saveRename = async (course) => {
+    const id = courseIdOf(course);
+    const name = String(renameDraft.name || "").trim();
+    if (!name) {
+      toast.error("Course name cannot be empty");
+      return;
+    }
+    setSavingRenameId(id);
+    try {
+      const { data } = await api.patch(`/google-classroom/courses/${id}`, {
+        name,
+        section: String(renameDraft.section || "").trim(),
+      });
+      toast.success(
+        `Renamed to "${data.classroom?.name || name}" on Sahahly and Google Classroom`
+      );
+      cancelRename();
+      fetchPage(page);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.error || err.response?.data?.message || "Failed to rename classroom"
+      );
+    } finally {
+      setSavingRenameId(null);
+    }
+  };
 
   const loadCourseAssignments = async (courseId) => {
     setCourseCache((prev) => ({
@@ -284,34 +332,103 @@ export default function TeacherCourses() {
                     </div>
 
                     <div className="tch-classroom-actions">
-                      <button
-                        type="button"
-                        className="tch-btn tch-btn--primary"
-                        onClick={() =>
-                          navigate(`/teacher/coursework/${id}`, {
-                            state: { courseName: course.name },
-                          })
-                        }
-                      >
-                        <FiPlus size={15} />
-                        Create
-                      </button>
-                      <button
-                        type="button"
-                        className="tch-btn tch-btn--secondary"
-                        onClick={() =>
-                          navigate(`/teacher/view-coursework/${id}`, {
-                            state: { courseName: course.name },
-                          })
-                        }
-                      >
-                        <FiEye size={15} />
-                        View all
-                      </button>
+                      {renamingId === id ? (
+                        <>
+                          <button
+                            type="button"
+                            className="tch-btn tch-btn--primary"
+                            onClick={() => saveRename(course)}
+                            disabled={savingRenameId === id}
+                          >
+                            <FiCheck size={15} />
+                            {savingRenameId === id ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            className="tch-btn tch-btn--secondary"
+                            onClick={cancelRename}
+                            disabled={savingRenameId === id}
+                          >
+                            <FiX size={15} />
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="tch-btn tch-btn--primary"
+                            onClick={() =>
+                              navigate(`/teacher/coursework/${id}`, {
+                                state: { courseName: course.name },
+                              })
+                            }
+                          >
+                            <FiPlus size={15} />
+                            Create
+                          </button>
+                          <button
+                            type="button"
+                            className="tch-btn tch-btn--secondary"
+                            onClick={() =>
+                              navigate(`/teacher/view-coursework/${id}`, {
+                                state: { courseName: course.name },
+                              })
+                            }
+                          >
+                            <FiEye size={15} />
+                            View all
+                          </button>
+                          <button
+                            type="button"
+                            className="tch-btn tch-btn--secondary"
+                            onClick={() => startRename(course)}
+                          >
+                            <FiEdit2 size={15} />
+                            Rename
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {isExpanded && (
+                  {renamingId === id && (
+                    <div className="tch-classroom-panel" style={{ paddingTop: 0 }}>
+                      <div className="tch-rename-fields">
+                        <label>
+                          <span>Name</span>
+                          <input
+                            type="text"
+                            value={renameDraft.name}
+                            onChange={(e) =>
+                              setRenameDraft((d) => ({ ...d, name: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRename(course);
+                              if (e.key === "Escape") cancelRename();
+                            }}
+                            autoFocus
+                          />
+                        </label>
+                        <label>
+                          <span>Section (optional)</span>
+                          <input
+                            type="text"
+                            value={renameDraft.section}
+                            onChange={(e) =>
+                              setRenameDraft((d) => ({ ...d, section: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRename(course);
+                              if (e.key === "Escape") cancelRename();
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {isExpanded && renamingId !== id && (
                     <div className="tch-classroom-panel">
                       {cache?.loading ? (
                         <TeacherLoading message="Loading assignments…" />

@@ -1030,6 +1030,29 @@
   background: var(--surface-2);
 }
 
+.tch-rename-fields {
+  display: grid;
+  gap: 10px;
+  max-width: 480px;
+}
+
+.tch-rename-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tch-rename-fields input {
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
 .tch-expand-btn {
   width: 34px;
   height: 34px;
