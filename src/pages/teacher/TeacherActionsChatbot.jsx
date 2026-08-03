@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TeacherPageHeader } from "./TeacherUI";
 import { FiSend, FiPlus, FiCpu, FiUser } from "react-icons/fi";
 import {

@@ -231,14 +231,14 @@ export default function ViewCoursework() {
 
     setDeletingId(dbAssignment._id);
     try {
-      await api.delete(`/assignments/${dbAssignment._id}`);
+      const { data } = await api.delete(`/assignments/${dbAssignment._id}`);
       setDbAssignments((prev) => prev.filter((a) => String(a._id) !== String(dbAssignment._id)));
       if (googleCourseWorkId) {
         setExcludedGoogleIds((prev) =>
           prev.includes(googleCourseWorkId) ? prev : [...prev, googleCourseWorkId]
         );
       }
-      toast.success("Assignment deleted from Sahahly");
+      toast.success(data?.message || "Assignment deleted from Sahahly");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to delete assignment");
     } finally {

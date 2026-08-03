@@ -7,14 +7,17 @@ import {
   FiMaximize2,
   FiMinimize2,
 } from "react-icons/fi";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import "../utils/uint8ArrayToHexPolyfill";
+// Legacy build includes browser polyfills (e.g. Uint8Array#toHex) so PDF preview
+// works on Chromium/Edge builds that don't ship that API yet.
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
 
-// CDN worker avoids nginx serving bundled .mjs as application/octet-stream on VPS
-GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+// CDN legacy worker must match the legacy API build above
+GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/legacy/build/pdf.worker.min.mjs`;
 
 const MAX_RENDER_WIDTH = 720;
 const MAX_RENDER_PIXEL_WIDTH = 3200;
