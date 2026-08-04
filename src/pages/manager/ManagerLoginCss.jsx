@@ -69,6 +69,11 @@ import {
   useMarkingStudentSelection,
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
+import {
+  fetchPublishQueue,
+  runGradingPublishAll,
+  formatPublishAllMessage,
+} from "../../utils/gradingPublishAll";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
@@ -188,6 +193,12 @@ export default function ManagerLoginCss() {
   const [editingTotal, setEditingTotal] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [returning, setReturning] = useState(false);
+
+  // ── Publish All (bulk publish of already-marked submissions) ──
+  // Publishing is the one action everybody with this tab can take, marker or
+  // reviewer, so this is deliberately outside the canMark gate.
+  const [publishAll, setPublishAll] = useState(null); // { done, total, current, loading }
+  const publishStopRef = useRef(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
 
   const editHistory = useMarkingEditHistory({
@@ -1439,6 +1450,115 @@ export default function ManagerLoginCss() {
     }
   };
 
+  // ── Publish All ──
+  // Publishing one submission means rendering its annotated PDF in the browser
+  // and posting it, so publishing a whole assignment is that same call in a
+  // loop (src/utils/gradingPublishAll.js). The queue comes from the server, so
+  // it covers every marked-but-unpublished submission in the assignment rather
+  // than only the page of rows on screen — narrowed to the ticked rows when the
+  // user has selected any.
+  const stopPublishAll = () => {
+    publishStopRef.current = true;
+    setPublishAll((prev) => (prev ? { ...prev, stopping: true } : prev));
+    toast.info("Finishing the current submission, then stopping…");
+  };
+
+  const publishAllResults = async () => {
+    if (!selectedAssignment || publishAll) return;
+
+    publishStopRef.current = false;
+    setPublishAll({ done: 0, total: 0, current: null, loading: true });
+
+    let queue = [];
+    try {
+      queue = await fetchPublishQueue(api, "/external-grading", selectedAssignment.id ?? null);
+    } catch (err) {
+      setPublishAll(null);
+      toast.error((await getApiErrorMessage(err)) || "Failed to load the publish queue");
+      return;
+    }
+
+    // An empty selection means the whole assignment — same convention as the
+    // marking actions.
+    const selectedIds = markingSelection.selectedIds;
+    const queued = selectedIds.size
+      ? queue.filter((row) => selectedIds.has(row.submissionId))
+      : queue;
+
+    if (!queued.length) {
+      setPublishAll(null);
+      toast.warn(
+        selectedIds.size
+          ? "None of the selected submissions have an unpublished result"
+          : "Nothing to publish — every marked submission in this assignment is already published"
+      );
+      return;
+    }
+
+    const skipped = selectedIds.size ? selectedIds.size - queued.length : 0;
+    const ok = await confirmToast(
+      `Publish ${queued.length} marked submission${queued.length === 1 ? "" : "s"} to LoginCSS?` +
+        (skipped > 0
+          ? ` (${skipped} selected submission${skipped === 1 ? " has" : "s have"} nothing to publish and will be skipped.)`
+          : ""),
+      { title: `Publish All — ${selectedAssignment.name}`, confirmLabel: "Publish All" }
+    );
+    if (!ok) {
+      setPublishAll(null);
+      return;
+    }
+
+    setPublishAll({ done: 0, total: queued.length, current: null, loading: false });
+
+    const { successCount, failures, publishedIds, stopped } = await runGradingPublishAll({
+      api,
+      base: "/external-grading",
+      queue: queued,
+      assignmentMaxPoints:
+        assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+      getStudentFile,
+      // A run over a whole assignment would otherwise leave every downloaded
+      // submission PDF sitting in the cache for the rest of the session.
+      releaseStudentFile: (sid) => { delete pdfCacheRef.current[sid]; },
+      onProgress: ({ done, total, current }) =>
+        setPublishAll((prev) => (prev ? { ...prev, done, total, current } : prev)),
+      shouldStop: () => publishStopRef.current,
+    });
+
+    setPublishAll(null);
+    publishStopRef.current = false;
+
+    // Reflect the published rows immediately; loadAll then refreshes counts.
+    const gradeById = new Map(publishedIds.map((p) => [p.submissionId, p.totalMarks]));
+    if (gradeById.size) {
+      setSubmissions((prev) =>
+        prev.map((s) =>
+          gradeById.has(s.submissionId)
+            ? {
+                ...s,
+                localStatus: "done",
+                localGrade: gradeById.get(s.submissionId),
+                hasFeedbackPdf: true,
+                hasDraft: false,
+              }
+            : s
+        )
+      );
+      setResults((prev) => {
+        const next = { ...prev };
+        for (const id of gradeById.keys()) delete next[id];
+        return next;
+      });
+      markingSelection.clear();
+    }
+
+    const message = formatPublishAllMessage(successCount, failures, stopped);
+    if (failures.length) toast.warn(message);
+    else toast.success(message);
+
+    loadAll();
+  };
+
   // ── PDF row actions (student submission + mark scheme) ──
   const pickFile = (entry, which) => (which === "ms" ? entry.msFile : entry.studentFile);
 
@@ -1881,8 +2001,72 @@ export default function ManagerLoginCss() {
                     </button>
                     </>
                     )}
+                    {/* Reviewers publish too, so this sits outside the canMark
+                        block — it sends results that already exist. */}
+                    <button
+                      className="msv-btn-ai"
+                      onClick={publishAllResults}
+                      disabled={!!publishAll || bulkMarking || priorityBulkRunning}
+                      title={
+                        markingSelection.selectedCount
+                          ? "Publish the selected marked submissions to LoginCSS"
+                          : "Publish every marked-but-unpublished submission in this assignment to LoginCSS"
+                      }
+                      style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
+                    >
+                      {publishAll ? (
+                        <>
+                          <span className="pm-spinner" />{" "}
+                          {publishAll.loading
+                            ? "Loading queue…"
+                            : `Publishing ${publishAll.done}/${publishAll.total}…`}
+                        </>
+                      ) : (
+                        <>
+                          <FiSend size={13} />{" "}
+                          {markingActionLabel(
+                            "Publish All",
+                            "Publish Selected",
+                            markingSelection.selectedCount
+                          )}
+                        </>
+                      )}
+                    </button>
+                    {publishAll && !publishAll.loading && (
+                      <button
+                        className="msv-btn-ai"
+                        onClick={stopPublishAll}
+                        disabled={!!publishAll.stopping}
+                        style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
+                      >
+                        <FiX size={13} /> Stop
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {publishAll && !publishAll.loading && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "color-mix(in srgb, var(--success) 8%, transparent)",
+                      border: "1px solid color-mix(in srgb, var(--success) 20%, transparent)",
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <span className="pm-spinner" style={{ width: 12, height: 12 }} />
+                    <span>
+                      Publishing to LoginCSS — {publishAll.done} of {publishAll.total} done
+                      {publishAll.current ? ` · ${publishAll.current}` : ""}
+                    </span>
+                  </div>
+                )}
 
                 {selectedAssignment.id != null && (
                   <GradingAssignmentSettingsBar
@@ -1891,8 +2075,8 @@ export default function ManagerLoginCss() {
                   />
                 )}
 
-                {/* Row selection only exists to narrow a marking run. */}
-                {canMark && (
+                {/* Row selection narrows a marking run OR a Publish All run, so
+                    it renders for reviewers too — they can only do the latter. */}
                 <MarkingSelectionBar
                   selectedCount={markingSelection.selectedCount}
                   pageSelectableCount={pageSelectableIds.length}
@@ -1901,8 +2085,8 @@ export default function ManagerLoginCss() {
                   onSelectAll={selectAllSubmissionsForMarking}
                   onClear={markingSelection.clear}
                   selectingAll={selectingMarkingAll}
+                  countSuffix={canMark ? "" : "to publish"}
                 />
-                )}
 
                 {canMark && batchJob && batchJob.phase !== "done" && (
                   <div
@@ -1962,7 +2146,7 @@ export default function ManagerLoginCss() {
                       <table className="ma-table ma-table--cards">
                         <thead>
                           <tr>
-                            {canMark && <th style={{ width: 44 }} aria-label="Select for marking" />}
+                            <th style={{ width: 44 }} aria-label="Select submissions" />
                             <th>Name</th>
                             <th>Status</th>
                             <th>Submitted At</th>
@@ -1992,20 +2176,18 @@ export default function ManagerLoginCss() {
                                 className="ma-row"
                                 style={{ animationDelay: `${i * 0.025}s` }}
                               >
-                                {canMark && (
-                                  <td>
-                                    {s.submissionId != null ? (
-                                      <button
-                                        type="button"
-                                        className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
-                                        onClick={() => markingSelection.toggle(s.submissionId)}
-                                        aria-label={`Select ${s.name || "submission"} for marking`}
-                                      >
-                                        {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
-                                      </button>
-                                    ) : null}
-                                  </td>
-                                )}
+                                <td>
+                                  {s.submissionId != null ? (
+                                    <button
+                                      type="button"
+                                      className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
+                                      onClick={() => markingSelection.toggle(s.submissionId)}
+                                      aria-label={`Select ${s.name || "submission"}`}
+                                    >
+                                      {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
+                                    </button>
+                                  ) : null}
+                                </td>
                                 <td>
                                   <div className="ma-avatar-cell">
                                     <div className="ma-avatar">
