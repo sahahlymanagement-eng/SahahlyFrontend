@@ -399,6 +399,13 @@
   gap: 10px;
 }
 
+.md-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .md-section-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -547,6 +554,23 @@
 .md-cell-muted   { color: var(--muted); font-size: 12.5px; }
 .md-cell-empty   { color: var(--text-disabled); font-size: 12px; }
 
+.md-cell-title--clickable{
+  cursor: pointer;
+}
+
+.md-cell-title--clickable:hover{
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.md-cell-title--clickable:focus{
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 /* ─── EXPAND BUTTON ─────────────────────────────────────── */
 
 .md-expand-btn {
@@ -625,6 +649,36 @@
   background: var(--primary);
   border-color: var(--primary);
   color: var(--primary-contrast);
+}
+
+.md-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.md-export-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.md-export-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.md-export-btn--ghost {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
 }
 
 .md-detail-grid {
@@ -805,14 +859,20 @@
   .md-topbar  { padding: 16px 20px; }
 }
 
-@media (max-width: 768px) {
+/* iPad / tablet (matches drawer ≤1024): 2-col status cards, scrollable table */
+@media (max-width: 1024px) {
   .md-status-grid { grid-template-columns: repeat(2, 1fr); }
   .md-table-wrap  { overflow-x: auto; }
+  .md-content { padding: 16px; }
+  .md-table.sah-table--cards { min-width: 0; width: 100%; }
+}
+
+@media (max-width: 768px) {
   .md-table       { min-width: 900px; }
 }
 
-/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
-@media (max-width: 640px) {
+/* ─── Tablet + phone: card-mode adjustments (≤1024px, matches ui-polish) ─── */
+@media (max-width: 1024px) {
   /* Expand toggle rides the top of the card instead of taking its own line. */
   .md-table.sah-table--cards td:has(.md-expand-btn) {
     flex: 0 0 auto;

@@ -12,12 +12,21 @@ export default function DirectorManagers() {
   const [search, setSearch] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [allTeachers, setAllTeachers] = useState([]);
+  const [selectedTeachers, setSelectedTeachers] = useState({});
 
   useEffect(() => {
     api.get("/people/teachers")
       .then((r) => setAllTeachers(r.data || []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const map = {};
+    classrooms.forEach((room) => {
+      map[room._id] = room.teacherId?._id || "";
+    });
+    setSelectedTeachers(map);
+  }, [classrooms]);
 
   const classroomParams = useMemo(
     () => ({
@@ -210,6 +219,37 @@ export default function DirectorManagers() {
     }
   };
 
+  const assignTeacher = async (classroomId) => {
+    const teacherId = selectedTeachers[classroomId];
+    if (!teacherId) {
+      toast.warn("Please select a teacher first");
+      return;
+    }
+    try {
+      setLoading(true);
+      await api.put(`/classrooms/${classroomId}/assign-teacher`, { teacherId });
+      await reload();
+      toast.success("Teacher assigned successfully");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to assign teacher");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeTeacher = async (classroomId) => {
+    try {
+      setLoading(true);
+      await api.put(`/classrooms/${classroomId}/remove-teacher`);
+      await reload();
+      toast.success("Teacher removed successfully");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to remove teacher");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const deleteClassroom = async (room) => {
     const label = `${room.name}${room.section ? ` (${room.section})` : ""}`;
     const confirmed = window.confirm(
@@ -299,7 +339,7 @@ export default function DirectorManagers() {
   return (
     <div className="dm-page">
       <div className="dm-header">
-        <h2 className="dm-title">Assign Managers to Classrooms</h2>
+        <h2 className="dm-title">Class Manager</h2>
         <div className="dm-toolbar">
           <ReportTeacherFilterSelect
             show
@@ -392,27 +432,32 @@ export default function DirectorManagers() {
                 />
               </th>
               <th>Classroom</th>
-              <th>Teacher</th>
+              <th>Teacher Name</th>
+              <th>Teacher Phone</th>
+              <th>Teacher Email</th>
+              <th>Select Teacher</th>
+              <th>Teacher Actions</th>
               <th>Current Manager</th>
               <th>Select Manager</th>
-              <th>Actions</th>
+              <th>Manager Actions</th>
             </tr>
           </thead>
           <tbody>
             {loadingClassrooms && (
               <tr>
-                <td colSpan={6} className="dm-empty">Loading classrooms…</td>
+                <td colSpan={10} className="dm-empty">Loading classrooms…</td>
               </tr>
             )}
             {!loadingClassrooms && classrooms.length === 0 && (
               <tr>
-                <td colSpan={6} className="dm-empty">
+                <td colSpan={10} className="dm-empty">
                   {search.trim() ? `No classrooms match "${search.trim()}".` : "No classrooms found."}
                 </td>
               </tr>
             )}
             {!loadingClassrooms && classrooms.map((room) => {
               const alreadyAssigned = hasManager(room._id);
+              const teacherAssigned = Boolean(room.teacherId?._id);
               const sid = String(room._id);
               const isChecked = selectedIds.has(sid);
               return (
@@ -427,7 +472,56 @@ export default function DirectorManagers() {
                     />
                   </td>
                   <td data-label="Classroom">{room.name}{room.section && ` (${room.section})`}</td>
-                  <td data-label="Teacher">{room.teacherName || room.teacherId?.name || "-"}</td>
+                  <td data-label="Teacher Name">{room.teacherName || room.teacherId?.name || "-"}</td>
+                  <td data-label="Teacher Phone">{room.teacherId?.phone || "-"}</td>
+                  <td data-label="Teacher Email">{room.teacherId?.email || "-"}</td>
+                  <td data-label="Select Teacher">
+                    <select
+                      className="dm-select"
+                      value={selectedTeachers[room._id] || ""}
+                      onChange={(e) =>
+                        setSelectedTeachers((prev) => ({
+                          ...prev,
+                          [room._id]: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select Teacher</option>
+                      {allTeachers.map((teacher) => (
+                        <option key={teacher._id} value={teacher._id}>
+                          {teacher.name}{teacher.phone ? ` - ${teacher.phone}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="dm-actions" data-label="Teacher Actions">
+                    {!teacherAssigned ? (
+                      <button
+                        className="dm-assign"
+                        onClick={() => assignTeacher(room._id)}
+                        disabled={busy}
+                      >
+                        Assign
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="dm-change"
+                          onClick={() => assignTeacher(room._id)}
+                          disabled={busy}
+                        >
+                          Change
+                        </button>
+                        <button
+                          className="dm-remove"
+                          onClick={() => removeTeacher(room._id)}
+                          disabled={busy}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </td>
                   <td className="dm-current" data-label="Current">{managerName(room._id)}</td>
 
                   <td data-label="Assign to">
@@ -448,7 +542,7 @@ export default function DirectorManagers() {
                     </select>
                   </td>
 
-                  <td className="dm-actions">
+                  <td className="dm-actions" data-label="Manager Actions">
                     {!alreadyAssigned ? (
                       <button
                         className="dm-assign"

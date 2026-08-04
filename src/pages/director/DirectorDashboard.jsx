@@ -59,6 +59,15 @@ function statusTone(status) {
   return "progress";
 }
 
+function isLateRow(row) {
+  if (!row) return false;
+  if (row.status === "FAILED_DEADLINE" || row.status === "EMERGENCY") return true;
+  if (!row.dueDate) return false;
+  const due = new Date(row.dueDate);
+  if (Number.isNaN(due.getTime())) return false;
+  return due < new Date();
+}
+
 export default function DirectorDashboard() {
   const navigate = useNavigate();
   const [user] = useState(readStoredUser);
@@ -137,6 +146,15 @@ export default function DirectorDashboard() {
     setDetail(null);
   };
 
+  const goToDirectorSubmissionViewer = (row) => {
+    const classroomId = row?.classroomId;
+    const assignmentId = row?.assignmentId;
+    if (!classroomId || !assignmentId) return;
+    navigate(
+      `/director/submissions?classroomId=${classroomId}&assignmentId=${assignmentId}`
+    );
+  };
+
   if (!user) return null;
 
   const summary = data?.assignments?.summary;
@@ -197,8 +215,10 @@ export default function DirectorDashboard() {
               title="Late"
               icon={<FiAlertTriangle />}
               tone="late"
-              rows={data.assignments.late}
+              rows={(data.assignments.late || []).filter(isLateRow)}
               emptyText="Nothing is late. 🎉"
+              onRowClick={goToDirectorSubmissionViewer}
+              onOpenViewer={goToDirectorSubmissionViewer}
             />
             <AssignmentList
               title="Due in the next 7 days"
@@ -206,6 +226,7 @@ export default function DirectorDashboard() {
               tone="progress"
               rows={data.assignments.dueSoon}
               emptyText="Nothing due in the next 7 days."
+              onOpenViewer={goToDirectorSubmissionViewer}
             />
             <AssignmentList
               title="Recently done"
@@ -213,6 +234,7 @@ export default function DirectorDashboard() {
               tone="done"
               rows={data.assignments.recentlyDone}
               emptyText="No assignments marked done yet."
+              onOpenViewer={goToDirectorSubmissionViewer}
             />
           </div>
         </section>
@@ -379,7 +401,10 @@ export default function DirectorDashboard() {
               {detailLoading && <p className="ddx-loading">Loading details…</p>}
 
               {!detailLoading && detailTarget.type === "manager" && detail && (
-                <ManagerDetail detail={detail} />
+                <ManagerDetail
+                  detail={detail}
+                  onLateRowClick={goToDirectorSubmissionViewer}
+                />
               )}
               {!detailLoading && detailTarget.type === "assistant" && detail && (
                 <AssistantDetail detail={detail.assistant} />
@@ -412,7 +437,17 @@ function Chip({ tone, label, value }) {
   );
 }
 
-function AssignmentList({ title, icon, tone, rows, emptyText }) {
+function AssignmentList({
+  title,
+  icon,
+  tone,
+  rows,
+  emptyText,
+  onRowClick,
+  onOpenViewer,
+}) {
+  const clickable = typeof onRowClick === "function";
+  const canOpen = typeof onOpenViewer === "function";
   return (
     <div className="ddx-list-card">
       <div className={`ddx-list-title ddx-list-title--${tone}`}>
@@ -424,7 +459,23 @@ function AssignmentList({ title, icon, tone, rows, emptyText }) {
       {rows?.length > 0 && (
         <ul className="ddx-list">
           {rows.map((r) => (
-            <li key={r.assignmentId}>
+            <li
+              key={r.assignmentId}
+              className={clickable ? "ddx-list-item--clickable" : undefined}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={clickable ? () => onRowClick(r) : undefined}
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRowClick(r);
+                      }
+                    }
+                  : undefined
+              }
+            >
               <div className="ddx-list-main">
                 <span className="ddx-list-assignment">{r.title}</span>
                 <span className="ddx-list-class">{r.className || "—"}</span>
@@ -433,6 +484,16 @@ function AssignmentList({ title, icon, tone, rows, emptyText }) {
                 <span className={`ddx-status ddx-status--${statusTone(r.status)}`}>
                   {statusLabel(r.status)}
                 </span>
+                {r.managerName && (
+                  <span className="ddx-list-meta-item">
+                    <strong>Mgr:</strong> {r.managerName}
+                  </span>
+                )}
+                {r.teacherName && (
+                  <span className="ddx-list-meta-item">
+                    <strong>Teacher:</strong> {r.teacherName}
+                  </span>
+                )}
                 <span className="ddx-list-due">
                   <FiCalendar /> {fmtDate(r.dueDate)}
                 </span>
@@ -440,6 +501,18 @@ function AssignmentList({ title, icon, tone, rows, emptyText }) {
                   <span className="ddx-list-assistant">
                     <FiUsers /> {r.assistantName}
                   </span>
+                )}
+                {canOpen && (
+                  <button
+                    type="button"
+                    className="ddx-inline-action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenViewer(r);
+                    }}
+                  >
+                    Open viewer
+                  </button>
                 )}
               </div>
             </li>
@@ -450,8 +523,9 @@ function AssignmentList({ title, icon, tone, rows, emptyText }) {
   );
 }
 
-function ManagerDetail({ detail }) {
+function ManagerDetail({ detail, onLateRowClick }) {
   const { manager, stats, classrooms, late, unassigned, assistants } = detail;
+  const lateFiltered = (late || []).filter(isLateRow);
   return (
     <>
       <div className="ddx-detail-contact">
@@ -530,7 +604,11 @@ function ManagerDetail({ detail }) {
         )}
       </div>
 
-      <DetailAssignmentList title={`Late (${late.length})`} rows={late} />
+      <DetailAssignmentList
+        title={`Late (${lateFiltered.length})`}
+        rows={lateFiltered}
+        onRowClick={onLateRowClick}
+      />
       <DetailAssignmentList
         title={`Unassigned (${unassigned.length})`}
         rows={unassigned}
@@ -626,14 +704,31 @@ function AssistantDetail({ detail }) {
   );
 }
 
-function DetailAssignmentList({ title, rows }) {
+function DetailAssignmentList({ title, rows, onRowClick }) {
+  const clickable = typeof onRowClick === "function";
   if (!rows?.length) return null;
   return (
     <>
       <h4 className="ddx-detail-heading">{title}</h4>
       <ul className="ddx-list" style={{ marginBottom: 16 }}>
         {rows.map((r) => (
-          <li key={r.assignmentId}>
+          <li
+            key={r.assignmentId}
+            className={clickable ? "ddx-list-item--clickable" : undefined}
+            role={clickable ? "button" : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onRowClick(r) : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onRowClick(r);
+                    }
+                  }
+                : undefined
+            }
+          >
             <div className="ddx-list-main">
               <span className="ddx-list-assignment">{r.title}</span>
               <span className="ddx-list-class">{r.className || "—"}</span>

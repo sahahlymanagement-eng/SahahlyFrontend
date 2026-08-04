@@ -97,8 +97,8 @@ export default function LandingPage() {
                 Access the content management system to manage courses, materials, and educational content.
               </p>
             </div>
-            <a href="https://cms.sahahly.com" className="landing-btn landing-btn--secondary">
-              <span>Go to CMS</span>
+            <a href="https://sahahly.com" className="landing-btn landing-btn--secondary">
+              <span>Go to Sahahly</span>
               <ArrowIcon />
             </a>
           </div>
@@ -106,6 +106,10 @@ export default function LandingPage() {
 
         <p className="landing-footer">
           © {new Date().getFullYear()} Sahahly — Academic Workflow &amp; Quality Management
+          {" · "}
+          <Link to="/privacy-security" className="landing-footer-link">
+            Privacy &amp; Security
+          </Link>
         </p>
       </div>
     </div>

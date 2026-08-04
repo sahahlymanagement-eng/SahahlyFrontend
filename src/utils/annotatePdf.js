@@ -455,7 +455,7 @@ function drawWrappedLines(page, lines, { x, y, size, font, color, lineH }) {
   return cy;
 }
 
-function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
+function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, showMissing = true) {
   const headerBottom = drawColumnHeader(page, layout, bold);
   if (!questions.length) return;
 
@@ -637,7 +637,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight) {
         cy -= 2;
       }
 
-      if (missing.length > 0) {
+      if (showMissing && missing.length > 0) {
         drawBoldText(page, "Missing:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: RED });
         cy -= 8;
         for (const kw of missing) {
@@ -1389,7 +1389,8 @@ export async function annotatePdf({
       });
     }
 
-    drawExaminerColumn(page, layout, qs, bold, reg, height);
+    // Student pages: "Missing" keywords should appear only in the report pages.
+    drawExaminerColumn(page, layout, qs, bold, reg, height, false);
 
     for (const note of teacherByPage[pageNum] || []) {
       drawTeacherAnnotationOnPaper(page, note, paperW, LM, height, bold, reg);

@@ -7,6 +7,7 @@
   flex-direction: column;
   gap: 12px;
   height: calc(100vh - 150px);
+  height: calc(100dvh - 150px);
 }
 
 .msv-section-header-expanded {
@@ -923,7 +924,9 @@
   cursor: move;
 }
 
-@media (max-width: 520px) {
+/* Wrap PDF chrome on tablet+phone — iPad portrait (~820px) is too narrow for
+   pages + zoom + actions on one row beside the drawer topbar. */
+@media (max-width: 1024px) {
   .pdf-preview-toolbar {
     flex-wrap: wrap;
     row-gap: 4px;
@@ -937,6 +940,11 @@
 
   .pdf-preview-toolbar-section--actions {
     margin-left: 0;
+  }
+
+  .pdf-preview-scroll,
+  .pdf-preview-root {
+    min-width: 0;
   }
 }
 
@@ -1417,10 +1425,14 @@
   color: var(--muted);
 }
 
-/* ─── Mobile: unfix the viewer height + adapt the marking UI (≤768px) ─── */
-@media (max-width: 768px) {
+/* ─── Tablet + phone: unfix viewer height + adapt marking UI (≤1024px) ───
+   Matches RoleShell drawer + 56px topbar. Leaving this at 768 left a dead zone
+   on iPad portrait (~820px) where the drawer was on but the layout still used
+   fixed 100vh desktop heights and a dense horizontal action bar. */
+@media (max-width: 1024px) {
   .msv-collapsible-layout {
     height: auto;
+    min-height: calc(100dvh - 56px - 24px);
   }
 
   /* Give the PDF/results panel a usable minimum so it isn't crushed when stacked.
@@ -1540,10 +1552,11 @@
   }
 }
 
-/* ─── Mobile: submission table → stacked cards (≤641px) ─── */
+/* ─── Tablet + phone: submission table → stacked cards (≤1024px) ─── */
 /* Scoped to .ma-table--cards so only the submission viewers convert; the
-   assignments list and other .ma-table uses keep horizontal scroll. */
-@media (max-width: 641px) {
+   assignments list and other .ma-table uses keep horizontal scroll until they
+   opt into .sah-table--cards. */
+@media (max-width: 1024px) {
   .ma-table--cards {
     min-width: 0;
     width: 100%;
@@ -1595,7 +1608,7 @@
     flex: 1 1 100%;
     min-width: 0;
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: 8px;
     padding: 5px 0;
     border-bottom: none;
@@ -1603,6 +1616,7 @@
     white-space: normal;
     overflow-wrap: anywhere;
     font-size: 13px;
+    line-height: 1.2;
   }
 
   .ma-table--cards td::before {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { FiSun, FiMoon } from "react-icons/fi";
 import api from "../api/api";
 import "./Login.css";
@@ -135,6 +135,9 @@ export default function Login() {
               {loading ? "Logging In..." : "Log In"}
             </button>
           </form>
+          <p className="login-policy-link">
+            <Link to="/privacy-security">Privacy &amp; Security Policy</Link>
+          </p>
         </div>
       </div>
     </div>

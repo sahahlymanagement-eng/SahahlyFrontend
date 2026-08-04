@@ -5,8 +5,9 @@
  * ─── Responsive breakpoint conventions (project-wide) ───
  * CSS custom properties can't drive media queries, so these are a written
  * convention — use them consistently across every stylesheet:
- *   mobile   @media (max-width: 640px)   phones — single column, drawer nav
- *   tablet   @media (max-width: 1024px)  tablets/small laptops — drawer nav, 2-col grids
+ *   mobile   @media (max-width: 640px)   phones — single column, denser padding
+ *   tablet   @media (max-width: 1024px)  iPad/tablets — drawer nav, stacked panes,
+ *                                        .sah-table--cards for wide tables
  *   desktop  @media (min-width: 1025px)  default desktop layout (unchanged)
  * The off-canvas sidebar drawer activates at ≤1024px (see assistant.css).
  */
@@ -34,7 +35,7 @@ body.ast-body--drawer-open {
  * unreachable rather than merely scrollable. Every table needs one of these:
  *
  *   .sah-table-scroll   wrapper div → the table scrolls sideways within it.
- *   .sah-table--cards   on the <table> → below 640px each row becomes a
+ *   .sah-table--cards   on the <table> → at ≤1024px each row becomes a
  *                       stacked card. Requires data-label on every <td>.
  *
  * Cards are preferred for anything wide enough that sideways scrolling hurts.
@@ -54,12 +55,14 @@ body.ast-body--drawer-open {
   border-radius: 99px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1024px) {
   /* Cards never overflow, so a surrounding scroller would only add a stray
      scrollbar. Matched on the direct parent rather than a list of wrapper class
      names -- card tables sit inside ten different per-area wrappers
      (.ma-table-scroll, .ms-table-scroll, .ast-table-wrap, .tm-table-wrap, …)
-     and any list would go stale the moment someone adds an eleventh. */
+     and any list would go stale the moment someone adds an eleventh.
+     Activates at tablet (≤1024) so iPad portrait/landscape with the drawer
+     topbar doesn't force a desktop-width table into a squeezed main pane. */
   :has(> table.sah-table--cards) {
     overflow-x: visible;
   }

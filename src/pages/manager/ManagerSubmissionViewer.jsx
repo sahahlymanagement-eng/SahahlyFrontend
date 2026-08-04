@@ -15,8 +15,10 @@ import usePersistedState, { removePersisted } from "../../hooks/usePersistedStat
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
+import { useOrientationCheck, buildOrientationFlagMap, orientationWarningText } from "../../hooks/useOrientationCheck";
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
+import OrientationCheckModal from "../../components/OrientationCheckModal";
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -48,6 +50,7 @@ import {
   getOutOfScopeNotes,
   getTeacherAnnotations,
   prepareEditingQuestions,
+  totalMarksMismatchInfo,
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
@@ -238,6 +241,12 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   );
 
   const summaryMap = studentExtra?.summaryMap || {};
+  const [actualPdfCount, setActualPdfCount] = useState(0);
+  const [countingPdfs, setCountingPdfs] = useState(false);
+  const correctedPdfCount = useMemo(
+    () => Object.values(savedResults).filter((entry) => entry?.result).length,
+    [savedResults]
+  );
 
   // Batch polling runs on a setInterval that outlives the render it was created
   // in, so anything it reads directly would be frozen at that moment. Keep the
@@ -425,6 +434,19 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     onReport: applyPageCountReport,
   });
 
+  const orientationCheckArgs = (students) => ({
+    assignmentId: selectedAssignment?._id,
+    classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+    students,
+    onReport: applyOrientationReport,
+  });
+
+  const confirmPreGradingChecks = async (students) => {
+    const proceedPageCount = await confirmPageCounts(pageCheckArgs(students));
+    if (!proceedPageCount) return false;
+    return confirmOrientations(orientationCheckArgs(students));
+  };
+
 
   // Results modal
   const [singleProgress, setSingleProgress] = useState({});
@@ -522,11 +544,15 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
 
   // Advisory pre-grading page-count check (shared hook + modal)
   const { pageCheckModal, confirmPageCounts, resolvePageCheck } = usePageCountCheck();
+  const { orientationCheckModal, confirmOrientations, resolveOrientationCheck } = useOrientationCheck();
   // Per-submission page-count flags, populated as soon as the check runs so the
   // row warnings update without waiting for grading.
   const [pageCountFlags, setPageCountFlags] = useState({});
   const applyPageCountReport = (report) =>
     setPageCountFlags((prev) => ({ ...prev, ...buildPageCountFlagMap(report) }));
+  const [orientationFlags, setOrientationFlags] = useState({});
+  const applyOrientationReport = (report) =>
+    setOrientationFlags((prev) => ({ ...prev, ...buildOrientationFlagMap(report) }));
 
   // const [cachedMsFile, setCachedMsFile] = useState(null);
 
@@ -771,6 +797,7 @@ const refreshStudents = async () => {
     }
 
     await fetchStudentPage(studentPage);
+    await refreshPdfCount();
 
     if (pushResult?.pushed > 0 && !pushResult?.failed) {
       toast.success(
@@ -793,6 +820,30 @@ const refreshStudents = async () => {
     setRefreshing(false);
   }
 };
+
+const refreshPdfCount = useCallback(async () => {
+  if (!studentsMarkingUrl || !selectedAssignment?._id) {
+    setActualPdfCount(0);
+    return;
+  }
+  try {
+    setCountingPdfs(true);
+    const all = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
+    const pdfCount = (all || []).filter(
+      (student) => student?.submissionId && student?.hasAttachment
+    ).length;
+    setActualPdfCount(pdfCount);
+  } catch (err) {
+    console.error("Failed to count PDFs", err);
+    setActualPdfCount(0);
+  } finally {
+    setCountingPdfs(false);
+  }
+}, [studentsMarkingUrl, selectedAssignment?._id]);
+
+useEffect(() => {
+  refreshPdfCount();
+}, [refreshPdfCount]);
 
 const handleExportGradesExcel = async () => {
   if (!selectedAssignment?._id) return;
@@ -1635,7 +1686,7 @@ useEffect(() => {
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", provider = markingProvider) => {
     // Advisory page-count check before spending AI tokens on a possibly-wrong file.
-    const proceed = await confirmPageCounts(pageCheckArgs([student]));
+    const proceed = await confirmPreGradingChecks([student]);
     if (!proceed) return;
 
     setMarkingStudentId(student.submissionId);
@@ -1772,7 +1823,7 @@ useEffect(() => {
 
   const runMarkStudentPriority = async (student, guidanceText, mode = "normal") => {
     // Advisory page-count check before spending AI tokens on a possibly-wrong file.
-    const proceed = await confirmPageCounts(pageCheckArgs([student]));
+    const proceed = await confirmPreGradingChecks([student]);
     if (!proceed) return;
 
     setMarkingStudentId(student.submissionId);
@@ -2066,7 +2117,7 @@ useEffect(() => {
     const { eligible } = loaded;
 
     // Advisory page-count check before spending AI tokens on possibly-wrong files.
-    const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+    const proceed = await confirmPreGradingChecks(eligible);
     if (!proceed) return;
 
     const guidanceValue = guidanceForForm(guidanceText);
@@ -2536,7 +2587,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
   }
 
   // Advisory page-count check before spending AI tokens on possibly-wrong files.
-  const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+  const proceed = await confirmPreGradingChecks(eligible);
   if (!proceed) return;
 
   const guidanceValue = guidanceForForm(guidanceText);
@@ -2745,7 +2796,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   }
 
   // Advisory page-count check before spending AI tokens on possibly-wrong files.
-  const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+  const proceed = await confirmPreGradingChecks(eligible);
   if (!proceed) return;
 
   const guidanceValue = guidanceForForm(guidanceText);
@@ -3402,6 +3453,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     isCriteria && editingCriteriaGrade
       ? Number(editingCriteriaGrade.totalMarks) || 0
       : sumQuestionMarks(questionsForDisplay);
+  const coverTotal =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : Number(resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks);
+  const paperTotal = sumQuestionMarks(questionsForDisplay);
+  const totalMismatch =
+    questionsForDisplay.length > 0 &&
+    Number.isFinite(coverTotal) &&
+    Number.isFinite(paperTotal) &&
+    coverTotal !== paperTotal
+      ? {
+          coverTotal,
+          paperTotal,
+          message: `Cover page total ${coverTotal} does not match paper total ${paperTotal}`,
+        }
+      : null;
   const max   = effectiveMaxTotal;
   const pct   = gradeScorePercent(total, max);
   const color = getScoreColor(total, max);
@@ -3632,35 +3699,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       </button>
                     )}
 
-                    {msInfo && (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {/* // <button 
-                      //   className="msv-btn-ai" 
-                      //   onClick={() => openGuidanceModal()} 
-                      //   disabled={bulkMarking}
-                      // > */}
-                          <button
-                          className="msv-btn-ai"
-                          onClick={() => openGuidanceModal(null, false)}
-                          disabled={bulkMarking}
-    >
-                        {bulkMarking ? <><span className="pm-spinner" /> Marking…</> : <><FiCpu size={13} /> {markingActionLabel("Mark All Students", "Mark Selected", markingSelection.selectedCount)}</>}
-                      </button>
-                      {bulkMarking && (
-                        <button
-                          className="msv-btn-ai"
-                          onClick={stopBulkMark}
-                          style={{
-                            background: "var(--danger)",
-                            borderColor: "var(--danger)",
-                            color: "#fff",
-                          }}
-                        >
-                          <FiX size={13} /> Stop
-                        </button>
-                      )}
-                  </div>
-                    )}
+                    {/* Non-batch "Mark All Students" removed — keep only batch marking */}
                  {/* Return All */}
                   {!bulkMarking && (isTeacherScope || msInfo || hasGradedWork) && (
                     <button
@@ -3885,6 +3924,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <div className="ma-panel-dot" />
                       <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                       <span className="ma-panel-count">{studentTotal} students</span>
+                      <span className="ma-panel-count">
+                        {countingPdfs ? "Counting PDFs…" : `Corrected ${correctedPdfCount} / ${actualPdfCount} PDFs`}
+                      </span>
                     </div>
                     <div className="msv-panel-controls">
                       <input
@@ -4019,9 +4061,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       <span className="ma-cell-name">{s.name || "—"}</span>
                                       {(() => {
                                         const savedWarn = savedResults[s.submissionId]?.result?.fileWarning;
-                                        const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
-                                        if (!savedWarn && !flagText) return null;
-                                        const title = flagText
+                                        const pageFlagText = pageCountWarningText(pageCountFlags[s.submissionId]);
+                                        const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
+                                        const totalMismatchText = totalMarksMismatchInfo(savedResults[s.submissionId]?.result)?.message;
+                                        if (!savedWarn && !pageFlagText && !orientationFlagText && !totalMismatchText) return null;
+                                        const title = pageFlagText
+                                          || orientationFlagText
+                                          || totalMismatchText
                                           || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
                                           || "Submitted file may be wrong — page count differs from expected";
                                         return (
@@ -4359,6 +4405,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <PageCountCheckModal
                   state={pageCheckModal}
                   onResolve={resolvePageCheck}
+                  onOpenPdf={(c) => openPdf({ submissionId: c.submissionId, name: c.student?.name })}
+                />
+                <OrientationCheckModal
+                  state={orientationCheckModal}
+                  onResolve={resolveOrientationCheck}
                   onOpenPdf={(c) => openPdf({ submissionId: c.submissionId, name: c.student?.name })}
                 />
 
@@ -4782,6 +4833,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   </div>
                 </div>
               </div>
+              {totalMismatch && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)",
+                    background: "color-mix(in srgb, var(--warning) 12%, transparent)",
+                    color: "var(--warning)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {totalMismatch.message}
+                </div>
+              )}
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 {showMarkingTools && (
@@ -5058,6 +5125,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             onPlacementChange={handleAnnotationPlacementChange}
                             onQuestionRemove={handleQuestionRemove}
                             labelGuidance={assignmentPrompt.content}
+                            openExternalLabel="Open in Kami"
                           />
                         </div>
                       ) : (

@@ -1809,61 +1809,7 @@ export default function GradingProviderPage({ slug, label }) {
                         Mark Scheme Verification
                       </button>
                     )}
-                    <button
-                      className="msv-btn-ai"
-                      onClick={() => openGuidanceModal(null, { bulk: true })}
-                      disabled={bulkMarking || priorityBulkRunning}
-                    >
-                      {bulkMarking ? (
-                        <>
-                          <span className="pm-spinner" /> Marking all…
-                        </>
-                      ) : (
-                        <>
-                          <FiCpu size={13} />{" "}
-                          {markingActionLabel("Mark All", "Mark Selected", markingSelection.selectedCount)}
-                        </>
-                      )}
-                    </button>
-                    {bulkMarking && (
-                      <button
-                        className="msv-btn-ai"
-                        onClick={stopBulkMark}
-                        style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
-                      >
-                        <FiX size={13} /> Stop
-                      </button>
-                    )}
-                    <button
-                      className="msv-btn-ai"
-                      onClick={() => openGuidanceModal(null, { bulk: true, priorityBulk: true })}
-                      disabled={bulkMarking || priorityBulkRunning}
-                      style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
-                    >
-                      {priorityBulkRunning ? (
-                        <>
-                          <span className="pm-spinner" /> Priority marking…
-                        </>
-                      ) : (
-                        <>
-                          <FiSend size={13} />{" "}
-                          {markingActionLabel(
-                            "Mark All (Priority)",
-                            "Mark Selected (Priority)",
-                            markingSelection.selectedCount
-                          )}
-                        </>
-                      )}
-                    </button>
-                    {priorityBulkRunning && (
-                      <button
-                        className="msv-btn-ai"
-                        onClick={stopPriorityBulk}
-                        style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
-                      >
-                        <FiX size={13} /> Stop
-                      </button>
-                    )}
+                    {/* Non-batch "Mark All" buttons removed — keep only the Gemini batch button */}
                     <button
                       className="msv-btn-ai"
                       onClick={() => {

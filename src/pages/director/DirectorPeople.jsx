@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
 import "./DirectorPeople.css";
 import { toast } from "react-toastify";
@@ -22,8 +22,19 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
 export default function DirectorPeople() {
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [selectedManagerId, setSelectedManagerId] = useState("");
+  const [managers, setManagers] = useState([]);
+
+  const paginationParams = useMemo(() => {
+    const params = {};
+    if (roleFilter !== "all") params.role = roleFilter;
+    if (selectedManagerId) params.managerId = selectedManagerId;
+    return params;
+  }, [roleFilter, selectedManagerId]);
+
   const { data: people, page, totalPages, fetchPage, setData: setPeople } =
-    usePagination("/people", {}, 10);
+    usePagination("/people", paginationParams, 10);
   const [roles, setRoles] = useState([]);
   const [subjects, setSubjects] = useState([]);
 
@@ -44,6 +55,21 @@ export default function DirectorPeople() {
 
   useEffect(() => {
     loadRolesAndSubjects();
+  }, []);
+
+  useEffect(() => {
+    const loadManagers = async () => {
+      try {
+        const res = await api.get("/people", {
+          params: { page: 1, limit: 5000, role: "manager" },
+        });
+        setManagers(res.data?.data || []);
+      } catch {
+        setManagers([]);
+      }
+    };
+
+    loadManagers();
   }, []);
 
   useEffect(() => {
@@ -81,6 +107,14 @@ export default function DirectorPeople() {
     if (!roleId) return "";
     if (typeof roleId === "object") return roleId.name.toLowerCase();
     return roleNameById(roleId).toLowerCase();
+  };
+
+  const roleCategoryLabel = (roleId) => {
+    const rn = roleNameLower(roleId);
+    if (rn === "teacher") return "Teacher";
+    if (rn === "manager") return "Manager";
+    if (rn === "assistant" || rn === "quality team") return "Assistant";
+    return roleNameById(roleId) || "—";
   };
 
   const isAdmin = (roleId) => roleNameLower(roleId) === "admin";
@@ -183,7 +217,9 @@ export default function DirectorPeople() {
                   setLoading(true);
                   await api.delete(`/people/${person._id}`);
                   toast.success("Person deleted successfully");
-                  await fetchPage(1);
+                  const shouldGoBack =
+                    page > 1 && Array.isArray(people) && people.length === 1;
+                  await fetchPage(shouldGoBack ? page - 1 : page);
                 } catch (err) {
                   toast.error(err.response?.data?.message || "Failed to delete person");
                 } finally {
@@ -288,6 +324,34 @@ export default function DirectorPeople() {
           </div>
         </div>
 
+        {/* FILTERS */}
+        <div className="peopleFilters">
+          <div className="peopleFilter">
+            <label>Manager</label>
+            <select
+              value={selectedManagerId}
+              onChange={(e) => setSelectedManagerId(e.target.value)}
+            >
+              <option value="">All managers</option>
+              {managers.map((m) => (
+                <option key={m._id} value={m._id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="peopleFilter">
+            <label>Role</label>
+            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="teacher">Teacher</option>
+              <option value="manager">Manager</option>
+              <option value="assistant">Assistant</option>
+            </select>
+          </div>
+        </div>
+
         {/* ADD PERSON */}
         <div className="addPersonPanel">
           <div className="addPersonInputs">
@@ -350,7 +414,7 @@ export default function DirectorPeople() {
                     <div className="personNameRow">
                       <h3>{p.name}</h3>
                       {p.roleId && (
-                        <span className="personRoleBadge">{roleNameById(p.roleId)}</span>
+                        <span className="personRoleBadge">{roleCategoryLabel(p.roleId)}</span>
                       )}
                     </div>
                     <div className="personMeta">
@@ -404,6 +468,19 @@ export default function DirectorPeople() {
                       <FiTrash2 size={14} /> Delete
                     </button>
 
+                  </div>
+                )}
+
+                {Array.isArray(p.subjects) && p.subjects.length > 0 && (
+                  <div className="subjectsReadonlyPanel">
+                    <div className="subjectsReadonlyLabel">Subjects</div>
+                    <div className="assignedSubjects">
+                      {p.subjects.map((s) => (
+                        <span className="subjectTag" key={s._id || s.name}>
+                          {s.name || s}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 

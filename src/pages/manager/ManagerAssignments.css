@@ -472,6 +472,7 @@
   grid-template-columns: 280px 320px 1fr;
   gap: 20px;
   height: calc(100vh - 150px);
+  height: calc(100dvh - 150px);
 }
 
 .ma-column {
@@ -751,14 +752,20 @@
 }
 
 /* Avatar cell */
-.ma-avatar-cell { display: flex; align-items: center; gap: 10px; }
+.ma-avatar-cell { display: flex; align-items: flex-start; gap: 10px; }
 .ma-avatar {
   width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
   background: var(--gradient);
   display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; color: #fff;
 }
-.ma-cell-name { font-weight: 600; color: var(--text-primary); }
+.ma-cell-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+  line-height: 1.2;
+  white-space: normal;
+}
 .ma-cell-muted { color: var(--muted); font-size: 12.5px; }
 .ma-cell-empty { color: var(--text-disabled); }
 
@@ -1308,8 +1315,8 @@ select.ma-search-input option {
   background: var(--primary-active);
 }
 
-/* ─── Mobile: stack the 3-pane workspace, let the page scroll (≤768px) ─── */
-@media (max-width: 768px) {
+/* ─── Tablet + phone: stack the 3-pane workspace (≤1024px, matches drawer) ─── */
+@media (max-width: 1024px) {
   .ma-layout {
     grid-template-columns: 1fr;
     height: auto;
@@ -1336,10 +1343,10 @@ select.ma-search-input option {
     justify-content: center;
   }
 }
-/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
+/* ─── Tablet + phone: card-mode adjustments (≤1024px, matches ui-polish) ─── */
 /* .ma-table is shared by ReportsWorkspace; the submission viewers use the
    older .ma-table--cards pattern in ManagerSubmissionViewer.css instead. */
-@media (max-width: 640px) {
+@media (max-width: 1024px) {
   /* .ma-row--selected tints the <td>s with !important, which paints over the
      card. Move the selected state onto the card and clear the cell tint. */
   .ma-table.sah-table--cards tbody tr.ma-row--selected {

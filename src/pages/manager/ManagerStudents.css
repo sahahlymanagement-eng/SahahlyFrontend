@@ -449,6 +449,7 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   grid-template-columns: 320px 1fr;
   gap: 24px;
   height: calc(100vh - 140px);
+  height: calc(100dvh - 140px);
 }
 
 .msv-collapsible-layout {
@@ -456,6 +457,7 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   flex-direction: column;
   gap: 12px;
   height: calc(100vh - 140px);
+  height: calc(100dvh - 140px);
 }
 
 .msv-section-header-expanded {
@@ -624,8 +626,8 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent) !important;
 }
 
-/* ─── Mobile: stack the split-pane workspace, let the page scroll (≤768px) ─── */
-@media (max-width: 768px) {
+/* ─── Tablet + phone: stack split-pane workspace (≤1024px, matches drawer) ─── */
+@media (max-width: 1024px) {
   .ms-layout {
     grid-template-columns: 1fr;
     height: auto;
@@ -634,6 +636,7 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
 
   .msv-collapsible-layout {
     height: auto;
+    min-height: calc(100dvh - 56px - 24px);
   }
 
   /* Bound the left roster so it doesn't push the detail panel far down. */
@@ -642,8 +645,8 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
     max-height: none;
   }
 }
-/* ─── Mobile: card-mode adjustments (table → cards via .sah-table--cards) ─── */
-@media (max-width: 640px) {
+/* ─── Tablet + phone: card-mode adjustments (≤1024px, matches ui-polish) ─── */
+@media (max-width: 1024px) {
   /* .ms-row--editing tints the <td>s with !important, which paints over the
      card. Move the editing state onto the card and clear the cell tint. */
   .ms-table.sah-table--cards tbody tr.ms-row--editing {

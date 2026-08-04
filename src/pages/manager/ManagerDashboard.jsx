@@ -13,7 +13,7 @@ import { selectStyles } from "../../utils/selectTheme";
 import {
   FiBarChart2, FiSearch, FiCalendar, FiChevronRight,
   FiUser, FiUsers, FiBookOpen, FiClock, FiCheckCircle,
-  FiAlertTriangle, FiClipboard, FiRefreshCw, FiAlertCircle,
+  FiAlertTriangle, FiClipboard, FiRefreshCw, FiAlertCircle, FiCopy, FiDownload,
 } from "react-icons/fi";
 
 import { isDirectorLikeRole } from "../../utils/directorLikeAccess";
@@ -24,7 +24,7 @@ const DASHBOARD_STATUSES = [
   "UNASSIGNED",
   "ASSIGNED",
   "FAILED_DEADLINE",
-  "DONE",
+  "LATE",
 ];
 
 // Palette-aligned status accents (kept as static hex so the `${accent}18`
@@ -33,11 +33,22 @@ const STATUS_META = {
   UNASSIGNED:      { icon: <FiClock />,         accent: "#8A94A6", iconClass: "tch-stat-icon--muted" },
   ASSIGNED:        { icon: <FiUser />,          accent: "#7A9CB3", iconClass: "tch-stat-icon--blue" },
   FAILED_DEADLINE: { icon: <FiAlertTriangle />, accent: "#C15F52", iconClass: "md-stat-icon--danger" },
-  DONE:            { icon: <FiCheckCircle />,   accent: "#5B9279", iconClass: "tch-stat-icon--green" },
+  LATE:            { icon: <FiAlertCircle />,   accent: "#E59A2A", iconClass: "tch-stat-icon--orange" },
 };
 
-const formatStatus = (s) =>
-  s.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+const formatStatus = (s) => {
+  if (s === "UNASSIGNED") return "Late on manager";
+  if (s === "ASSIGNED") return "In progress";
+  if (s === "FAILED_DEADLINE") return "Late on assistant";
+  return s.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+};
+
+const formatExportDate = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString();
+};
 
 export default function ManagerDashboard({ scope = "manager" }) {
   const navigate = useNavigate();
@@ -111,7 +122,8 @@ export default function ManagerDashboard({ scope = "manager" }) {
     if (!selectedStatus) return base;
     return {
       ...base,
-      status: selectedStatus,
+      // Backend supports FAILED_DEADLINE; "LATE" is a UI-only subset of dueDate-past items.
+      status: selectedStatus === "LATE" ? "FAILED_DEADLINE" : selectedStatus,
       ...(filterClassroom ? { filterClassroom } : {}),
       ...(filterTeacher ? { filterTeacher } : {}),
       ...(filterAssignment ? { filterAssignment } : {}),
@@ -138,6 +150,131 @@ export default function ManagerDashboard({ scope = "manager" }) {
       dashboardStatus: computeDashboardStatus(a),
     })),
   [data, classroomMap, teacherMap]);
+
+  const visibleAssignments = useMemo(() => {
+    if (selectedStatus !== "LATE") return assignments;
+    const now = new Date();
+    return (assignments || []).filter((a) => {
+      if (!a) return false;
+      // Treat "Late" as dueDate-past (and include EMERGENCY if it ever appears in results).
+      if (a.status === "EMERGENCY") return true;
+      if (!a.dueDate) return false;
+      const due = new Date(a.dueDate);
+      if (Number.isNaN(due.getTime())) return false;
+      return due < now;
+    });
+  }, [assignments, selectedStatus]);
+
+  const exportRows = useMemo(
+    () =>
+      visibleAssignments.map((a) => {
+        const related = delegations.filter(
+          (d) => d.assignmentId === a._id || d.assignmentId?._id === a._id
+        );
+        const assistants = related
+          .filter((d) => d.role === "assistant")
+          .map((d) => d.personId?.name)
+          .filter(Boolean);
+        const qualityTeam = related
+          .filter((d) => d.role === "quality team")
+          .map((d) => d.personId?.name)
+          .filter(Boolean);
+        return {
+          classroomName: a.classroomName || "Unknown",
+          teacherName: a.teacherName || "Not Assigned",
+          title: a.title || "Untitled assignment",
+          assistants,
+          qualityTeam,
+          deadline: assistants.length
+            ? formatExportDate(
+                related.find((d) => d.role === "assistant")?.assistantDeadline
+              )
+            : "—",
+        };
+      }),
+    [visibleAssignments, delegations]
+  );
+
+  const buildFilteredListMessage = useCallback(() => {
+    const statusLabel = selectedStatus ? formatStatus(selectedStatus) : "Assignments";
+    const activeFilters = [
+      filterClassroom && `Classroom: ${filterClassroom}`,
+      filterTeacher && `Teacher: ${filterTeacher}`,
+      filterAssignment && `Assignment: ${filterAssignment}`,
+      filterAssistant && `Assistant: ${filterAssistant}`,
+      filterQuality && `Quality: ${filterQuality}`,
+      filterDate && `Date: ${filterDate.toLocaleDateString()}`,
+    ].filter(Boolean);
+
+    const header = [
+      `${statusLabel} assignments`,
+      `Total: ${exportRows.length}`,
+      activeFilters.length ? `Filters: ${activeFilters.join(" | ")}` : null,
+      "",
+    ].filter(Boolean);
+
+    const body =
+      exportRows.length > 0
+        ? exportRows.map((row, index) => {
+            const assistantsLabel = row.assistants.length
+              ? row.assistants.join(", ")
+              : "Not Assigned";
+            const qualityLabel = row.qualityTeam.length
+              ? row.qualityTeam.join(", ")
+              : "Not Assigned";
+            return [
+              `${index + 1}. ${row.title}`,
+              `Class: ${row.classroomName}`,
+              `Teacher: ${row.teacherName}`,
+              `Assistant: ${assistantsLabel}`,
+              `Deadline: ${row.deadline}`,
+              `Quality: ${qualityLabel}`,
+            ].join("\n");
+          })
+        : ["No assignments match the current filters."];
+
+    return [...header, ...body].join("\n\n");
+  }, [
+    selectedStatus,
+    filterClassroom,
+    filterTeacher,
+    filterAssignment,
+    filterAssistant,
+    filterQuality,
+    filterDate,
+    exportRows,
+  ]);
+
+  const copyFilteredListMessage = useCallback(async () => {
+    try {
+      const message = buildFilteredListMessage();
+      await navigator.clipboard.writeText(message);
+      toast.success("Message copied for WhatsApp");
+    } catch {
+      toast.error("Failed to copy message");
+    }
+  }, [buildFilteredListMessage]);
+
+  const exportFilteredListMessage = useCallback(() => {
+    try {
+      const message = buildFilteredListMessage();
+      const blob = new Blob([message], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const filenameStatus = (selectedStatus ? formatStatus(selectedStatus) : "assignments")
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+      link.href = url;
+      link.download = `manager-${filenameStatus}-message.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Message exported");
+    } catch {
+      toast.error("Failed to export message");
+    }
+  }, [buildFilteredListMessage, selectedStatus]);
 
   useEffect(() => { if (!user?.id) return; loadClassroomContext(); }, [user]);
   useEffect(() => { if (user?.id) loadBriefing(); }, [user, loadBriefing]);
@@ -441,7 +578,7 @@ const goToSubmissionViewer = (assignment) => {
                 <span className="tch-briefing-stat-value">
                   {briefingSummary?.unassigned ?? statusCounts.UNASSIGNED ?? 0}
                 </span>
-                <span className="tch-briefing-stat-label">Unassigned</span>
+                <span className="tch-briefing-stat-label">Late on manager</span>
               </div>
               <div className="tch-briefing-stat">
                 <span className="tch-briefing-stat-value">
@@ -459,7 +596,7 @@ const goToSubmissionViewer = (assignment) => {
                 <span className="tch-briefing-stat-value">
                   {briefingSummary?.failedDeadline ?? statusCounts.FAILED_DEADLINE ?? 0}
                 </span>
-                <span className="tch-briefing-stat-label">Failed deadline</span>
+                <span className="tch-briefing-stat-label">Late on assistant</span>
               </div>
               <div className="tch-briefing-stat">
                 <span className="tch-briefing-stat-value">
@@ -527,7 +664,8 @@ const goToSubmissionViewer = (assignment) => {
         {DASHBOARD_STATUSES.map((status, i) => {
           const meta = STATUS_META[status];
           const isActive = selectedStatus === status;
-          const count = statusCounts[status] || 0;
+          const count =
+            status === "LATE" ? statusCounts.FAILED_DEADLINE || 0 : statusCounts[status] || 0;
           return (
             <button
               key={status}
@@ -630,7 +768,29 @@ const goToSubmissionViewer = (assignment) => {
                 <div className="md-section-title-wrap">
                   <span className="md-section-dot" style={{ background: STATUS_META[selectedStatus]?.accent }} />
                   <h2 className="md-section-title">{formatStatus(selectedStatus)}</h2>
-                  <span className="md-section-count">{statusCounts[selectedStatus] || 0}</span>
+                  <span className="md-section-count">
+                    {(selectedStatus === "LATE" ? statusCounts.FAILED_DEADLINE : statusCounts[selectedStatus]) || 0}
+                  </span>
+                </div>
+                <div className="md-section-actions">
+                  <button
+                    type="button"
+                    className="md-export-btn"
+                    onClick={copyFilteredListMessage}
+                    disabled={loading || contextLoading}
+                  >
+                    <FiCopy size={14} />
+                    Copy as message
+                  </button>
+                  <button
+                    type="button"
+                    className="md-export-btn md-export-btn--ghost"
+                    onClick={exportFilteredListMessage}
+                    disabled={loading || contextLoading}
+                  >
+                    <FiDownload size={14} />
+                    Export message
+                  </button>
                 </div>
               </div>
 
@@ -690,7 +850,7 @@ const goToSubmissionViewer = (assignment) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {assignments
+                      {visibleAssignments
                         .map((a) => {
                           const related = delegations.filter((d) => d.assignmentId === a._id || d.assignmentId?._id === a._id);
                           const assistants = related.filter((d) => d.role === "assistant");
@@ -716,7 +876,38 @@ const goToSubmissionViewer = (assignment) => {
 
                                 <td data-label="Classroom"><span className="md-cell-primary">{a.classroomName}</span></td>
                                 <td data-label="Teacher"><span className="md-cell-muted">{a.teacherName}</span></td>
-                                <td data-label="Assignment"><span className="md-cell-title">{a.title}</span></td>
+                                <td data-label="Assignment">
+                                  <span
+                                    className={`md-cell-title ${
+                                      selectedStatus === "FAILED_DEADLINE" || selectedStatus === "LATE"
+                                        ? "md-cell-title--clickable"
+                                        : ""
+                                    }`}
+                                    onClick={
+                                      selectedStatus === "FAILED_DEADLINE" || selectedStatus === "LATE"
+                                        ? () => goToSubmissionViewer(a)
+                                        : undefined
+                                    }
+                                    role={
+                                      selectedStatus === "FAILED_DEADLINE" || selectedStatus === "LATE"
+                                        ? "button"
+                                        : undefined
+                                    }
+                                    tabIndex={selectedStatus === "FAILED_DEADLINE" || selectedStatus === "LATE" ? 0 : undefined}
+                                    onKeyDown={
+                                      selectedStatus === "FAILED_DEADLINE" || selectedStatus === "LATE"
+                                        ? (e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                              e.preventDefault();
+                                              goToSubmissionViewer(a);
+                                            }
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    {a.title}
+                                  </span>
+                                </td>
 
                                 <td data-label="Assistant(s)">
                                   {assistants.length ? (
@@ -749,7 +940,7 @@ const goToSubmissionViewer = (assignment) => {
                                 <td data-label="Action">
                                   {(() => {
                                     const isInitialAssign = selectedStatus === "UNASSIGNED" && !assistants.length;
-                                    const canManage = ["ASSIGNED","FAILED_DEADLINE","IN_REVIEW","RECHECK_BY_ASSISTANT"].includes(selectedStatus);
+                                    const canManage = ["ASSIGNED","FAILED_DEADLINE","LATE","IN_REVIEW","RECHECK_BY_ASSISTANT"].includes(selectedStatus);
 
                                     if (isInitialAssign) {
                                       if (!hasSubjectAssistants) return renderAssistantUnavailable(a._id);
@@ -899,7 +1090,7 @@ const goToSubmissionViewer = (assignment) => {
             <FiBookOpen size={28} />
           </div>
           <h3>Select a status above</h3>
-          <p>Choose Unassigned, Assigned, Failed Deadline, or Done to view and manage assignments.</p>
+          <p>Choose Late on manager, In progress, Late on assistant, or Late to view and manage assignments.</p>
         </div>
       )}
 

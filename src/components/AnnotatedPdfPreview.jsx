@@ -6,6 +6,7 @@ import {
   FiZoomOut,
   FiMaximize2,
   FiMinimize2,
+  FiExternalLink,
 } from "react-icons/fi";
 import "../utils/uint8ArrayToHexPolyfill";
 // Legacy build includes browser polyfills (e.g. Uint8Array#toHex) so PDF preview
@@ -302,6 +303,7 @@ export default function AnnotatedPdfPreview({
   onPlacementChange = null,
   onQuestionRemove = null,
   labelGuidance = "",
+  openExternalLabel = "Open in browser",
 }) {
   const rootRef = useRef(null);
   const scrollRef = useRef(null);
@@ -783,6 +785,11 @@ export default function AnnotatedPdfPreview({
     }
   };
 
+  const openExternal = useCallback(() => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [url]);
+
   const handlePreviewWheel = useCallback((e) => {
     const wantsZoom = e.ctrlKey || e.metaKey || e.altKey;
     if (!wantsZoom) return;
@@ -964,6 +971,16 @@ export default function AnnotatedPdfPreview({
         </div>
 
         <div className="pdf-preview-toolbar-section pdf-preview-toolbar-section--actions">
+          <button
+            type="button"
+            className="pdf-preview-tool-btn pdf-preview-tool-btn--text"
+            onClick={openExternal}
+            title="Open this PDF in the browser so extensions like Kami can use it"
+            aria-label={openExternalLabel}
+          >
+            <FiExternalLink size={14} />
+            {openExternalLabel}
+          </button>
           <div className="pdf-preview-fit-menu" ref={fitMenuRef}>
             <button
               type="button"

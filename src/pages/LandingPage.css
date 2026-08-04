@@ -257,6 +257,17 @@ html, body {
   width: 100%;
 }
 
+.landing-footer-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.landing-footer-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
 @media (min-width: 821px) {
   .landing-container {
     height: 100vh;

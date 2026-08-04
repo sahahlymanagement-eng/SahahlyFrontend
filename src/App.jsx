@@ -27,7 +27,7 @@ import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
 import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
 import ManagerDrPeter from "./pages/manager/ManagerDrPeter";
 import Login from "./pages/Login";
-import LandingPage from "./pages/LandingPage";
+import PrivacySecurityPolicy from "./pages/PrivacySecurityPolicy";
 import ForgotPassword from "./pages/ForgotPassword";
 import SetupPassword from "./pages/SetupPassword";
 import AssistantDashboard from "./pages/assistant/Dashboard";
@@ -37,7 +37,6 @@ import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerDelegations from "./pages/manager/ManagerDelegations";
 // import TeacherManager from "./pages/director/TeacherManager";
 import TeacherManager from "./pages/director/TeacherCreation";
-import ClassroomTeacherManager from "./pages/ClassroomTeacherManager";
 import QualityTeamDashboard from "./pages/quality team/QualityTeamDashboard";
 import QualityManagerDashboard from "./pages/quality manager/QualityManagerDashboard";
 import DirectorDashboard from "./pages/director/DirectorDashboard";
@@ -45,7 +44,6 @@ import DirectorPeople from "./pages/director/DirectorPeople";
 import DirectorLayout from "./pages/director/DirectorLayout";
 import DirectorSubjects from "./pages/director/DirectorSubjects";
 import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
-import DirectorQualityManagers from "./pages/director/DirectorQualityManagers";
 import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegations";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
@@ -125,7 +123,9 @@ function App() {
       <ThemedToaster />
       <Routes>
         
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/privacy-security" element={<PrivacySecurityPolicy />} />
+        <Route path="/privacy" element={<Navigate to="/privacy-security" replace />} />
         <Route path="/googleConnectTest" element={<GoogleConnectTest />} />
 
         <Route path="/assignment-test" element={<AssignmentFetchTest />} />
@@ -310,7 +310,6 @@ function App() {
           <Route path="people" element={<DirectorPeople/>}/>
           <Route path="ClassroomManagers" element={<DirectorClassroomManagers/>}/>
           <Route path="classroommanagers" element={<DirectorClassroomManagers/>}/>
-          <Route path="quality-managers" element={<DirectorQualityManagers/>}/> 
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
@@ -323,7 +322,6 @@ function App() {
             element={<Navigate to="/director/insights" replace />}
           />
           <Route path="manage-teachers" element={<TeacherManager />} />
-          <Route path="manage-classroom-teachers" element={<ClassroomTeacherManager />} />
           <Route path="google-accounts" element={<DirectorGoogleAccount />} />
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />

@@ -470,3 +470,47 @@ text-align:center;
   width:min(320px, calc(100vw - 32px)) !important;
   }
 }
+
+/* ================= FILTERS (Director People) ================= */
+.peopleFilters{
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-bottom:18px;
+}
+
+.peopleFilter{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:220px;
+}
+
+.peopleFilter label{
+  font-size:13px;
+  opacity:.7;
+}
+
+.peopleFilter select{
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  padding:10px 12px;
+  border-radius:8px;
+  color:var(--text-primary);
+  outline:none;
+}
+
+/* ================= Read-only Subjects block ================= */
+.subjectsReadonlyPanel{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.subjectsReadonlyLabel{
+  font-size:12px;
+  font-weight:800;
+  opacity:.75;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+}

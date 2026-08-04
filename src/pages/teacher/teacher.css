@@ -251,6 +251,7 @@
 .tch-stat-icon--cyan   { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
 .tch-stat-icon--green  { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
 .tch-stat-icon--violet { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.tch-stat-icon--orange { background: color-mix(in srgb, #E59A2A 16%, transparent); color: #E59A2A; }
 
 .tch-stat-value {
   font-family: 'Outfit', sans-serif;
@@ -1203,7 +1204,7 @@
   animation: tch-spin 0.7s linear infinite;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .tch-page {
     padding: 20px 16px 72px;
   }

@@ -21,11 +21,16 @@ function formatNum(n) {
 }
 
 export default function DirectorAssistantPerformance() {
+  const DETAIL_TEACHERS_PAGE_SIZE = 20;
+  const DETAIL_CLASSROOMS_PAGE_SIZE = 10;
   const [assistants, setAssistants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailTab, setDetailTab] = useState("overview");
+  const [detailTeachersPage, setDetailTeachersPage] = useState(1);
+  const [detailClassroomsPage, setDetailClassroomsPage] = useState(1);
 
   useEffect(() => {
     loadData();
@@ -48,6 +53,9 @@ export default function DirectorAssistantPerformance() {
 
   const openDetail = async (personId) => {
     try {
+      setDetailTab("overview");
+      setDetailTeachersPage(1);
+      setDetailClassroomsPage(1);
       setDetailLoading(true);
       const res = await api.get("/director/assistant-performance/detail", {
         params: { personId },
@@ -62,7 +70,12 @@ export default function DirectorAssistantPerformance() {
     }
   };
 
-  const closeDetail = () => setDetail(null);
+  const closeDetail = () => {
+    setDetail(null);
+    setDetailTab("overview");
+    setDetailTeachersPage(1);
+    setDetailClassroomsPage(1);
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -88,6 +101,25 @@ export default function DirectorAssistantPerformance() {
       { papers: 0, onTime: 0, missed: 0, pending: 0 }
     );
   }, [filtered]);
+
+  const detailTeachers = detail?.assistant?.teachers || [];
+  const detailClassrooms = detail?.assistant?.classrooms || [];
+  const detailTeacherTotalPages = Math.max(
+    1,
+    Math.ceil(detailTeachers.length / DETAIL_TEACHERS_PAGE_SIZE)
+  );
+  const detailClassroomTotalPages = Math.max(
+    1,
+    Math.ceil(detailClassrooms.length / DETAIL_CLASSROOMS_PAGE_SIZE)
+  );
+  const visibleDetailTeachers = detailTeachers.slice(
+    (detailTeachersPage - 1) * DETAIL_TEACHERS_PAGE_SIZE,
+    detailTeachersPage * DETAIL_TEACHERS_PAGE_SIZE
+  );
+  const visibleDetailClassrooms = detailClassrooms.slice(
+    (detailClassroomsPage - 1) * DETAIL_CLASSROOMS_PAGE_SIZE,
+    detailClassroomsPage * DETAIL_CLASSROOMS_PAGE_SIZE
+  );
 
   return (
     <div className="dap-page">
@@ -244,56 +276,94 @@ export default function DirectorAssistantPerformance() {
                   </div>
                 )}
 
-                <div className="ast-perf-grid">
-                  <MetricCard
-                    icon={<FiFileText />}
-                    label="Papers corrected"
-                    value={formatNum(detail.assistant.papersCorrected)}
-                  />
-                  <MetricCard
-                    icon={<FiCpu />}
-                    label="Tokens used"
-                    value={formatNum(detail.assistant.tokenUsage?.totalTokens)}
-                  />
-                  <MetricCard
-                    icon={<FiBookOpen />}
-                    label="Classrooms"
-                    value={formatNum(detail.assistant.summary?.classroomCount)}
-                  />
-                  <MetricCard
-                    icon={<FiCheckCircle />}
-                    label="On time"
-                    value={formatNum(detail.assistant.summary?.onTime)}
-                    tone="good"
-                  />
-                  <MetricCard
-                    icon={<FiAlertTriangle />}
-                    label="Passed deadline"
-                    value={formatNum(detail.assistant.summary?.missedDeadline)}
-                    tone="warn"
-                  />
-                  <MetricCard
-                    icon={<FiClock />}
-                    label="In progress"
-                    value={formatNum(detail.assistant.summary?.pending)}
-                  />
+                <div className="dap-detail-tabs">
+                  <button
+                    type="button"
+                    className={`dap-detail-tab${detailTab === "overview" ? " dap-detail-tab--active" : ""}`}
+                    onClick={() => setDetailTab("overview")}
+                  >
+                    Overview
+                  </button>
+                  <button
+                    type="button"
+                    className={`dap-detail-tab${detailTab === "teachers" ? " dap-detail-tab--active" : ""}`}
+                    onClick={() => setDetailTab("teachers")}
+                  >
+                    Teachers ({detailTeachers.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`dap-detail-tab${detailTab === "classrooms" ? " dap-detail-tab--active" : ""}`}
+                    onClick={() => setDetailTab("classrooms")}
+                  >
+                    Classrooms ({detailClassrooms.length})
+                  </button>
                 </div>
 
-                {(detail.assistant.teachers || []).length > 0 && (
+                {detailTab === "overview" && (
+                  <div className="ast-perf-grid">
+                    <MetricCard
+                      icon={<FiFileText />}
+                      label="Papers corrected"
+                      value={formatNum(detail.assistant.papersCorrected)}
+                    />
+                    <MetricCard
+                      icon={<FiCpu />}
+                      label="Tokens used"
+                      value={formatNum(detail.assistant.tokenUsage?.totalTokens)}
+                    />
+                    <MetricCard
+                      icon={<FiBookOpen />}
+                      label="Classrooms"
+                      value={formatNum(detail.assistant.summary?.classroomCount)}
+                    />
+                    <MetricCard
+                      icon={<FiCheckCircle />}
+                      label="On time"
+                      value={formatNum(detail.assistant.summary?.onTime)}
+                      tone="good"
+                    />
+                    <MetricCard
+                      icon={<FiAlertTriangle />}
+                      label="Passed deadline"
+                      value={formatNum(detail.assistant.summary?.missedDeadline)}
+                      tone="warn"
+                    />
+                    <MetricCard
+                      icon={<FiClock />}
+                      label="In progress"
+                      value={formatNum(detail.assistant.summary?.pending)}
+                    />
+                  </div>
+                )}
+
+                {detailTab === "teachers" && detailTeachers.length > 0 && (
                   <section className="ast-perf-section">
-                    <h2>Teachers ({detail.assistant.teachers.length})</h2>
+                    <h2>Teachers ({detailTeachers.length})</h2>
                     <div className="ast-perf-chip-list">
-                      {detail.assistant.teachers.map((t) => (
+                      {visibleDetailTeachers.map((t) => (
                         <span key={t.id} className="ast-perf-chip">
                           {t.name}
                           {t.email ? ` · ${t.email}` : ""}
+                          {` · ${formatNum(t.papersCorrected)} papers · ${t.submissionPercent || 0}%`}
                         </span>
                       ))}
                     </div>
+                    <InlinePager
+                      page={detailTeachersPage}
+                      totalPages={detailTeacherTotalPages}
+                      onChange={setDetailTeachersPage}
+                    />
                   </section>
                 )}
 
-                {(detail.assistant.classrooms || []).length > 0 && (
+                {detailTab === "teachers" && detailTeachers.length === 0 && (
+                  <section className="ast-perf-section">
+                    <p className="dap-loading">No teachers linked yet.</p>
+                  </section>
+                )}
+
+                {detailTab === "classrooms" && detailClassrooms.length > 0 && (
                   <section className="ast-perf-section">
                     <h2>By classroom</h2>
                     <div className="ast-table-card">
@@ -305,13 +375,14 @@ export default function DirectorAssistantPerformance() {
                               <th>Teacher</th>
                               <th>Assignments</th>
                               <th>Papers</th>
+                              <th>% of submissions</th>
                               <th>On time</th>
                               <th>Passed deadline</th>
                               <th>In progress</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {detail.assistant.classrooms.map((c) => (
+                            {visibleDetailClassrooms.map((c) => (
                               <tr key={c.classroomId}>
                                 <td data-label="Classroom">
                                   <strong>{c.classroomName}</strong>
@@ -322,6 +393,7 @@ export default function DirectorAssistantPerformance() {
                                 <td data-label="Teacher">{c.teacherName}</td>
                                 <td data-label="Assignments">{c.totalAssignments}</td>
                                 <td data-label="Papers">{formatNum(c.papersCorrected)}</td>
+                                <td data-label="% of submissions">{c.submissionPercent || 0}%</td>
                                 <td className="ast-perf-good" data-label="On time">{c.onTime}</td>
                                 <td className="ast-perf-warn" data-label="Passed deadline">{c.missedDeadline}</td>
                                 <td data-label="In progress">{c.pending}</td>
@@ -331,6 +403,17 @@ export default function DirectorAssistantPerformance() {
                         </table>
                       </div>
                     </div>
+                    <InlinePager
+                      page={detailClassroomsPage}
+                      totalPages={detailClassroomTotalPages}
+                      onChange={setDetailClassroomsPage}
+                    />
+                  </section>
+                )}
+
+                {detailTab === "classrooms" && detailClassrooms.length === 0 && (
+                  <section className="ast-perf-section">
+                    <p className="dap-loading">No classroom data yet.</p>
                   </section>
                 )}
               </div>
@@ -362,6 +445,27 @@ function MetricCard({ icon, label, value, tone }) {
         <span>{label}</span>
       </div>
       <div className="ast-perf-card-value">{value}</div>
+    </div>
+  );
+}
+
+function InlinePager({ page, totalPages, onChange }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="dap-inline-pager">
+      <button type="button" onClick={() => onChange(Math.max(1, page - 1))} disabled={page <= 1}>
+        Previous
+      </button>
+      <span>
+        Page {page} of {totalPages}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(totalPages, page + 1))}
+        disabled={page >= totalPages}
+      >
+        Next
+      </button>
     </div>
   );
 }

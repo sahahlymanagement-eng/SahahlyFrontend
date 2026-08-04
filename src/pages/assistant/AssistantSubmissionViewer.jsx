@@ -262,6 +262,9 @@ export default function AssignmentSubmissionViewer() {
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+  const [editingOutOfScopeNotes, setEditingOutOfScopeNotes] = useState(() =>
+    resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
+  );
 
   const editHistory = useMarkingEditHistory({
     questions: editingQuestions,
@@ -657,6 +660,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     resolvePdfSummary,
     pendingRemovedIndices,
     editingCriteriaGrade,
+    outOfScopeNotesOverride: editingOutOfScopeNotes,
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -675,11 +679,17 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     }
   }, [editingQuestions]);
 
+  const handleOutOfScopeNoteRemove = useCallback((noteIndex) => {
+    setEditingOutOfScopeNotes((prev) => prev.filter((_, i) => i !== noteIndex));
+    toast.info("Out-of-scope note will be removed when you confirm edits");
+  }, []);
+
   const resultModalSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
 
   useEffect(() => {
     setPendingRemovedIndices(new Set());
+    setEditingOutOfScopeNotes(resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []);
   }, [resultModalSubmissionId]);
 
   const questionsForDisplay = useMemo(() => {
@@ -2626,35 +2636,7 @@ return (
     </button>
   )}
 
-              {/* Mark All */}
-              {msInfo  && (
-                <button
-                  className="msv-btn-ai"
-                  onClick={() => openGuidanceModal(null, false)}
-                  disabled={bulkMarking || bulkLocked}
-                  title={bulkLocked ? "This action can only be run once per assignment" : ""}
-                  style={{
-                    opacity: bulkLocked ? 0.4 : 1,
-                    cursor: bulkLocked ? "not-allowed" : "pointer"
-                  }}
-                >
-                {bulkMarking ? <><span className="pm-spinner" /> Marking…</> : <><FiCpu size={13} /> {markingActionLabel("Mark All Students", "Mark Selected", markingSelection.selectedCount)}</>}
-                </button>
-              )}
-              {msInfo && bulkMarking && (
-                <button
-                  className="msv-btn-ai"
-                  onClick={stopBulkMark}
-                  style={{
-                    marginLeft: 10,
-                    background: "var(--danger)",
-                    borderColor: "var(--danger)",
-                    color: "#fff",
-                  }}
-                >
-                  <FiX size={13} /> Stop
-                </button>
-              )}
+              {/* Non-batch "Mark All Students" removed — keep only batch marking */}
 
               {/* Return All */}
               {!bulkMarking && (msInfo || hasGradedWork) && (
@@ -3812,6 +3794,64 @@ return (
                       result={resultModal?.result}
                       questionCount={questionsForDisplay.length}
                     />
+
+                    {Array.isArray(editingOutOfScopeNotes) && editingOutOfScopeNotes.length > 0 && (
+                      <div
+                        style={{
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 12,
+                          background: "var(--surface)",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "var(--text-secondary)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            marginBottom: 8,
+                          }}
+                        >
+                          Out-of-scope notes (Not included in your assignment)
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {editingOutOfScopeNotes.map((note, idx) => (
+                            <div
+                              key={`${idx}-${String(note?.label || "")}`}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 10,
+                              }}
+                            >
+                              <div style={{ fontSize: 13, color: "var(--text-primary)" }}>
+                                {note?.label || "Not included in your assignment"}
+                              </div>
+                              <button
+                                type="button"
+                                className="msv-icon-btn"
+                                onClick={() => handleOutOfScopeNoteRemove(idx)}
+                                title="Remove note on confirm edits"
+                                style={{
+                                  border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
+                                  background: "transparent",
+                                  color: "var(--danger)",
+                                  borderRadius: 10,
+                                  padding: "6px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <AddMarkingQuestionBar
                       onAdd={(q) => {
                         setEditingQuestions((prev) => [...prev, q]);

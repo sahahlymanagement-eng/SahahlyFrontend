@@ -84,6 +84,20 @@ export async function getApiErrorMessage(err) {
 
   const data = err?.response?.data;
 
+  // Multer file upload limit errors surface a raw message like:
+  // "Total file size exceeds the limit of 50MB".
+  // Replace it so prompt-generation/upload UI doesn't show that hard error string.
+  const directMsg = String(
+    err?.message ||
+      data?.message ||
+      data?.error ||
+      data?.errors?.[0]?.message ||
+      ""
+  );
+  if (/total file size exceeds the limit of\s*50\s*mb/i.test(directMsg)) {
+    return "Selected files are too large for AI marking (max 50MB total). Please upload fewer submissions or smaller PDFs.";
+  }
+
   if (data instanceof Blob) {
 
     try {
@@ -112,7 +126,12 @@ export async function getApiErrorMessage(err) {
 
   if (data && typeof data === "object") {
     const msg = data.message || data.error;
-    if (msg) return formatGoogleOAuthError(msg);
+    if (msg) {
+      if (/total file size exceeds the limit of\s*50\s*mb/i.test(String(msg))) {
+        return "Selected files are too large for AI marking (max 50MB total). Please upload fewer submissions or smaller PDFs.";
+      }
+      return formatGoogleOAuthError(msg);
+    }
   }
 
   return formatGoogleOAuthError(err?.message) || err?.message || "Request failed";
@@ -269,6 +288,32 @@ export function resolveTotalMarksFromResult(result) {
     result.totalMarks ??
     null;
   return stored != null ? Number(stored) : null;
+}
+
+export function totalMarksMismatchInfo(result) {
+  if (!result) return null;
+
+  const questions = Array.isArray(result.questions)
+    ? result.questions
+    : Array.isArray(result.criteriaGrade?.breakdown)
+      ? result.criteriaGrade.breakdown
+      : null;
+
+  if (!questions?.length) return null;
+
+  const paperTotal = sumQuestionMarks(questions);
+  const coverRaw = result.criteriaGrade?.totalMarks ?? result.totalMarks;
+  if (coverRaw == null || coverRaw === "") return null;
+
+  const coverTotal = Number(coverRaw);
+  if (!Number.isFinite(coverTotal)) return null;
+  if (coverTotal === paperTotal) return null;
+
+  return {
+    coverTotal,
+    paperTotal,
+    message: `Cover page total ${coverTotal} does not match paper total ${paperTotal}`,
+  };
 }
 
 /** Grade for a saved MarkingResult row (DB totalMarks + nested result). */

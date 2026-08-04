@@ -147,6 +147,7 @@ export default function AssistantPerformance() {
                   <span key={t.id} className="ast-perf-chip">
                     {t.name}
                     {t.email ? ` · ${t.email}` : ""}
+                    {` · ${formatNum(t.papersCorrected)} papers · ${t.submissionPercent || 0}%`}
                   </span>
                 ))}
               </div>
@@ -167,6 +168,7 @@ export default function AssistantPerformance() {
                         <th>Teacher</th>
                         <th>Assignments</th>
                         <th>Papers corrected</th>
+                        <th>% of submissions</th>
                         <th>On time</th>
                         <th>Passed deadline</th>
                         <th>In progress</th>
@@ -184,6 +186,7 @@ export default function AssistantPerformance() {
                           <td data-label="Teacher">{c.teacherName}</td>
                           <td data-label="Assignments">{c.totalAssignments}</td>
                           <td data-label="Papers corrected">{formatNum(c.papersCorrected)}</td>
+                          <td data-label="% of submissions">{c.submissionPercent || 0}%</td>
                           <td className="ast-perf-good" data-label="On time">{c.onTime}</td>
                           <td className="ast-perf-warn" data-label="Passed deadline">{c.missedDeadline}</td>
                           <td data-label="In progress">{c.pending}</td>

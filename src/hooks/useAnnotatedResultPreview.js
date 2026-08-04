@@ -55,6 +55,7 @@ export function useAnnotatedResultPreview({
   resolvePdfSummary,
   pendingRemovedIndices = null,
   editingCriteriaGrade = null,
+  outOfScopeNotesOverride = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -245,6 +246,23 @@ export function useAnnotatedResultPreview({
     ) {
       return true;
     }
+
+    if (Array.isArray(outOfScopeNotesOverride)) {
+      const sig = (notes) =>
+        (notes || [])
+          .map((n) => {
+            const label = n?.label ?? "";
+            const y = n?.yPercent ?? n?.ypercent ?? "";
+            const q = n?.questionLabel ?? n?.questionNumber ?? "";
+            return `${label}|${y}|${q}`;
+          })
+          .join("~");
+
+      if (sig(outOfScopeNotesOverride) !== sig(confirmedSnapshot.outOfScopeNotes || [])) {
+        return true;
+      }
+    }
+
     const currentSummary = String(editingSummary ?? "").trim();
     const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
     return currentSummary !== confirmedSummary;
@@ -256,6 +274,7 @@ export function useAnnotatedResultPreview({
     effectiveMaxTotal,
     editingMaxTotal,
     editingCriteriaGrade,
+    outOfScopeNotesOverride,
   ]);
 
   const confirmEdits = useCallback(
@@ -280,6 +299,12 @@ export function useAnnotatedResultPreview({
           editingSummary,
           editingCriteriaGrade
         );
+
+        if (Array.isArray(outOfScopeNotesOverride)) {
+          // Allow assistants to delete out-of-scope ("Not included in your assignment")
+          // entries in the preview before confirming edits.
+          finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
+        }
         const summary =
           finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
         const snapshot = {
@@ -318,6 +343,7 @@ export function useAnnotatedResultPreview({
       effectiveMaxTotal,
       generatePreview,
       editingCriteriaGrade,
+      outOfScopeNotesOverride,
     ]
   );
 

@@ -825,10 +825,10 @@ export default function DirectorReports() {
               <div className="dr-panel-head">
                 <h3>Missing teacher assignment</h3>
                 <Link
-                  to="/director/manage-classroom-teachers"
+                  to="/director/classroommanagers"
                   className="dr-link"
                 >
-                  Assign →
+                  Open Class Manager →
                 </Link>
               </div>
               <DataTable

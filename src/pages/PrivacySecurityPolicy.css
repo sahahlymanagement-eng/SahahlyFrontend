@@ -1,0 +1,252 @@
+.psp-page {
+  position: relative;
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+
+.psp-theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.psp-theme-toggle:hover {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: transparent;
+}
+
+.psp-bg-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  opacity: 0.14;
+}
+
+.psp-bg-orb--1 {
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, var(--primary), transparent 70%);
+  top: -100px;
+  left: -80px;
+}
+
+.psp-bg-orb--2 {
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, #0d9488, transparent 70%);
+  bottom: -80px;
+  right: -60px;
+}
+
+.psp-shell {
+  position: relative;
+  z-index: 1;
+  width: min(820px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 36px 0 64px;
+}
+
+.psp-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.psp-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.psp-back:hover {
+  color: var(--primary);
+}
+
+.psp-logo {
+  width: 150px;
+  height: auto;
+  margin-top: 8px;
+}
+
+.psp-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.psp-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.psp-header h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.psp-updated {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.psp-lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.psp-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.psp-toc a {
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  border-radius: 999px;
+  padding: 8px 12px;
+}
+
+.psp-toc a:hover {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.psp-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px 26px;
+  box-shadow: var(--shadow, 0 10px 30px rgba(0, 0, 0, 0.06));
+}
+
+.psp-section + .psp-section {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft, var(--border));
+}
+
+.psp-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+
+.psp-section h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.psp-section h3 {
+  margin: 18px 0 8px;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.psp-section p,
+.psp-section li {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.psp-section p {
+  margin: 0 0 10px;
+}
+
+.psp-section ul {
+  margin: 0 0 10px;
+  padding-left: 1.2rem;
+}
+
+.psp-section li + li {
+  margin-top: 6px;
+}
+
+.psp-section a {
+  color: var(--primary);
+}
+
+.psp-section--note p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.psp-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 28px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.psp-footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.psp-footer a:hover {
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  .psp-shell {
+    padding-top: 28px;
+  }
+
+  .psp-content {
+    padding: 22px 18px;
+  }
+
+  .psp-title-row {
+    flex-direction: column;
+  }
+}

@@ -8,8 +8,6 @@ import {
 
   FiBook,
 
-  FiShield,
-
   FiLayers,
 
   FiBarChart2,
@@ -18,9 +16,6 @@ import {
 
   FiUserPlus,
   FiUser,
-
-  FiLink,
-
   FiMessageSquare,
 
   FiClipboard,
@@ -60,11 +55,7 @@ const NAV_SECTIONS = [
 
       { icon: <FiLayers />, label: "Classroom Managers", path: "/director/classroommanagers" },
 
-      { icon: <FiShield />, label: "Quality Managers", path: "/director/quality-managers" },
-
       { icon: <FiUserPlus />, label: "Create Teachers", path: "/director/manage-teachers" },
-
-      { icon: <FiLink />, label: "Assign Classroom Teacher", path: "/director/manage-classroom-teachers" },
 
     ],
 
