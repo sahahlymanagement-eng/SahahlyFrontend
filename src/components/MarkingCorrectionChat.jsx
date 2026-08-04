@@ -116,9 +116,22 @@ export default function MarkingCorrectionChat({
       summary,
     });
 
+    // A change naming a question that is not in the result used to no-op in
+    // silence while the summary was still rewritten — leaving a summary that
+    // claimed a new total next to marks that never moved. Say so instead.
+    if (patched.unmatched.length) {
+      toast.warning(
+        `Couldn't match ${patched.unmatched.length === 1 ? "question" : "questions"} ` +
+          `${patched.unmatched.join(", ")} to this result — ` +
+          `${patched.matched ? "the other changes were applied." : "nothing was changed."}`
+      );
+    }
+
     onApplyPatch({
       questions: patched.questions,
-      summary: patched.summary,
+      // Only take the AI's summary when something actually changed; otherwise it
+      // would state a total the marks do not support.
+      summary: patched.matched ? patched.summary : null,
     });
 
     if (pendingCorrection.messageId) {

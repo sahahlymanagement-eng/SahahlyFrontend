@@ -392,23 +392,60 @@ export function createManualQuestion({
   };
 }
 
+/**
+ * Collapse a question label to a comparable key.
+ *
+ * A correction can name a question in a different shape than the result stored
+ * it: the marking model writes "5a" while the correction model copies the
+ * printed label and writes "5(a)". Matching those as raw strings silently
+ * matches nothing, so the correction appears to apply while the mark never
+ * moves. "Q5(a)", "5 (a)", "5a" all collapse to "5a" here.
+ */
+export function questionRefKey(value) {
+  const s = String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!s) return "";
+  return s.startsWith("q") ? s.slice(1) : s;
+}
+
+/**
+ * Apply correction-chat changes to the editing questions.
+ *
+ * Returns `{ questions, summary, matched, unmatched }`. `unmatched` lists the
+ * question numbers a change targeted that exist nowhere in the result — the
+ * caller is expected to surface those rather than let them disappear.
+ */
 export function applyCorrectionPatch(editingQuestions, { changes = [], summary = null } = {}) {
-  const patchMap = new Map(
-    (changes || [])
-      .filter((c) => c?.action !== "add")
-      .map((c) => [String(c.questionNumber), c])
-  );
+  const edits = (changes || []).filter((c) => c?.action !== "add");
+
+  const patchMap = new Map();
+  for (const change of edits) {
+    const key = questionRefKey(change.questionNumber);
+    if (key && !patchMap.has(key)) patchMap.set(key, change);
+  }
+
+  const usedKeys = new Set();
 
   let questions = (editingQuestions || []).map((q) => {
-    const patch = patchMap.get(String(q.questionNumber));
+    // Prefer the stored question number; fall back to the printed label, which
+    // is what the correction model tends to quote.
+    const key = [q.questionNumber, q.printedQuestionNumber]
+      .map(questionRefKey)
+      .find((k) => k && patchMap.has(k));
+
+    const patch = key ? patchMap.get(key) : null;
     if (!patch) return { ...q };
+    usedKeys.add(key);
 
     const next = { ...q };
-    for (const key of CORRECTION_PATCH_FIELDS) {
-      if (patch[key] !== undefined && patch[key] !== null) {
-        next[key] = patch[key];
+    for (const field of CORRECTION_PATCH_FIELDS) {
+      if (patch[field] !== undefined && patch[field] !== null) {
+        next[field] = patch[field];
       }
     }
+    // Never let a correction rename the question — the label is how every other
+    // consumer (annotation placement, dedupe) finds this row.
+    next.questionNumber = q.questionNumber;
+
     const max = Number(next.maxMarks) || 0;
     if (max > 0) {
       next.marksAwarded = Math.min(max, Math.max(0, Number(next.marksAwarded) || 0));
@@ -419,7 +456,8 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
   for (const add of (changes || []).filter((c) => c?.action === "add")) {
     const qNum = String(add.questionNumber || "").trim();
     if (!qNum) continue;
-    if (questions.some((q) => String(q.questionNumber) === qNum)) continue;
+    const key = questionRefKey(qNum);
+    if (questions.some((q) => questionRefKey(q.questionNumber) === key)) continue;
     questions.push(
       createManualQuestion({
         questionNumber: qNum,
@@ -430,12 +468,18 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
     );
   }
 
+  const unmatched = edits
+    .filter((c) => !usedKeys.has(questionRefKey(c.questionNumber)))
+    .map((c) => String(c.questionNumber));
+
   return {
     questions,
     summary:
       summary != null && String(summary).trim()
         ? normalizeMarkingSummaryBullets(summary)
         : null,
+    matched: usedKeys.size,
+    unmatched,
   };
 }
 
@@ -699,6 +743,47 @@ export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, pdfComp
       result.estimatedCostUsd = cost.usd;
       result.estimatedCostEgp = cost.egp;
       result.batchPricing = true;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Enrich a gradingv2 result.
+ *
+ * v2 returns the identical result shape as v1 — that is what lets the annotation
+ * editor, correction chat and grade push work unchanged. The distinct `provider`
+ * value is the only reliable way to tell afterwards which engine produced a
+ * stored result, so keep it distinct.
+ *
+ * `diagnostics` (window count, mark-scheme pages per window, retried windows) is
+ * v2-only and every consumer treats it as optional.
+ */
+export function buildV2MarkingResult(
+  parsed,
+  tokenUsage,
+  geminiModel,
+  { batch = false, pdfCompression = null, diagnostics = null } = {}
+) {
+  const result = {
+    ...parsed,
+    provider: batch ? "gemini-v2-batch" : "gemini-v2",
+    markingEngine: "v2",
+    geminiModel: geminiModel || null,
+    tokenUsage: tokenUsage || null,
+  };
+
+  if (pdfCompression) result.pdfCompression = pdfCompression;
+  if (diagnostics) result.gradingV2Diagnostics = diagnostics;
+
+  if (tokenUsage && geminiModel) {
+    const cost = estimateMarkingCost(geminiModel, tokenUsage, { batch });
+    if (cost) {
+      result.estimatedCost = cost;
+      result.estimatedCostUsd = cost.usd;
+      result.estimatedCostEgp = cost.egp;
+      if (batch) result.batchPricing = true;
     }
   }
 

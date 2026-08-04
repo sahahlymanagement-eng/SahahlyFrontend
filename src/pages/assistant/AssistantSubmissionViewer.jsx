@@ -58,6 +58,7 @@ import {
   applyTeacherEditsToResult,
   buildNoSubmissionMarkingResult,
   buildBatchMarkingResult,
+  buildV2MarkingResult,
   currentUserId,
   getApiErrorMessage,
   formatGoogleOAuthError,
@@ -132,11 +133,15 @@ import {
   setBatchStopped,
   isBatchStopped,
 } from "../../utils/assignmentBatchJobStore";
+import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 
 export default function AssignmentSubmissionViewer() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const assignmentPrompt = useAssignmentMarkingPrompt(assignmentId);
+
+  // gradingv2 is allow-listed until it has been validated against real papers.
+  const canMarkV2 = canUseGradingV2(currentUserId());
 
   const leaveViewer = () => {
     navigate("/assistant/assignments");
@@ -1085,7 +1090,7 @@ window.open(url);
 
     if (jobId) {
       try {
-        await api.delete(`/marking/mark-batch/cancel/${jobId}`);
+        await api.delete(`${engineBasePath(batchJob?.engine)}/mark-batch/cancel/${jobId}`);
         toast.info("Batch marking cancelled");
       } catch (err) {
         toast.warning(extractHumanError(err) || "Batch stop requested — server cancel failed");
@@ -1093,14 +1098,18 @@ window.open(url);
     }
   };
 
-  const openGuidanceModal = (student = null, isBatch = false) => {
+  const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
     if (expectedPages === null) {
       toast.warn("Please set the expected page count for this assignment before marking");
       setShowExpectedPagesEdit(true);
       return;
     }
     setGuidanceModal(
-      isBatch
+      intent === "v2"
+        ? { v2: true, student }
+        : intent === "batchV2"
+        ? { batch: true, engine: "v2" }
+        : isBatch
         ? { batch: true }
         : student
         ? { student }
@@ -1289,6 +1298,140 @@ window.open(url);
 
       toast.error(message);
       toast.error(await getApiErrorMessage(err));
+    } finally {
+      setMarkingStudentId(null);
+    }
+  };
+
+  // ── Single-student marking on gradingv2 ────────────────────────────────────
+  // Uses the live v2 endpoint rather than a one-student batch job, so a re-mark
+  // comes back immediately. The server fetches its own copies from Drive; the
+  // student PDF is pulled here only so the result modal can render annotations.
+  const runMarkStudentV2 = async (student, guidanceText, mode = "normal") => {
+    if (!canMarkV2) {
+      toast.error("You are not allowed to use v2 marking.");
+      return;
+    }
+    const proceed = await confirmPageCounts(pageCheckArgs([student]));
+    if (!proceed) return;
+
+    setMarkingStudentId(student.submissionId);
+    setSingleProgress((prev) => ({
+      ...prev,
+      [student.submissionId]: { status: "marking" },
+    }));
+
+    try {
+      const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
+      if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
+
+      const studentPdfRes = await api.get("/submission-files/pdf", {
+        params: { assignmentId, submissionId: student.submissionId },
+        responseType: "blob",
+      });
+      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
+      const studentFile = new File(
+        [studentPdfRes.data],
+        `${student.name || "student"}.pdf`,
+        { type: "application/pdf" }
+      );
+
+      const { data } = await api.post(
+        "/gradingv2/mark-live",
+        {
+          assignmentId,
+          submissionId: student.submissionId,
+          markingMode: mode,
+          guidance: guidanceForForm(guidanceText),
+          geminiModel: selectedModel,
+          subjectId,
+          ...(maxGrade && { totalGrade: maxGrade }),
+          classroomId,
+        },
+        { timeout: 600_000 }
+      );
+
+      const enrichedResult = buildV2MarkingResult(
+        data.result,
+        data.tokenUsage,
+        data.geminiModel || selectedModel,
+        { batch: false, diagnostics: data.diagnostics }
+      );
+
+      setResultModal({
+        student,
+        result: enrichedResult,
+        originalAiResult: JSON.parse(JSON.stringify(enrichedResult)),
+        studentFile,
+        submissionId: student.submissionId,
+      });
+      setSingleProgress((prev) => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: enrichedResult,
+          studentFile,
+          submissionId: student.submissionId,
+        },
+      }));
+
+      await api.post("/submission-files/save-results", {
+        assignmentId,
+        submissionId: student.submissionId,
+        studentId: student.studentId,
+        studentName: student.name,
+        mode,
+        provider: "gemini-v2",
+        result: enrichedResult,
+      });
+
+      setSavedResults((prev) => ({
+        ...prev,
+        [student.submissionId]: {
+          status: "done",
+          result: enrichedResult,
+          aiOriginalResult: JSON.parse(JSON.stringify(enrichedResult)),
+          totalMarks: resolveTotalMarksFromResult(enrichedResult),
+        },
+      }));
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.submissionId === student.submissionId
+            ? { ...s, assignedGrade: resolveTotalMarksFromResult(enrichedResult) }
+            : s
+        )
+      );
+
+      const diag = data.diagnostics || {};
+      // Windows that no neighbour covered mean the paper is genuinely incomplete,
+      // which matters more than the token count — say so instead of a success toast.
+      if (diag.windowsEmptyAfterRetry > 0) {
+        toast.warning(
+          `v2 marked with gaps — ${diag.windowsEmptyAfterRetry} window(s) returned nothing` +
+            (diag.uncoveredPages?.length ? ` (pages ${diag.uncoveredPages.join(", ")})` : "")
+        );
+      } else {
+        toast.success(`v2 mark complete — ${diag.windowCount ?? "?"} windows`);
+      }
+      if (diag.fullMsFallbacks > 0) {
+        toast.info(
+          `${diag.fullMsFallbacks} window(s) fell back to the full mark scheme — pairing missed those pages.`
+        );
+      }
+
+      setEditingQuestions(prepareEditingQuestions(enrichedResult.questions || []));
+      setEditingAnnotations(getTeacherAnnotations(enrichedResult).map((a) => ({ ...a })));
+    } catch (err) {
+      const message = extractHumanError
+        ? extractHumanError(err)
+        : await getApiErrorMessage(err);
+      recordStudentMarkingError(student.submissionId, message, err.response?.data);
+      setSingleProgress((prev) => ({
+        ...prev,
+        [student.submissionId]: { status: "error" },
+      }));
+      openErrorViewer(`v2 Marking Failed - ${student.name}`, message);
+      toast.error(message);
     } finally {
       setMarkingStudentId(null);
     }
@@ -1570,39 +1713,52 @@ window.open(url);
 
   const checkForActiveJob = async () => {
     if (!assignmentId) return;
-    try {
-      const { data } = await api.get(`/marking/mark-batch/active/${assignmentId}`);
-      if (data.active) {
-        const {
-          jobId,
-          studentOrder,
-          submittedAt,
-          geminiModel: jobModel,
-        } = data.active;
-        const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
-        setBatchStopped(assignmentId, false);
-        patchBatchJob(assignmentId, {
-          phase: "processing",
-          jobId,
-          total: studentOrder?.length || 0,
-          submittedAt,
-          skipped: {},
-          results: {},
-          mode: "normal",
-          geminiModel: restoredModel,
-          batchStudents: studentOrder || [],
-        });
-        pollBatchJob(jobId, {
-          assignmentId,
-          mode: "normal",
-          geminiModel: restoredModel,
-          batchStudents: studentOrder || [],
-        });
-      } else if (batchJob?.phase === "processing") {
-        patchBatchJob(assignmentId, null);
+
+    // A job could belong to either engine, and they use separate collections,
+    // so ask both. v1 is checked first because it is still the default.
+    const engines = canMarkV2 ? ["v1", "v2"] : ["v1"];
+
+    for (const engine of engines) {
+      let data;
+      try {
+        ({ data } = await api.get(`${engineBasePath(engine)}/mark-batch/active/${assignmentId}`));
+      } catch (err) {
+        console.error(`checkForActiveJob (${engine}):`, err.message);
+        continue;
       }
-    } catch (err) {
-      console.error("checkForActiveJob:", err.message);
+      if (!data?.active) continue;
+
+      // v1 returns the job under `active`; v2 returns it flat.
+      const job = typeof data.active === "object" ? data.active : data;
+      const { jobId, studentOrder, submittedAt, geminiModel: jobModel } = job;
+      const restoredModel = pickValidGeminiModel(geminiModels, jobModel || geminiModel);
+      const restoredMode = job.markingMode || job.mode || "normal";
+
+      setBatchStopped(assignmentId, false);
+      patchBatchJob(assignmentId, {
+        phase: "processing",
+        jobId,
+        total: studentOrder?.length || job.count || 0,
+        submittedAt,
+        skipped: {},
+        results: {},
+        mode: restoredMode,
+        engine,
+        geminiModel: restoredModel,
+        batchStudents: studentOrder || [],
+      });
+      pollBatchJob(jobId, {
+        assignmentId,
+        mode: restoredMode,
+        engine,
+        geminiModel: restoredModel,
+        batchStudents: studentOrder || [],
+      });
+      return;
+    }
+
+    if (batchJob?.phase === "processing") {
+      patchBatchJob(assignmentId, null);
     }
   };
 
@@ -1622,10 +1778,13 @@ window.open(url);
     // live, since this runs inside a long-lived interval.
     const isViewingThisAssignment = () => assignId === pollCtxRef.current.assignmentId;
 
+    const jobEngine = jobMeta.engine || "v1";
+    const jobBase = engineBasePath(jobEngine);
+
     const doPoll = async () => {
       if (isBatchStopped(assignId)) return;
       try {
-        const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
+        const { data } = await api.get(`${jobBase}/mark-batch/status/${jobId}`);
 
         if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
@@ -1647,9 +1806,15 @@ window.open(url);
         const resultMap = {};
         const saveMode = jobMeta.mode || "normal";
         const modelForResult = jobMeta.geminiModel || geminiModel;
-        for (const { student, result, success, error, tokenUsage, compression } of data.results) {
+        for (const { student, result, success, error, tokenUsage, compression, diagnostics } of data.results) {
           const enrichedResult = success
-            ? buildBatchMarkingResult(result, tokenUsage, modelForResult, compression)
+            ? isV2(jobEngine)
+              ? buildV2MarkingResult(result, tokenUsage, modelForResult, {
+                  batch: true,
+                  pdfCompression: compression,
+                  diagnostics,
+                })
+              : buildBatchMarkingResult(result, tokenUsage, modelForResult, compression)
             : null;
           const originalAiResult = enrichedResult
             ? JSON.parse(JSON.stringify(enrichedResult))
@@ -1684,9 +1849,10 @@ window.open(url);
               assignmentId: assignId,
               submissionId: student.submissionId,
               studentId: student.studentId,
-              studentName: student.name,
+              // v2 returns studentName; v1 returns name.
+              studentName: student.name || student.studentName,
               mode: saveMode,
-              provider: "gemini-batch",
+              provider: isV2(jobEngine) ? "gemini-v2-batch" : "gemini-batch",
               result: enrichedResult,
             }).catch((e) => console.error("save-results:", e.message));
           }
@@ -1715,7 +1881,8 @@ window.open(url);
     registerBatchPoll(jobId, setInterval(doPoll, 15_000));
   };
 
-  const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null) => {
+  const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null, engine = "v1") => {
+    const base = engineBasePath(engine);
     const selectedModel = pickValidGeminiModel(
       geminiModels,
       modelOverride || geminiModel
@@ -1748,6 +1915,7 @@ window.open(url);
       skipped: {},
       results: {},
       mode,
+      engine,
       geminiModel: selectedModel,
       batchStudents: eligible.map((s) => ({
         submissionId: s.submissionId,
@@ -1756,17 +1924,23 @@ window.open(url);
       })),
     });
 
-    let msUri, succeeded, failed;
+    // v2 additionally indexes the mark scheme, windows each script, and uploads
+    // every mark-scheme page separately, so this step takes longer and returns
+    // msPageUris alongside the whole-scheme msUri.
+    let msUri, msPageUris, succeeded, failed;
     try {
-      const res = await api.post("/marking/mark-batch/upload", {
+      const res = await api.post(`${base}/mark-batch/upload`, {
         assignmentId,
+        markingMode: mode,
         students: eligible.map((s) => ({
           submissionId: s.submissionId,
           studentId: s.studentId,
           name: s.name,
+          studentName: s.name,   // v2 reads studentName; v1 ignores it
+          state: s.state,
         })),
-      });
-      ({ msUri, succeeded, failed } = res.data);
+      }, isV2(engine) ? { timeout: 900_000 } : undefined);
+      ({ msUri, msPageUris, succeeded, failed } = res.data);
     } catch (err) {
       const message = recordMarkingErrorsForStudents(
         eligible,
@@ -1822,12 +1996,15 @@ window.open(url);
       subjectId,
       ...(maxGrade && { totalGrade: maxGrade }),
       classroomId,
+      // v2 only: per-page mark-scheme URIs, so each window references just the
+      // scheme pages it needs instead of the whole document.
+      ...(msPageUris ? { msPageUris } : {}),
     };
 
     const submitResult = await runWithMarkingRetries({
       execute: async () => {
         try {
-          const res = await api.post("/marking/mark-batch/submit", submitPayload);
+          const res = await api.post(`${base}/mark-batch/submit`, submitPayload);
           return { jobId: res.data.jobId, resumed: false };
         } catch (err) {
           if (err.response?.status === 409) {
@@ -1872,6 +2049,7 @@ window.open(url);
     pollBatchJob(jobId, {
       assignmentId,
       mode,
+      engine,
       geminiModel: selectedModel,
       batchStudents: succeeded.map((r) => r.student),
     });
@@ -1890,8 +2068,12 @@ window.open(url);
       setGuidanceModal(null);
       runBulkMark(g, mode, provider);
     } else if (guidanceModal.batch) {
+      const engine = guidanceModal.engine || "v1";
       setGuidanceModal(null);
-      runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel));
+      runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel), engine);
+    } else if (guidanceModal.v2) {
+      setGuidanceModal(null);
+      runMarkStudentV2(guidanceModal.student, g, mode);
     } else {
       setGuidanceModal(null);
       runMarkStudent(guidanceModal.student, g, mode, provider);
@@ -2514,6 +2696,7 @@ return (
                         pollBatchJob(batchJob.jobId, {
                           assignmentId,
                           mode: batchJob.mode,
+                          engine: batchJob.engine,
                           geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                           batchStudents: batchJob.batchStudents,
                         });
@@ -2524,12 +2707,27 @@ return (
                     disabled={bulkMarking || batchStarting}
                     style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                   >
-                    {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> Uploading…</>}
+                    {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> {isV2(batchJob.engine) ? "Indexing + uploading…" : "Uploading…"}</>}
                     {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
-                    {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
+                    {batchJob?.phase === "processing" && <><span className="pm-spinner" /> {isV2(batchJob.engine) ? "Batch v2 running… (tap to check)" : "Batch running… (tap to check)"}</>}
                     {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
                     {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
                   </button>
+
+                  {/* BATCH MARKING — gradingv2 (allow-listed while unvalidated).
+                      Hidden while a job is running so the two engines cannot be
+                      started against the same assignment at once. */}
+                  {canMarkV2 && (!batchJob || batchJob.phase === "done" || batchJob.phase === "error") && (
+                    <button
+                      className="msv-btn-ai"
+                      onClick={() => openGuidanceModal(null, false, "batchV2")}
+                      disabled={bulkMarking || batchStarting}
+                      title="Mark the class with gradingv2 — overlapping 2-page windows, paired mark-scheme pages"
+                      style={{ background: "var(--accent, #7c3aed)", borderColor: "var(--accent, #7c3aed)", color: "#fff" }}
+                    >
+                      <FiLayers size={13} /> {markingActionLabel("Mark All (v2)", "Mark Selected (v2)", markingSelection.selectedCount)}
+                    </button>
+                  )}
 </div>
               )}
               {batchJob && batchJob.phase !== "done" && (
@@ -2549,10 +2747,11 @@ return (
                   {batchJob?.phase === "processing" && (
                     <button
                       onClick={() => {
-                        toast.info("Checking status…"); 
+                        toast.info("Checking status…");
                         pollBatchJob(batchJob.jobId, {
                           assignmentId,
                           mode: batchJob.mode,
+                          engine: batchJob.engine,
                           geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                           batchStudents: batchJob.batchStudents,
                         });
@@ -2942,6 +3141,20 @@ return (
                         }
                                         </button>
 
+                                        {/* Single mark on gradingv2 — returns immediately,
+                                            so this is the way to compare engines on one student. */}
+                                        {canMarkV2 && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--ai"
+                                            title="Mark with gradingv2 (overlapping windows, paired mark-scheme pages)"
+                                            onClick={() => openGuidanceModal(s, false, "v2")}
+                                            disabled={markingLoading}
+                                            style={{ background: "var(--accent, #7c3aed)", borderColor: "var(--accent, #7c3aed)", color: "#fff" }}
+                                          >
+                                            <FiLayers size={12} /> Mark v2
+                                          </button>
+                                        )}
+
                                           {/* {bulkRetrying && (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
@@ -3077,12 +3290,18 @@ return (
             <div className="msv-guidance-header">
                         
                 <div style={{ fontSize: 15, fontWeight: 700 }}>
-                            {guidanceModal.batch ? "⚡ Mark All Students (Batch)"  :
+                            {guidanceModal.v2 ? `🧪 Mark (v2) — ${guidanceModal.student?.name}` :
+                            guidanceModal.engine === "v2" ? "🧪 Mark All Students (Batch v2)" :
+                            guidanceModal.batch ? "⚡ Mark All Students (Batch)"  :
                             guidanceModal.bulk  ? "🤖 Mark All Students"           :
                                                   `🤖 Mark — ${guidanceModal.student?.name}`}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
-                            {guidanceModal.batch
+                            {guidanceModal.v2
+                              ? "Experimental engine — marks in overlapping 2-page windows, each sent only the mark-scheme pages it needs. Returns immediately."
+                              : guidanceModal.engine === "v2"
+                              ? `Experimental engine — overlapping 2-page windows, paired mark-scheme pages, on the batch API. Preparation takes longer than v1: ${studentTotal} students in class`
+                              : guidanceModal.batch
                               ? `Submits all eligible students in this assignment via Gemini batch API — ${studentTotal} students in class`
                               : guidanceModal.bulk
                     ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
