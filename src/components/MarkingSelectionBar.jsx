@@ -8,6 +8,10 @@ export default function MarkingSelectionBar({
   onSelectAll,
   onClear,
   selectingAll = false,
+  // The grading partner tabs reuse this selection for Publish All, and a
+  // reviewer there cannot mark at all — so what the selection is FOR is the
+  // caller's to say.
+  countSuffix = "for marking",
 }) {
   return (
     <div className="msv-mark-select-bar">
@@ -39,7 +43,7 @@ export default function MarkingSelectionBar({
       </button>
       {selectedCount > 0 && (
         <span className="msv-mark-select-count">
-          {selectedCount} selected for marking
+          {`${selectedCount} selected ${countSuffix}`.trim()}
         </span>
       )}
     </div>
