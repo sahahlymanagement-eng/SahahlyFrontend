@@ -243,10 +243,6 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const summaryMap = studentExtra?.summaryMap || {};
   const [actualPdfCount, setActualPdfCount] = useState(0);
   const [countingPdfs, setCountingPdfs] = useState(false);
-  const correctedPdfCount = useMemo(
-    () => Object.values(savedResults).filter((entry) => entry?.result).length,
-    [savedResults]
-  );
 
   // Batch polling runs on a setInterval that outlives the render it was created
   // in, so anything it reads directly would be frozen at that moment. Keep the
@@ -304,6 +300,10 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
   const [savedResults, setSavedResults] = useState({});
+  const correctedPdfCount = useMemo(
+    () => Object.values(savedResults).filter((entry) => entry?.result).length,
+    [savedResults]
+  );
 
   useEffect(() => {
     if (!selectedAssignment?._id) {
