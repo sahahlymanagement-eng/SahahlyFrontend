@@ -15,6 +15,7 @@ import {
   parseChoice,
   parseYesNo,
   runMarkingPipeline,
+  confirmFirstBatch,
   sendAssignmentReports,
 } from "./assistantChatbotActions";
 import "./assistant.css";
@@ -27,6 +28,7 @@ const STEPS = {
   MARK_SCOPE: "mark_scope",
   MARK_STUDENT: "mark_student",
   MARK_CONFIRM: "mark_confirm",
+  MARK_FIRST_BATCH_CONFIRM: "mark_first_batch_confirm",
   REPORT_CLASSROOM: "report_classroom",
   REPORT_ASSIGNMENT: "report_assignment",
   REPORT_SCOPE: "report_scope",
@@ -188,7 +190,7 @@ export default function AssistantChatbot() {
     pushBot(`Starting full marking for ${label}…`, { clearOptions: true });
 
     try {
-      await runMarkingPipeline({
+      const result = await runMarkingPipeline({
         assignmentId: assignment._id,
         classroomId: meta.classroomId || s.classroom?._id,
         maxPoints: meta.maxPoints,
@@ -196,10 +198,37 @@ export default function AssistantChatbot() {
         students,
         onProgress: (msg) => pushBot(msg),
       });
+      if (result?.firstBatchPending) {
+        s.step = STEPS.MARK_FIRST_BATCH_CONFIRM;
+        pushBot(
+          "Reply \"yes\" to confirm and mark the rest now, or \"no\" to leave it for later.\n\n1. Yes\n2. No",
+          { options: ["1", "2"] }
+        );
+        return;
+      }
       pushBot("Done. Marking pipeline finished successfully.");
     } catch (err) {
       pushBot(
         `Marking failed: ${err?.response?.data?.message || err.message || "Unknown error"}`,
+        { isError: true }
+      );
+    } finally {
+      if (sessionRef.current.step !== STEPS.MARK_FIRST_BATCH_CONFIRM) {
+        resetToMenu();
+      }
+    }
+  };
+
+  const runFirstBatchConfirm = async () => {
+    const s = sessionRef.current;
+    const assignment = s.assignment;
+    pushBot("Confirming — marking the remaining submissions…", { clearOptions: true });
+    try {
+      await confirmFirstBatch(assignment._id);
+      pushBot("Confirmed. The remaining submissions are being marked in the background.");
+    } catch (err) {
+      pushBot(
+        `Confirmation failed: ${err?.response?.data?.message || err.message || "Unknown error"}`,
         { isError: true }
       );
     } finally {
@@ -388,6 +417,21 @@ export default function AssistantChatbot() {
           }
           if (yn === false) {
             pushBot("Cancelled.");
+            resetToMenu();
+            break;
+          }
+          pushBot("Please reply 1 for Yes or 2 for No.", { options: ["1", "2"] });
+          break;
+        }
+
+        case STEPS.MARK_FIRST_BATCH_CONFIRM: {
+          const yn = parseYesNo(text);
+          if (yn === true) {
+            await runFirstBatchConfirm();
+            break;
+          }
+          if (yn === false) {
+            pushBot("OK — the rest will stay unmarked until you confirm later.");
             resetToMenu();
             break;
           }

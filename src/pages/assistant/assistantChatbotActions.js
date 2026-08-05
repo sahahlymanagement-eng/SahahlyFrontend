@@ -260,6 +260,7 @@ export async function runMarkingPipeline({
 
   progress("Submitting batch marking job…");
   let jobId;
+  let firstBatch;
   try {
     const submitRes = await api.post("/marking/mark-batch/submit", {
       assignmentId,
@@ -273,7 +274,16 @@ export async function runMarkingPipeline({
       classroomId,
     });
     jobId = submitRes.data.jobId;
+    firstBatch = submitRes.data.firstBatch;
   } catch (err) {
+    if (err.response?.data?.reason === "first_batch_pending") {
+      // Nothing new was submitted — this assignment's first batch was
+      // already capped and is waiting on a human confirmation.
+      progress(
+        "This assignment's first batch is already marked and awaiting your confirmation."
+      );
+      return { mode: "blocked", firstBatchPending: true, firstBatch: err.response.data.firstBatch };
+    }
     if (err.response?.status === 409 && err.response?.data?.jobId) {
       jobId = err.response.data.jobId;
       progress("Resuming an existing batch job…");
@@ -295,7 +305,21 @@ export async function runMarkingPipeline({
       (batchResult.failed ? `, ${batchResult.failed} failed` : "") +
       "."
   );
+
+  if (firstBatch?.status === "pending_confirmation") {
+    progress(
+      `${batchResult.ok} paper(s) marked as a safety check on this new assignment. ` +
+        `Reply "yes" to confirm and mark the remaining ${firstBatch.remainingCount ?? "papers"}.`
+    );
+    return { mode: "batch", ...batchResult, firstBatchPending: true, remainingCount: firstBatch.remainingCount };
+  }
+
   return { mode: "batch", ...batchResult };
+}
+
+/** Confirms a capped first batch and auto-continues marking the rest (v1). */
+export async function confirmFirstBatch(assignmentId) {
+  await api.post(`/marking/first-batch/confirm/${assignmentId}`);
 }
 
 async function markSingleStudent({

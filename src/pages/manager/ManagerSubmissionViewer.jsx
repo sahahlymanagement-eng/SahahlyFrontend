@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
-import { promptToast } from "../../utils/confirmToast";
+import { promptToast, confirmToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
@@ -125,6 +125,7 @@ import {
   clearBatchPoll,
   setBatchStopped,
   isBatchStopped,
+  getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 import "./ManagerSubmissionViewer.css";
@@ -1384,6 +1385,56 @@ useEffect(() => {
     }
   };
 
+  // Confirms a capped first batch (see backend firstBatchGate.js) and waits
+  // for the server's auto-triggered "mark the rest" run to create its batch
+  // job, then hands off to the normal poll — reuses the same active-job
+  // discovery this page already runs on mount.
+  const confirmFirstBatch = async () => {
+    const assignId = selectedAssignment?._id;
+    if (!assignId || !batchJob?.firstBatch) return;
+    const ok = await confirmToast(
+      "This will mark the remaining submissions for this assignment now. Continue?",
+      { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
+    );
+    if (!ok) return;
+
+    const engine = batchJob.engine || "v1";
+    try {
+      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignId}`);
+    } catch (err) {
+      toast.error(extractHumanError(err) || "Failed to confirm first batch");
+      return;
+    }
+
+    toast.info("Confirmed — marking the remaining submissions…");
+    patchBatchJob(assignId, (prev) => ({
+      ...prev,
+      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
+    }));
+
+    let attempts = 0;
+    const maxAttempts = 60; // ~5 minutes — roster sync + PDF upload/fetch can be slow
+    const tryDiscover = async () => {
+      attempts += 1;
+      await checkForActiveJob();
+      const current = getBatchJob(assignId);
+      if (current?.jobId && current.phase === "processing") return;
+      if (attempts < maxAttempts) {
+        setTimeout(tryDiscover, 5000);
+        return;
+      }
+      // Gave up looking for the job — the server-side run is fire-and-forget
+      // and may still be working (roster sync + uploads can outlast this
+      // window). Stop polling rather than leaving a spinner stuck forever.
+      patchBatchJob(assignId, (prev) =>
+        prev?.firstBatch?.status === "confirming"
+          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
+          : prev
+      );
+    };
+    setTimeout(tryDiscover, 5000);
+  };
+
   const stopPriorityBulk = () => {
     priorityStopRef.current = true;
     setPriorityBulkRunning(false);
@@ -1769,6 +1820,15 @@ useEffect(() => {
       setEditingAnnotations(getTeacherAnnotations(res.data).map((a) => ({ ...a })));
       setEditingMaxTotal(null);
     } catch (err) {
+      if (err.response?.data?.reason === "first_batch_pending") {
+        // The AI grading itself succeeded — only saving it was blocked
+        // because this assignment's first batch is awaiting confirmation.
+        setSingleProgress(prev => ({ ...prev, [student.submissionId]: { status: "error" } }));
+        toast.info(
+          "This assignment's first batch is awaiting confirmation — see the banner above to confirm before marking more."
+        );
+        return;
+      }
       const message = extractHumanError
               ? extractHumanError(err)
               : await getApiErrorMessage(err);
@@ -2294,15 +2354,27 @@ useEffect(() => {
             )
           );
 
-          await api.post("/submission-files/save-results", {
-            assignmentId: selectedAssignment._id,
-            submissionId: student.submissionId,
-            studentId: student.studentId,
-            studentName: student.name,
-            mode,
-            provider,
-            result: resultData,
-          });
+          try {
+            await api.post("/submission-files/save-results", {
+              assignmentId: selectedAssignment._id,
+              submissionId: student.submissionId,
+              studentId: student.studentId,
+              studentName: student.name,
+              mode,
+              provider,
+              result: resultData,
+            });
+          } catch (saveErr) {
+            if (saveErr.response?.data?.reason === "first_batch_pending") {
+              errorCount++;
+              setBulkProgress(p => ({ ...p, [student.submissionId]: { status: "error" } }));
+              toast.info(
+                "This assignment's first batch is awaiting confirmation — see the banner above to confirm before marking more."
+              );
+              break;
+            }
+            throw saveErr;
+          }
                   // HEAD: setSavedResults dropped by 00b30c1, restored here
         setSavedResults(prev => ({
           ...prev,
@@ -2699,8 +2771,11 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     execute: async () => {
       try {
         const res = await api.post(`${base}/mark-batch/submit`, submitPayload);
-        return { jobId: res.data.jobId, resumed: false };
+        return { jobId: res.data.jobId, resumed: false, firstBatch: res.data.firstBatch };
       } catch (err) {
+        if (err.response?.data?.reason === "first_batch_pending") {
+          return { firstBatchBlocked: true, firstBatch: err.response.data.firstBatch };
+        }
         if (err.response?.status === 409) {
           return { jobId: err.response.data.jobId, resumed: true };
         }
@@ -2728,7 +2803,17 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     return;
   }
 
-  const { jobId, resumed } = submitResult.result;
+  if (submitResult.result.firstBatchBlocked) {
+    toast.info("This assignment's first batch is awaiting confirmation.");
+    patchBatchJob(assignId, (prev) => ({
+      ...prev,
+      phase: "done",
+      firstBatch: submitResult.result.firstBatch,
+    }));
+    return;
+  }
+
+  const { jobId, resumed, firstBatch } = submitResult.result;
   if (resumed) {
     toast.info("Resuming existing batch job...");
   }
@@ -2737,6 +2822,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     ...prev,
     phase: "processing",
     jobId,
+    firstBatch,
     batchStudents: succeeded.map((r) => r.student),
   }));
 
@@ -3841,6 +3927,46 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                 )}
 
                                 </div> )}
+                                {batchJob?.phase === "done" &&
+                                  (batchJob?.firstBatch?.status === "pending_confirmation" ||
+                                    batchJob?.firstBatch?.status === "confirming") && (
+                                  <div style={{
+                                    marginTop: 8, padding: "10px 14px", borderRadius: 10,
+                                    background: "color-mix(in srgb, var(--success, #16a34a) 10%, transparent)",
+                                    border: "1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent)",
+                                    fontSize: 12, color: "var(--text-secondary)",
+                                    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap"
+                                  }}>
+                                    <span>
+                                      ✅ {batchJob.firstBatch.limit ?? 3} paper{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked as a safety
+                                      check on this new assignment. Review them, then confirm to mark the remaining{" "}
+                                      {batchJob.firstBatch.remainingCount ?? "the rest"}.
+                                    </span>
+                                    <button
+                                      onClick={confirmFirstBatch}
+                                      disabled={batchJob.firstBatch.status === "confirming"}
+                                      style={{
+                                        marginLeft: "auto", fontSize: 11, fontWeight: 600,
+                                        color: "#fff", background: "var(--success, #16a34a)",
+                                        border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
+                                        opacity: batchJob.firstBatch.status === "confirming" ? 0.6 : 1,
+                                      }}
+                                    >
+                                      {batchJob.firstBatch.status === "confirming" ? "Confirming…" : "Confirm & Mark Rest"}
+                                    </button>
+                                  </div>
+                                )}
+                                {batchJob?.firstBatch?.status === "confirmed_pending" && (
+                                  <div style={{
+                                    marginTop: 8, padding: "10px 14px", borderRadius: 10,
+                                    background: "color-mix(in srgb, var(--primary) 8%, transparent)",
+                                    border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
+                                    fontSize: 12, color: "var(--text-secondary)",
+                                  }}>
+                                    Confirmed — marking the remaining submissions is still running in the background
+                                    (roster sync and uploads can take a few minutes). Refresh this page shortly to check progress.
+                                  </div>
+                                )}
                                           </div>
                   )}
 

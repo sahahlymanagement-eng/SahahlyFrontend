@@ -58,6 +58,7 @@ import {
   clearBatchPoll,
   setBatchStopped,
   isBatchStopped,
+  getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
@@ -1064,7 +1065,13 @@ export default function ManagerLoginCss() {
             toast.success("Batch complete — results loaded.");
           }
 
-          patchBatchJob(assignId, null);
+          // Keep the job around (instead of clearing it) when this batch was
+          // capped by the first-ever-grading safety gate — otherwise the
+          // "awaiting confirmation" banner would vanish the moment this poll
+          // completes, even though nothing has been confirmed yet.
+          patchBatchJob(assignId, (prev) =>
+            prev?.firstBatch?.status === "pending_confirmation" ? { ...prev, phase: "done" } : null
+          );
         } catch (err) {
           clearBatchPoll(jobId);
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
@@ -1156,6 +1163,7 @@ export default function ManagerLoginCss() {
     patchBatchJob(assignId, (prev) => ({ ...prev, phase: "submitting" }));
 
     let jobId;
+    let firstBatch;
     try {
       const res = await api.post("/external-grading/mark-batch/submit", {
         assignmentId: selectedAssignment.id,
@@ -1170,7 +1178,17 @@ export default function ManagerLoginCss() {
         geminiModel: selectedModel,
       });
       jobId = res.data?.jobId;
+      firstBatch = res.data?.firstBatch;
     } catch (err) {
+      if (err.response?.data?.reason === "first_batch_pending") {
+        toast.info("This assignment's first batch is awaiting confirmation.");
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          phase: "done",
+          firstBatch: err.response.data.firstBatch,
+        }));
+        return;
+      }
       // A job is already running for this assignment — resume it.
       if (err.response?.status === 409 && err.response.data?.jobId) {
         jobId = err.response.data.jobId;
@@ -1188,8 +1206,57 @@ export default function ManagerLoginCss() {
       return;
     }
 
-    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId, firstBatch }));
     pollBatchJob(jobId, { assignmentId: assignId, mode, geminiModel: selectedModel });
+  };
+
+  // Confirms a capped first batch (see backend firstBatchGate.js) and waits
+  // for the server's auto-triggered "mark the rest" run to create its batch
+  // job, then hands off to the normal poll — reuses the same active-job
+  // discovery this page already runs on mount.
+  const confirmFirstBatch = async () => {
+    if (!selectedAssignment || selectedAssignment.id == null || !batchJob?.firstBatch) return;
+    const assignId = String(selectedAssignment.id);
+    const ok = await confirmToast(
+      "This will mark the remaining submissions for this assignment now. Continue?",
+      { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
+    );
+    if (!ok) return;
+
+    try {
+      await api.post(`/external-grading/first-batch/confirm/${selectedAssignment.id}`);
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to confirm first batch");
+      return;
+    }
+
+    toast.info("Confirmed — marking the remaining submissions…");
+    patchBatchJob(assignId, (prev) => ({
+      ...prev,
+      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
+    }));
+
+    let attempts = 0;
+    const maxAttempts = 60; // ~5 minutes — roster sync + PDF upload/fetch can be slow
+    const tryDiscover = async () => {
+      attempts += 1;
+      await checkForActiveJob();
+      const current = getBatchJob(assignId);
+      if (current?.jobId && current.phase === "processing") return;
+      if (attempts < maxAttempts) {
+        setTimeout(tryDiscover, 5000);
+        return;
+      }
+      // Gave up looking for the job — the server-side run is fire-and-forget
+      // and may still be working (roster sync + uploads can outlast this
+      // window). Stop polling rather than leaving a spinner stuck forever.
+      patchBatchJob(assignId, (prev) =>
+        prev?.firstBatch?.status === "confirming"
+          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
+          : prev
+      );
+    };
+    setTimeout(tryDiscover, 5000);
   };
 
   const stopBatchMark = async () => {
@@ -2074,6 +2141,68 @@ export default function ManagerLoginCss() {
                         <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
                       </button>
                     )}
+                  </div>
+                )}
+
+                {canMark &&
+                  batchJob?.phase === "done" &&
+                  (batchJob?.firstBatch?.status === "pending_confirmation" ||
+                    batchJob?.firstBatch?.status === "confirming") && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: "color-mix(in srgb, var(--success, #16a34a) 10%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent)",
+                        fontSize: 12,
+                        color: "var(--muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span>
+                        ✅ {batchJob.firstBatch.limit ?? 3} submission{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked
+                        as a safety check on this new assignment. Review them, then confirm to mark the remaining{" "}
+                        {batchJob.firstBatch.remainingCount ?? "the rest"}.
+                      </span>
+                      <button
+                        onClick={confirmFirstBatch}
+                        disabled={batchJob.firstBatch.status === "confirming"}
+                        style={{
+                          marginLeft: "auto",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#fff",
+                          background: "var(--success, #16a34a)",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 12px",
+                          cursor: "pointer",
+                          opacity: batchJob.firstBatch.status === "confirming" ? 0.6 : 1,
+                        }}
+                      >
+                        {batchJob.firstBatch.status === "confirming" ? "Confirming…" : "Confirm & Mark Rest"}
+                      </button>
+                    </div>
+                  )}
+
+                {batchJob?.firstBatch?.status === "confirmed_pending" && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "color-mix(in srgb, var(--primary) 8%, transparent)",
+                      border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
+                      fontSize: 12,
+                      color: "var(--muted)",
+                    }}
+                  >
+                    Confirmed — marking the remaining submissions is still running in the background
+                    (roster sync and uploads can take a few minutes). Refresh this page shortly to check progress.
                   </div>
                 )}
 
