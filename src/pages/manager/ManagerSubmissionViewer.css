@@ -1,6 +1,71 @@
 /* Import the ManagerAssignments styles */
 @import "./ManagerAssignments.css";
 
+/* ── Submission viewer student table — prevent name / action overlap (all viewers) ── */
+.ma-table.ma-table--cards .ma-avatar-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.ma-table.ma-table--cards .ma-cell-name {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.ma-table.ma-table--cards .msv-review-warn {
+  flex: 1 1 100%;
+  margin-left: 40px !important;
+  max-width: 100%;
+}
+
+.ma-table.ma-table--cards td:has(.ma-avatar-cell) {
+  min-width: 0;
+  vertical-align: top;
+}
+
+.ma-table.ma-table--cards td:has(.msv-actions) {
+  min-width: 0;
+  vertical-align: top;
+}
+
+.ma-table.ma-table--cards .msv-actions {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  max-width: 100%;
+}
+
+@media (min-width: 1025px) {
+  .ma-table.ma-table--cards {
+    min-width: 920px;
+  }
+
+  .ma-table.ma-table--cards td:has(.ma-avatar-cell) {
+    width: 22%;
+    min-width: 150px;
+    max-width: 260px;
+  }
+
+  .ma-table.ma-table--cards td:has(.msv-actions) {
+    min-width: 180px;
+    max-width: 340px;
+  }
+
+  .ma-table.ma-table--cards .msv-action-btn {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+  }
+}
+
 /* ── COLLAPSIBLE LAYOUT (Submission Viewer only) ── */
 .msv-collapsible-layout {
   display: flex;
@@ -74,9 +139,23 @@
 }
 
 .msv-classroom-teacher {
-  margin-top: 2px;
+  margin-top: 0;
   font-size: 11px;
   color: var(--muted);
+  display: block;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Picker panels (classroom / assignment lists) inside submission viewers */
+.msv-collapsible-layout .ma-column {
+  min-height: 0;
+}
+
+.msv-collapsible-layout .ma-scroll-list > .ma-classroom-card,
+.msv-collapsible-layout .ma-scroll-list > .ma-assignment-card {
+  flex-shrink: 0;
 }
 
 /* ── MARK SCHEME BAR ── */
@@ -1578,18 +1657,22 @@
     width: 100%;
   }
 
-  /* Card = a wrapping flex row: the checkbox + name share the top line, every
-     other field drops to its own full-width line below. No absolute positioning. */
+  /* Card = CSS grid: checkbox + name on one row, every other field full-width below. */
   .ma-table--cards tr.ma-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
     column-gap: 10px;
+    row-gap: 4px;
+    align-items: start;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--surface);
     padding: 12px 14px;
     margin-bottom: 12px;
+  }
+
+  .ma-table--cards tr.ma-row:not(:has(.msv-mark-check)) {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ma-table--cards tr.ma-row:hover td {
@@ -1605,7 +1688,8 @@
 
   /* Every field = its own full-width line: "LABEL  value". */
   .ma-table--cards td {
-    flex: 1 1 100%;
+    flex: unset;
+    grid-column: 1 / -1;
     min-width: 0;
     display: flex;
     align-items: flex-start;
@@ -1616,7 +1700,7 @@
     white-space: normal;
     overflow-wrap: anywhere;
     font-size: 13px;
-    line-height: 1.2;
+    line-height: 1.35;
   }
 
   .ma-table--cards td::before {
@@ -1643,13 +1727,14 @@
     display: none;
   }
 
-  /* ── Top line: the select checkbox sits inline, right next to the name,
-     aligned to the top so it lines up with the avatar (same size). ── */
+  /* ── Top line: checkbox in column 1, name in column 2 ── */
   .ma-table--cards td:has(.msv-mark-check) {
-    flex: 0 0 auto;
-    order: -2;
-    align-self: flex-start;
+    grid-column: 1;
+    grid-row: 1;
+    order: unset;
+    align-self: start;
     padding: 0;
+    display: block;
   }
 
   .ma-table--cards td:has(.msv-mark-check) .msv-mark-check {
@@ -1665,14 +1750,21 @@
     border-color: color-mix(in srgb, var(--primary) 95%, transparent);
   }
 
-  /* Name fills the rest of the top line, immediately after the checkbox. */
   .ma-table--cards td:has(.ma-avatar-cell) {
-    flex: 1 1 auto;
-    order: -1;
+    grid-column: 2;
+    grid-row: 1;
+    order: unset;
     min-width: 0;
+    width: auto;
+    max-width: 100%;
     padding: 0 0 8px;
     margin-bottom: 6px;
     border-bottom: 1px solid var(--border-soft);
+    display: block;
+  }
+
+  .ma-table--cards tr.ma-row:not(:has(.msv-mark-check)) td:has(.ma-avatar-cell) {
+    grid-column: 1 / -1;
   }
 
   .ma-table--cards td:has(.ma-avatar-cell) .ma-cell-name {
@@ -1684,6 +1776,16 @@
   .ma-table--cards td:has(.ma-avatar-cell) .ma-avatar-cell {
     flex-wrap: wrap;
     min-width: 0;
+    max-width: 100%;
+  }
+
+  .ma-table--cards td:has(.ma-avatar-cell) .msv-review-warn {
+    margin-left: 40px !important;
+  }
+
+  /* Fields after the header row start on row 2+. */
+  .ma-table--cards td:not(:has(.msv-mark-check)):not(:has(.ma-avatar-cell)) {
+    grid-row: auto;
   }
 
   /* ── Actions: two buttons per row, the rest wrap onto the line below. ── */

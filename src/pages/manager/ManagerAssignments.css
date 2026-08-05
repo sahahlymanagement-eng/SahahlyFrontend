@@ -490,7 +490,9 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  align-items: stretch;
+  min-height: 0;
 }
 
 .ma-scroll-list::-webkit-scrollbar {
@@ -527,14 +529,23 @@
 .ma-classroom-list { display: flex; flex-direction: column; gap: 8px; }
 
 .ma-classroom-card {
-  display: flex; align-items: center; gap: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.18s ease;
-  position: relative; overflow: hidden;
+  position: relative;
+  /* overflow:hidden on a flex child makes min-height:auto resolve to 0, so rows
+     collapse and text from every card stacks on top of each other. */
+  overflow: visible;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  min-height: min-content;
+  width: 100%;
 }
 .ma-classroom-card::before {
   content: '';
@@ -562,21 +573,50 @@
   display: flex; align-items: center; justify-content: center;
   color: var(--primary); flex-shrink: 0;
 }
-.ma-classroom-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
-.ma-classroom-name { font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ma-classroom-section { font-size: 11px; color: var(--muted); }
+.ma-classroom-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ma-classroom-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.ma-classroom-section {
+  font-size: 11px;
+  color: var(--muted);
+  display: block;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 /* Assignment cards */
 .ma-assignment-list { display: flex; flex-direction: column; gap: 8px; }
 
 .ma-assignment-card {
-  display: flex; align-items: flex-start; gap: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.18s ease;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  min-height: min-content;
+  width: 100%;
 }
 .ma-assignment-card:hover { background: var(--surface-2); border-color: var(--border); }
 .ma-assignment-card--active {
@@ -752,7 +792,15 @@
 }
 
 /* Avatar cell */
-.ma-avatar-cell { display: flex; align-items: flex-start; gap: 10px; }
+.ma-avatar-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
 .ma-avatar {
   width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
   background: var(--gradient);
@@ -763,8 +811,13 @@
   font-weight: 600;
   color: var(--text-primary);
   display: block;
-  line-height: 1.2;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.35;
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .ma-cell-muted { color: var(--muted); font-size: 12.5px; }
 .ma-cell-empty { color: var(--text-disabled); }
@@ -846,9 +899,13 @@ select.ma-search-input option {
 }
 
 .msv-classroom-teacher {
-  margin-top: 2px;
+  margin-top: 0;
   font-size: 11px;
   color: var(--muted);
+  display: block;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Comment input */
