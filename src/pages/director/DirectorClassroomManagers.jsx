@@ -20,14 +20,6 @@ export default function DirectorManagers() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const map = {};
-    classrooms.forEach((room) => {
-      map[room._id] = room.teacherId?._id || "";
-    });
-    setSelectedTeachers(map);
-  }, [classrooms]);
-
   const classroomParams = useMemo(
     () => ({
       search: search.trim() || undefined,
@@ -219,8 +211,16 @@ export default function DirectorManagers() {
     }
   };
 
+  // selectedTeachers only holds explicit user picks; fall back to the
+  // classroom's currently-assigned teacher so the select shows the truth.
+  const teacherValue = (room) =>
+    selectedTeachers[room._id] ?? room.teacherId?._id ?? "";
+
   const assignTeacher = async (classroomId) => {
-    const teacherId = selectedTeachers[classroomId];
+    const teacherId =
+      selectedTeachers[classroomId] ??
+      classrooms.find((c) => c._id === classroomId)?.teacherId?._id ??
+      "";
     if (!teacherId) {
       toast.warn("Please select a teacher first");
       return;
@@ -478,7 +478,7 @@ export default function DirectorManagers() {
                   <td data-label="Select Teacher">
                     <select
                       className="dm-select"
-                      value={selectedTeachers[room._id] || ""}
+                      value={teacherValue(room)}
                       onChange={(e) =>
                         setSelectedTeachers((prev) => ({
                           ...prev,
