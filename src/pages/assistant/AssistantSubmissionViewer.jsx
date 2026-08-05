@@ -1554,6 +1554,11 @@ window.open(url);
         }
 
         if (noPdf) {
+          setBulkProgress(p => {
+            const next = { ...p };
+            delete next[student.submissionId];
+            return next;
+          });
           continue;
         }
 
@@ -1709,11 +1714,6 @@ window.open(url);
     }
 
       setBulkMarking(false);
-    if (bulkStopRef.current) {
-      toast.info("Bulk marking stopped");
-    } else {
-      toast.success("Bulk marking complete");
-    }
     fetchPage(page);
   } catch (err) {
     setBulkMarking(false);
@@ -2099,20 +2099,6 @@ window.open(url);
 
     setDownloading(true);
     try {
-      const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-      // const total = editingQuestions.reduce(
-      //   (s, q) => s + (typeof q.marksAwarded === "number" ? q.marksAwarded : 0),0);
-      
-const isUngraded =
-  maxGrade == null ||
-  resultModal?.result?.totalMarks == null;
-
-      // const pdfBytes = await annotatePdf({
-      //   studentFile: resultModal.studentFile,
-      //   questions: editingQuestions,
-      //   totalMarks: isUngraded ? "Ungraded" : total,
-      //   maxTotalMarks: isUngraded ? "" : maxGrade,
-      // });
       const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
@@ -2137,10 +2123,7 @@ const isUngraded =
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: editingQuestions.reduce(
-          (s, q) => s + q.marksAwarded,
-          0
-        ),
+        totalMarks: sumQuestionMarks(editingQuestions),
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
@@ -2229,7 +2212,7 @@ const isUngraded =
 
     setReturning(true);
     try {
-      const total = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+      const total = sumQuestionMarks(editingQuestions);
       const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
@@ -2254,10 +2237,7 @@ const isUngraded =
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: editingQuestions.reduce(
-          (s, q) => s + q.marksAwarded,
-          0
-        ),
+        totalMarks: total,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
@@ -2875,7 +2855,7 @@ return (
             const bulk     = bulkProgress[s.submissionId];
             const bulkDone = bulk?.status === "done";
                             const bulkPending = bulk?.status === "pending";
-                            const bulkMarking = bulk?.status === "marking";
+                            const rowIsBulkMarking = bulk?.status === "marking";
                             const bulkError   = bulk?.status === "error";
                             const bulkRetrying = bulk?.status === "retrying";  // ← add this
                             
@@ -2897,7 +2877,7 @@ return (
                             const isMarking = single?.status === "marking" || markingStudentId === s.submissionId;
                             const hasError = single?.status === "error" || studentErrors[s.submissionId];
 
-                            const markingLoading = isMarking || bulkMarking || bulkRetrying || markingStudentId === s.submissionId || batchQueued;
+                            const markingLoading = isMarking || rowIsBulkMarking || bulkRetrying || markingStudentId === s.submissionId || batchQueued;
                             const markingDone = bulkDone || hasResult || batchDone;
                             const markingError = bulkError || hasError || batchError || studentErrors[s.submissionId];
                             const inlineMarkResult =
