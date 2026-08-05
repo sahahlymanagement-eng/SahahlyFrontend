@@ -241,8 +241,9 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   );
 
   const summaryMap = studentExtra?.summaryMap || {};
-  const [actualPdfCount, setActualPdfCount] = useState(0);
-  const [countingPdfs, setCountingPdfs] = useState(false);
+  // Backend computes this over the full (unpaginated) roster alongside the
+  // page fetch, so no separate full-roster fetch is needed just to count PDFs.
+  const actualPdfCount = studentExtra?.pdfCount ?? 0;
 
   // Batch polling runs on a setInterval that outlives the render it was created
   // in, so anything it reads directly would be frozen at that moment. Keep the
@@ -797,7 +798,6 @@ const refreshStudents = async () => {
     }
 
     await fetchStudentPage(studentPage);
-    await refreshPdfCount();
 
     if (pushResult?.pushed > 0 && !pushResult?.failed) {
       toast.success(
@@ -820,30 +820,6 @@ const refreshStudents = async () => {
     setRefreshing(false);
   }
 };
-
-const refreshPdfCount = useCallback(async () => {
-  if (!studentsMarkingUrl || !selectedAssignment?._id) {
-    setActualPdfCount(0);
-    return;
-  }
-  try {
-    setCountingPdfs(true);
-    const all = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
-    const pdfCount = (all || []).filter(
-      (student) => student?.submissionId && student?.hasAttachment
-    ).length;
-    setActualPdfCount(pdfCount);
-  } catch (err) {
-    console.error("Failed to count PDFs", err);
-    setActualPdfCount(0);
-  } finally {
-    setCountingPdfs(false);
-  }
-}, [studentsMarkingUrl, selectedAssignment?._id]);
-
-useEffect(() => {
-  refreshPdfCount();
-}, [refreshPdfCount]);
 
 const handleExportGradesExcel = async () => {
   if (!selectedAssignment?._id) return;
@@ -2217,6 +2193,11 @@ useEffect(() => {
       }
 
       if (noPdf) {
+        setBulkProgress(p => {
+          const next = { ...p };
+          delete next[student.submissionId];
+          return next;
+        });
         continue;
       }
 
@@ -2373,11 +2354,6 @@ useEffect(() => {
   }
 
   setBulkMarking(false);
-  if (bulkStopRef.current) {
-    toast.info("Bulk marking stopped");
-  } else {
-    toast.success("Bulk marking complete");
-  }
   fetchStudentPage(studentPage);
   } catch (err) {
     setBulkMarking(false);
@@ -3022,8 +2998,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     }
     setDownloading(true);
     try {
-      const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
-
       const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
@@ -3048,10 +3022,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: editingQuestions.reduce(
-          (s, q) => s + (Number(q.marksAwarded) || 0),
-          0
-        ),
+        totalMarks: sumQuestionMarks(editingQuestions),
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
@@ -3152,7 +3123,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         );
       }
 
-      const totalMarks = editingQuestions.reduce((s, q) => s + q.marksAwarded, 0);
+      const totalMarks = sumQuestionMarks(editingQuestions);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -3836,6 +3807,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                   pollBatchJob(batchJob.jobId, {
                                     assignmentId: selectedAssignment._id,
                                     mode: batchJob.mode,
+                                    engine: batchJob.engine,
                                     geminiModel: pickValidGeminiModel(geminiModels, batchJob.geminiModel || geminiModel),
                                     batchStudents: batchJob.batchStudents,
                                   });
@@ -3925,7 +3897,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
                       <span className="ma-panel-count">{studentTotal} students</span>
                       <span className="ma-panel-count">
-                        {countingPdfs ? "Counting PDFs…" : `Corrected ${correctedPdfCount} / ${actualPdfCount} PDFs`}
+                        {loadingStudents ? "Counting PDFs…" : `Corrected ${correctedPdfCount} / ${actualPdfCount} PDFs`}
                       </span>
                     </div>
                     <div className="msv-panel-controls">
@@ -3995,7 +3967,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               const bulk     = bulkProgress[s.submissionId];
                               const bulkDone = bulk?.status === "done";
                               const bulkPending = bulk?.status === "pending";
-                              const bulkMarking = bulk?.status === "marking";
+                              const rowIsBulkMarking = bulk?.status === "marking";
                               const bulkError   = bulk?.status === "error";
                               const bulkRetrying = bulk?.status === "retrying";  // ← add this
                               
@@ -4019,7 +3991,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               const isMarking = single?.status === "marking" || markingStudentId === s.submissionId;
                               const hasError = single?.status === "error" || studentErrors[s.submissionId];
 
-                              const markingLoading = isMarking || bulkMarking || bulkRetrying ||markingStudentId === s.submissionId || batchQueued;
+                              const markingLoading = isMarking || rowIsBulkMarking || bulkRetrying ||markingStudentId === s.submissionId || batchQueued;
                               const markingDone = bulkDone || hasResult || batchDone;
                               const markingError = bulkError || hasError || batchError || studentErrors[s.submissionId];
                               const inlineMarkResult =
@@ -5182,7 +5154,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       {/* ── AI REVIEW COMPARISON MODAL ── */}
       {aiReviewModal && (
-        <div className="msv-overlay" style={{ zIndex: 1100 }}>
+        <div className="msv-overlay" style={{ zIndex: 1100 }} onClick={closeAiReviewModal}>
           <div
             className="msv-results-modal"
             onClick={(e) => e.stopPropagation()}
@@ -5204,6 +5176,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {aiReviewModal.flagged.length} question{aiReviewModal.flagged.length !== 1 ? "s" : ""} with grade discrepancies
                 </div>
               </div>
+              <button className="msv-icon-btn" onClick={closeAiReviewModal}><FiX size={16} /></button>
             </div>
 
             <div
