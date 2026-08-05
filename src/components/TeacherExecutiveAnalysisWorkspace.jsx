@@ -6,11 +6,13 @@ import { downloadBlob } from "../utils/downloadBlob";
 import {
   FiArrowLeft,
   FiBarChart2,
+  FiClock,
   FiDownload,
   FiFileText,
   FiSend,
   FiUsers,
 } from "react-icons/fi";
+import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
 import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
 import Pagination from "./Pagination";
@@ -54,6 +56,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendEmailToo, setSendEmailToo] = useState(false);
+  const [showAutoSendModal, setShowAutoSendModal] = useState(false);
   const previewSectionRef = useRef(null);
 
   useEffect(() => {
@@ -275,6 +278,15 @@ export default function TeacherExecutiveAnalysisWorkspace({
           </div>
         </div>
         <div className="mpr-header-actions">
+          {selectedClassroom && (
+            <button
+              type="button"
+              className="mpr-btn mpr-btn--autosend"
+              onClick={() => setShowAutoSendModal(true)}
+            >
+              <FiClock size={16} /> Auto-send settings
+            </button>
+          )}
           {report && selectedAssignment && (
             <>
               <button
@@ -531,6 +543,14 @@ export default function TeacherExecutiveAnalysisWorkspace({
           </section>
         )}
       </div>
+      {showAutoSendModal && selectedClassroom && (
+        <ReportAutomationRuleModal
+          classroomId={selectedClassroom._id}
+          classroomName={selectedClassroom.name}
+          reportType="executive_teacher"
+          onClose={() => setShowAutoSendModal(false)}
+        />
+      )}
     </div>
   );
 }

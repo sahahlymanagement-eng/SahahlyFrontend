@@ -10,9 +10,10 @@ import {
   FiClipboard, FiUsers, FiSend,
   FiCheckSquare, FiMessageSquare, FiCalendar,
   FiBarChart2, FiDownload, FiEye, FiChevronRight,
-  FiInfo, FiX,
+  FiInfo, FiX, FiClock,
 } from "react-icons/fi";
 import "./ReportsWorkspace.css";
+import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
 import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, countPresentInMap } from "../utils/attendanceExcel";
@@ -62,6 +63,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [checkedAssignments, setCheckedAssignments] = useState({});
   const [customPhone, setCustomPhone] = useState("");
+  const [showAutoSendModal, setShowAutoSendModal] = useState(false);
   const [summaryViewer, setSummaryViewer] = useState({ open: false, title: "", message: "" });
   const [assignmentAttendance, setAssignmentAttendance] = useState({});
   const [parsingAttendanceForAssignment, setParsingAttendanceForAssignment] = useState(null);
@@ -1236,12 +1238,21 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               </button>
             </div>
           </div>
-          {reportCount > 0 && (
+          {selectedClassroom && (
             <div className="rw-topbar-actions">
-              <div className="ma-cart-pill">
-                <FiCheckSquare size={13} />
-                <span>{cartSummary}</span>
-              </div>
+              <button
+                type="button"
+                className="mpr-btn mpr-btn--autosend"
+                onClick={() => setShowAutoSendModal(true)}
+              >
+                <FiClock size={16} /> Auto-send settings
+              </button>
+              {reportCount > 0 && (
+                <div className="ma-cart-pill">
+                  <FiCheckSquare size={13} />
+                  <span>{cartSummary}</span>
+                </div>
+              )}
             </div>
           )}
         </header>
@@ -1992,6 +2003,15 @@ export default function ReportsWorkspace({ variant = "manager" }) {
               <p className="rw-summary-body">{summaryViewer.message}</p>
             </div>
           </div>
+        )}
+
+        {showAutoSendModal && selectedClassroom && (
+          <ReportAutomationRuleModal
+            classroomId={selectedClassroom._id}
+            classroomName={selectedClassroom.name}
+            reportType="custom_collective"
+            onClose={() => setShowAutoSendModal(false)}
+          />
         )}
 
       </main>

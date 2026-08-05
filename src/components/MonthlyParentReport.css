@@ -123,6 +123,18 @@
   cursor: not-allowed;
 }
 
+.mpr-btn--autosend {
+  padding: 12px 20px;
+  font-size: 14px;
+  border: 1.5px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary-strong);
+}
+
+.mpr-btn--autosend:hover {
+  background: color-mix(in srgb, var(--primary) 20%, var(--surface));
+}
+
 .mpr-layout {
   display: grid;
   grid-template-columns: 280px 320px minmax(220px, 1fr);

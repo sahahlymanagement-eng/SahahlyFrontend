@@ -1,0 +1,128 @@
+.rarm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.rarm-modal {
+  background: var(--sah-surface, #fff);
+  color: var(--sah-text, #1e293b);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.rarm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--sah-border, #e2e8f0);
+}
+
+.rarm-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rarm-subtitle {
+  display: block;
+  font-size: 12px;
+  color: var(--sah-text-muted, #64748b);
+  margin-top: 2px;
+}
+
+.rarm-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--sah-text-muted, #64748b);
+  padding: 4px;
+}
+
+.rarm-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rarm-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rarm-toggle input {
+  margin-top: 3px;
+}
+
+.rarm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rarm-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sah-text-muted, #64748b);
+}
+
+.rarm-input {
+  border: 1px solid var(--sah-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.rarm-hint {
+  font-size: 12px;
+  color: var(--sah-text-muted, #64748b);
+  margin: 0;
+}
+
+.rarm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--sah-border, #e2e8f0);
+}
+
+.rarm-btn {
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.rarm-btn--ghost {
+  background: none;
+  border-color: var(--sah-border, #e2e8f0);
+  color: var(--sah-text, #1e293b);
+}
+
+.rarm-btn--primary {
+  background: #128c7e;
+  color: #fff;
+}
+
+.rarm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

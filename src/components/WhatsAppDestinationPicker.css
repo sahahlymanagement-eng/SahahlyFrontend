@@ -1,0 +1,17 @@
+.wadp {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wadp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wadp-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sah-text-muted, #64748b);
+}

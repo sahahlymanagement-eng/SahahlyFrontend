@@ -8,9 +8,10 @@ import { toast } from "react-toastify";
 
 import {
 
-  FiUsers, FiDownload, FiFileText, FiCalendar, FiArrowLeft, FiCopy, FiSend, FiBarChart2,
+  FiUsers, FiDownload, FiFileText, FiCalendar, FiArrowLeft, FiCopy, FiSend, FiBarChart2, FiClock,
 
 } from "react-icons/fi";
+import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
 
 import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
@@ -116,6 +117,7 @@ export default function MonthlyParentReportWorkspace({
 
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const activeSendIdRef = useRef(null);
+  const [showAutoSendModal, setShowAutoSendModal] = useState(false);
 
 
   const [schoolSessionList, setSchoolSessionList] = useState([]);
@@ -798,6 +800,24 @@ export default function MonthlyParentReportWorkspace({
         </div>
 
         <div className="mpr-header-actions">
+
+          {selectedClassroom && (
+
+            <button
+
+              type="button"
+
+              className="mpr-btn mpr-btn--autosend"
+
+              onClick={() => setShowAutoSendModal(true)}
+
+            >
+
+              <FiClock size={16} /> Auto-send settings
+
+            </button>
+
+          )}
 
           {selectedClassroom && previewStudent && (
 
@@ -1876,6 +1896,15 @@ export default function MonthlyParentReportWorkspace({
         )}
 
       </div>
+
+      {showAutoSendModal && selectedClassroom && (
+        <ReportAutomationRuleModal
+          classroomId={selectedClassroom._id}
+          classroomName={selectedClassroom.name}
+          reportType="monthly_parent"
+          onClose={() => setShowAutoSendModal(false)}
+        />
+      )}
 
     </div>
 
