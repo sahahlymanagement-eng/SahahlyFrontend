@@ -952,3 +952,27 @@
   animation: md-section-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Manual "Alert Manager"/"Alert Assistant" button — classroom assistant rows
+   and external grading-partner rows both use it in the Action column. */
+.md-external-alertBtn {
+  margin-left: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--info);
+  background: transparent;
+  color: var(--info);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.md-external-alertBtn:hover:not(:disabled) {
+  background: var(--info-bg);
+}
+
+.md-external-alertBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+

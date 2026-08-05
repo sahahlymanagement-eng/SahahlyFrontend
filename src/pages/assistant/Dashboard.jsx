@@ -12,11 +12,14 @@ import {
 } from "react-icons/fi";
 import { AssistantLoading } from "./AssistantUI";
 
+// Each tile combines the classroom count with its external grading-partner
+// counterpart (EXTERNAL_ASSIGNED already folds in IN_PROGRESS — see
+// assignment-workflow.js's /assistant/summary).
 const STATUSES = [
-  { key: "ASSIGNED", label: "Assigned", icon: <FiClipboard />, tone: "violet" },
-  { key: "DONE", label: "Done", icon: <FiCheckCircle />, tone: "green" },
-  { key: "FAILED_DEADLINE", label: "Failed Deadline", icon: <FiAlertTriangle />, tone: "red" },
-  { key: "TOTAL", label: "Total", icon: <FiBarChart2 />, tone: "indigo" },
+  { key: "ASSIGNED", externalKey: "EXTERNAL_ASSIGNED", label: "Assigned", icon: <FiClipboard />, tone: "violet" },
+  { key: "DONE", externalKey: "EXTERNAL_DONE", label: "Done", icon: <FiCheckCircle />, tone: "green" },
+  { key: "FAILED_DEADLINE", externalKey: "EXTERNAL_FAILED_DEADLINE", label: "Failed Deadline", icon: <FiAlertTriangle />, tone: "red" },
+  { key: "TOTAL", externalKey: "EXTERNAL_TOTAL", label: "Total", icon: <FiBarChart2 />, tone: "indigo" },
 ];
 
 function getGreeting() {
@@ -65,7 +68,7 @@ export default function AssistantDashboard() {
       const data = res.data || {};
       const safe = {};
       STATUSES.forEach((s) => {
-        safe[s.key] = Number(data[s.key] || 0);
+        safe[s.key] = Number(data[s.key] || 0) + Number(data[s.externalKey] || 0);
       });
       setCounts(safe);
     } catch (err) {

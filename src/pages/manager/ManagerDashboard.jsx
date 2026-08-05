@@ -36,6 +36,15 @@ const STATUS_META = {
   LATE:            { icon: <FiAlertCircle />,   accent: "#E59A2A", iconClass: "tch-stat-icon--orange" },
 };
 
+// Maps a classroom dashboard status to the external grading-partner bucket
+// that gets folded into the same stat tile / table. "LATE" (classroom's
+// due-date-passed subset) has no external counterpart, so it's left unmapped.
+const EXTERNAL_BUCKET_FOR_STATUS = {
+  UNASSIGNED: "lateOnManager",
+  ASSIGNED: "inProgress",
+  FAILED_DEADLINE: "lateOnAssistant",
+};
+
 const formatStatus = (s) => {
   if (s === "UNASSIGNED") return "Late on manager";
   if (s === "ASSIGNED") return "In progress";
@@ -76,6 +85,8 @@ export default function ManagerDashboard({ scope = "manager" }) {
   const [expandedRows, setExpandedRows] = useState({});
   const [briefing, setBriefing] = useState(null);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [sendingExternalAlertId, setSendingExternalAlertId] = useState(null);
+  const [alertingAssignmentDelegationId, setAlertingAssignmentDelegationId] = useState(null);
 
   const basePath = isDirectorScope ? "/director" : "/manager";
 
@@ -431,6 +442,30 @@ export default function ManagerDashboard({ scope = "manager" }) {
     }
   };
 
+  const sendAssignmentAlert = async (delegationId) => {
+    try {
+      setAlertingAssignmentDelegationId(delegationId);
+      await api.post(`/assignment-delegations/${delegationId}/send-alert`);
+      toast.success("Alert sent");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send alert");
+    } finally {
+      setAlertingAssignmentDelegationId(null);
+    }
+  };
+
+  const sendExternalAlert = async (delegationId) => {
+    try {
+      setSendingExternalAlertId(delegationId);
+      await api.post(`/grading-delegations/${delegationId}/send-alert`);
+      toast.success("Alert sent");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send alert");
+    } finally {
+      setSendingExternalAlertId(null);
+    }
+  };
+
   // Shared token-based react-select styles (src/utils/selectTheme.js), with
   // the 180px minWidth this page's assistant-picker control needs.
   const customSelectStyles = {
@@ -441,6 +476,14 @@ export default function ManagerDashboard({ scope = "manager" }) {
   if (!user) return null;
 
   const briefingSummary = briefing?.summary;
+  const externalSummary = briefing?.externalGrading?.summary || {
+    lateOnManager: 0,
+    inProgress: 0,
+    lateOnAssistant: 0,
+    done: 0,
+    total: 0,
+  };
+  const externalRows = briefing?.externalGrading?.rows || [];
 
   const totalAssignments = DASHBOARD_STATUSES.reduce(
     (sum, status) => sum + (statusCounts[status] || 0),
@@ -576,13 +619,15 @@ const goToSubmissionViewer = (assignment) => {
             <div className="tch-briefing-stats">
               <div className="tch-briefing-stat">
                 <span className="tch-briefing-stat-value">
-                  {briefingSummary?.unassigned ?? statusCounts.UNASSIGNED ?? 0}
+                  {(briefingSummary?.unassigned ?? statusCounts.UNASSIGNED ?? 0) +
+                    externalSummary.lateOnManager}
                 </span>
                 <span className="tch-briefing-stat-label">Late on manager</span>
               </div>
               <div className="tch-briefing-stat">
                 <span className="tch-briefing-stat-value">
-                  {briefingSummary?.assigned ?? statusCounts.ASSIGNED ?? 0}
+                  {(briefingSummary?.assigned ?? statusCounts.ASSIGNED ?? 0) +
+                    externalSummary.inProgress}
                 </span>
                 <span className="tch-briefing-stat-label">In progress</span>
               </div>
@@ -594,7 +639,8 @@ const goToSubmissionViewer = (assignment) => {
               </div>
               <div className="tch-briefing-stat">
                 <span className="tch-briefing-stat-value">
-                  {briefingSummary?.failedDeadline ?? statusCounts.FAILED_DEADLINE ?? 0}
+                  {(briefingSummary?.failedDeadline ?? statusCounts.FAILED_DEADLINE ?? 0) +
+                    externalSummary.lateOnAssistant}
                 </span>
                 <span className="tch-briefing-stat-label">Late on assistant</span>
               </div>
@@ -664,8 +710,20 @@ const goToSubmissionViewer = (assignment) => {
         {DASHBOARD_STATUSES.map((status, i) => {
           const meta = STATUS_META[status];
           const isActive = selectedStatus === status;
+          // Classroom count, plus the external grading-partner delegations that
+          // land in the same bucket (external has no "LATE" — that's a
+          // due-date-passed subset unique to classroom coursework).
+          const externalCount =
+            status === "UNASSIGNED"
+              ? externalSummary.lateOnManager
+              : status === "ASSIGNED"
+              ? externalSummary.inProgress
+              : status === "FAILED_DEADLINE"
+              ? externalSummary.lateOnAssistant
+              : 0;
           const count =
-            status === "LATE" ? statusCounts.FAILED_DEADLINE || 0 : statusCounts[status] || 0;
+            (status === "LATE" ? statusCounts.FAILED_DEADLINE || 0 : statusCounts[status] || 0) +
+            externalCount;
           return (
             <button
               key={status}
@@ -769,7 +827,8 @@ const goToSubmissionViewer = (assignment) => {
                   <span className="md-section-dot" style={{ background: STATUS_META[selectedStatus]?.accent }} />
                   <h2 className="md-section-title">{formatStatus(selectedStatus)}</h2>
                   <span className="md-section-count">
-                    {(selectedStatus === "LATE" ? statusCounts.FAILED_DEADLINE : statusCounts[selectedStatus]) || 0}
+                    {((selectedStatus === "LATE" ? statusCounts.FAILED_DEADLINE : statusCounts[selectedStatus]) || 0) +
+                      (externalSummary[EXTERNAL_BUCKET_FOR_STATUS[selectedStatus]] || 0)}
                   </span>
                 </div>
                 <div className="md-section-actions">
@@ -969,9 +1028,28 @@ const goToSubmissionViewer = (assignment) => {
                                       );
                                     }
 
+                                    const assistantDelegationId = assistants[0]?._id;
+                                    const sendAlertBtn = assistantDelegationId && (
+                                      <button
+                                        type="button"
+                                        className="md-external-alertBtn"
+                                        disabled={alertingAssignmentDelegationId === assistantDelegationId}
+                                        onClick={() => sendAssignmentAlert(assistantDelegationId)}
+                                      >
+                                        {alertingAssignmentDelegationId === assistantDelegationId
+                                          ? "Alerting…"
+                                          : "Alert Assistant"}
+                                      </button>
+                                    );
+
                                     if (canManage) {
                                       if (!hasSubjectAssistants) {
-                                        return <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>;
+                                        return (
+                                          <div className="md-assign-cell">
+                                            <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>
+                                            {sendAlertBtn}
+                                          </div>
+                                        );
                                       }
                                       return (
                                         <div className="md-assign-cell">
@@ -995,6 +1073,7 @@ const goToSubmissionViewer = (assignment) => {
                                           />
                                           <button className="md-assign-btn" onClick={() => changeAssistant(a._id)}>Change</button>
                                           <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>
+                                          {sendAlertBtn}
                                         </div>
                                       );
                                     }
@@ -1075,6 +1154,49 @@ const goToSubmissionViewer = (assignment) => {
                             </Fragment>
                           );
                         })}
+                      {selectedStatus &&
+                        EXTERNAL_BUCKET_FOR_STATUS[selectedStatus] &&
+                        externalRows
+                          .filter((row) => row.bucket === EXTERNAL_BUCKET_FOR_STATUS[selectedStatus])
+                          .map((row) => (
+                            <tr key={row._id} className="md-row">
+                              <td />
+                              <td data-label="Classroom">
+                                <span className="md-cell-primary">{row.provider}</span>
+                              </td>
+                              <td data-label="Teacher">
+                                <span className="md-cell-muted" style={{ textTransform: "capitalize" }}>
+                                  {row.role}
+                                </span>
+                              </td>
+                              <td data-label="Assignment">
+                                <span className="md-cell-title">{row.assignmentName}</span>
+                              </td>
+                              <td data-label="Assistant(s)">{row.personName}</td>
+                              <td data-label="Deadline">
+                                {row.deadline ? new Date(row.deadline).toLocaleString() : "—"}
+                              </td>
+                              <td data-label="Quality Team">—</td>
+                              <td data-label="Action">
+                                {/* Alerting a manager only makes sense org-wide (director scope) —
+                                    on a manager's own dashboard that row is their own delegation. */}
+                                {(row.role === "assistant" || isDirectorScope) && (
+                                  <button
+                                    type="button"
+                                    className="md-external-alertBtn"
+                                    disabled={sendingExternalAlertId === row._id}
+                                    onClick={() => sendExternalAlert(row._id)}
+                                  >
+                                    {sendingExternalAlertId === row._id
+                                      ? "Alerting…"
+                                      : row.role === "manager"
+                                      ? "Alert Manager"
+                                      : "Alert Assistant"}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
                     </tbody>
                   </table>
 

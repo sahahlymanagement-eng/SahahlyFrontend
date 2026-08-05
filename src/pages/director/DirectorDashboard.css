@@ -1,11 +1,21 @@
-.directorDashboardPage {
-  padding: 28px 36px 48px;
+@keyframes ddx-fade-in    { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ddx-section-in { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes ddx-scale-in   { from { opacity: 0; transform: scale(0.94) translateY(6px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+
+/* This page is an org-wide overview (wide tables, two people grids) rather
+   than a single manager's personal dashboard, so it keeps tch-page's look
+   (hero, tiles, animations) but not its 1200px reading-width cap — that cap
+   left large dead margins and made the page feel "shifted" on wide screens. */
+.directorDashboardPage.tch-page {
+  max-width: none;
+  margin: 0;
   color: var(--text-primary);
-  min-height: 100%;
+  animation: ddx-fade-in 0.25s ease;
 }
 
 .directorDashSection {
   margin-bottom: 28px;
+  animation: ddx-section-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .directorDashSectionHeader {
@@ -32,9 +42,9 @@
 }
 
 .directorDashTitle {
-  font-family: 'Outfit', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
   margin: 0;
@@ -51,58 +61,6 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--primary);
-}
-
-.directorDashStatsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 18px;
-}
-
-.directorDashStatCard {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: var(--shadow);
-  transition: transform 0.2s ease, border-color 0.2s ease;
-}
-
-.directorDashStatCard:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--primary) 25%, transparent);
-}
-
-.directorDashIconWrap {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-}
-
-.directorDashIcon {
-  color: var(--primary);
-  font-size: 18px;
-}
-
-.directorDashStatCard h3 {
-  font-family: 'Outfit', sans-serif;
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text-primary);
-  margin: 0 0 6px 0;
-}
-
-.directorDashStatCard p {
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0;
 }
 
 .directorDashSummaryCard {
@@ -144,46 +102,11 @@
   color: var(--primary);
 }
 
-@media (max-width: 1100px) {
-  .directorDashboardPage {
-    padding: 20px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .directorDashStatsGrid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .ddx-lists-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .directorDashStatsGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* ── Extended dashboard (assignments, managers, assistants) ─────────── */
 
 .ddx-loading {
   color: var(--muted);
   font-size: 14px;
-}
-
-.ddx-stat--done .directorDashIconWrap { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 25%, transparent); }
-.ddx-stat--done .directorDashIconWrap svg { color: var(--success); }
-.ddx-stat--late .directorDashIconWrap { background: color-mix(in srgb, var(--danger, #e5484d) 14%, transparent); border-color: color-mix(in srgb, var(--danger, #e5484d) 25%, transparent); }
-.ddx-stat--late .directorDashIconWrap svg { color: var(--danger, #e5484d); }
-.ddx-stat--progress .directorDashIconWrap svg,
-.ddx-stat--unassigned .directorDashIconWrap svg { color: var(--primary); }
-
-.ddx-lists-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 18px;
 }
 
 .ddx-list-card {
@@ -193,6 +116,7 @@
   padding: 18px;
   box-shadow: var(--shadow);
   min-width: 0;
+  animation: ddx-scale-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .ddx-list-title {
@@ -227,8 +151,6 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 320px;
-  overflow-y: auto;
 }
 
 .ddx-list li {
@@ -304,20 +226,25 @@
 }
 
 .ddx-inline-action{
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--primary);
-  padding: 6px 10px;
-  border-radius: 10px;
+  background: var(--primary-strong);
+  border: 1px solid transparent;
+  color: var(--primary-contrast);
+  padding: 8px 16px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
   transition: background .15s ease, border-color .15s ease, transform .05s ease;
 }
 
 .ddx-inline-action:hover{
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+  background: var(--primary-active);
+}
+
+.ddx-inline-action:disabled{
+  opacity: .6;
+  cursor: not-allowed;
 }
 
 .ddx-inline-action:active{
@@ -354,6 +281,7 @@
   transition: transform 0.15s ease, border-color 0.15s ease;
   font: inherit;
   color: inherit;
+  animation: ddx-scale-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .ddx-person-card:hover {

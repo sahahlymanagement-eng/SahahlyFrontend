@@ -1,0 +1,51 @@
+/* Assistant-on-this-assignment row + manual alert button, shown to the
+   delegated manager only. Colour comes entirely from theme tokens. */
+
+.gta-team {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.gta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.gta-name {
+  font-weight: 600;
+  color: var(--text-secondary, inherit);
+}
+
+.gta-deadline {
+  color: var(--text-tertiary, var(--text-secondary, inherit));
+}
+
+.gta-sendBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--info);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--info);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gta-sendBtn:hover:not(:disabled) {
+  background: var(--info-bg);
+}
+
+.gta-sendBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

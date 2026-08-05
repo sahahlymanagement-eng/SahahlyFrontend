@@ -65,6 +65,7 @@ import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingProm
 import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
 import { useGradingDelegations } from "../../context/GradingNotificationContext";
 import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
+import GradingTeamAlert from "../../components/GradingTeamAlert";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
 import {
   useMarkingStudentSelection,
@@ -158,6 +159,7 @@ export default function GradingProviderPage({ slug, label }) {
   const [loadingList, setLoadingList] = useState(false);
   const [loadingAssignments, setLoadingAssignments] = useState(true);
   const [assignmentIndex, setAssignmentIndex] = useState([]);
+  const [sendingAlertId, setSendingAlertId] = useState(null);
   // Server-side pagination for the open assignment's submissions.
   const [listMeta, setListMeta] = useState({ total: 0, lastPage: 1 });
   const [syncing, setSyncing] = useState(false);
@@ -1751,6 +1753,18 @@ export default function GradingProviderPage({ slug, label }) {
     setSubmissions([]);
   };
 
+  const sendTeamAlert = async (delegationId) => {
+    try {
+      setSendingAlertId(delegationId);
+      await api.post(`/grading-delegations/${delegationId}/send-alert`);
+      toast.success("Alert sent");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send alert");
+    } finally {
+      setSendingAlertId(null);
+    }
+  };
+
   // Grouped by the server — see loadAssignments.
   const assignments = assignmentIndex;
 
@@ -1898,6 +1912,13 @@ export default function GradingProviderPage({ slug, label }) {
                           {/* Renders only when the director delegated this
                               assignment to the signed-in account. */}
                           <GradingDeadlineBadge delegation={a.myDelegation} />
+                          {/* Renders only when the caller is the delegated
+                              manager on this assignment. */}
+                          <GradingTeamAlert
+                            teamDelegations={a.teamDelegations}
+                            onSendAlert={sendTeamAlert}
+                            sendingId={sendingAlertId}
+                          />
                         </div>
                       </div>
                     ))

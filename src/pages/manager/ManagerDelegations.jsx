@@ -24,6 +24,7 @@ export default function ManagerDelegations() {
   const [selectedAssignment, setSelectedAssignment] = usePersistedState("delegations:manager:assignment", null);
   const [assistantDeadlines, setAssistantDeadlines] = useState({});
   const [loading, setLoading] = useState(false);
+  const [alertingId, setAlertingId] = useState(null);
 
   /* ================= AUTH ================= */
 
@@ -156,6 +157,18 @@ const {
       toast.error(err.response?.data?.message || "Assignment failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendAlert = async (delegationId) => {
+    try {
+      setAlertingId(delegationId);
+      await api.post(`/assignment-delegations/${delegationId}/send-alert`);
+      toast.success("Alert sent");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send alert");
+    } finally {
+      setAlertingId(null);
     }
   };
 
@@ -297,6 +310,16 @@ const {
                     <div className={`status-badge status-${d.status}`}>
                       {d.status}
                     </div>
+
+                    {isAssistant && (
+                      <button
+                        className="managerDel-assignBtn"
+                        disabled={alertingId === d._id}
+                        onClick={() => sendAlert(d._id)}
+                      >
+                        {alertingId === d._id ? "Alerting…" : "Alert Assistant"}
+                      </button>
+                    )}
 
                   </div>
                 );

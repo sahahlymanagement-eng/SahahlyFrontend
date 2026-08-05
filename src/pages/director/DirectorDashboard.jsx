@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
+import "../teacher/teacher.css";
+import "../manager/ManagerDashboard.css";
 import "./DirectorDashboard.css";
 import {
   FiUserCheck,
@@ -68,6 +73,27 @@ function isLateRow(row) {
   return due < new Date();
 }
 
+// One clickable tile per dashboard bucket — mirrors ManagerDashboard's
+// tch-stat-card/md-stat-filter tiles. "dueSoon" has no external-grading
+// counterpart, so it maps to null below.
+const TILE_ORDER = ["done", "inProgress", "unassigned", "late", "dueSoon"];
+
+const TILE_META = {
+  done: { label: "Done", icon: <FiCheckCircle />, iconClass: "tch-stat-icon--green" },
+  inProgress: { label: "In progress", icon: <FiClock />, iconClass: "tch-stat-icon--blue" },
+  unassigned: { label: "Unassigned", icon: <FiUsers />, iconClass: "tch-stat-icon--violet" },
+  late: { label: "Late", icon: <FiAlertTriangle />, iconClass: "tch-stat-icon--orange" },
+  dueSoon: { label: "Due in 7 days", icon: <FiCalendar />, iconClass: "tch-stat-icon--cyan" },
+};
+
+const EXTERNAL_BUCKET_FOR_TILE = {
+  done: "done",
+  inProgress: "inProgress",
+  unassigned: "lateOnManager",
+  late: "lateOnAssistant",
+  dueSoon: null,
+};
+
 export default function DirectorDashboard() {
   const navigate = useNavigate();
   const [user] = useState(readStoredUser);
@@ -78,6 +104,27 @@ export default function DirectorDashboard() {
   const [detailTarget, setDetailTarget] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [sendingExternalAlertId, setSendingExternalAlertId] = useState(null);
+
+  // Clicking a tile below picks which bucket's assignment list this fetches
+  // (same usePagination/Pagination pair ManagerDashboard uses) — kept
+  // separate from the main dashboard load so switching tiles doesn't
+  // re-fetch managers/assistants/external-grading.
+  const [selectedBucket, setSelectedBucket] = useState(null);
+  const bucketParams = useMemo(() => ({ bucket: selectedBucket }), [selectedBucket]);
+  const {
+    data: bucketRows,
+    page: bucketPage,
+    totalPages: bucketTotalPages,
+    loading: loadingBucket,
+    fetchPage: fetchBucketPage,
+  } = usePagination(
+    "/director/dashboard/assignments",
+    bucketParams,
+    15,
+    "rows",
+    Boolean(selectedBucket)
+  );
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -146,6 +193,18 @@ export default function DirectorDashboard() {
     setDetail(null);
   };
 
+  const sendExternalAlert = async (delegationId) => {
+    try {
+      setSendingExternalAlertId(delegationId);
+      await api.post(`/grading-delegations/${delegationId}/send-alert`);
+      toast.success("Alert sent");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send alert");
+    } finally {
+      setSendingExternalAlertId(null);
+    }
+  };
+
   const goToDirectorSubmissionViewer = (row) => {
     const classroomId = row?.classroomId;
     const assignmentId = row?.assignmentId;
@@ -158,86 +217,223 @@ export default function DirectorDashboard() {
   if (!user) return null;
 
   const summary = data?.assignments?.summary;
+  const dueSoonTotal = data?.assignments?.dueSoonTotal ?? 0;
+  const externalSummary = data?.externalGrading?.summary || {
+    lateOnManager: 0,
+    inProgress: 0,
+    lateOnAssistant: 0,
+    done: 0,
+    total: 0,
+  };
+  const externalRows = data?.externalGrading?.rows || [];
+  // "Unassigned" absorbs external lateOnManager (a manager hasn't finished
+  // delegating/managing that partner assignment); "Late" absorbs external
+  // lateOnAssistant (an assistant missed their deadline); "Done"/"In
+  // progress" absorb their like-named external buckets — same pairing used
+  // on the manager dashboard. "Due soon" has no external equivalent.
+  const tileCounts = summary && {
+    done: summary.done + externalSummary.done,
+    inProgress: summary.inProgress + externalSummary.inProgress,
+    unassigned: summary.unassigned + externalSummary.lateOnManager,
+    late: summary.late + externalSummary.lateOnAssistant,
+    dueSoon: dueSoonTotal,
+  };
+  const totalAssignments = summary
+    ? summary.total + externalSummary.total
+    : 0;
+
+  const selectedExternalBucket = selectedBucket && EXTERNAL_BUCKET_FOR_TILE[selectedBucket];
+  const selectedExternalRows = selectedExternalBucket
+    ? externalRows.filter((r) => r.bucket === selectedExternalBucket)
+    : [];
 
   return (
-    <div className="directorDashboardPage">
-      {/* ── Assignments overview ─────────────────────────────────────── */}
-      <section className="directorDashSection">
-        <div className="directorDashSectionHeader">
-          <div className="directorDashTitleWrap">
-            <span className="directorDashDot" />
-            <h2 className="directorDashTitle">Assignments</h2>
-          </div>
-          {summary && (
-            <div className="directorDashCount">
-              <FiClipboard /> Total: {summary.total}
-            </div>
-          )}
-        </div>
-
-        {loading && <p className="ddx-loading">Loading dashboard…</p>}
-
-        {!loading && summary && (
-          <div className="directorDashStatsGrid">
-            <StatCard
-              icon={<FiCheckCircle />}
-              tone="done"
-              value={summary.done}
-              label="Done"
-            />
-            <StatCard
-              icon={<FiClock />}
-              tone="progress"
-              value={summary.inProgress}
-              label="In progress"
-            />
-            <StatCard
-              icon={<FiUsers />}
-              tone="unassigned"
-              value={summary.unassigned}
-              label="Unassigned"
-            />
-            <StatCard
-              icon={<FiAlertTriangle />}
-              tone="late"
-              value={summary.late}
-              label="Late"
-            />
-          </div>
-        )}
+    <div className="tch-page md-dashboard-page directorDashboardPage">
+      <section className="tch-hero">
+        <p className="tch-hero-greeting">
+          Welcome back{user.name ? `, ${user.name.split(" ")[0]}` : ""}
+        </p>
+        <h1>
+          Assignments, <span>org-wide</span>
+        </h1>
+        <p>
+          Track assignment status, manager workload, and assistant
+          performance across every classroom — all from one place.
+        </p>
       </section>
 
-      {/* ── Late / due soon lists ────────────────────────────────────── */}
-      {!loading && data && (
-        <section className="directorDashSection">
-          <div className="ddx-lists-grid">
-            <AssignmentList
-              title="Late"
-              icon={<FiAlertTriangle />}
-              tone="late"
-              rows={(data.assignments.late || []).filter(isLateRow)}
-              emptyText="Nothing is late. 🎉"
-              onRowClick={goToDirectorSubmissionViewer}
-              onOpenViewer={goToDirectorSubmissionViewer}
-            />
-            <AssignmentList
-              title="Due in the next 7 days"
-              icon={<FiCalendar />}
-              tone="progress"
-              rows={data.assignments.dueSoon}
-              emptyText="Nothing due in the next 7 days."
-              onOpenViewer={goToDirectorSubmissionViewer}
-            />
-            <AssignmentList
-              title="Recently done"
-              icon={<FiCheckCircle />}
-              tone="done"
-              rows={data.assignments.recentlyDone}
-              emptyText="No assignments marked done yet."
-              onOpenViewer={goToDirectorSubmissionViewer}
-            />
+      {loading && <p className="ddx-loading">Loading dashboard…</p>}
+
+      {!loading && tileCounts && (
+        <>
+          <div className="directorDashCount" style={{ marginBottom: 18, width: "fit-content" }}>
+            <FiClipboard /> Total: {totalAssignments}
           </div>
-        </section>
+
+          <div className="tch-stats-row">
+            {TILE_ORDER.map((key, i) => {
+              const meta = TILE_META[key];
+              const isActive = selectedBucket === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`tch-stat-card md-stat-filter ${isActive ? "md-stat-filter--active" : ""}`}
+                  style={{ animationDelay: `${i * 0.05}s` }}
+                  onClick={() => setSelectedBucket(isActive ? null : key)}
+                >
+                  <div className={`tch-stat-icon ${meta.iconClass}`}>{meta.icon}</div>
+                  <div>
+                    <div className="tch-stat-value">{tileCounts[key]}</div>
+                    <div className="tch-stat-label">{meta.label}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedBucket && (
+            <div className="md-section">
+              <div className="md-section-header">
+                <div className="md-section-title-wrap">
+                  <span className="directorDashDot" />
+                  <h2 className="md-section-title">{TILE_META[selectedBucket].label}</h2>
+                  <span className="md-section-count">{tileCounts[selectedBucket]}</span>
+                </div>
+              </div>
+
+              <div className="md-table-wrap">
+                {loadingBucket ? (
+                  <div className="md-loading">
+                    <div className="md-spinner" />
+                    <span>Loading…</span>
+                  </div>
+                ) : (
+                  <table className="md-table sah-table--cards">
+                    <thead>
+                      <tr>
+                        <th>Classroom</th>
+                        <th>Teacher</th>
+                        <th>Manager</th>
+                        <th>Assignment</th>
+                        <th>Status</th>
+                        <th>Due date</th>
+                        <th>Assistant</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bucketRows.map((r) => (
+                        <tr key={r.assignmentId} className="md-row">
+                          <td data-label="Classroom">
+                            <span className="md-cell-primary">{r.className || "—"}</span>
+                          </td>
+                          <td data-label="Teacher">
+                            <span className="md-cell-muted">{r.teacherName}</span>
+                          </td>
+                          <td data-label="Manager">
+                            <span className="md-cell-muted">{r.managerName}</span>
+                          </td>
+                          <td data-label="Assignment">
+                            <span
+                              className="md-cell-title md-cell-title--clickable"
+                              onClick={() => goToDirectorSubmissionViewer(r)}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  goToDirectorSubmissionViewer(r);
+                                }
+                              }}
+                            >
+                              {r.title}
+                            </span>
+                          </td>
+                          <td data-label="Status">
+                            <span className={`ddx-status ddx-status--${statusTone(r.status)}`}>
+                              {statusLabel(r.status)}
+                            </span>
+                          </td>
+                          <td data-label="Due date">
+                            <span className="md-cell-muted">{fmtDate(r.dueDate)}</span>
+                          </td>
+                          <td data-label="Assistant">
+                            <span className="md-cell-muted">{r.assistantName || "—"}</span>
+                          </td>
+                          <td data-label="Action">
+                            <button
+                              type="button"
+                              className="md-external-alertBtn"
+                              onClick={() => goToDirectorSubmissionViewer(r)}
+                            >
+                              Open viewer
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {selectedExternalRows.map((r) => (
+                        <tr key={r._id} className="md-row">
+                          <td data-label="Classroom">
+                            <span className="md-cell-primary">{r.provider}</span>
+                          </td>
+                          <td data-label="Teacher">
+                            <span className="md-cell-muted" style={{ textTransform: "capitalize" }}>
+                              {r.role}
+                            </span>
+                          </td>
+                          <td data-label="Manager">—</td>
+                          <td data-label="Assignment">
+                            <span className="md-cell-title">{r.assignmentName}</span>
+                          </td>
+                          <td data-label="Status">—</td>
+                          <td data-label="Due date">
+                            <span className="md-cell-muted">{fmtDate(r.deadline)}</span>
+                          </td>
+                          <td data-label="Assistant">
+                            <span className="md-cell-muted">{r.personName}</span>
+                          </td>
+                          <td data-label="Action">
+                            <button
+                              type="button"
+                              className="md-external-alertBtn"
+                              disabled={sendingExternalAlertId === r._id}
+                              onClick={() => sendExternalAlert(r._id)}
+                            >
+                              {sendingExternalAlertId === r._id
+                                ? "Alerting…"
+                                : r.role === "manager"
+                                ? "Alert Manager"
+                                : "Alert Assistant"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {!bucketRows.length && !selectedExternalRows.length && (
+                        <tr>
+                          <td colSpan={8} className="md-cell-empty">
+                            Nothing here. 🎉
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+                <Pagination page={bucketPage} totalPages={bucketTotalPages} onPageChange={fetchBucketPage} />
+              </div>
+            </div>
+          )}
+
+          {!selectedBucket && (
+            <div className="tch-empty md-dashboard-hint">
+              <div className="tch-empty-icon">
+                <FiClipboard size={28} />
+              </div>
+              <h3>Select a tile above</h3>
+              <p>Choose Done, In progress, Unassigned, Late, or Due in 7 days to view assignments.</p>
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Managers ─────────────────────────────────────────────────── */}
@@ -384,142 +580,53 @@ export default function DirectorDashboard() {
       )}
 
       {/* ── Person detail modal ──────────────────────────────────────── */}
-      {detailTarget && (
-        <div className="ddx-modal-overlay" onClick={closeDetail}>
-          <div className="ddx-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="ddx-modal-header">
-              <h3>
-                {detailTarget.type === "manager" ? "Manager" : "Assistant"} ·{" "}
-                {detailTarget.name}
-              </h3>
-              <button type="button" className="ddx-modal-close" onClick={closeDetail}>
-                <FiX />
-              </button>
-            </div>
+      {/* Portaled to <body>: the hero/tile entrance animations above give
+          .tch-page (and other ancestors) a `transform`, which makes them a
+          containing block for `position: fixed` descendants — without the
+          portal this modal would be positioned relative to that box instead
+          of the viewport, and could open off-screen from the user's scroll. */}
+      {detailTarget &&
+        createPortal(
+          <div className="ddx-modal-overlay" onClick={closeDetail}>
+            <div className="ddx-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="ddx-modal-header">
+                <h3>
+                  {detailTarget.type === "manager" ? "Manager" : "Assistant"} ·{" "}
+                  {detailTarget.name}
+                </h3>
+                <button type="button" className="ddx-modal-close" onClick={closeDetail}>
+                  <FiX />
+                </button>
+              </div>
 
-            <div className="ddx-modal-body">
-              {detailLoading && <p className="ddx-loading">Loading details…</p>}
+              <div className="ddx-modal-body">
+                {detailLoading && <p className="ddx-loading">Loading details…</p>}
 
-              {!detailLoading && detailTarget.type === "manager" && detail && (
-                <ManagerDetail
-                  detail={detail}
-                  onLateRowClick={goToDirectorSubmissionViewer}
-                />
-              )}
-              {!detailLoading && detailTarget.type === "assistant" && detail && (
-                <AssistantDetail detail={detail.assistant} />
-              )}
+                {!detailLoading && detailTarget.type === "manager" && detail && (
+                  <ManagerDetail
+                    detail={detail}
+                    onLateRowClick={goToDirectorSubmissionViewer}
+                  />
+                )}
+                {!detailLoading && detailTarget.type === "assistant" && detail && (
+                  <AssistantDetail detail={detail.assistant} />
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
 
 /* ── Sub-components ─────────────────────────────────────────────────── */
 
-function StatCard({ icon, tone, value, label }) {
-  return (
-    <div className={`directorDashStatCard ddx-stat--${tone}`}>
-      <div className="directorDashIconWrap">{icon}</div>
-      <h3>{value}</h3>
-      <p>{label}</p>
-    </div>
-  );
-}
-
 function Chip({ tone, label, value }) {
   return (
     <span className={`ddx-chip ddx-chip--${tone}`}>
       {label}: <strong>{value}</strong>
     </span>
-  );
-}
-
-function AssignmentList({
-  title,
-  icon,
-  tone,
-  rows,
-  emptyText,
-  onRowClick,
-  onOpenViewer,
-}) {
-  const clickable = typeof onRowClick === "function";
-  const canOpen = typeof onOpenViewer === "function";
-  return (
-    <div className="ddx-list-card">
-      <div className={`ddx-list-title ddx-list-title--${tone}`}>
-        {icon}
-        <span>{title}</span>
-        <span className="ddx-list-count">{rows?.length || 0}</span>
-      </div>
-      {!rows?.length && <p className="ddx-list-empty">{emptyText}</p>}
-      {rows?.length > 0 && (
-        <ul className="ddx-list">
-          {rows.map((r) => (
-            <li
-              key={r.assignmentId}
-              className={clickable ? "ddx-list-item--clickable" : undefined}
-              role={clickable ? "button" : undefined}
-              tabIndex={clickable ? 0 : undefined}
-              onClick={clickable ? () => onRowClick(r) : undefined}
-              onKeyDown={
-                clickable
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onRowClick(r);
-                      }
-                    }
-                  : undefined
-              }
-            >
-              <div className="ddx-list-main">
-                <span className="ddx-list-assignment">{r.title}</span>
-                <span className="ddx-list-class">{r.className || "—"}</span>
-              </div>
-              <div className="ddx-list-side">
-                <span className={`ddx-status ddx-status--${statusTone(r.status)}`}>
-                  {statusLabel(r.status)}
-                </span>
-                {r.managerName && (
-                  <span className="ddx-list-meta-item">
-                    <strong>Mgr:</strong> {r.managerName}
-                  </span>
-                )}
-                {r.teacherName && (
-                  <span className="ddx-list-meta-item">
-                    <strong>Teacher:</strong> {r.teacherName}
-                  </span>
-                )}
-                <span className="ddx-list-due">
-                  <FiCalendar /> {fmtDate(r.dueDate)}
-                </span>
-                {r.assistantName && (
-                  <span className="ddx-list-assistant">
-                    <FiUsers /> {r.assistantName}
-                  </span>
-                )}
-                {canOpen && (
-                  <button
-                    type="button"
-                    className="ddx-inline-action"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenViewer(r);
-                    }}
-                  >
-                    Open viewer
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 
