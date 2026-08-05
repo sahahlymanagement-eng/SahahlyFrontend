@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { FiSun, FiMoon, FiArrowLeft, FiShield, FiLock } from "react-icons/fi";
-import logo from "../assets/images/Logo-trimmed.png";
+import logo from "../assets/images/Logo-trimmed-hd.png";
 import { useTheme } from "../context/ThemeContext";
 import "./PrivacySecurityPolicy.css";
 
@@ -224,9 +224,8 @@ export default function PrivacySecurityPolicy() {
           <section id="contact" className="psp-section">
             <h2>Contact</h2>
             <p>
-              For privacy or security questions about Sahahly, contact your Sahahly
-              administrator or reach us through the support channel used by your
-              organization.
+              For privacy or security questions about Sahahly, visit our{" "}
+              <Link to="/support">Support page</Link>.
             </p>
             <p>
               Website:{" "}

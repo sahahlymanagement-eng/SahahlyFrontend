@@ -44,7 +44,6 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  transform: translateY(-70px);
 }
 
 .login-logo-section {
@@ -177,19 +176,46 @@
   cursor: not-allowed;
 }
 
-.login-policy-link {
-  margin: 16px 0 0;
-  text-align: center;
-  font-size: 13px;
+.login-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
 }
 
-.login-policy-link a {
+.login-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--text-secondary);
-  text-decoration: none;
+  font-size: 12.5px;
   font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease,
+    transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.login-policy-link a:hover {
+.login-footer-link svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.login-footer-link:hover {
   color: var(--primary);
-  text-decoration: underline;
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.login-footer-link:hover svg {
+  opacity: 1;
 }

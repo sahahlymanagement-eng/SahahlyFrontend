@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FiSun, FiMoon } from "react-icons/fi";
+import { FiSun, FiMoon, FiShield, FiVideo, FiLifeBuoy, FiFileText } from "react-icons/fi";
 import api from "../api/api";
 import "./Login.css";
-import logo from "../assets/images/Logo-trimmed.png";
+import logo from "../assets/images/Logo-trimmed-hd.png";
 import { useTheme } from "../context/ThemeContext";
 import { toast } from "react-toastify";
 import { clearPersistedUiState } from "../hooks/usePersistedState";
@@ -135,9 +135,25 @@ export default function Login() {
               {loading ? "Logging In..." : "Log In"}
             </button>
           </form>
-          <p className="login-policy-link">
-            <Link to="/privacy-security">Privacy &amp; Security Policy</Link>
-          </p>
+        </div>
+
+        <div className="login-footer-links">
+          <Link to="/privacy-security" className="login-footer-link">
+            <FiShield size={14} />
+            <span>Privacy &amp; Security</span>
+          </Link>
+          <Link to="/zoom-documentation" className="login-footer-link">
+            <FiVideo size={14} />
+            <span>Zoom Docs</span>
+          </Link>
+          <Link to="/support" className="login-footer-link">
+            <FiLifeBuoy size={14} />
+            <span>Support</span>
+          </Link>
+          <Link to="/terms-of-use" className="login-footer-link">
+            <FiFileText size={14} />
+            <span>Terms of Use</span>
+          </Link>
         </div>
       </div>
     </div>

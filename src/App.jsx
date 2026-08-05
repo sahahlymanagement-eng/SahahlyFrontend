@@ -28,6 +28,9 @@ import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
 import ManagerDrPeter from "./pages/manager/ManagerDrPeter";
 import Login from "./pages/Login";
 import PrivacySecurityPolicy from "./pages/PrivacySecurityPolicy";
+import ZoomDocumentation from "./pages/ZoomDocumentation";
+import Support from "./pages/Support";
+import TermsOfUse from "./pages/TermsOfUse";
 import ForgotPassword from "./pages/ForgotPassword";
 import SetupPassword from "./pages/SetupPassword";
 import AssistantDashboard from "./pages/assistant/Dashboard";
@@ -126,6 +129,9 @@ function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/privacy-security" element={<PrivacySecurityPolicy />} />
         <Route path="/privacy" element={<Navigate to="/privacy-security" replace />} />
+        <Route path="/zoom-documentation" element={<ZoomDocumentation />} />
+        <Route path="/support" element={<Support />} />
+        <Route path="/terms-of-use" element={<TermsOfUse />} />
         <Route path="/googleConnectTest" element={<GoogleConnectTest />} />
 
         <Route path="/assignment-test" element={<AssignmentFetchTest />} />
