@@ -22,6 +22,7 @@ import {
 
   FiUploadCloud,
   FiCpu,
+  FiTarget,
 
   FiMessageCircle,
 
@@ -94,6 +95,8 @@ const NAV_SECTIONS = [
       { icon: <FiBarChart2 />, label: "Manager Workload", path: "/director/manager-workload" },
 
       { icon: <FiUsers />, label: "Assistant Performance", path: "/director/assistant-performance" },
+
+      { icon: <FiTarget />, label: "Accuracy Metrics", path: "/director/accuracy-metrics" },
 
       { icon: <FiBarChart2 />, label: "Token Usage", path: "/director/token-usage" },
 

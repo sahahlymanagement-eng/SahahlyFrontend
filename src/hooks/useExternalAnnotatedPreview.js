@@ -232,6 +232,34 @@ export function useExternalAnnotatedPreview({
     editingCriteriaGrade,
   ]);
 
+  /**
+   * The current editor state as a marking-result blob — what Confirm Edits would
+   * write. Exposed so the unconfirmed-edits autosave can snapshot the editor
+   * without persisting anything or touching the preview.
+   */
+  const buildEditedResult = useCallback(() => {
+    if (!resultModal) return null;
+    const questions = questionsForConfirmEdits(
+      editingQuestions,
+      pendingRemovedRef.current
+    ).map((q) => ({ ...q }));
+    return applyTeacherEditsToResult(
+      resultModal.result,
+      questions,
+      Math.max(1, Number(effectiveMaxTotal) || 1),
+      (editingAnnotations || []).map((a) => ({ ...a })),
+      editingSummary,
+      editingCriteriaGrade
+    );
+  }, [
+    resultModal,
+    editingQuestions,
+    editingAnnotations,
+    editingSummary,
+    effectiveMaxTotal,
+    editingCriteriaGrade,
+  ]);
+
   const confirmEdits = useCallback(
     async (onPersist) => {
       if (!resultModal) return null;
@@ -239,6 +267,10 @@ export function useExternalAnnotatedPreview({
       if (!submissionId) return null;
 
       setConfirmingEdits(true);
+      // Supersede any preview still being built (the open-time one, when the
+      // viewer auto-confirms a freshly marked paper) so it drops out at its next
+      // checkpoint instead of spending an annotate pass on a stale snapshot.
+      previewRequestRef.current += 1;
       try {
         const questions = questionsForConfirmEdits(
           editingQuestions,
@@ -268,7 +300,16 @@ export function useExternalAnnotatedPreview({
         };
 
         if (onPersist) {
-          await onPersist({ finalResult, submissionId, questions, maxTotal, teacherAnnotations });
+          try {
+            await onPersist({ finalResult, submissionId, questions, maxTotal, teacherAnnotations });
+          } catch (err) {
+            // This confirm dropped whatever preview was in flight, so put the
+            // last confirmed one back — a failed save must not leave the modal
+            // stuck on a spinner.
+            if (confirmedSnapshot) generatePreview(confirmedSnapshot, { lockPlacement: true });
+            else setPreviewLoading(false);
+            throw err;
+          }
         }
 
         setConfirmedSnapshot(snapshot);
@@ -286,6 +327,7 @@ export function useExternalAnnotatedPreview({
       effectiveMaxTotal,
       generatePreview,
       editingCriteriaGrade,
+      confirmedSnapshot,
     ]
   );
 
@@ -341,6 +383,7 @@ export function useExternalAnnotatedPreview({
     hasPendingEdits,
     confirmedSnapshot,
     confirmEdits,
+    buildEditedResult,
     resetToConfirmed,
     reportPageCount,
     refreshPreviewFromQuestions,

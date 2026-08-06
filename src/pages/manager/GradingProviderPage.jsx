@@ -62,6 +62,10 @@ import {
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
+import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
+import PendingEditsBanner, {
+  PendingEditsSavingHint,
+} from "../../components/PendingEditsBanner";
 import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
 import { useGradingDelegations } from "../../context/GradingNotificationContext";
 import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
@@ -228,6 +232,12 @@ export default function GradingProviderPage({ slug, label }) {
   const [publishAll, setPublishAll] = useState(null); // { done, total, current, loading }
   const publishStopRef = useRef(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+  // Which submission the editing state above belongs to — set by openResultModal
+  // so the auto-save below can tell "editor loaded" from "not this paper yet".
+  const [editorSubmissionId, setEditorSubmissionId] = useState(null);
+  // Set while the auto-save on open is confirming the displayed result, so the
+  // unconfirmed-edits autosave does not store a copy of what is being confirmed.
+  const [autoSavingOpenFor, setAutoSavingOpenFor] = useState(null);
 
   const editHistory = useMarkingEditHistory({
     questions: editingQuestions,
@@ -429,7 +439,9 @@ export default function GradingProviderPage({ slug, label }) {
     previewError,
     confirmingEdits,
     hasPendingEdits,
+    confirmedSnapshot,
     confirmEdits,
+    buildEditedResult,
     resetToConfirmed,
     reportPageCount,
   } = useExternalAnnotatedPreview({
@@ -466,6 +478,51 @@ export default function GradingProviderPage({ slug, label }) {
   useEffect(() => {
     setPendingRemovedIndices(new Set());
   }, [resultModalSubmissionId]);
+
+  // ── Unconfirmed edits: autosave + restore ─────────────────────────────────
+  // Everything typed in this modal is kept server-side while it is unconfirmed,
+  // so closing the tab no longer loses it, and dropped automatically after 24h if
+  // nobody ever confirms. See hooks/usePendingEditsAutosave.js.
+  const applyRestoredEdits = useCallback((restored) => {
+    setEditingQuestions((restored.questions || []).map((q) => ({ ...q })));
+    setEditingAnnotations(getTeacherAnnotations(restored).map((a) => ({ ...a })));
+    // Marked as touched so the auto-rebuild does not immediately overwrite the
+    // summary the grader had actually written.
+    setEditingSummary(restored.summary || "");
+    setSummaryTouched(true);
+    setPendingRemovedIndices(new Set());
+    // A hand-set paper total is part of the edits, so it comes back too.
+    const restoredMax = Number(restored.maxTotalMarks);
+    setEditingMaxTotal(Number.isFinite(restoredMax) && restoredMax > 0 ? restoredMax : null);
+  }, []);
+
+  const pendingEdits = usePendingEditsAutosave({
+    submissionId: resultModalSubmissionId,
+    ready: editorSubmissionId === resultModalSubmissionId,
+    dirty: hasPendingEdits,
+    buildResult: buildEditedResult,
+    pauseSaves: autoSavingOpenFor === resultModalSubmissionId,
+    load: async (submissionId) => {
+      const { data } = await api.get(`${BASE}/submissions/${submissionId}/pending-edits`);
+      return data?.pendingEdits || null;
+    },
+    save: (submissionId, result) =>
+      api.put(`${BASE}/submissions/${submissionId}/pending-edits`, { result }),
+    discard: (submissionId) =>
+      api.delete(`${BASE}/submissions/${submissionId}/pending-edits`),
+    onRestore: applyRestoredEdits,
+    onDiscard: () => {
+      const confirmed = resetToConfirmed();
+      if (!confirmed) return;
+      setEditingQuestions(confirmed.questions);
+      setEditingAnnotations(confirmed.teacherAnnotations);
+      setEditingSummary(confirmed.summary);
+      setSummaryTouched(false);
+      setEditingMaxTotal(null);
+      setPendingRemovedIndices(new Set());
+      toast.info("Unconfirmed edits discarded");
+    },
+  });
 
   const questionsForDisplay = useMemo(
     () => filterQuestionsPendingRemoval(editingQuestions, pendingRemovedIndices),
@@ -811,6 +868,7 @@ export default function GradingProviderPage({ slug, label }) {
     setAnnotationsPanelOpen(false);
     setEditingMaxTotal(null);
     setEditingTotal(null);
+    setEditorSubmissionId(student.submissionId);
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
@@ -1453,6 +1511,67 @@ export default function GradingProviderPage({ slug, label }) {
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
     }
   };
+
+  // ── Auto-save on open ─────────────────────────────────────────────────────
+  // The modal shows a rebuilt summary and normalised totals rather than the raw
+  // marking JSON, so an untouched paper used to read as "pending edits" and had
+  // to be confirmed by hand before it could be published. Save the displayed
+  // version to the draft once per paper instead, so Confirm Edits is only ever
+  // needed for real edits. Questions are shown verbatim here, so this save
+  // never registers as a correction (see services/gradingEditStats.js).
+  const autoSavedResultsRef = useRef(new Set());
+  const autoSaveOpenedResultRef = useRef(null);
+
+  autoSaveOpenedResultRef.current = async () => {
+    await confirmEdits(async ({ finalResult, submissionId }) => {
+      setResults((prev) => ({
+        ...prev,
+        [submissionId]: { ...(prev[submissionId] || {}), result: finalResult },
+      }));
+      saveDraft(
+        submissionId,
+        finalResult,
+        results[submissionId]?.originalAiResult || resultModal?.originalAiResult
+      );
+      setResultModal((prev) => ({ ...prev, result: finalResult }));
+      setEditingSummary(finalResult.summary || "");
+      setSummaryTouched(false);
+      setSubmissions((prev) =>
+        prev.map((s) =>
+          s.submissionId === submissionId
+            ? { ...s, localGrade: resolveTotalMarksFromResult(finalResult) }
+            : s
+        )
+      );
+    });
+  };
+
+  useEffect(() => {
+    const sid = resultModalSubmissionId;
+    if (!sid) return;
+    if (editorSubmissionId !== sid) return;
+    if (!confirmedSnapshot || confirmedSnapshot.submissionId !== sid) return;
+    // Never auto-confirm on top of edits somebody made and did not confirm —
+    // wait for that check, and stand down entirely if any were restored.
+    if (pendingEdits.status !== "none") return;
+    // Keyed by marking run so a re-mark of the same paper is saved again.
+    const key = `${sid}:${resultModal?.result?.markingRunId || ""}`;
+    if (autoSavedResultsRef.current.has(key)) return;
+    autoSavedResultsRef.current.add(key);
+    setAutoSavingOpenFor(sid);
+    autoSaveOpenedResultRef.current?.()
+      .catch((err) => {
+        autoSavedResultsRef.current.delete(key);
+        console.error("Auto-save of opened results failed", err);
+      })
+      .finally(() => setAutoSavingOpenFor((prev) => (prev === sid ? null : prev)));
+  }, [
+    resultModalSubmissionId,
+    editorSubmissionId,
+    confirmedSnapshot,
+    resultModal?.result?.markingRunId,
+    pendingEdits.status,
+  ]);
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
@@ -3052,6 +3171,9 @@ export default function GradingProviderPage({ slug, label }) {
                     {confirmingEdits ? "Confirming…" : "Confirm Edits"}
                   </button>
                 )}
+                {pendingEdits.status !== "restored" && (
+                  <PendingEditsSavingHint saving={pendingEdits.saving} />
+                )}
                 <button
                   className="ma-send-btn"
                   onClick={downloadGradedPdf}
@@ -3083,6 +3205,13 @@ export default function GradingProviderPage({ slug, label }) {
             >
               {/* LEFT: results / editor */}
               <div style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
+                {pendingEdits.status === "restored" && (
+                  <PendingEditsBanner
+                    savedAt={pendingEdits.restoredAt}
+                    saving={pendingEdits.saving}
+                    onDiscard={pendingEdits.discardRestored}
+                  />
+                )}
                 {resultModal.result.fileWarning && (
                   <div
                     style={{

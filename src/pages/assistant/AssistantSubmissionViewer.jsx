@@ -135,6 +135,10 @@ import {
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
+import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
+import PendingEditsBanner, {
+  PendingEditsSavingHint,
+} from "../../components/PendingEditsBanner";
 
 export default function AssignmentSubmissionViewer() {
   const { assignmentId } = useParams();
@@ -263,6 +267,13 @@ export default function AssignmentSubmissionViewer() {
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+  // Which submission the editing state above belongs to. Every path that opens
+  // the modal stamps it, so anything acting on the editor (the auto-save below)
+  // can tell "loaded" from "still the previous student's".
+  const [editorSubmissionId, setEditorSubmissionId] = useState(null);
+  // Set while the auto-save on open is confirming the displayed result, so the
+  // unconfirmed-edits autosave does not store a copy of what is being confirmed.
+  const [autoSavingOpenFor, setAutoSavingOpenFor] = useState(null);
   const [editingOutOfScopeNotes, setEditingOutOfScopeNotes] = useState(() =>
     resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
   );
@@ -645,7 +656,9 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     previewError,
     confirmingEdits,
     hasPendingEdits,
+    confirmedSnapshot,
     confirmEdits,
+    buildEditedResult,
     resetToConfirmed,
     reportPageCount,
   } = useAnnotatedResultPreview({
@@ -692,6 +705,67 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     setPendingRemovedIndices(new Set());
     setEditingOutOfScopeNotes(resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []);
   }, [resultModalSubmissionId]);
+
+  // ── Unconfirmed edits: autosave + restore ─────────────────────────────────
+  // Everything typed in this modal is kept server-side while it is unconfirmed,
+  // so closing the tab no longer loses it, and dropped automatically after 24h if
+  // nobody ever confirms. See hooks/usePendingEditsAutosave.js.
+  const applyRestoredEdits = useCallback((restored) => {
+    // Stored verbatim, not re-normalised: this blob already went through the
+    // editor's normalizers on the way in, and running them again would risk
+    // moving rows the assistant had deliberately placed.
+    setEditingQuestions((restored.questions || []).map((q) => ({ ...q })));
+    setEditingCriteriaGrade(cloneCriteriaGrade(restored.criteriaGrade));
+    setEditingAnnotations(getTeacherAnnotations(restored).map((a) => ({ ...a })));
+    setEditingOutOfScopeNotes(getOutOfScopeNotes(restored));
+    // Marked as touched so the auto-rebuild does not immediately overwrite the
+    // summary the assistant had actually written.
+    setEditingSummary(restored.summary || "");
+    setSummaryTouched(true);
+    setPendingRemovedIndices(new Set());
+    // A hand-set paper total is part of the edits, so it comes back too.
+    const restoredMax = Number(restored.maxTotalMarks);
+    setEditingMaxTotal(Number.isFinite(restoredMax) && restoredMax > 0 ? restoredMax : null);
+  }, []);
+
+  const pendingEdits = usePendingEditsAutosave({
+    submissionId: resultModalSubmissionId,
+    ready: editorSubmissionId === resultModalSubmissionId,
+    dirty: hasPendingEdits,
+    buildResult: buildEditedResult,
+    pauseSaves: autoSavingOpenFor === resultModalSubmissionId,
+    enabled: Boolean(assignmentId),
+    load: async (submissionId) => {
+      const { data } = await api.get(
+        `/submission-files/pending-edits/${assignmentId}/${submissionId}`
+      );
+      return data?.pendingEdits || null;
+    },
+    save: (submissionId, result) =>
+      api.put("/submission-files/pending-edits", {
+        assignmentId,
+        submissionId,
+        result,
+      }),
+    discard: (submissionId) =>
+      api.delete(`/submission-files/pending-edits/${assignmentId}/${submissionId}`),
+    onRestore: applyRestoredEdits,
+    onDiscard: () => {
+      const confirmed = resetToConfirmed();
+      if (!confirmed) return;
+      setEditingQuestions(confirmed.questions);
+      setEditingCriteriaGrade(confirmed.criteriaGrade);
+      setEditingAnnotations(confirmed.teacherAnnotations);
+      setEditingSummary(confirmed.summary);
+      setSummaryTouched(false);
+      setEditingMaxTotal(null);
+      setPendingRemovedIndices(new Set());
+      setEditingOutOfScopeNotes(
+        resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
+      );
+      toast.info("Unconfirmed edits discarded");
+    },
+  });
 
   const questionsForDisplay = useMemo(() => {
     const withIdx = editingQuestions.map((q, i) => ({ ...q, _placementIndex: i }));
@@ -790,6 +864,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
           studentFile: r.studentFileMeta,
           totalMarks: resolveSavedMarkingGrade(r),
           classroomAssignedGrade: r.classroomAssignedGrade ?? null,
+          provider: r.provider,
+          mode: r.mode,
           summary: r.summary || getMarkingResultSummary(r.result) || "",
           returnedAt: r.returnedAt ?? null,
           updatedAt: r.updatedAt ?? null,
@@ -1285,13 +1361,7 @@ window.open(url);
         timeout: 600000
       });
 
-      setResultModal({
-        student,
-        result: res.data,
-        originalAiResult: JSON.parse(JSON.stringify(res.data)),
-        studentFile,
-        submissionId: student.submissionId
-      });
+      openResultsModal({ student, result: res.data, studentFile });
       setSingleProgress(prev => ({
         ...prev,
         [student.submissionId]: {
@@ -1330,9 +1400,6 @@ window.open(url);
             : s
         )
       );
-
-      setEditingQuestions(prepareEditingQuestions(res.data.questions || []));
-      setEditingAnnotations(getTeacherAnnotations(res.data).map((a) => ({ ...a })));
 
     } catch (err) {
       if (err.response?.data?.reason === "first_batch_pending") {
@@ -1427,13 +1494,7 @@ window.open(url);
         { batch: false, diagnostics: data.diagnostics }
       );
 
-      setResultModal({
-        student,
-        result: enrichedResult,
-        originalAiResult: JSON.parse(JSON.stringify(enrichedResult)),
-        studentFile,
-        submissionId: student.submissionId,
-      });
+      openResultsModal({ student, result: enrichedResult, studentFile });
       setSingleProgress((prev) => ({
         ...prev,
         [student.submissionId]: {
@@ -1488,8 +1549,6 @@ window.open(url);
         );
       }
 
-      setEditingQuestions(prepareEditingQuestions(enrichedResult.questions || []));
-      setEditingAnnotations(getTeacherAnnotations(enrichedResult).map((a) => ({ ...a })));
     } catch (err) {
       const message = extractHumanError
         ? extractHumanError(err)
@@ -2226,6 +2285,52 @@ window.open(url);
     }
   };
 
+  /**
+   * Single entry point for showing a result in the modal.
+   *
+   * Every marking path used to open the modal and then initialise the editor
+   * after its own `await`s, which left a render where the modal showed student B
+   * while the editing state still held student A. Doing both in one call closes
+   * that window and gives every path the same starting state.
+   */
+  const openResultsModal = ({
+    student,
+    result,
+    studentFile = null,
+    originalAiResult = null,
+    submissionId = null,
+  }) => {
+    const sid = submissionId || student?.submissionId || null;
+    setResultModal({
+      student,
+      result,
+      originalAiResult: JSON.parse(JSON.stringify(originalAiResult ?? result)),
+      studentFile,
+      submissionId: sid,
+    });
+    setEditingQuestions(
+      prepareEditingQuestions(enrichMarkingQuestions(result.questions || []))
+    );
+    setEditingCriteriaGrade(cloneCriteriaGrade(result.criteriaGrade));
+    setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
+    setEditingMaxTotal(null);
+    setEditingTotal(null);
+    setSummaryTouched(false);
+    setEditingSummary(
+      rebuildMarkingSummary({
+        questions: result.questions || [],
+        maxTotalMarks: resolveDisplayMaxTotal({
+          assignmentMaxPoints,
+          result,
+          editingMaxTotal: null,
+        }),
+        previousSummary: result.summary || "",
+      })
+    );
+    setAnnotationsPanelOpen(false);
+    setEditorSubmissionId(sid);
+  };
+
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
     setEditingQuestions(prepareEditingQuestions(questions));
     if (summary) {
@@ -2233,6 +2338,64 @@ window.open(url);
       setSummaryTouched(true);
     }
   }, []);
+
+  // The row's "View Results" button reads the batch/bulk/single caches *before*
+  // the saved DB copy, and those caches still hold the pre-edit AI marks after a
+  // confirm. Without this the modal reopens with the old grades until a reload
+  // wipes the in-memory job state.
+  const syncSessionMarkingCaches = useCallback(
+    (submissionId, finalResult) => {
+      if (!submissionId || !finalResult) return;
+      const patchEntry = (prev) =>
+        prev?.[submissionId]
+          ? { ...prev, [submissionId]: { ...prev[submissionId], result: finalResult } }
+          : prev;
+      setSingleProgress(patchEntry);
+      setBulkProgress(patchEntry);
+
+      if (getBatchJob(assignmentId)?.results?.[submissionId]) {
+        patchBatchJob(assignmentId, (job) => ({
+          ...job,
+          results: {
+            ...job.results,
+            [submissionId]: { ...job.results[submissionId], result: finalResult },
+          },
+        }));
+      }
+    },
+    [assignmentId]
+  );
+
+  /**
+   * Write a confirmed result (and its summary) to the DB.
+   *
+   * `mode`/`provider` default to the marking controls, which is right for a save
+   * the person just triggered. The auto-save passes the stored ones instead — a
+   * paper opened days later must not be relabelled with today's dropdown.
+   */
+  const persistMarkingResult = async (
+    finalResult,
+    submissionId,
+    { origin, mode, provider } = {}
+  ) => {
+    await api.post("/submission-files/save-results", {
+      assignmentId,
+      submissionId,
+      studentId: resultModal.student.studentId,
+      studentName: resultModal.student.name,
+      mode: mode || finalResult.markingMode || markingModeModal,
+      provider: provider || markingProvider,
+      result: finalResult,
+      ...(origin ? { origin } : {}),
+    });
+    if (finalResult.summary?.trim()) {
+      await api.post("/submission-files/save-summary", {
+        assignmentId,
+        submissionId,
+        summary: finalResult.summary,
+      });
+    }
+  };
 
   const handleConfirmEdits = async () => {
     if (!resultModal || !assignmentId) return;
@@ -2242,22 +2405,10 @@ window.open(url);
     ).map((q) => ({ ...q }));
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
-        await api.post("/submission-files/save-results", {
-          assignmentId,
-          submissionId: resultModal.student.submissionId || submissionId,
-          studentId: resultModal.student.studentId,
-          studentName: resultModal.student.name,
-          mode: finalResult.markingMode || markingModeModal,
-          provider: markingProvider,
-          result: finalResult,
-        });
-        if (finalResult.summary?.trim()) {
-          await api.post("/submission-files/save-summary", {
-            assignmentId,
-            submissionId: resultModal.student.submissionId || submissionId,
-            summary: finalResult.summary,
-          });
-        }
+        await persistMarkingResult(
+          finalResult,
+          resultModal.student.submissionId || submissionId
+        );
         setResultModal((prev) => ({
           ...prev,
           result: finalResult,
@@ -2267,6 +2418,10 @@ window.open(url);
         setEditingMaxTotal(null);
         setEditingTotal(null);
         await fetchSavedResults();
+        syncSessionMarkingCaches(
+          resultModal.student.submissionId || submissionId,
+          finalResult
+        );
       });
       if (finalResult) {
         setEditingQuestions(appliedQuestions);
@@ -2278,6 +2433,73 @@ window.open(url);
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
     }
   };
+
+  // ── Auto-save on open ─────────────────────────────────────────────────────
+  // A marked paper reaches this modal through the editor's normalizers (blank
+  // question feedback, mislabel recovery, a rebuilt summary), so what the
+  // assistant reads is never byte-identical to the JSON the marking run saved —
+  // which is why an untouched paper used to show up as "pending edits" and had
+  // to be confirmed by hand before it could be returned. Persist the displayed
+  // version once per paper instead, so Confirm Edits is only ever needed for
+  // real edits. `origin: "auto"` marks it as not-a-human-edit for the
+  // correction-accuracy stats (see routes/submissionFiles.js).
+  const autoSavedResultsRef = useRef(new Set());
+  const autoSaveOpenedResultRef = useRef(null);
+
+  autoSaveOpenedResultRef.current = async () => {
+    await confirmEdits(async ({ finalResult, submissionId }) => {
+      const sid = resultModal.student.submissionId || submissionId;
+      const stored = savedResults[sid];
+      await persistMarkingResult(finalResult, sid, {
+        origin: "auto",
+        mode: stored?.mode,
+        provider: stored?.provider,
+      });
+      setResultModal((prev) => ({ ...prev, result: finalResult }));
+      setEditingSummary(finalResult.summary || "");
+      setSummaryTouched(false);
+      setSavedResults((prev) => ({
+        ...prev,
+        [sid]: {
+          ...(prev[sid] || { status: "done" }),
+          result: finalResult,
+          summary: finalResult.summary || "",
+          totalMarks: resolveTotalMarksFromResult(finalResult),
+        },
+      }));
+      syncSessionMarkingCaches(sid, finalResult);
+    });
+  };
+
+  useEffect(() => {
+    const sid = resultModalSubmissionId;
+    if (!sid || !assignmentId) return;
+    // The editor must already hold THIS paper, or the save would write the
+    // previously opened student's questions.
+    if (editorSubmissionId !== sid) return;
+    if (!confirmedSnapshot || confirmedSnapshot.submissionId !== sid) return;
+    // Never auto-confirm on top of edits somebody made and did not confirm —
+    // wait for that check, and stand down entirely if any were restored.
+    if (pendingEdits.status !== "none") return;
+    // Keyed by marking run so a re-mark of the same paper is saved again.
+    const key = `${sid}:${resultModal?.result?.markingRunId || ""}`;
+    if (autoSavedResultsRef.current.has(key)) return;
+    autoSavedResultsRef.current.add(key);
+    setAutoSavingOpenFor(sid);
+    autoSaveOpenedResultRef.current?.()
+      .catch((err) => {
+        autoSavedResultsRef.current.delete(key);
+        console.error("Auto-save of opened results failed", err);
+      })
+      .finally(() => setAutoSavingOpenFor((prev) => (prev === sid ? null : prev)));
+  }, [
+    resultModalSubmissionId,
+    editorSubmissionId,
+    confirmedSnapshot,
+    assignmentId,
+    resultModal?.result?.markingRunId,
+    pendingEdits.status,
+  ]);
 
   const getScoreColor = (awarded, max) => {
     if (!max) return "var(--primary)";
@@ -3176,33 +3398,13 @@ return (
                                                 (single?.status === "done" ? single?.originalAiResult : null) ??
                                                 db?.aiOriginalResult ??
                                                 result;
-                                              setResultModal({
+                                              openResultsModal({
                                                 student: s,
                                                 result,
-                                                originalAiResult: JSON.parse(JSON.stringify(originalAiResult)),
                                                 studentFile,
+                                                originalAiResult,
+                                                submissionId: s.submissionId,
                                               });
-                                              setEditingQuestions(
-                                                prepareEditingQuestions(
-                                                  enrichMarkingQuestions(result.questions || [])
-                                                )
-                                              );
-                                              setEditingCriteriaGrade(cloneCriteriaGrade(result.criteriaGrade));
-                                              setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
-                            setEditingMaxTotal(null);
-                                              setSummaryTouched(false);
-                                              setEditingSummary(
-                                                rebuildMarkingSummary({
-                                                  questions: result.questions || [],
-                                                  maxTotalMarks: resolveDisplayMaxTotal({
-                                                    assignmentMaxPoints,
-                                                    result,
-                                                    editingMaxTotal: null,
-                                                  }),
-                                                  previousSummary: result.summary || "",
-                                                })
-                                              );
-                                              setAnnotationsPanelOpen(false);
                                             }}
                                           >
                                             ✅ Results
@@ -3796,6 +3998,9 @@ return (
                               {confirmingEdits ? "Confirming…" : "Confirm Edits"}
                             </button>
                           )}
+                          {pendingEdits.status !== "restored" && (
+                            <PendingEditsSavingHint saving={pendingEdits.saving} />
+                          )}
                           <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                         <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
                       </button>
@@ -3826,6 +4031,13 @@ return (
                       }}
                     >
 
+                        {pendingEdits.status === "restored" && (
+                          <PendingEditsBanner
+                            savedAt={pendingEdits.restoredAt}
+                            saving={pendingEdits.saving}
+                            onDiscard={pendingEdits.discardRestored}
+                          />
+                        )}
                         {resultModal.result.fileWarning && (
                         <div style={{
                             marginBottom: 12,

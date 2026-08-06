@@ -51,6 +51,7 @@ import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegati
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
+import DirectorAccuracyMetrics from "./pages/director/DirectorAccuracyMetrics";
 import DirectorFeedback from "./pages/director/DirectorFeedback";
 import DirectorReports from "./pages/director/DirectorReports";
 import DirectorAssignments from "./pages/director/DirectorAssignments";
@@ -319,6 +320,7 @@ function App() {
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
+          <Route path="accuracy-metrics" element={<DirectorAccuracyMetrics />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
           <Route path="insights" element={<DirectorReports />} />
