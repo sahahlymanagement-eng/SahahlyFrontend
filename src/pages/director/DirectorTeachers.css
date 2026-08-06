@@ -1,0 +1,511 @@
+/* Director → Teachers.
+   Same shape as DirectorAccuracyMetrics.css, on the shared theme vars.
+   No literal colours — everything comes from styles/theme.css. */
+
+.dt-page {
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+}
+
+/* ── header ───────────────────────────────────────────────────────────────── */
+
+.dt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dt-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dt-header-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.dt-header h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.dt-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.dt-refresh-btn,
+.dt-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dt-refresh-btn:hover:not(:disabled),
+.dt-clear-btn:hover {
+  background: var(--surface-2);
+}
+
+.dt-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── period + date range ──────────────────────────────────────────────────── */
+
+.dt-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+/* Segmented control: weekly / monthly / all time. */
+.dt-period-group {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.dt-period {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.dt-period:hover {
+  color: var(--text-primary);
+}
+
+.dt-period--active {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.dt-period--active:hover {
+  color: var(--primary-contrast);
+}
+
+.dt-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.dt-filter-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dt-datepicker-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 120px;
+}
+
+/* ── summary pills ────────────────────────────────────────────────────────── */
+
+.dt-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.dt-summary-row--compact {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 16px;
+}
+
+.dt-summary-pill {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.dt-summary-icon {
+  color: var(--primary);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.dt-summary-pill--good .dt-summary-icon {
+  color: var(--success);
+}
+
+.dt-summary-pill--warn .dt-summary-icon {
+  color: var(--warning);
+}
+
+.dt-summary-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dt-summary-value {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dt-summary-sub {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── tabs ─────────────────────────────────────────────────────────────────── */
+
+.dt-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 10px;
+}
+
+.dt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dt-tab:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.dt-tab--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.dt-tab--active:hover {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+/* ── search + note ────────────────────────────────────────────────────────── */
+
+.dt-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  max-width: 480px;
+}
+
+.dt-search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.dt-search svg {
+  color: var(--muted);
+}
+
+/* Says out loud what the submission rate is actually measuring, so nobody
+   reads it as a live Google Classroom figure. */
+.dt-note {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 90ch;
+}
+
+.dt-note strong {
+  color: var(--text-secondary);
+}
+
+.dt-loading {
+  color: var(--muted);
+  margin: 20px 0;
+}
+
+/* ── table ────────────────────────────────────────────────────────────────── */
+
+.dt-table-card {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+/* Wide table: scroll inside its own container so the page never scrolls
+   sideways. `sah-table--cards` collapses it to stacked cards on mobile. */
+.dt-table-wrap {
+  overflow-x: auto;
+}
+
+.dt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dt-table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+
+.dt-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+
+.dt-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dt-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+/* Two-line numeric cell: headline figure over its qualifier. */
+.dt-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dt-block {
+  display: block;
+}
+
+.dt-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dt-good {
+  color: var(--success);
+}
+
+.dt-ok {
+  color: var(--text-primary);
+}
+
+.dt-warn {
+  color: var(--warning);
+}
+
+.dt-detail-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dt-detail-btn:hover {
+  background: var(--surface);
+}
+
+/* ── rate bar ─────────────────────────────────────────────────────────────── */
+
+.dt-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 84px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dt-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.dt-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.dt-progress-fill.dt-good {
+  background: var(--success);
+}
+
+.dt-progress-fill.dt-ok {
+  background: var(--primary);
+}
+
+.dt-progress-fill.dt-warn {
+  background: var(--warning);
+}
+
+/* ── detail modal ─────────────────────────────────────────────────────────── */
+
+/* Portalled into <body>, so it sits outside .dt-page and inherits nothing from
+   it — typography has to be restated here. Being a direct child of <body> is
+   also the whole point: .director-page-inner keeps a permanent
+   `transform: translateY(0)` from its fill-mode:both animation, which would
+   otherwise capture this fixed backdrop and anchor it to the content column
+   instead of the viewport. See the comment on DetailModal. */
+.dt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+  /* Don't let a scroll gesture over the backdrop chain to the page behind. */
+  overscroll-behavior: contain;
+}
+
+.dt-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(1100px, 100%);
+  max-height: min(85vh, 100% - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.dt-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.dt-modal-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.dt-modal-header h3 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dt-modal-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dt-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  padding: 4px;
+}
+
+.dt-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.dt-modal-section {
+  margin: 22px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .dt-header {
+    flex-direction: column;
+  }
+
+  .dt-period-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dt-datepicker-input {
+    width: 100px;
+  }
+}

@@ -58,6 +58,8 @@ const NAV_SECTIONS = [
 
       { icon: <FiUserPlus />, label: "Create Teachers", path: "/director/manage-teachers" },
 
+      { icon: <FiUser />, label: "Teachers", path: "/director/teachers" },
+
     ],
 
   },
