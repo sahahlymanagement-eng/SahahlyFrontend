@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import DatePicker from "react-datepicker";
@@ -405,103 +406,134 @@ export default function DirectorAccuracyMetrics() {
       )}
 
       {detail && (
-        <div className="dam-modal-backdrop" onClick={() => setDetail(null)}>
-          <div
-            className="dam-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Assignment accuracy detail"
-          >
-            <div className="dam-modal-header">
-              <div>
-                <p className="dam-modal-eyebrow">Assignment accuracy</p>
-                <h3>{detail.assignment?.title || "Loading…"}</h3>
-                {detail.assignment ? (
-                  <p className="dam-modal-sub">
-                    {detail.assignment.className}
-                    {detail.assignment.section ? ` · ${detail.assignment.section}` : ""}
-                    {" · "}
-                    {detail.assignment.teacherName}
-                  </p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                className="dam-modal-close"
-                onClick={() => setDetail(null)}
-                aria-label="Close"
-              >
-                <FiX />
-              </button>
-            </div>
-
-            {detailLoading && !detail.assignment ? (
-              <p className="dam-loading">Loading detail…</p>
-            ) : null}
-
-            {detail.assignment && (
-              <div className="dam-modal-body">
-                <div className="dam-summary-row dam-summary-row--compact">
-                  <SummaryPill
-                    icon={<FiTarget />}
-                    label="Question accuracy"
-                    value={formatPct(detail.totals?.accuracyRate)}
-                  />
-                  <SummaryPill
-                    icon={<FiEdit3 />}
-                    label="Total edits"
-                    value={formatNum(detail.totals?.totalEdits)}
-                  />
-                  <SummaryPill
-                    icon={<FiFileText />}
-                    label="Papers"
-                    value={formatNum(detail.totals?.papers)}
-                  />
-                </div>
-
-                <div className="dam-table-wrap">
-                  <table className="dam-table sah-table--cards">
-                    <thead>
-                      <tr>
-                        <th>Student</th>
-                        <th>Accuracy</th>
-                        <th>Edits</th>
-                        <th>Marks moved</th>
-                        <th>Edited by</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(detail.submissions || []).map((s) => (
-                        <tr key={s.submissionId}>
-                          <td data-label="Student">{s.studentName}</td>
-                          <td data-label="Accuracy">
-                            <AccuracyBar value={s.accuracyRate} />
-                          </td>
-                          <td data-label="Edits">{formatNum(s.totalEdits)}</td>
-                          <td data-label="Marks moved">{formatNum(s.marksDelta)}</td>
-                          <td data-label="Edited by">
-                            {s.editedByName || <span className="dam-muted">—</span>}
-                            {s.attribution === "backfill" && s.editedByName ? (
-                              <span
-                                className="dam-chip dam-chip--muted"
-                                title="Historical row — attributed to the assigned assistant, not recorded at edit time"
-                              >
-                                estimated
-                              </span>
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <AssignmentAccuracyDetailModal
+          detail={detail}
+          loading={detailLoading}
+          onClose={() => setDetail(null)}
+        />
       )}
     </div>
+  );
+}
+
+/**
+ * Portalled to document.body — .director-page-inner runs a fade-up animation
+ * with fill-mode `both`, and the animation's final transform sticks around
+ * permanently, making that ancestor a containing block for `position: fixed`
+ * children. An in-place modal would anchor to the padded content column
+ * instead of the viewport and scroll away with the page.
+ */
+function AssignmentAccuracyDetailModal({ detail, loading, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div className="dam-modal-backdrop" onClick={onClose}>
+      <div
+        className="dam-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Assignment accuracy detail"
+      >
+        <div className="dam-modal-header">
+          <div>
+            <p className="dam-modal-eyebrow">Assignment accuracy</p>
+            <h3>{detail.assignment?.title || "Loading…"}</h3>
+            {detail.assignment ? (
+              <p className="dam-modal-sub">
+                {detail.assignment.className}
+                {detail.assignment.section ? ` · ${detail.assignment.section}` : ""}
+                {" · "}
+                {detail.assignment.teacherName}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="dam-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <FiX />
+          </button>
+        </div>
+
+        {loading && !detail.assignment ? (
+          <p className="dam-loading">Loading detail…</p>
+        ) : null}
+
+        {detail.assignment && (
+          <div className="dam-modal-body">
+            <div className="dam-summary-row dam-summary-row--compact">
+              <SummaryPill
+                icon={<FiTarget />}
+                label="Question accuracy"
+                value={formatPct(detail.totals?.accuracyRate)}
+              />
+              <SummaryPill
+                icon={<FiEdit3 />}
+                label="Total edits"
+                value={formatNum(detail.totals?.totalEdits)}
+              />
+              <SummaryPill
+                icon={<FiFileText />}
+                label="Papers"
+                value={formatNum(detail.totals?.papers)}
+              />
+            </div>
+
+            <div className="dam-table-wrap">
+              <table className="dam-table sah-table--cards">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Accuracy</th>
+                    <th>Edits</th>
+                    <th>Marks moved</th>
+                    <th>Edited by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(detail.submissions || []).map((s) => (
+                    <tr key={s.submissionId}>
+                      <td data-label="Student">{s.studentName}</td>
+                      <td data-label="Accuracy">
+                        <AccuracyBar value={s.accuracyRate} />
+                      </td>
+                      <td data-label="Edits">{formatNum(s.totalEdits)}</td>
+                      <td data-label="Marks moved">{formatNum(s.marksDelta)}</td>
+                      <td data-label="Edited by">
+                        {s.editedByName || <span className="dam-muted">—</span>}
+                        {s.attribution === "backfill" && s.editedByName ? (
+                          <span
+                            className="dam-chip dam-chip--muted"
+                            title="Historical row — attributed to the assigned assistant, not recorded at edit time"
+                          >
+                            estimated
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }
 

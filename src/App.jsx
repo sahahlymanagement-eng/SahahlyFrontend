@@ -49,6 +49,7 @@ import DirectorSubjects from "./pages/director/DirectorSubjects";
 import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
 import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegations";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
+import DirectorManagerAnalytics from "./pages/director/DirectorManagerAnalytics";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
 import DirectorAccuracyMetrics from "./pages/director/DirectorAccuracyMetrics";
@@ -320,6 +321,7 @@ function App() {
           <Route path="classroommanagers" element={<DirectorClassroomManagers/>}/>
           <Route path="subjects" element={<DirectorSubjects/>}/>
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
+          <Route path="manager-analytics" element={<DirectorManagerAnalytics/>}/>
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
           <Route path="accuracy-metrics" element={<DirectorAccuracyMetrics />} />
           <Route path="teachers" element={<DirectorTeachers />} />

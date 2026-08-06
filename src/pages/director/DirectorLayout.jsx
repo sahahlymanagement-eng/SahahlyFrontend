@@ -16,6 +16,7 @@ import {
 
   FiUserPlus,
   FiUser,
+  FiUserCheck,
   FiMessageSquare,
 
   FiClipboard,
@@ -27,6 +28,8 @@ import {
   FiMessageCircle,
 
 } from "react-icons/fi";
+
+import { BsPersonBadge } from "react-icons/bs";
 
 import RoleSidebar from "../../components/RoleSidebar";
 
@@ -59,6 +62,10 @@ const NAV_SECTIONS = [
       { icon: <FiUserPlus />, label: "Create Teachers", path: "/director/manage-teachers" },
 
       { icon: <FiUser />, label: "Teachers", path: "/director/teachers" },
+
+      { icon: <FiUserCheck />, label: "Managers", path: "/director/manager-analytics" },
+
+      { icon: <BsPersonBadge />, label: "Assistants", path: "/director/assistant-performance" },
 
     ],
 
@@ -95,8 +102,6 @@ const NAV_SECTIONS = [
       { icon: <FiClipboard />, label: "Reports", path: "/director/reports" },
 
       { icon: <FiBarChart2 />, label: "Manager Workload", path: "/director/manager-workload" },
-
-      { icon: <FiUsers />, label: "Assistant Performance", path: "/director/assistant-performance" },
 
       { icon: <FiTarget />, label: "Accuracy Metrics", path: "/director/accuracy-metrics" },
 

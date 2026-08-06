@@ -85,11 +85,17 @@ import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
 import GradingAssignmentSettingsBar from "../../components/GradingAssignmentSettingsBar";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
+import OrientationCheckModal from "../../components/OrientationCheckModal";
 import {
   usePageCountCheck,
   buildPageCountFlagMap,
   pageCountWarningText,
 } from "../../hooks/usePageCountCheck";
+import {
+  useOrientationCheck,
+  buildOrientationFlagMap,
+  orientationWarningText,
+} from "../../hooks/useOrientationCheck";
 
 const PER_PAGE = 10;
 const ASSIGNMENTS_PER_PAGE = 15;
@@ -198,6 +204,10 @@ export default function GradingProviderPage({ slug, label }) {
   const [singleProgress, setSingleProgress] = useState({});
   const [studentErrors, setStudentErrors] = useState({});
   const [results, setResults] = useState({}); // submissionId -> { result, originalAiResult, studentFile }
+  const correctedCount = useMemo(
+    () => Object.values(results).filter((entry) => entry?.result).length,
+    [results]
+  );
 
   // Bulk ("Mark All") + priority bulk
   const [bulkMarking, setBulkMarking] = useState(false);
@@ -266,6 +276,30 @@ export default function GradingProviderPage({ slug, label }) {
     (report) => setPageCountFlags((prev) => ({ ...prev, ...buildPageCountFlagMap(report) })),
     []
   );
+
+  // Advisory pre-grading orientation review.
+  const { orientationCheckModal, confirmGradingOrientations, resolveOrientationCheck } = useOrientationCheck();
+  const [orientationFlags, setOrientationFlags] = useState({});
+  const applyOrientationReport = useCallback(
+    (report) => setOrientationFlags((prev) => ({ ...prev, ...buildOrientationFlagMap(report) })),
+    []
+  );
+
+  const confirmPreGradingChecks = async (eligible) => {
+    const proceedPageCount = await confirmGradingPageCounts({
+      provider: PROVIDER,
+      assignmentId: selectedAssignment.id,
+      submissionIds: eligible.map((s) => s.submissionId),
+      onReport: applyPageCountReport,
+    });
+    if (!proceedPageCount) return false;
+    return confirmGradingOrientations({
+      provider: PROVIDER,
+      assignmentId: selectedAssignment.id,
+      submissionIds: eligible.map((s) => s.submissionId),
+      onReport: applyOrientationReport,
+    });
+  };
 
   // Cache of fetched PDFs per submission (avoids re-downloading base64 from the partner).
   const pdfCacheRef = useRef({});
@@ -1042,14 +1076,9 @@ export default function GradingProviderPage({ slug, label }) {
       const eligible = resolveEligibleForMarking(roster);
       if (!eligible) return;
 
-      // Advisory page-count review before any tokens are spent. Returning here
-      // still runs the finally block, which clears the running flags.
-      const proceed = await confirmGradingPageCounts({
-        provider: PROVIDER,
-        assignmentId: selectedAssignment.id,
-        submissionIds: eligible.map((s) => s.submissionId),
-        onReport: applyPageCountReport,
-      });
+      // Advisory page-count / orientation review before any tokens are spent.
+      // Returning here still runs the finally block, which clears the running flags.
+      const proceed = await confirmPreGradingChecks(eligible);
       if (!proceed) return;
 
       const pending = {};
@@ -1186,14 +1215,9 @@ export default function GradingProviderPage({ slug, label }) {
     const eligible = resolveEligibleForMarking(roster);
     if (!eligible) return;
 
-    // Advisory page-count review before any tokens are spent. Passes silently
-    // when this assignment has no expectedPages set or nothing is flagged.
-    const proceed = await confirmGradingPageCounts({
-      provider: PROVIDER,
-      assignmentId: selectedAssignment.id,
-      submissionIds: eligible.map((s) => s.submissionId),
-      onReport: applyPageCountReport,
-    });
+    // Advisory page-count / orientation review before any tokens are spent.
+    // Passes silently when nothing is flagged.
+    const proceed = await confirmPreGradingChecks(eligible);
     if (!proceed) return;
 
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
@@ -2082,6 +2106,9 @@ export default function GradingProviderPage({ slug, label }) {
                     <div className="ma-panel-dot" />
                     <h2 className="ma-panel-title">{selectedAssignment.name}</h2>
                     <span className="ma-panel-count">{listMeta.total} total</span>
+                    <span className="ma-panel-count">
+                      {loadingList ? "Counting PDFs…" : `Corrected ${correctedCount} / ${listMeta.total} PDFs`}
+                    </span>
                   </div>
                   <div className="msv-panel-controls" style={{ flexWrap: "wrap", gap: 8 }}>
                     <input
@@ -2440,8 +2467,10 @@ export default function GradingProviderPage({ slug, label }) {
                                       // fileWarning baked into a saved result.
                                       const savedWarn = results[s.submissionId]?.result?.fileWarning;
                                       const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
-                                      if (!savedWarn && !flagText) return null;
+                                      const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
+                                      if (!savedWarn && !flagText && !orientationFlagText) return null;
                                       const title = flagText
+                                        || orientationFlagText
                                         || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
                                         || "Submitted file may be wrong — page count differs from expected";
                                       return (
@@ -2998,6 +3027,11 @@ export default function GradingProviderPage({ slug, label }) {
       <PageCountCheckModal
         state={pageCheckModal}
         onResolve={resolvePageCheck}
+        onOpenPdf={(c) => viewFile({ submissionId: c.submissionId, name: c.studentName }, "student")}
+      />
+      <OrientationCheckModal
+        state={orientationCheckModal}
+        onResolve={resolveOrientationCheck}
         onOpenPdf={(c) => viewFile({ submissionId: c.submissionId, name: c.studentName }, "student")}
       />
 

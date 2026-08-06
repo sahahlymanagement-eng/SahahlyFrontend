@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import api from "../../api/api";
 import "./DirectorPeople.css";
 import { toast } from "react-toastify";
@@ -73,7 +74,8 @@ export default function DirectorPeople() {
   }, []);
 
   useEffect(() => {
-    people.forEach((p) => loadRoleSubjects(p._id));
+    if (!people.length) return;
+    loadRoleSubjectsBatch(people.map((p) => p._id));
   }, [people]);
 
   const loadRolesAndSubjects = async () => {
@@ -86,14 +88,23 @@ export default function DirectorPeople() {
     setSubjects(subjectsRes.data || []);
   };
 
-  const loadRoleSubjects = async (personId) => {
-    const res = await api.get(`/role-subject-assignments?personId=${personId}`);
+  const loadRoleSubjectsBatch = async (personIds) => {
+    const res = await api.get(`/role-subject-assignments?personId=${personIds.join(",")}`);
     const assignments = res.data || [];
 
-    setRoleSubjectMap((prev) => ({ ...prev, [personId]: assignments }));
+    const byPerson = new Map(personIds.map((id) => [id, []]));
+    for (const a of assignments) {
+      const personId = a.personId?._id || a.personId;
+      if (!byPerson.has(personId)) byPerson.set(personId, []);
+      byPerson.get(personId).push(a);
+    }
+
+    setRoleSubjectMap((prev) => ({ ...prev, ...Object.fromEntries(byPerson) }));
     setSelectedSubjects((prev) => ({
       ...prev,
-      [personId]: assignments.map((a) => a.subjectId?._id)
+      ...Object.fromEntries(
+        [...byPerson].map(([personId, list]) => [personId, list.map((a) => a.subjectId?._id)])
+      ),
     }));
   };
 
@@ -169,6 +180,21 @@ export default function DirectorPeople() {
     setEditEmail("");
     setEditPhone("");
   };
+
+  // Escape closes the edit modal, and the page behind must not scroll under it.
+  useEffect(() => {
+    if (!editPerson) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") closeEdit();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editPerson]);
 
   const saveEdit = async () => {
     if (!editName || !editEmail || !editPhone) {
@@ -302,7 +328,7 @@ export default function DirectorPeople() {
       }
 
       toast.success("Subjects saved");
-      await loadRoleSubjects(personId);
+      await loadRoleSubjectsBatch([personId]);
     } catch (err) {
       toast.error("Failed to save subjects");
     } finally {
@@ -528,63 +554,70 @@ export default function DirectorPeople() {
         {loading && <p className="loading">Processing...</p>}
       </div>
 
-      {/* EDIT MODAL */}
-      {editPerson && (
-        <div className="modalOverlay" onClick={closeEdit}>
-          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+      {/* EDIT MODAL — portalled to document.body; .director-page-inner runs a
+          fade-up animation with fill-mode `both`, and the animation's final
+          transform sticks around permanently, making that ancestor a
+          containing block for `position: fixed` children. An in-place modal
+          would anchor to the padded content column instead of the viewport
+          and scroll away with the page. */}
+      {editPerson &&
+        createPortal(
+          <div className="modalOverlay" onClick={closeEdit}>
+            <div className="modalCard" onClick={(e) => e.stopPropagation()}>
 
-            <div className="modalHeader">
-              <h3>Edit Person</h3>
-              <button className="modalClose" onClick={closeEdit}><FiX /></button>
-            </div>
-
-            <div className="modalBody">
-
-              <div className="inputField">
-                <label>Name</label>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Full name"
-                />
+              <div className="modalHeader">
+                <h3>Edit Person</h3>
+                <button className="modalClose" onClick={closeEdit}><FiX /></button>
               </div>
 
-              <div className="inputField">
-                <label>Email</label>
-                <input
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="Email"
-                />
+              <div className="modalBody">
+
+                <div className="inputField">
+                  <label>Name</label>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Full name"
+                  />
+                </div>
+
+                <div className="inputField">
+                  <label>Email</label>
+                  <input
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="Email"
+                  />
+                </div>
+
+                <div className="inputField">
+                  <label>Phone</label>
+                  <PhoneInput
+                    defaultCountry="eg"
+                    value={editPhone}
+                    onChange={(value) => setEditPhone(value)}
+                    className="systemPhoneInput"
+                    countrySelectorStyleProps={{
+                      dropdownStyleProps: {
+                        style: { maxHeight: "300px", height: "300px", zIndex: 9999 }
+                      }
+                    }}
+                  />
+                </div>
+
               </div>
 
-              <div className="inputField">
-                <label>Phone</label>
-                <PhoneInput
-                  defaultCountry="eg"
-                  value={editPhone}
-                  onChange={(value) => setEditPhone(value)}
-                  className="systemPhoneInput"
-                  countrySelectorStyleProps={{
-                    dropdownStyleProps: {
-                      style: { maxHeight: "300px", height: "300px", zIndex: 9999 }
-                    }
-                  }}
-                />
+              <div className="modalFooter">
+                <button className="cancelModalBtn" onClick={closeEdit}>Cancel</button>
+                <button className="saveModalBtn" onClick={saveEdit} disabled={loading}>
+                  <FiSave /> Save Changes
+                </button>
               </div>
 
             </div>
-
-            <div className="modalFooter">
-              <button className="cancelModalBtn" onClick={closeEdit}>Cancel</button>
-              <button className="saveModalBtn" onClick={saveEdit} disabled={loading}>
-                <FiSave /> Save Changes
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
     </div>
   );

@@ -18,8 +18,10 @@ import {
   FiCalendar,
   FiX,
   FiUploadCloud,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
+import HealthBar from "../../components/HealthBar";
 import "./DirectorTeachers.css";
 
 const TABS = [
@@ -122,6 +124,42 @@ function EditsCell({ row, perClass }) {
         {formatAvg(row.editsPerAssignment)} / assignment
         {perClass ? ` · ${formatAvg(row.editsPerClassroom)} / class` : ""}
       </span>
+    </div>
+  );
+}
+
+/** Teachers flagged worst-decile on edit load, late marking, or unsent
+ * reports (relative to the other teachers in this period, not a fixed cutoff). */
+function AtRiskPanel({ teachers, onOpen }) {
+  const flagged = teachers.filter((t) => t.atRisk);
+  if (!flagged.length) return null;
+
+  return (
+    <div className="dt-at-risk">
+      <div className="dt-at-risk-header">
+        <FiAlertTriangle />
+        <strong>{flagged.length} teacher{flagged.length === 1 ? "" : "s"} at risk</strong>
+        <span className="dt-muted">worst 10% on at least one metric this period</span>
+      </div>
+      <div className="dt-at-risk-list">
+        {flagged.map((t) => (
+          <button
+            key={t.teacherId}
+            type="button"
+            className="dt-at-risk-item"
+            onClick={() => onOpen("teacher", t.teacherId, t.teacherName)}
+          >
+            <span className="dt-at-risk-name">{t.teacherName}</span>
+            <span className="dt-at-risk-reasons">
+              {t.atRiskReasons.map((r) => (
+                <span key={r} className="dt-at-risk-chip">
+                  {r}
+                </span>
+              ))}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -376,6 +414,8 @@ export default function DirectorTeachers() {
         annotated papers actually returned through Google Classroom.
       </p>
 
+      <AtRiskPanel teachers={data?.teachers || []} onOpen={openDetail} />
+
       {loading && <p className="dt-loading">Loading teacher analytics…</p>}
 
       {!loading && !rows.length && (
@@ -407,6 +447,7 @@ export default function DirectorTeachers() {
                     </th>
                     <th>Tokens</th>
                     <th>Expenses</th>
+                    <th title="Average of edit quality and report reliability">Health</th>
                     <th />
                   </tr>
                 </thead>
@@ -481,6 +522,9 @@ export default function DirectorTeachers() {
                               ${(Number(row.costUsd) || 0).toFixed(2)}
                             </span>
                           </div>
+                        </td>
+                        <td data-label="Health">
+                          <HealthBar score={row.healthScore} band={row.healthBand} />
                         </td>
                         <td>
                           <button
@@ -627,6 +671,15 @@ function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
                 value={formatEgp(subject.costEgp)}
                 sub={`$${(Number(subject.costUsd) || 0).toFixed(2)}`}
               />
+              <div className="dt-summary-pill">
+                <span className="dt-summary-icon">
+                  <FiCheckCircle />
+                </span>
+                <div>
+                  <p className="dt-summary-label">Health</p>
+                  <HealthBar score={subject.healthScore} band={subject.healthBand} />
+                </div>
+              </div>
             </div>
 
             {isTeacher && (detail.classrooms || []).length > 0 && (

@@ -1,15 +1,15 @@
-/* Director → Teachers.
-   Same shape as DirectorAccuracyMetrics.css, on the shared theme vars.
+/* Director → Manager analytics.
+   Same shape as DirectorTeachers.css, on the shared theme vars.
    No literal colours — everything comes from styles/theme.css. */
 
-.dt-page {
+.dma-page {
   color: var(--text-primary);
   font-family: "Inter", sans-serif;
 }
 
 /* ── header ───────────────────────────────────────────────────────────────── */
 
-.dt-header {
+.dma-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -17,13 +17,13 @@
   margin-bottom: 20px;
 }
 
-.dt-header-left {
+.dma-header-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.dt-header-icon {
+.dma-header-icon {
   width: 44px;
   height: 44px;
   background: var(--surface);
@@ -35,21 +35,21 @@
   color: var(--primary);
 }
 
-.dt-header h2 {
+.dma-header h2 {
   margin: 0;
   font-size: 26px;
   font-weight: 600;
 }
 
-.dt-header p {
+.dma-header p {
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--muted);
   max-width: 60ch;
 }
 
-.dt-refresh-btn,
-.dt-clear-btn {
+.dma-refresh-btn,
+.dma-clear-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -62,19 +62,19 @@
   font-size: 13px;
 }
 
-.dt-refresh-btn:hover:not(:disabled),
-.dt-clear-btn:hover {
+.dma-refresh-btn:hover:not(:disabled),
+.dma-clear-btn:hover {
   background: var(--surface-2);
 }
 
-.dt-refresh-btn:disabled {
+.dma-refresh-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 /* ── period + date range ──────────────────────────────────────────────────── */
 
-.dt-filters {
+.dma-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -82,8 +82,7 @@
   margin-bottom: 20px;
 }
 
-/* Segmented control: weekly / monthly / all time. */
-.dt-period-group {
+.dma-period-group {
   display: inline-flex;
   background: var(--surface);
   border: 1px solid var(--border-soft);
@@ -92,7 +91,7 @@
   gap: 3px;
 }
 
-.dt-period {
+.dma-period {
   padding: 7px 14px;
   border-radius: 8px;
   border: none;
@@ -103,20 +102,20 @@
   white-space: nowrap;
 }
 
-.dt-period:hover {
+.dma-period:hover {
   color: var(--text-primary);
 }
 
-.dt-period--active {
+.dma-period--active {
   background: var(--primary);
   color: var(--primary-contrast);
 }
 
-.dt-period--active:hover {
+.dma-period--active:hover {
   color: var(--primary-contrast);
 }
 
-.dt-filter-wrap {
+.dma-filter-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -126,12 +125,12 @@
   padding: 8px 12px;
 }
 
-.dt-filter-icon {
+.dma-filter-icon {
   color: var(--muted);
   flex-shrink: 0;
 }
 
-.dt-datepicker-input {
+.dma-datepicker-input {
   background: none;
   border: none;
   outline: none;
@@ -142,19 +141,20 @@
 
 /* ── summary pills ────────────────────────────────────────────────────────── */
 
-.dt-summary-row {
+.dma-summary-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
 
-.dt-summary-row--compact {
+.dma-summary-row--compact {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin-bottom: 16px;
 }
 
-.dt-summary-pill {
+.dma-summary-pill,
+.dma-stat-filter {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -162,9 +162,24 @@
   border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 12px 14px;
+  text-align: left;
 }
 
-.dt-summary-icon {
+.dma-stat-filter {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.dma-stat-filter:hover {
+  background: var(--surface-2);
+}
+
+.dma-stat-filter--active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary) inset;
+}
+
+.dma-summary-icon {
   color: var(--primary);
   font-size: 18px;
   display: flex;
@@ -172,27 +187,29 @@
   margin-top: 2px;
 }
 
-.dt-summary-pill--good .dt-summary-icon {
+.dma-summary-pill--good .dma-summary-icon,
+.dma-stat-filter--good .dma-summary-icon {
   color: var(--success);
 }
 
-.dt-summary-pill--warn .dt-summary-icon {
+.dma-summary-pill--warn .dma-summary-icon,
+.dma-stat-filter--warn .dma-summary-icon {
   color: var(--warning);
 }
 
-.dt-summary-label {
+.dma-summary-label {
   margin: 0;
   font-size: 12px;
   color: var(--muted);
 }
 
-.dt-summary-value {
+.dma-summary-value {
   margin: 2px 0 0;
   font-size: 20px;
   font-weight: 600;
 }
 
-.dt-summary-sub {
+.dma-summary-sub {
   margin: 3px 0 0;
   font-size: 11px;
   color: var(--muted);
@@ -200,16 +217,14 @@
 
 /* ── tabs ─────────────────────────────────────────────────────────────────── */
 
-.dt-tabs {
+.dma-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-soft);
-  padding-bottom: 10px;
 }
 
-.dt-tab {
+.dma-tab {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -222,25 +237,25 @@
   font-size: 13px;
 }
 
-.dt-tab:hover {
+.dma-tab:hover {
   background: var(--surface-2);
   color: var(--text-primary);
 }
 
-.dt-tab--active {
+.dma-tab--active {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--primary-contrast);
 }
 
-.dt-tab--active:hover {
+.dma-tab--active:hover {
   background: var(--primary);
   color: var(--primary-contrast);
 }
 
-/* ── search + note ────────────────────────────────────────────────────────── */
+/* ── search ───────────────────────────────────────────────────────────────── */
 
-.dt-search {
+.dma-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -251,7 +266,7 @@
   max-width: 480px;
 }
 
-.dt-search input {
+.dma-search input {
   background: none;
   border: none;
   outline: none;
@@ -259,104 +274,18 @@
   width: 100%;
 }
 
-.dt-search svg {
+.dma-search svg {
   color: var(--muted);
 }
 
-/* Says out loud what the submission rate is actually measuring, so nobody
-   reads it as a live Google Classroom figure. */
-.dt-note {
-  margin: 0 0 18px;
-  padding: 10px 14px;
-  border-left: 3px solid var(--border);
-  background: var(--surface);
-  border-radius: 0 8px 8px 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  max-width: 90ch;
-}
-
-.dt-note strong {
-  color: var(--text-secondary);
-}
-
-.dt-loading {
+.dma-loading {
   color: var(--muted);
   margin: 20px 0;
 }
 
-/* ── at-risk panel ────────────────────────────────────────────────────────── */
-
-.dt-at-risk {
-  background: var(--surface);
-  border: 1px solid var(--warning);
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 18px;
-}
-
-.dt-at-risk-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--warning);
-  margin-bottom: 10px;
-  font-size: 13px;
-}
-
-.dt-at-risk-header .dt-muted {
-  color: var(--muted);
-  font-weight: 400;
-}
-
-.dt-at-risk-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.dt-at-risk-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  padding: 8px 12px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-}
-
-.dt-at-risk-item:hover {
-  border-color: var(--warning);
-}
-
-.dt-at-risk-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.dt-at-risk-reasons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.dt-at-risk-chip {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 18%, transparent);
-  color: var(--warning);
-}
-
 /* ── table ────────────────────────────────────────────────────────────────── */
 
-.dt-table-card {
+.dma-table-card {
   background: var(--surface);
   border: 1px solid var(--border-soft);
   border-radius: 12px;
@@ -364,19 +293,18 @@
   margin-bottom: 16px;
 }
 
-/* Wide table: scroll inside its own container so the page never scrolls
-   sideways. `sah-table--cards` collapses it to stacked cards on mobile. */
-.dt-table-wrap {
+.dma-table-wrap {
   overflow-x: auto;
+  margin-bottom: 16px;
 }
 
-.dt-table {
+.dma-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
 
-.dt-table th {
+.dma-table th {
   text-align: left;
   padding: 12px 14px;
   font-weight: 500;
@@ -386,49 +314,38 @@
   white-space: nowrap;
 }
 
-.dt-table td {
+.dma-table td {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-soft);
   vertical-align: middle;
 }
 
-.dt-table tbody tr:last-child td {
+.dma-table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.dt-table tbody tr:hover {
+.dma-table tbody tr:hover {
   background: var(--surface-2);
 }
 
-/* Two-line numeric cell: headline figure over its qualifier. */
-.dt-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.dt-block {
+.dma-block {
   display: block;
 }
 
-.dt-muted {
+.dma-muted {
   color: var(--muted);
   font-size: 12px;
 }
 
-.dt-good {
+.dma-good {
   color: var(--success);
 }
 
-.dt-ok {
-  color: var(--text-primary);
-}
-
-.dt-warn {
+.dma-warn {
   color: var(--warning);
 }
 
-.dt-detail-btn {
+.dma-detail-btn {
   padding: 6px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -439,56 +356,87 @@
   white-space: nowrap;
 }
 
-.dt-detail-btn:hover {
+.dma-detail-btn:hover {
   background: var(--surface);
 }
 
-/* ── rate bar ─────────────────────────────────────────────────────────────── */
+/* Every clickable number in the drilldown tables — same look, underlined on
+   hover so it reads as "click for detail" rather than a plain number. */
+.dma-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
 
-.dt-progress-wrap {
+.dma-link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ── status badges ────────────────────────────────────────────────────────── */
+
+.dma-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dma-badge--sent {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+
+.dma-badge--late,
+.dma-badge--unsent {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.dma-badge--pending {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+/* ── capacity block ───────────────────────────────────────────────────────── */
+
+.dma-capacity-block {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 84px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dma-capacity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dma-capacity-row-head {
+  display: flex;
+  justify-content: space-between;
   font-size: 13px;
-  font-weight: 600;
 }
 
-.dt-progress-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--border);
-  overflow: hidden;
-}
-
-.dt-progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--primary);
-  transition: width 0.3s ease;
-}
-
-.dt-progress-fill.dt-good {
-  background: var(--success);
-}
-
-.dt-progress-fill.dt-ok {
-  background: var(--primary);
-}
-
-.dt-progress-fill.dt-warn {
-  background: var(--warning);
+.dma-capacity-row-head span {
+  color: var(--muted);
 }
 
 /* ── detail modal ─────────────────────────────────────────────────────────── */
 
-/* Portalled into <body>, so it sits outside .dt-page and inherits nothing from
-   it — typography has to be restated here. Being a direct child of <body> is
-   also the whole point: .director-page-inner keeps a permanent
-   `transform: translateY(0)` from its fill-mode:both animation, which would
-   otherwise capture this fixed backdrop and anchor it to the content column
-   instead of the viewport. See the comment on DetailModal. */
-.dt-modal-backdrop {
+/* Portalled into <body> for the same reason documented in
+   DirectorTeachers.jsx's DetailModal: .director-page-inner keeps a permanent
+   transform from its fill-mode:both entrance animation, which would otherwise
+   capture a fixed-position backdrop and anchor it to the content column
+   instead of the viewport. */
+.dma-modal-backdrop {
   position: fixed;
   inset: 0;
   background: var(--overlay);
@@ -499,11 +447,15 @@
   z-index: 1000;
   color: var(--text-primary);
   font-family: "Inter", sans-serif;
-  /* Don't let a scroll gesture over the backdrop chain to the page behind. */
   overscroll-behavior: contain;
 }
 
-.dt-modal {
+/* The per-submission drilldown stacks on top of the manager-detail modal. */
+.dma-modal-backdrop--nested {
+  z-index: 1100;
+}
+
+.dma-modal {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -515,7 +467,7 @@
   box-shadow: var(--shadow);
 }
 
-.dt-modal-header {
+.dma-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -523,7 +475,7 @@
   margin-bottom: 18px;
 }
 
-.dt-modal-eyebrow {
+.dma-modal-eyebrow {
   margin: 0;
   font-size: 11px;
   text-transform: uppercase;
@@ -531,19 +483,19 @@
   color: var(--muted);
 }
 
-.dt-modal-header h3 {
+.dma-modal-header h3 {
   margin: 4px 0 0;
   font-size: 20px;
   font-weight: 600;
 }
 
-.dt-modal-sub {
+.dma-modal-sub {
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--muted);
 }
 
-.dt-modal-close {
+.dma-modal-close {
   background: none;
   border: none;
   color: var(--muted);
@@ -553,27 +505,27 @@
   padding: 4px;
 }
 
-.dt-modal-close:hover {
+.dma-modal-close:hover {
   color: var(--text-primary);
 }
 
-.dt-modal-section {
+.dma-modal-section {
   margin: 22px 0 10px;
   font-size: 14px;
   font-weight: 600;
 }
 
 @media (max-width: 640px) {
-  .dt-header {
+  .dma-header {
     flex-direction: column;
   }
 
-  .dt-period-group {
+  .dma-period-group {
     width: 100%;
     justify-content: space-between;
   }
 
-  .dt-datepicker-input {
+  .dma-datepicker-input {
     width: 100px;
   }
 }

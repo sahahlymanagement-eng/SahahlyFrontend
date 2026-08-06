@@ -10,8 +10,10 @@ import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
+import { useOrientationCheck, buildOrientationFlagMap, orientationWarningText } from "../../hooks/useOrientationCheck";
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
+import OrientationCheckModal from "../../components/OrientationCheckModal";
 
 import {
   FiEye,
@@ -175,6 +177,10 @@ export default function AssignmentSubmissionViewer() {
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
   const [savedResults, setSavedResults] = useState({});
+  const correctedPdfCount = useMemo(
+    () => Object.values(savedResults).filter((entry) => entry?.result).length,
+    [savedResults]
+  );
 
   useEffect(() => {
     if (!assignmentId) {
@@ -461,7 +467,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     !!assignmentId
   );
 
-  const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable } = extra;
+  const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable, pdfCount } = extra;
+  const actualPdfCount = pdfCount ?? 0;
 
   // Batch polling runs on a setInterval that outlives the render it was created
   // in, so anything it reads directly would be frozen at that moment. Keep the
@@ -588,6 +595,19 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   const applyPageCountReport = (report) =>
     setPageCountFlags((prev) => ({ ...prev, ...buildPageCountFlagMap(report) }));
   const pageCheckArgs = (students) => ({ assignmentId, classroomId, students, onReport: applyPageCountReport });
+
+  // Advisory pre-grading orientation check (shared hook + modal)
+  const { orientationCheckModal, confirmOrientations, resolveOrientationCheck } = useOrientationCheck();
+  const [orientationFlags, setOrientationFlags] = useState({});
+  const applyOrientationReport = (report) =>
+    setOrientationFlags((prev) => ({ ...prev, ...buildOrientationFlagMap(report) }));
+  const orientationCheckArgs = (students) => ({ assignmentId, classroomId, students, onReport: applyOrientationReport });
+
+  const confirmPreGradingChecks = async (students) => {
+    const proceedPageCount = await confirmPageCounts(pageCheckArgs(students));
+    if (!proceedPageCount) return false;
+    return confirmOrientations(orientationCheckArgs(students));
+  };
 
   const assignmentMaxPoints = useMemo(
     () =>
@@ -1299,8 +1319,8 @@ window.open(url);
     modal?.originalAiResult?.questions || modal?.result?.questions || [];
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", markingProvider) => {
-    // Advisory page-count check before spending AI tokens on a possibly-wrong file.
-    const proceed = await confirmPageCounts(pageCheckArgs([student]));
+    // Advisory page-count / orientation check before spending AI tokens on a possibly-wrong file.
+    const proceed = await confirmPreGradingChecks([student]);
     if (!proceed) return;
 
     setMarkingStudentId(student.submissionId);
@@ -1448,7 +1468,7 @@ window.open(url);
       toast.error("You are not allowed to use v2 marking.");
       return;
     }
-    const proceed = await confirmPageCounts(pageCheckArgs([student]));
+    const proceed = await confirmPreGradingChecks([student]);
     if (!proceed) return;
 
     setMarkingStudentId(student.submissionId);
@@ -1571,8 +1591,8 @@ window.open(url);
     if (!loaded) return;
     const { eligible } = loaded;
 
-    // Advisory page-count check before spending AI tokens on possibly-wrong files.
-    const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+    // Advisory page-count / orientation check before spending AI tokens on possibly-wrong files.
+    const proceed = await confirmPreGradingChecks(eligible);
     if (!proceed) return;
 
     const guidanceValue = guidanceForForm(guidanceText);
@@ -2041,8 +2061,8 @@ window.open(url);
       return;
     }
 
-    // Advisory page-count check before spending AI tokens on possibly-wrong files.
-    const proceed = await confirmPageCounts(pageCheckArgs(eligible));
+    // Advisory page-count / orientation check before spending AI tokens on possibly-wrong files.
+    const proceed = await confirmPreGradingChecks(eligible);
     if (!proceed) return;
 
     const guidanceValue = guidanceForForm(guidanceText);
@@ -2831,6 +2851,9 @@ return (
         ? `Due: ${new Date(dueDateTime).toLocaleString()}`
         : "No due date"}
     </span>
+    <span className="ma-panel-count">
+      {loading ? "Counting PDFs…" : `Corrected ${correctedPdfCount} / ${actualPdfCount} PDFs`}
+    </span>
   </div>
 
   <div className="header-actions">
@@ -3264,8 +3287,10 @@ return (
                                   {(() => {
                                     const savedWarn = savedResults[s.submissionId]?.result?.fileWarning;
                                     const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
-                                    if (!savedWarn && !flagText) return null;
+                                    const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
+                                    if (!savedWarn && !flagText && !orientationFlagText) return null;
                                     const title = flagText
+                                      || orientationFlagText
                                       || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
                                       || "Submitted file may be wrong — page count differs from expected";
                                     return (
@@ -3571,6 +3596,11 @@ return (
       <PageCountCheckModal
         state={pageCheckModal}
         onResolve={resolvePageCheck}
+        onOpenPdf={(c) => openPdf({ submissionId: c.submissionId, name: c.student?.name })}
+      />
+      <OrientationCheckModal
+        state={orientationCheckModal}
+        onResolve={resolveOrientationCheck}
         onOpenPdf={(c) => openPdf({ submissionId: c.submissionId, name: c.student?.name })}
       />
 
