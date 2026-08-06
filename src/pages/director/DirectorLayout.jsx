@@ -6,8 +6,6 @@ import {
 
   FiUsers,
 
-  FiBook,
-
   FiLayers,
 
   FiBarChart2,
@@ -66,8 +64,6 @@ const NAV_SECTIONS = [
     label: "Classrooms",
 
     items: [
-
-      { icon: <FiBook />, label: "Subjects", path: "/director/subjects" },
 
       { icon: <FiUsers />, label: "Google Accounts", path: "/director/google-accounts" },
 

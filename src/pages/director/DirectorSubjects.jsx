@@ -14,7 +14,7 @@ import {
   FiCheckCircle
 } from "react-icons/fi";
 
-export default function DirectorSubjects() {
+export default function DirectorSubjects({ embedded = false }) {
   const [subjects, setSubjects] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
 
@@ -200,7 +200,8 @@ export default function DirectorSubjects() {
   };
 
   return (
-    <div className="directorSubjectsPage">
+    <div className={`directorSubjectsPage${embedded ? " directorSubjectsPage--embedded" : ""}`}>
+      {!embedded && (
       <div className="dsHeader">
         <div className="dsHeaderLeft">
           <div className="dsTitleWrap">
@@ -225,6 +226,7 @@ export default function DirectorSubjects() {
           </div>
         </div>
       </div>
+      )}
 
       <div className="dsCreateCard">
         <div className="dsInputWrap">

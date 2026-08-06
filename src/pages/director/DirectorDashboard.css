@@ -515,3 +515,62 @@
 }
 
 .ddx-table tr:last-child td { border-bottom: none; }
+
+.ddx-muted {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.ddx-bucket-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ddx-bucket-filter {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ddx-bucket-filter--active {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ddx-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ddx-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ddx-export-btn:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-soft));
+}
+
+.ddx-list-alertBtn {
+  margin-left: 4px;
+}

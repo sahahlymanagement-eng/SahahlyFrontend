@@ -23,6 +23,30 @@ display:flex;
 justify-content:space-between;
 align-items:center;
 margin-bottom:28px;
+gap:16px;
+flex-wrap:wrap;
+}
+
+.peopleTabs{
+display:flex;
+gap:8px;
+}
+
+.peopleTab{
+border:1px solid var(--border-soft);
+background:var(--surface);
+color:var(--text-secondary);
+border-radius:8px;
+padding:8px 14px;
+font-size:13px;
+cursor:pointer;
+}
+
+.peopleTab--active{
+border-color:color-mix(in srgb, var(--accent) 45%, var(--border-soft));
+background:color-mix(in srgb, var(--accent) 10%, var(--surface));
+color:var(--text-primary);
+font-weight:600;
 }
 
 .peopleTitleBox{
@@ -31,6 +55,33 @@ align-items:center;
 gap:12px;
 font-size:22px;
 font-weight:600;
+}
+
+.peopleEmbeddedSection{
+margin-top:32px;
+background:var(--surface);
+border-radius:14px;
+padding:22px;
+}
+
+.peopleEmbeddedSection__head{
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+gap:12px;
+margin-bottom:18px;
+flex-wrap:wrap;
+}
+
+.peopleEmbeddedSection__head h3{
+margin:0;
+font-size:18px;
+}
+
+.peopleEmbeddedSection__head p{
+margin:0;
+font-size:13px;
+color:var(--text-secondary);
 }
 
 /* ================= ADD PERSON PANEL ================= */

@@ -45,7 +45,7 @@ import QualityManagerDashboard from "./pages/quality manager/QualityManagerDashb
 import DirectorDashboard from "./pages/director/DirectorDashboard";
 import DirectorPeople from "./pages/director/DirectorPeople";
 import DirectorLayout from "./pages/director/DirectorLayout";
-import DirectorSubjects from "./pages/director/DirectorSubjects";
+// import DirectorSubjects from "./pages/director/DirectorSubjects";
 import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
 import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegations";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
@@ -316,7 +316,7 @@ function App() {
           <Route path="people" element={<DirectorPeople/>}/>
           <Route path="ClassroomManagers" element={<DirectorClassroomManagers/>}/>
           <Route path="classroommanagers" element={<DirectorClassroomManagers/>}/>
-          <Route path="subjects" element={<DirectorSubjects/>}/>
+          <Route path="subjects" element={<Navigate to="/director/people" replace />} />
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />

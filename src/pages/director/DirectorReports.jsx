@@ -190,6 +190,7 @@ export default function DirectorReports() {
 
   const overview = data?.overview;
   const academic = data?.academic;
+  const insights = data?.insights;
   const attendance = data?.attendance;
   const coverage = data?.coverage;
 
@@ -305,6 +306,13 @@ export default function DirectorReports() {
               )}
               hint={`${formatNum(overview.teacherCount)} teachers · ${formatNum(overview.managerCount)} managers`}
             />
+            <StatCard
+              icon={<FiBarChart2 />}
+              label="AI expenses"
+              value={`$${Number(insights?.summary?.totalCostUsd || 0).toFixed(2)}`}
+              hint={`${formatNum(insights?.summary?.totalRequests)} AI runs`}
+              tone="accent"
+            />
           </div>
 
           <div className="dr-panel">
@@ -379,6 +387,129 @@ export default function DirectorReports() {
                 <Link to="/director/token-usage">Token usage</Link>
                 <Link to="/director/feedback">Report feedback</Link>
               </div>
+            </div>
+          </div>
+
+          <div className="dr-split">
+            <div className="dr-panel">
+              <div className="dr-panel-head">
+                <h3>Corrected work</h3>
+              </div>
+              <div className="dr-stat-grid dr-stat-grid--4">
+                <StatCard
+                  icon={<FiUsers />}
+                  label="Students"
+                  value={formatNum(overview.studentCount)}
+                />
+                <StatCard
+                  icon={<FiHome />}
+                  label="Classrooms"
+                  value={formatNum(overview.classroomCount)}
+                />
+                <StatCard
+                  icon={<FiClipboard />}
+                  label="Marked submissions"
+                  value={formatNum(overview.markedSubmissionCount)}
+                />
+                <StatCard
+                  icon={<FiActivity />}
+                  label="Teacher edits"
+                  value={formatNum(insights?.summary?.totalEdits)}
+                />
+              </div>
+              <div className="dr-split" style={{ marginTop: 16 }}>
+                <DataTable
+                  empty="No corrected work for teachers yet."
+                  columns={[
+                    { key: "name", label: "Teacher" },
+                    {
+                      key: "correctedAssignments",
+                      label: "Corrected assignments",
+                      render: (r) => formatNum(r.correctedAssignments),
+                    },
+                  ]}
+                  rows={insights?.correctedByTeacher}
+                />
+                <DataTable
+                  empty="No corrected work for managers yet."
+                  columns={[
+                    { key: "name", label: "Manager" },
+                    {
+                      key: "correctedAssignments",
+                      label: "Corrected assignments",
+                      render: (r) => formatNum(r.correctedAssignments),
+                    },
+                    {
+                      key: "classrooms",
+                      label: "Classes",
+                      render: (r) => formatNum(r.classrooms),
+                    },
+                  ]}
+                  rows={insights?.correctedByManager}
+                />
+                <DataTable
+                  empty="No corrected work for assistants yet."
+                  columns={[
+                    { key: "name", label: "Assistant" },
+                    {
+                      key: "correctedAssignments",
+                      label: "Corrected papers",
+                      render: (r) => formatNum(r.correctedAssignments),
+                    },
+                    {
+                      key: "subjects",
+                      label: "Subjects",
+                      render: (r) => formatNum(r.subjects),
+                    },
+                  ]}
+                  rows={insights?.correctedByAssistant}
+                />
+              </div>
+            </div>
+            <div className="dr-panel">
+              <div className="dr-panel-head">
+                <h3>Edits breakdown</h3>
+              </div>
+              <DataTable
+                empty="No teacher edits recorded yet."
+                columns={[
+                  { key: "name", label: "Teacher" },
+                  {
+                    key: "edits",
+                    label: "Edits",
+                    render: (r) => formatNum(r.edits),
+                  },
+                ]}
+                rows={insights?.editsByTeacher}
+              />
+              <div style={{ height: 16 }} />
+              <DataTable
+                empty="No assignment edits recorded yet."
+                columns={[
+                  { key: "title", label: "Assignment" },
+                  { key: "classroomName", label: "Classroom" },
+                  {
+                    key: "edits",
+                    label: "Edits",
+                    render: (r) => formatNum(r.edits),
+                  },
+                ]}
+                rows={insights?.editsByAssignment}
+              />
+              <div style={{ height: 16 }} />
+              <DataTable
+                empty="No classroom edits recorded yet."
+                columns={[
+                  { key: "name", label: "Classroom" },
+                  { key: "teacherName", label: "Teacher" },
+                  {
+                    key: "edits",
+                    label: "Edits",
+                    render: (r) => formatNum(r.edits),
+                  },
+                ]}
+                rows={insights?.editsByClassroom}
+              />
             </div>
           </div>
         </>
@@ -824,11 +955,8 @@ export default function DirectorReports() {
             <div className="dr-panel">
               <div className="dr-panel-head">
                 <h3>Missing teacher assignment</h3>
-                <Link
-                  to="/director/classroommanagers"
-                  className="dr-link"
-                >
-                  Open Class Manager →
+                <Link to="/director/people" className="dr-link">
+                  Open People page →
                 </Link>
               </div>
               <DataTable
@@ -848,8 +976,8 @@ export default function DirectorReports() {
             <div className="dr-panel">
               <div className="dr-panel-head">
                 <h3>Missing subject</h3>
-                <Link to="/director/subjects" className="dr-link">
-                  Subjects →
+                <Link to="/director/people" className="dr-link">
+                  Open People page →
                 </Link>
               </div>
               <DataTable

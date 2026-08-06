@@ -3105,10 +3105,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         { type: "application/pdf" }
       );
 
+      const isCriteriaPdf =
+        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
+      const pdfTotalMarks = isCriteriaPdf
+        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
+        : sumQuestionMarks(editingQuestions);
+
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: sumQuestionMarks(editingQuestions),
+        totalMarks: pdfTotalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
@@ -3209,7 +3215,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         );
       }
 
-      const totalMarks = sumQuestionMarks(editingQuestions);
+      const isCriteriaPdf =
+        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
+      const totalMarks = isCriteriaPdf
+        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
+        : sumQuestionMarks(editingQuestions);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -3514,7 +3524,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     isCriteria && editingCriteriaGrade
       ? Number(editingCriteriaGrade.totalMarks) || 0
       : Number(resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks);
-  const paperTotal = sumQuestionMarks(questionsForDisplay);
+  const paperTotal =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : sumQuestionMarks(questionsForDisplay);
   const totalMismatch =
     questionsForDisplay.length > 0 &&
     Number.isFinite(coverTotal) &&
@@ -3704,7 +3717,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         {msInfo ? "✅ Uploaded — ready for AI marking" : "No mark scheme uploaded yet"}
                       </div>
                     </div>
-                    <input ref={msInputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={e => handleMsUpload(e.target.files[0])} />
+                    <input
+                      ref={msInputRef}
+                      type="file"
+                      accept=".pdf,.kami,.kmi"
+                      style={{ display: "none" }}
+                      onChange={(e) => handleMsUpload(e.target.files[0])}
+                    />
                     <button className="ma-send-btn" onClick={() => msInputRef.current.click()} disabled={uploadingMs} style={{ fontSize: 12 }}>
                       <FiUploadCloud size={13} />
                       {uploadingMs ? "Uploading…" : msInfo ? "Replace MS" : "Upload MS"}
@@ -4331,7 +4350,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                             : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
-                                            : <><FiCpu size={12} /> Mark</>
+                                            : <><FiCpu size={12} /> Mark All</>
                                           }
                                         </button>
                                         {/* Priority single mark */}

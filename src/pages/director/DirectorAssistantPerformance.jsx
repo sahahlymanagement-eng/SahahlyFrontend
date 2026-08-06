@@ -185,6 +185,7 @@ export default function DirectorAssistantPerformance() {
                   <th>Passed deadline</th>
                   <th>In progress</th>
                   <th>Tokens</th>
+                  <th>Capacity</th>
                   <th />
                 </tr>
               </thead>
@@ -216,6 +217,15 @@ export default function DirectorAssistantPerformance() {
                     <td className="dap-warn" data-label="Passed deadline">{formatNum(a.summary?.missedDeadline)}</td>
                     <td data-label="In progress">{formatNum(a.summary?.pending)}</td>
                     <td data-label="Tokens">{formatNum(a.tokenUsage?.totalTokens)}</td>
+                    <td data-label="Capacity">
+                      {a.capacity ? (
+                        <span className={`dap-cap dap-cap--${a.capacity.health >= 75 ? "good" : a.capacity.health >= 50 ? "mid" : "low"}`}>
+                          {a.capacity.health}%
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -334,6 +344,26 @@ export default function DirectorAssistantPerformance() {
                       label="In progress"
                       value={formatNum(detail.assistant.summary?.pending)}
                     />
+                    {detail.assistant.capacity && (
+                      <>
+                        <MetricCard
+                          icon={<FiUsers />}
+                          label={`Students (${detail.assistant.capacity.studentCap} cap)`}
+                          value={`${detail.assistant.capacity.studentCount} · ${detail.assistant.capacity.studentUtilization}%`}
+                        />
+                        <MetricCard
+                          icon={<FiFileText />}
+                          label={`PDF edits (${detail.assistant.capacity.editsCap}/mo)`}
+                          value={`${detail.assistant.capacity.monthlyEdits} · ${detail.assistant.capacity.editsUtilization}%`}
+                        />
+                        <MetricCard
+                          icon={<FiBarChart2 />}
+                          label="Capacity health"
+                          value={`${detail.assistant.capacity.health}%`}
+                          tone={detail.assistant.capacity.health >= 75 ? "good" : detail.assistant.capacity.health >= 50 ? "warn" : "warn"}
+                        />
+                      </>
+                    )}
                   </div>
                 )}
 
