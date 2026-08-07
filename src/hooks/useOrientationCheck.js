@@ -27,26 +27,23 @@ export function orientationWarningText(flag) {
   return `Mixed page orientation detected${pages}`;
 }
 
+// Path of the orientation-check endpoint for a grading partner. Mirrors
+// gradingPageCountPath in usePageCountCheck.js: `provider` null/undefined =
+// LoginCSS, which keeps its own /external-grading routes; any slug (e.g.
+// "mariamgabalawy") goes through the shared registry.
+export function gradingOrientationPath(provider) {
+  return provider ? `/grading/${provider}/orientation-check` : "/external-grading/orientation-check";
+}
+
 export function useOrientationCheck() {
   const [orientationCheckModal, setOrientationCheckModal] = useState(null);
   const resolveRef = useRef(null);
 
-  const confirmOrientations = async ({ assignmentId, classroomId, students, onReport }) => {
-    if (!assignmentId || !students?.length) return true;
-
+  const runCheck = async (endpoint, payload, onReport) => {
     setOrientationCheckModal({ loading: true, report: null });
     let report;
     try {
-      const { data } = await api.post("/marking/orientation-check", {
-        assignmentId,
-        students: students.map((s) => ({
-          submissionId: s.submissionId,
-          studentId: s.studentId,
-          name: s.name,
-          state: s.state,
-        })),
-        ...(classroomId ? { classroomId } : {}),
-      });
+      const { data } = await api.post(endpoint, payload);
       report = data;
     } catch {
       setOrientationCheckModal(null);
@@ -67,6 +64,43 @@ export function useOrientationCheck() {
     });
   };
 
+  const confirmOrientations = async ({ assignmentId, classroomId, students, onReport }) => {
+    if (!assignmentId || !students?.length) return true;
+
+    return runCheck(
+      "/marking/orientation-check",
+      {
+        assignmentId,
+        students: students.map((s) => ({
+          submissionId: s.submissionId,
+          studentId: s.studentId,
+          name: s.name,
+          state: s.state,
+        })),
+        ...(classroomId ? { classroomId } : {}),
+      },
+      onReport
+    );
+  };
+
+  // Grading partners (LoginCSS / mariamgabalawy / drpeter). Their submissions
+  // are numeric ids with no student roster, so the payload is just the ids —
+  // omit them to let the server check every not-yet-published submission.
+  const confirmGradingOrientations = async ({ provider, assignmentId, submissionIds, onReport }) => {
+    if (assignmentId == null) return true;
+
+    return runCheck(
+      gradingOrientationPath(provider),
+      {
+        assignmentId,
+        ...(submissionIds?.length
+          ? { submissions: submissionIds.map((submissionId) => ({ submissionId })) }
+          : {}),
+      },
+      onReport
+    );
+  };
+
   const resolveOrientationCheck = (proceed) => {
     setOrientationCheckModal(null);
     const resolve = resolveRef.current;
@@ -74,5 +108,10 @@ export function useOrientationCheck() {
     if (resolve) resolve(proceed);
   };
 
-  return { orientationCheckModal, confirmOrientations, resolveOrientationCheck };
+  return {
+    orientationCheckModal,
+    confirmOrientations,
+    confirmGradingOrientations,
+    resolveOrientationCheck,
+  };
 }

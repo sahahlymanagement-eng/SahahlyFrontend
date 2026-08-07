@@ -436,6 +436,7 @@ border-radius:6px;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 20px;
 }
 
 .modalCard {
@@ -444,11 +445,19 @@ border-radius:6px;
   border-radius: 14px;
   width: 100%;
   max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
   padding: 28px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .modalCard {
+    padding: 20px;
+  }
 }
 
 .modalHeader h3 {

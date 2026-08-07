@@ -1,0 +1,456 @@
+/* Director → Accuracy Metrics.
+   Follows the same shape as DirectorAssistantPerformance.css / the `mw-`
+   progress bars in DirectorManagerWorkload.css, on the shared theme vars. */
+
+.dam-page {
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+}
+
+/* ── header ───────────────────────────────────────────────────────────────── */
+
+.dam-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dam-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dam-header-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.dam-header h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.dam-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.dam-refresh-btn,
+.dam-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dam-refresh-btn:hover:not(:disabled),
+.dam-clear-btn:hover {
+  background: var(--surface-2);
+}
+
+.dam-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── date range ───────────────────────────────────────────────────────────── */
+
+.dam-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.dam-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.dam-filter-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dam-datepicker-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 120px;
+}
+
+/* ── summary pills ────────────────────────────────────────────────────────── */
+
+.dam-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.dam-summary-row--compact {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 16px;
+}
+
+.dam-summary-pill {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.dam-summary-icon {
+  color: var(--primary);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.dam-summary-pill--good .dam-summary-icon {
+  color: var(--success);
+}
+
+.dam-summary-pill--warn .dam-summary-icon {
+  color: var(--warning);
+}
+
+.dam-summary-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dam-summary-value {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dam-summary-sub {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── tabs ─────────────────────────────────────────────────────────────────── */
+
+.dam-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 10px;
+}
+
+.dam-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dam-tab:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.dam-tab--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.dam-tab--active:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ── search ───────────────────────────────────────────────────────────────── */
+
+.dam-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  max-width: 480px;
+}
+
+.dam-search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.dam-search svg {
+  color: var(--muted);
+}
+
+.dam-loading {
+  color: var(--muted);
+  margin: 20px 0;
+}
+
+/* ── table ────────────────────────────────────────────────────────────────── */
+
+.dam-table-card {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+/* Wide table: scroll inside its own container so the page never scrolls
+   sideways. `sah-table--cards` collapses it to stacked cards on mobile. */
+.dam-table-wrap {
+  overflow-x: auto;
+}
+
+.dam-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dam-table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+
+.dam-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+
+.dam-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dam-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.dam-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dam-good {
+  color: var(--success);
+}
+
+.dam-ok {
+  color: var(--text-primary);
+}
+
+.dam-warn {
+  color: var(--warning);
+}
+
+.dam-detail-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dam-detail-btn:hover {
+  background: var(--surface);
+}
+
+.dam-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* ── accuracy bar ─────────────────────────────────────────────────────────── */
+
+.dam-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 90px;
+}
+
+.dam-progress-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dam-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.dam-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.dam-progress-fill.dam-good {
+  background: var(--success);
+}
+
+.dam-progress-fill.dam-ok {
+  background: var(--primary);
+}
+
+.dam-progress-fill.dam-warn {
+  background: var(--warning);
+}
+
+/* ── detail modal ─────────────────────────────────────────────────────────── */
+
+.dam-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.dam-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(900px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.dam-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.dam-modal-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.dam-modal-header h3 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dam-modal-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dam-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  padding: 4px;
+}
+
+.dam-modal-close:hover {
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .dam-header {
+    flex-direction: column;
+  }
+
+  .dam-datepicker-input {
+    width: 100px;
+  }
+}
+
+/* Explains why the Assistants figures do not reconcile with the paper totals. */
+.dam-note {
+  margin: -8px 0 18px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 78ch;
+}
+
+.dam-chip--muted {
+  opacity: 0.85;
+}

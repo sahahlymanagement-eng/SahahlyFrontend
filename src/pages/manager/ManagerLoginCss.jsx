@@ -62,6 +62,10 @@ import {
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
+import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
+import PendingEditsBanner, {
+  PendingEditsSavingHint,
+} from "../../components/PendingEditsBanner";
 import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
 import { useGradingDelegations } from "../../context/GradingNotificationContext";
@@ -81,11 +85,17 @@ import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
 import GradingAssignmentSettingsBar from "../../components/GradingAssignmentSettingsBar";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
+import OrientationCheckModal from "../../components/OrientationCheckModal";
 import {
   usePageCountCheck,
   buildPageCountFlagMap,
   pageCountWarningText,
 } from "../../hooks/usePageCountCheck";
+import {
+  useOrientationCheck,
+  buildOrientationFlagMap,
+  orientationWarningText,
+} from "../../hooks/useOrientationCheck";
 
 // LoginCSS keeps its own /external-grading routes rather than the shared
 // /grading/:provider registry — a null slug selects them.
@@ -169,6 +179,10 @@ export default function ManagerLoginCss() {
   const [singleProgress, setSingleProgress] = useState({});
   const [studentErrors, setStudentErrors] = useState({});
   const [results, setResults] = useState({}); // submissionId -> { result, originalAiResult, studentFile }
+  const correctedCount = useMemo(
+    () => Object.values(results).filter((entry) => entry?.result).length,
+    [results]
+  );
 
   // Bulk ("Mark All") + priority bulk
   const [bulkMarking, setBulkMarking] = useState(false);
@@ -203,6 +217,12 @@ export default function ManagerLoginCss() {
   const [publishAll, setPublishAll] = useState(null); // { done, total, current, loading }
   const publishStopRef = useRef(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
+  // Which submission the editing state above belongs to — set by openResultModal
+  // so the auto-save below can tell "editor loaded" from "not this paper yet".
+  const [editorSubmissionId, setEditorSubmissionId] = useState(null);
+  // Set while the auto-save on open is confirming the displayed result, so the
+  // unconfirmed-edits autosave does not store a copy of what is being confirmed.
+  const [autoSavingOpenFor, setAutoSavingOpenFor] = useState(null);
 
   const editHistory = useMarkingEditHistory({
     questions: editingQuestions,
@@ -231,6 +251,30 @@ export default function ManagerLoginCss() {
     (report) => setPageCountFlags((prev) => ({ ...prev, ...buildPageCountFlagMap(report) })),
     []
   );
+
+  // Advisory pre-grading orientation review.
+  const { orientationCheckModal, confirmGradingOrientations, resolveOrientationCheck } = useOrientationCheck();
+  const [orientationFlags, setOrientationFlags] = useState({});
+  const applyOrientationReport = useCallback(
+    (report) => setOrientationFlags((prev) => ({ ...prev, ...buildOrientationFlagMap(report) })),
+    []
+  );
+
+  const confirmPreGradingChecks = async (eligible) => {
+    const proceedPageCount = await confirmGradingPageCounts({
+      provider: PROVIDER,
+      assignmentId: selectedAssignment.id,
+      submissionIds: eligible.map((s) => s.submissionId),
+      onReport: applyPageCountReport,
+    });
+    if (!proceedPageCount) return false;
+    return confirmGradingOrientations({
+      provider: PROVIDER,
+      assignmentId: selectedAssignment.id,
+      submissionIds: eligible.map((s) => s.submissionId),
+      onReport: applyOrientationReport,
+    });
+  };
 
   // Cache of fetched PDFs per submission (avoids re-downloading base64 from LoginCSS).
   const pdfCacheRef = useRef({});
@@ -404,7 +448,9 @@ export default function ManagerLoginCss() {
     previewError,
     confirmingEdits,
     hasPendingEdits,
+    confirmedSnapshot,
     confirmEdits,
+    buildEditedResult,
     resetToConfirmed,
     reportPageCount,
   } = useExternalAnnotatedPreview({
@@ -441,6 +487,53 @@ export default function ManagerLoginCss() {
   useEffect(() => {
     setPendingRemovedIndices(new Set());
   }, [resultModalSubmissionId]);
+
+  // ── Unconfirmed edits: autosave + restore ─────────────────────────────────
+  // Everything typed in this modal is kept server-side while it is unconfirmed,
+  // so closing the tab no longer loses it, and dropped automatically after 24h if
+  // nobody ever confirms. See hooks/usePendingEditsAutosave.js.
+  const applyRestoredEdits = useCallback((restored) => {
+    setEditingQuestions((restored.questions || []).map((q) => ({ ...q })));
+    setEditingAnnotations(getTeacherAnnotations(restored).map((a) => ({ ...a })));
+    // Marked as touched so the auto-rebuild does not immediately overwrite the
+    // summary the grader had actually written.
+    setEditingSummary(restored.summary || "");
+    setSummaryTouched(true);
+    setPendingRemovedIndices(new Set());
+    // A hand-set paper total is part of the edits, so it comes back too.
+    const restoredMax = Number(restored.maxTotalMarks);
+    setEditingMaxTotal(Number.isFinite(restoredMax) && restoredMax > 0 ? restoredMax : null);
+  }, []);
+
+  const pendingEdits = usePendingEditsAutosave({
+    submissionId: resultModalSubmissionId,
+    ready: editorSubmissionId === resultModalSubmissionId,
+    dirty: hasPendingEdits,
+    buildResult: buildEditedResult,
+    pauseSaves: autoSavingOpenFor === resultModalSubmissionId,
+    load: async (submissionId) => {
+      const { data } = await api.get(
+        `/external-grading/submissions/${submissionId}/pending-edits`
+      );
+      return data?.pendingEdits || null;
+    },
+    save: (submissionId, result) =>
+      api.put(`/external-grading/submissions/${submissionId}/pending-edits`, { result }),
+    discard: (submissionId) =>
+      api.delete(`/external-grading/submissions/${submissionId}/pending-edits`),
+    onRestore: applyRestoredEdits,
+    onDiscard: () => {
+      const confirmed = resetToConfirmed();
+      if (!confirmed) return;
+      setEditingQuestions(confirmed.questions);
+      setEditingAnnotations(confirmed.teacherAnnotations);
+      setEditingSummary(confirmed.summary);
+      setSummaryTouched(false);
+      setEditingMaxTotal(null);
+      setPendingRemovedIndices(new Set());
+      toast.info("Unconfirmed edits discarded");
+    },
+  });
 
   const questionsForDisplay = useMemo(
     () => filterQuestionsPendingRemoval(editingQuestions, pendingRemovedIndices),
@@ -783,6 +876,7 @@ export default function ManagerLoginCss() {
     setAnnotationsPanelOpen(false);
     setEditingMaxTotal(null);
     setEditingTotal(null);
+    setEditorSubmissionId(student.submissionId);
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
@@ -956,14 +1050,9 @@ export default function ManagerLoginCss() {
       const eligible = resolveEligibleForMarking(roster);
       if (!eligible) return;
 
-      // Advisory page-count review before any tokens are spent. Returning here
-      // still runs the finally block, which clears the running flags.
-      const proceed = await confirmGradingPageCounts({
-        provider: PROVIDER,
-        assignmentId: selectedAssignment.id,
-        submissionIds: eligible.map((s) => s.submissionId),
-        onReport: applyPageCountReport,
-      });
+      // Advisory page-count / orientation review before any tokens are spent.
+      // Returning here still runs the finally block, which clears the running flags.
+      const proceed = await confirmPreGradingChecks(eligible);
       if (!proceed) return;
 
       const pending = {};
@@ -1100,14 +1189,9 @@ export default function ManagerLoginCss() {
     const eligible = resolveEligibleForMarking(roster);
     if (!eligible) return;
 
-    // Advisory page-count review before any tokens are spent. Passes silently
-    // when this assignment has no expectedPages set or nothing is flagged.
-    const proceed = await confirmGradingPageCounts({
-      provider: PROVIDER,
-      assignmentId: selectedAssignment.id,
-      submissionIds: eligible.map((s) => s.submissionId),
-      onReport: applyPageCountReport,
-    });
+    // Advisory page-count / orientation review before any tokens are spent.
+    // Passes silently when nothing is flagged.
+    const proceed = await confirmPreGradingChecks(eligible);
     if (!proceed) return;
 
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
@@ -1427,6 +1511,67 @@ export default function ManagerLoginCss() {
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
     }
   };
+
+  // ── Auto-save on open ─────────────────────────────────────────────────────
+  // The modal shows a rebuilt summary and normalised totals rather than the raw
+  // marking JSON, so an untouched paper used to read as "pending edits" and had
+  // to be confirmed by hand before it could be published. Save the displayed
+  // version to the draft once per paper instead, so Confirm Edits is only ever
+  // needed for real edits. Questions are shown verbatim here, so this save
+  // never registers as a correction (see services/gradingEditStats.js).
+  const autoSavedResultsRef = useRef(new Set());
+  const autoSaveOpenedResultRef = useRef(null);
+
+  autoSaveOpenedResultRef.current = async () => {
+    await confirmEdits(async ({ finalResult, submissionId }) => {
+      setResults((prev) => ({
+        ...prev,
+        [submissionId]: { ...(prev[submissionId] || {}), result: finalResult },
+      }));
+      saveDraft(
+        submissionId,
+        finalResult,
+        results[submissionId]?.originalAiResult || resultModal?.originalAiResult
+      );
+      setResultModal((prev) => ({ ...prev, result: finalResult }));
+      setEditingSummary(finalResult.summary || "");
+      setSummaryTouched(false);
+      setSubmissions((prev) =>
+        prev.map((s) =>
+          s.submissionId === submissionId
+            ? { ...s, localGrade: resolveTotalMarksFromResult(finalResult) }
+            : s
+        )
+      );
+    });
+  };
+
+  useEffect(() => {
+    const sid = resultModalSubmissionId;
+    if (!sid) return;
+    if (editorSubmissionId !== sid) return;
+    if (!confirmedSnapshot || confirmedSnapshot.submissionId !== sid) return;
+    // Never auto-confirm on top of edits somebody made and did not confirm —
+    // wait for that check, and stand down entirely if any were restored.
+    if (pendingEdits.status !== "none") return;
+    // Keyed by marking run so a re-mark of the same paper is saved again.
+    const key = `${sid}:${resultModal?.result?.markingRunId || ""}`;
+    if (autoSavedResultsRef.current.has(key)) return;
+    autoSavedResultsRef.current.add(key);
+    setAutoSavingOpenFor(sid);
+    autoSaveOpenedResultRef.current?.()
+      .catch((err) => {
+        autoSavedResultsRef.current.delete(key);
+        console.error("Auto-save of opened results failed", err);
+      })
+      .finally(() => setAutoSavingOpenFor((prev) => (prev === sid ? null : prev)));
+  }, [
+    resultModalSubmissionId,
+    editorSubmissionId,
+    confirmedSnapshot,
+    resultModal?.result?.markingRunId,
+    pendingEdits.status,
+  ]);
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
@@ -1937,6 +2082,9 @@ export default function ManagerLoginCss() {
                     <div className="ma-panel-dot" />
                     <h2 className="ma-panel-title">{selectedAssignment.name}</h2>
                     <span className="ma-panel-count">{listMeta.total} total</span>
+                    <span className="ma-panel-count">
+                      {loadingList ? "Counting PDFs…" : `Corrected ${correctedCount} / ${listMeta.total} PDFs`}
+                    </span>
                   </div>
                   <div className="msv-panel-controls" style={{ flexWrap: "wrap", gap: 8 }}>
                     <input
@@ -2295,8 +2443,10 @@ export default function ManagerLoginCss() {
                                       // fileWarning baked into a saved result.
                                       const savedWarn = results[s.submissionId]?.result?.fileWarning;
                                       const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
-                                      if (!savedWarn && !flagText) return null;
+                                      const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
+                                      if (!savedWarn && !flagText && !orientationFlagText) return null;
                                       const title = flagText
+                                        || orientationFlagText
                                         || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
                                         || "Submitted file may be wrong — page count differs from expected";
                                       return (
@@ -2855,6 +3005,11 @@ export default function ManagerLoginCss() {
         onResolve={resolvePageCheck}
         onOpenPdf={(c) => viewFile({ submissionId: c.submissionId, name: c.studentName }, "student")}
       />
+      <OrientationCheckModal
+        state={orientationCheckModal}
+        onResolve={resolveOrientationCheck}
+        onOpenPdf={(c) => viewFile({ submissionId: c.submissionId, name: c.studentName }, "student")}
+      />
 
       {/* ── RESULTS MODAL ── */}
       {resultModal && (
@@ -3026,6 +3181,9 @@ export default function ManagerLoginCss() {
                     {confirmingEdits ? "Confirming…" : "Confirm Edits"}
                   </button>
                 )}
+                {pendingEdits.status !== "restored" && (
+                  <PendingEditsSavingHint saving={pendingEdits.saving} />
+                )}
                 <button
                   className="ma-send-btn"
                   onClick={downloadGradedPdf}
@@ -3057,6 +3215,13 @@ export default function ManagerLoginCss() {
             >
               {/* LEFT: results / editor */}
               <div style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
+                {pendingEdits.status === "restored" && (
+                  <PendingEditsBanner
+                    savedAt={pendingEdits.restoredAt}
+                    saving={pendingEdits.saving}
+                    onDiscard={pendingEdits.discardRestored}
+                  />
+                )}
                 {resultModal.result.fileWarning && (
                   <div
                     style={{

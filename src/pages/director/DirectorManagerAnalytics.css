@@ -1,0 +1,531 @@
+/* Director → Manager analytics.
+   Same shape as DirectorTeachers.css, on the shared theme vars.
+   No literal colours — everything comes from styles/theme.css. */
+
+.dma-page {
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+}
+
+/* ── header ───────────────────────────────────────────────────────────────── */
+
+.dma-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dma-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dma-header-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.dma-header h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.dma-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.dma-refresh-btn,
+.dma-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dma-refresh-btn:hover:not(:disabled),
+.dma-clear-btn:hover {
+  background: var(--surface-2);
+}
+
+.dma-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── period + date range ──────────────────────────────────────────────────── */
+
+.dma-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.dma-period-group {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.dma-period {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.dma-period:hover {
+  color: var(--text-primary);
+}
+
+.dma-period--active {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.dma-period--active:hover {
+  color: var(--primary-contrast);
+}
+
+.dma-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.dma-filter-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dma-datepicker-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 120px;
+}
+
+/* ── summary pills ────────────────────────────────────────────────────────── */
+
+.dma-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.dma-summary-row--compact {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 16px;
+}
+
+.dma-summary-pill,
+.dma-stat-filter {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.dma-stat-filter {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.dma-stat-filter:hover {
+  background: var(--surface-2);
+}
+
+.dma-stat-filter--active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary) inset;
+}
+
+.dma-summary-icon {
+  color: var(--primary);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.dma-summary-pill--good .dma-summary-icon,
+.dma-stat-filter--good .dma-summary-icon {
+  color: var(--success);
+}
+
+.dma-summary-pill--warn .dma-summary-icon,
+.dma-stat-filter--warn .dma-summary-icon {
+  color: var(--warning);
+}
+
+.dma-summary-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dma-summary-value {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dma-summary-sub {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── tabs ─────────────────────────────────────────────────────────────────── */
+
+.dma-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dma-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dma-tab:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.dma-tab--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.dma-tab--active:hover {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+/* ── search ───────────────────────────────────────────────────────────────── */
+
+.dma-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  max-width: 480px;
+}
+
+.dma-search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.dma-search svg {
+  color: var(--muted);
+}
+
+.dma-loading {
+  color: var(--muted);
+  margin: 20px 0;
+}
+
+/* ── table ────────────────────────────────────────────────────────────────── */
+
+.dma-table-card {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.dma-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.dma-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dma-table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+
+.dma-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+
+.dma-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dma-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.dma-block {
+  display: block;
+}
+
+.dma-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dma-good {
+  color: var(--success);
+}
+
+.dma-warn {
+  color: var(--warning);
+}
+
+.dma-detail-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dma-detail-btn:hover {
+  background: var(--surface);
+}
+
+/* Every clickable number in the drilldown tables — same look, underlined on
+   hover so it reads as "click for detail" rather than a plain number. */
+.dma-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dma-link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ── status badges ────────────────────────────────────────────────────────── */
+
+.dma-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dma-badge--sent {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+
+.dma-badge--late,
+.dma-badge--unsent {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.dma-badge--pending {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+/* ── capacity block ───────────────────────────────────────────────────────── */
+
+.dma-capacity-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dma-capacity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dma-capacity-row-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.dma-capacity-row-head span {
+  color: var(--muted);
+}
+
+/* ── detail modal ─────────────────────────────────────────────────────────── */
+
+/* Portalled into <body> for the same reason documented in
+   DirectorTeachers.jsx's DetailModal: .director-page-inner keeps a permanent
+   transform from its fill-mode:both entrance animation, which would otherwise
+   capture a fixed-position backdrop and anchor it to the content column
+   instead of the viewport. */
+.dma-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+  overscroll-behavior: contain;
+}
+
+/* The per-submission drilldown stacks on top of the manager-detail modal. */
+.dma-modal-backdrop--nested {
+  z-index: 1100;
+}
+
+.dma-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(1100px, 100%);
+  max-height: min(85vh, 100% - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.dma-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.dma-modal-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.dma-modal-header h3 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dma-modal-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dma-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  padding: 4px;
+}
+
+.dma-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.dma-modal-section {
+  margin: 22px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .dma-header {
+    flex-direction: column;
+  }
+
+  .dma-period-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dma-datepicker-input {
+    width: 100px;
+  }
+}

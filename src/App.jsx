@@ -49,8 +49,11 @@ import DirectorLayout from "./pages/director/DirectorLayout";
 import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
 import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegations";
 import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
+import DirectorManagerAnalytics from "./pages/director/DirectorManagerAnalytics";
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
+import DirectorAccuracyMetrics from "./pages/director/DirectorAccuracyMetrics";
+import DirectorTeachers from "./pages/director/DirectorTeachers";
 import DirectorFeedback from "./pages/director/DirectorFeedback";
 import DirectorReports from "./pages/director/DirectorReports";
 import DirectorAssignments from "./pages/director/DirectorAssignments";
@@ -318,7 +321,10 @@ function App() {
           <Route path="classroommanagers" element={<DirectorClassroomManagers/>}/>
           <Route path="subjects" element={<Navigate to="/director/people" replace />} />
           <Route path="manager-workload" element={<DirectorManagerWorkload/>}/>
+          <Route path="manager-analytics" element={<DirectorManagerAnalytics/>}/>
           <Route path="assistant-performance" element={<DirectorAssistantPerformance />} />
+          <Route path="accuracy-metrics" element={<DirectorAccuracyMetrics />} />
+          <Route path="teachers" element={<DirectorTeachers />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
           <Route path="insights" element={<DirectorReports />} />
