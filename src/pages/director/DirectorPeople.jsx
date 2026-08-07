@@ -18,6 +18,8 @@ import {
   FiTrash2,
   FiToggleLeft,
   FiToggleRight,
+  FiChevronDown,
+  FiChevronRight,
   FiX
 } from "react-icons/fi";
 
@@ -28,6 +30,8 @@ export default function DirectorPeople() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [selectedManagerId, setSelectedManagerId] = useState("");
   const [managers, setManagers] = useState([]);
+  const [subjectsSectionOpen, setSubjectsSectionOpen] = useState(false);
+  const [classroomManagersSectionOpen, setClassroomManagersSectionOpen] = useState(false);
 
   const paginationParams = useMemo(() => {
     const params = {};
@@ -556,19 +560,35 @@ export default function DirectorPeople() {
         {loading && <p className="loading">Processing...</p>}
 
         <section className="peopleEmbeddedSection">
-          <div className="peopleEmbeddedSection__head">
-            <h3>Subjects</h3>
-            <p>Manage subject records from the same page.</p>
-          </div>
-          <DirectorSubjects embedded />
+          <button
+            type="button"
+            className="peopleEmbeddedSection__head peopleEmbeddedSection__toggle"
+            onClick={() => setSubjectsSectionOpen((open) => !open)}
+            aria-expanded={subjectsSectionOpen}
+          >
+            {subjectsSectionOpen ? <FiChevronDown /> : <FiChevronRight />}
+            <div>
+              <h3>Subjects</h3>
+              <p>Manage subject records from the same page.</p>
+            </div>
+          </button>
+          {subjectsSectionOpen && <DirectorSubjects embedded />}
         </section>
 
         <section className="peopleEmbeddedSection">
-          <div className="peopleEmbeddedSection__head">
-            <h3>Assign Teacher and Class Manager</h3>
-            <p>Assign classroom teachers and managers without leaving this page.</p>
-          </div>
-          <DirectorClassroomManagers />
+          <button
+            type="button"
+            className="peopleEmbeddedSection__head peopleEmbeddedSection__toggle"
+            onClick={() => setClassroomManagersSectionOpen((open) => !open)}
+            aria-expanded={classroomManagersSectionOpen}
+          >
+            {classroomManagersSectionOpen ? <FiChevronDown /> : <FiChevronRight />}
+            <div>
+              <h3>Assign Teacher and Class Manager</h3>
+              <p>Assign classroom teachers and managers without leaving this page.</p>
+            </div>
+          </button>
+          {classroomManagersSectionOpen && <DirectorClassroomManagers />}
         </section>
 
       {/* EDIT MODAL — portalled to document.body; .director-page-inner runs a

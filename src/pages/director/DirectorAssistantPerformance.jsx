@@ -453,60 +453,50 @@ function AssistantDetailModal({ detail, loading, onClose }) {
               </section>
             )}
 
-                {detailTab === "overview" && (
-                  <div className="ast-perf-grid">
-                    <MetricCard
-                      icon={<FiFileText />}
-                      label="Papers corrected"
-                      value={formatNum(detail.assistant.papersCorrected)}
-                    />
-                    <MetricCard
-                      icon={<FiCpu />}
-                      label="Tokens used"
-                      value={formatNum(detail.assistant.tokenUsage?.totalTokens)}
-                    />
-                    <MetricCard
-                      icon={<FiBookOpen />}
-                      label="Classrooms"
-                      value={formatNum(detail.assistant.summary?.classroomCount)}
-                    />
-                    <MetricCard
-                      icon={<FiCheckCircle />}
-                      label="On time"
-                      value={formatNum(detail.assistant.summary?.onTime)}
-                      tone="good"
-                    />
-                    <MetricCard
-                      icon={<FiAlertTriangle />}
-                      label="Passed deadline"
-                      value={formatNum(detail.assistant.summary?.missedDeadline)}
-                      tone="warn"
-                    />
-                    <MetricCard
-                      icon={<FiClock />}
-                      label="In progress"
-                      value={formatNum(detail.assistant.summary?.pending)}
-                    />
-                    {detail.assistant.capacity && (
-                      <>
-                        <MetricCard
-                          icon={<FiUsers />}
-                          label={`Students (${detail.assistant.capacity.studentCap} cap)`}
-                          value={`${detail.assistant.capacity.studentCount} · ${detail.assistant.capacity.studentUtilization}%`}
-                        />
-                        <MetricCard
-                          icon={<FiFileText />}
-                          label={`PDF edits (${detail.assistant.capacity.editsCap}/mo)`}
-                          value={`${detail.assistant.capacity.monthlyEdits} · ${detail.assistant.capacity.editsUtilization}%`}
-                        />
-                        <MetricCard
-                          icon={<FiBarChart2 />}
-                          label="Capacity health"
-                          value={`${detail.assistant.capacity.health}%`}
-                          tone={detail.assistant.capacity.health >= 75 ? "good" : detail.assistant.capacity.health >= 50 ? "warn" : "warn"}
-                        />
-                      </>
-                    )}
+            {detailTab === "teachers" && detailTeachers.length === 0 && (
+              <section className="ast-perf-section">
+                <p className="dap-loading">No teachers linked yet.</p>
+              </section>
+            )}
+
+            {detailTab === "classrooms" && detailClassrooms.length > 0 && (
+              <section className="ast-perf-section">
+                <h2>By classroom</h2>
+                <div className="ast-table-card">
+                  <div className="ast-table-wrap">
+                    <table className="ast-table sah-table--cards">
+                      <thead>
+                        <tr>
+                          <th>Classroom</th>
+                          <th>Teacher</th>
+                          <th>Assignments</th>
+                          <th>Papers</th>
+                          <th>% of submissions</th>
+                          <th>On time</th>
+                          <th>Passed deadline</th>
+                          <th>In progress</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleDetailClassrooms.map((c) => (
+                          <tr key={c.classroomId}>
+                            <td data-label="Classroom">
+                              <strong>{c.classroomName}</strong>
+                              {c.section ? (
+                                <span className="ast-muted"> · {c.section}</span>
+                              ) : null}
+                            </td>
+                            <td data-label="Teacher">{c.teacherName}</td>
+                            <td data-label="Assignments">{c.totalAssignments}</td>
+                            <td data-label="Papers">{formatNum(c.papersCorrected)}</td>
+                            <td data-label="% of submissions">{c.submissionPercent || 0}%</td>
+                            <td className="ast-perf-good" data-label="On time">{c.onTime}</td>
+                            <td className="ast-perf-warn" data-label="Passed deadline">{c.missedDeadline}</td>
+                            <td data-label="In progress">{c.pending}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
                 <InlinePager
