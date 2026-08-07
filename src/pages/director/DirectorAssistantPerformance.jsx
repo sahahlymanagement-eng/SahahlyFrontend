@@ -196,7 +196,7 @@ export default function DirectorAssistantPerformance() {
                   <th>Passed deadline</th>
                   <th>In progress</th>
                   <th>Tokens</th>
-                  <th title="Distinct students across currently-open classrooms, vs. the 125/month ceiling">Students</th>
+                  <th title="Distinct students across classrooms currently open or finished this calendar month, vs. the 125/month ceiling">Students</th>
                   <th title="Papers needing correction this calendar month, vs. the 600/month ceiling">Edited PDFs</th>
                   <th>Capacity</th>
                   <th />
