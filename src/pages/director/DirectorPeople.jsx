@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import api from "../../api/api";
 import "./DirectorPeople.css";
+import DirectorSubjects from "./DirectorSubjects";
+import DirectorClassroomManagers from "./DirectorClassroomManagers";
 import { toast } from "react-toastify";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
@@ -346,7 +348,7 @@ export default function DirectorPeople() {
         <div className="peopleTopBar">
           <div className="peopleTitleBox">
             <FiUsers />
-            <h2>People Management</h2>
+            <h2>People, Subjects, and Class Manager</h2>
           </div>
         </div>
 
@@ -552,7 +554,22 @@ export default function DirectorPeople() {
         <Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
 
         {loading && <p className="loading">Processing...</p>}
-      </div>
+
+        <section className="peopleEmbeddedSection">
+          <div className="peopleEmbeddedSection__head">
+            <h3>Subjects</h3>
+            <p>Manage subject records from the same page.</p>
+          </div>
+          <DirectorSubjects embedded />
+        </section>
+
+        <section className="peopleEmbeddedSection">
+          <div className="peopleEmbeddedSection__head">
+            <h3>Assign Teacher and Class Manager</h3>
+            <p>Assign classroom teachers and managers without leaving this page.</p>
+          </div>
+          <DirectorClassroomManagers />
+        </section>
 
       {/* EDIT MODAL — portalled to document.body; .director-page-inner runs a
           fade-up animation with fill-mode `both`, and the animation's final
@@ -619,6 +636,7 @@ export default function DirectorPeople() {
           document.body
         )}
 
+    </div>
     </div>
   );
 }

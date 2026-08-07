@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -20,6 +20,8 @@ import {
   FiMail,
   FiPhone,
   FiFileText,
+  FiCopy,
+  FiDownload,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 
@@ -40,21 +42,35 @@ function fmtDate(value) {
   });
 }
 
+function sahahlyDueDate(value) {
+  if (!value) return null;
+  const due = new Date(value);
+  if (Number.isNaN(due.getTime())) return null;
+  return new Date(due.getTime() + 24 * 60 * 60 * 1000);
+}
+
 function statusLabel(status) {
   const map = {
-    UNASSIGNED: "Unassigned",
-    ASSIGNED: "Assigned",
+    UNASSIGNED: "Late on manager",
+    ASSIGNED: "In progress",
     IN_REVIEW: "In review",
     RECHECK_BY_ASSISTANT: "Recheck",
     IN_REVIEW_AFTER_RECHECK: "In review (recheck)",
     EMERGENCY: "Emergency",
-    FAILED_DEADLINE: "Failed deadline",
+    FAILED_DEADLINE: "Late on assistant",
     DONE: "Done",
     DONE_BY_QUALITY: "Done (quality)",
     DONE_BY_QUALITY_LATE: "Done (quality, late)",
   };
   return map[status] || status || "—";
 }
+
+const MANAGER_BUCKET_META = {
+  unassigned: { label: "Late on manager", tone: "unassigned" },
+  inProgress: { label: "In progress", tone: "progress" },
+  failedDeadline: { label: "Late on assistant", tone: "late" },
+  late: { label: "Late", tone: "late" },
+};
 
 function statusTone(status) {
   if (!status) return "muted";
@@ -73,6 +89,20 @@ function isLateRow(row) {
   return due < new Date();
 }
 
+function LateDueDates({ row }) {
+  const sahahlyDue = sahahlyDueDate(row?.dueDate);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span className="md-cell-muted">Classroom: {fmtDate(row?.dueDate)}</span>
+      <span className="md-cell-muted">Sahahly: {fmtDate(sahahlyDue)}</span>
+      <span className="md-cell-muted">
+        Manager set: {fmtDate(row?.assistantDeadline)}
+      </span>
+    </div>
+  );
+}
+
 // One clickable tile per dashboard bucket — mirrors ManagerDashboard's
 // tch-stat-card/md-stat-filter tiles. "dueSoon" has no external-grading
 // counterpart, so it maps to null below.
@@ -81,8 +111,8 @@ const TILE_ORDER = ["done", "inProgress", "unassigned", "late", "dueSoon"];
 const TILE_META = {
   done: { label: "Done", icon: <FiCheckCircle />, iconClass: "tch-stat-icon--green" },
   inProgress: { label: "In progress", icon: <FiClock />, iconClass: "tch-stat-icon--blue" },
-  unassigned: { label: "Unassigned", icon: <FiUsers />, iconClass: "tch-stat-icon--violet" },
-  late: { label: "Late", icon: <FiAlertTriangle />, iconClass: "tch-stat-icon--orange" },
+  unassigned: { label: "Late on manager", icon: <FiUsers />, iconClass: "tch-stat-icon--violet" },
+  late: { label: "Late on assistant", icon: <FiAlertTriangle />, iconClass: "tch-stat-icon--orange" },
   dueSoon: { label: "Due in 7 days", icon: <FiCalendar />, iconClass: "tch-stat-icon--cyan" },
 };
 
@@ -356,7 +386,11 @@ export default function DirectorDashboard() {
                             </span>
                           </td>
                           <td data-label="Due date">
-                            <span className="md-cell-muted">{fmtDate(r.dueDate)}</span>
+                            {selectedBucket === "late" ? (
+                              <LateDueDates row={r} />
+                            ) : (
+                              <span className="md-cell-muted">{fmtDate(r.dueDate)}</span>
+                            )}
                           </td>
                           <td data-label="Assistant">
                             <span className="md-cell-muted">{r.assistantName || "—"}</span>
@@ -430,10 +464,52 @@ export default function DirectorDashboard() {
                 <FiClipboard size={28} />
               </div>
               <h3>Select a tile above</h3>
-              <p>Choose Done, In progress, Unassigned, Late, or Due in 7 days to view assignments.</p>
+              <p>Choose Done, In progress, Late on manager, Late on assistant, or Due in 7 days to view assignments.</p>
             </div>
           )}
         </>
+      )}
+
+      {/* ── Teachers at risk ─────────────────────────────────────────── */}
+      {!loading && data?.teachersAtRisk?.length > 0 && (
+        <section className="directorDashSection">
+          <div className="directorDashSectionHeader">
+            <div className="directorDashTitleWrap">
+              <span className="directorDashDot" />
+              <h2 className="directorDashTitle">Teachers at risk</h2>
+            </div>
+            <div className="directorDashCount">
+              <FiAlertTriangle /> {data.teachersAtRisk.length} flagged
+            </div>
+          </div>
+          <div className="ddx-table-wrap">
+            <table className="ddx-table sah-table--cards">
+              <thead>
+                <tr>
+                  <th>Teacher</th>
+                  <th>Classrooms</th>
+                  <th>Edits on assistant work</th>
+                  <th>Late returns</th>
+                  <th>Unreturned papers</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.teachersAtRisk.map((t) => (
+                  <tr key={t.teacherId}>
+                    <td data-label="Teacher">
+                      <strong>{t.name}</strong>
+                      {t.email ? <div className="ddx-muted">{t.email}</div> : null}
+                    </td>
+                    <td data-label="Classrooms">{t.classroomCount}</td>
+                    <td data-label="Edits">{t.editCount}</td>
+                    <td data-label="Late returns">{t.lateReturns}</td>
+                    <td data-label="Unreturned">{t.unsentReports}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* ── Managers ─────────────────────────────────────────────────── */}
@@ -482,8 +558,8 @@ export default function DirectorDashboard() {
                 <div className="ddx-chip-row">
                   <Chip tone="done" label="Done" value={m.done} />
                   <Chip tone="progress" label="In progress" value={m.assigned} />
-                  <Chip tone="unassigned" label="Unassigned" value={m.unassigned} />
-                  <Chip tone="late" label="Late" value={m.failedDeadline} />
+                  <Chip tone="unassigned" label="Late on mgr" value={m.unassigned} />
+                  <Chip tone="late" label="Late on asst" value={m.failedDeadline} />
                 </div>
                 <div className="ddx-progress-track">
                   <div
@@ -605,11 +681,14 @@ export default function DirectorDashboard() {
                 {!detailLoading && detailTarget.type === "manager" && detail && (
                   <ManagerDetail
                     detail={detail}
-                    onLateRowClick={goToDirectorSubmissionViewer}
+                    onRowClick={goToDirectorSubmissionViewer}
                   />
                 )}
                 {!detailLoading && detailTarget.type === "assistant" && detail && (
-                  <AssistantDetail detail={detail.assistant} />
+                  <AssistantDetail
+                    detail={detail.assistant}
+                    onLateRowClick={goToDirectorSubmissionViewer}
+                  />
                 )}
               </div>
             </div>
@@ -630,9 +709,92 @@ function Chip({ tone, label, value }) {
   );
 }
 
-function ManagerDetail({ detail, onLateRowClick }) {
-  const { manager, stats, classrooms, late, unassigned, assistants } = detail;
-  const lateFiltered = (late || []).filter(isLateRow);
+function ManagerDetail({ detail, onRowClick }) {
+  const { manager, stats, classrooms, late, unassigned, inProgress, failedDeadline, assistants } =
+    detail;
+  const [selectedBucket, setSelectedBucket] = useState("unassigned");
+  const [alertingId, setAlertingId] = useState(null);
+
+  const buckets = useMemo(
+    () => ({
+      unassigned: unassigned || [],
+      inProgress: inProgress || [],
+      failedDeadline: failedDeadline || [],
+      late: (late || []).filter(isLateRow),
+    }),
+    [unassigned, inProgress, failedDeadline, late]
+  );
+
+  const activeRows = buckets[selectedBucket] || [];
+
+  const buildListMessage = useCallback(() => {
+    const label = MANAGER_BUCKET_META[selectedBucket]?.label || "Assignments";
+    const header = [`${manager.name} — ${label}`, `Total: ${activeRows.length}`, ""];
+    const body = activeRows.length
+      ? activeRows.map((row, index) =>
+          [
+            `${index + 1}. ${row.title}`,
+            `Class: ${row.className || "—"}`,
+            `Status: ${statusLabel(row.status)}`,
+            `Due: ${fmtDate(row.dueDate)}`,
+            row.assistantName ? `Assistant: ${row.assistantName}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        )
+      : ["No assignments in this bucket."];
+    return [...header, ...body].join("\n\n");
+  }, [activeRows, manager.name, selectedBucket]);
+
+  const copyListMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(buildListMessage());
+      toast.success("Message copied for WhatsApp");
+    } catch {
+      toast.error("Failed to copy message");
+    }
+  };
+
+  const exportListMessage = () => {
+    try {
+      const message = buildListMessage();
+      const blob = new Blob([message], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${manager.name}-${selectedBucket}-message.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Message exported");
+    } catch {
+      toast.error("Failed to export message");
+    }
+  };
+
+  const sendRowAlert = async (row) => {
+    try {
+      setAlertingId(row.assignmentId);
+      if (selectedBucket === "unassigned") {
+        await api.post("/director/manager-workload/send-alert", {
+          personId: manager.personId,
+          assignmentId: row.assignmentId,
+        });
+      } else if (row.delegationId) {
+        await api.post(`/assignment-delegations/${row.delegationId}/send-alert`);
+      } else {
+        toast.error("No alert target for this row");
+        return;
+      }
+      toast.success("Alert sent");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send alert");
+    } finally {
+      setAlertingId(null);
+    }
+  };
+
   return (
     <>
       <div className="ddx-detail-contact">
@@ -651,14 +813,12 @@ function ManagerDetail({ detail, onLateRowClick }) {
       <div className="ddx-chip-row" style={{ marginBottom: 16 }}>
         <Chip tone="done" label="Done" value={stats.done} />
         <Chip tone="progress" label="In progress" value={stats.assigned} />
-        <Chip tone="unassigned" label="Unassigned" value={stats.unassigned} />
-        <Chip tone="late" label="Failed deadline" value={stats.failedDeadline} />
+        <Chip tone="unassigned" label="Late on mgr" value={stats.unassigned} />
+        <Chip tone="late" label="Late on asst" value={stats.failedDeadline} />
         <Chip tone="muted" label="Completion" value={`${stats.completionRate}%`} />
       </div>
 
-      <h4 className="ddx-detail-heading">
-        Classrooms ({classrooms.length})
-      </h4>
+      <h4 className="ddx-detail-heading">Classrooms ({classrooms.length})</h4>
       <div className="ddx-table-wrap">
         <table className="ddx-table">
           <thead>
@@ -668,8 +828,8 @@ function ManagerDetail({ detail, onLateRowClick }) {
               <th>Total</th>
               <th>Done</th>
               <th>In progress</th>
-              <th>Unassigned</th>
-              <th>Late</th>
+              <th>Late on mgr</th>
+              <th>Late on asst</th>
             </tr>
           </thead>
           <tbody>
@@ -711,22 +871,54 @@ function ManagerDetail({ detail, onLateRowClick }) {
         )}
       </div>
 
+      <div className="ddx-bucket-filters">
+        {Object.entries(MANAGER_BUCKET_META).map(([key, meta]) => (
+          <button
+            key={key}
+            type="button"
+            className={`ddx-bucket-filter ddx-bucket-filter--${meta.tone}${
+              selectedBucket === key ? " ddx-bucket-filter--active" : ""
+            }`}
+            onClick={() => setSelectedBucket(key)}
+          >
+            {meta.label} ({buckets[key]?.length || 0})
+          </button>
+        ))}
+      </div>
+
+      <div className="ddx-export-actions">
+        <button type="button" className="ddx-export-btn" onClick={copyListMessage}>
+          <FiCopy /> Copy message
+        </button>
+        <button type="button" className="ddx-export-btn" onClick={exportListMessage}>
+          <FiDownload /> Export message
+        </button>
+      </div>
+
       <DetailAssignmentList
-        title={`Late (${lateFiltered.length})`}
-        rows={lateFiltered}
-        onRowClick={onLateRowClick}
-      />
-      <DetailAssignmentList
-        title={`Unassigned (${unassigned.length})`}
-        rows={unassigned}
+        title={`${MANAGER_BUCKET_META[selectedBucket]?.label || "Assignments"} (${activeRows.length})`}
+        rows={activeRows}
+        onRowClick={onRowClick}
+        onAlert={sendRowAlert}
+        alertingId={alertingId}
+        alertLabel={selectedBucket === "unassigned" ? "Alert manager" : "Alert assistant"}
       />
     </>
   );
 }
 
-function AssistantDetail({ detail }) {
-  const { email, subjects, papersCorrected, tokenUsage, teachers, classrooms, summary } =
-    detail;
+function AssistantDetail({ detail, onLateRowClick }) {
+  const {
+    email,
+    subjects,
+    papersCorrected,
+    tokenUsage,
+    teachers,
+    classrooms,
+    summary,
+    lateAssignments,
+    editStats,
+  } = detail;
   return (
     <>
       <div className="ddx-detail-contact">
@@ -747,12 +939,80 @@ function AssistantDetail({ detail }) {
         <Chip tone="late" label="Missed" value={summary?.missedDeadline ?? 0} />
         <Chip tone="progress" label="Pending" value={summary?.pending ?? 0} />
         <Chip tone="unassigned" label="Papers corrected" value={papersCorrected ?? 0} />
+        <Chip tone="muted" label="Total edits" value={editStats?.totalEdits ?? 0} />
         <Chip
           tone="muted"
           label="AI requests"
           value={tokenUsage?.requestCount ?? 0}
         />
       </div>
+
+      <DetailAssignmentList
+        title={`Late assignments (${lateAssignments?.length || 0})`}
+        rows={lateAssignments || []}
+        onRowClick={onLateRowClick}
+      />
+
+      {(editStats?.byAssignment?.length > 0 || editStats?.papers?.length > 0) && (
+        <>
+          <h4 className="ddx-detail-heading">Edits by assignment</h4>
+          <div className="ddx-table-wrap" style={{ marginBottom: 16 }}>
+            <table className="ddx-table">
+              <thead>
+                <tr>
+                  <th>Assignment</th>
+                  <th>Classroom</th>
+                  <th>Papers</th>
+                  <th>Edits</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(editStats.byAssignment || []).slice(0, 15).map((row) => (
+                  <tr key={row.assignmentId}>
+                    <td>{row.title}</td>
+                    <td>{row.classroomName}</td>
+                    <td>{row.papers}</td>
+                    <td>{row.edits}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4 className="ddx-detail-heading">Edits by classroom</h4>
+          <div className="ddx-chip-row" style={{ marginBottom: 16 }}>
+            {(editStats.byClassroom || []).map((row) => (
+              <span key={row.classroomId} className="ddx-chip ddx-chip--muted">
+                {row.classroomName}: <strong>{row.edits}</strong> edits
+              </span>
+            ))}
+          </div>
+
+          <h4 className="ddx-detail-heading">Edits per paper (top)</h4>
+          <div className="ddx-table-wrap" style={{ marginBottom: 16 }}>
+            <table className="ddx-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Assignment</th>
+                  <th>Classroom</th>
+                  <th>Edits</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(editStats.papers || []).slice(0, 10).map((row) => (
+                  <tr key={row.submissionId}>
+                    <td>{row.studentName}</td>
+                    <td>{row.assignmentTitle}</td>
+                    <td>{row.classroomName}</td>
+                    <td>{row.edits}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       <h4 className="ddx-detail-heading">
         Teachers they work with ({teachers?.length || 0})
@@ -768,9 +1028,7 @@ function AssistantDetail({ detail }) {
         )}
       </div>
 
-      <h4 className="ddx-detail-heading">
-        Classrooms ({classrooms?.length || 0})
-      </h4>
+      <h4 className="ddx-detail-heading">Classrooms ({classrooms?.length || 0})</h4>
       <div className="ddx-table-wrap">
         <table className="ddx-table">
           <thead>
@@ -782,6 +1040,7 @@ function AssistantDetail({ detail }) {
               <th>Missed</th>
               <th>Pending</th>
               <th>Papers</th>
+              <th>Edits</th>
             </tr>
           </thead>
           <tbody>
@@ -797,11 +1056,12 @@ function AssistantDetail({ detail }) {
                 <td>{c.missedDeadline}</td>
                 <td>{c.pending}</td>
                 <td>{c.papersCorrected}</td>
+                <td>{c.editCount ?? 0}</td>
               </tr>
             ))}
             {!classrooms?.length && (
               <tr>
-                <td colSpan={7}>No classroom activity yet.</td>
+                <td colSpan={8}>No classroom activity yet.</td>
               </tr>
             )}
           </tbody>
@@ -811,8 +1071,16 @@ function AssistantDetail({ detail }) {
   );
 }
 
-function DetailAssignmentList({ title, rows, onRowClick }) {
+function DetailAssignmentList({
+  title,
+  rows,
+  onRowClick,
+  onAlert,
+  alertingId,
+  alertLabel = "Alert",
+}) {
   const clickable = typeof onRowClick === "function";
+  const canAlert = typeof onAlert === "function";
   if (!rows?.length) return null;
   return (
     <>
@@ -838,7 +1106,7 @@ function DetailAssignmentList({ title, rows, onRowClick }) {
           >
             <div className="ddx-list-main">
               <span className="ddx-list-assignment">{r.title}</span>
-              <span className="ddx-list-class">{r.className || "—"}</span>
+              <span className="ddx-list-class">{r.className || r.classroomName || "—"}</span>
             </div>
             <div className="ddx-list-side">
               <span className={`ddx-status ddx-status--${statusTone(r.status)}`}>
@@ -851,6 +1119,19 @@ function DetailAssignmentList({ title, rows, onRowClick }) {
                 <span className="ddx-list-assistant">
                   <FiUsers /> {r.assistantName}
                 </span>
+              )}
+              {canAlert && (
+                <button
+                  type="button"
+                  className="md-external-alertBtn ddx-list-alertBtn"
+                  disabled={alertingId === r.assignmentId}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAlert(r);
+                  }}
+                >
+                  {alertingId === r.assignmentId ? "Sending…" : alertLabel}
+                </button>
               )}
             </div>
           </li>

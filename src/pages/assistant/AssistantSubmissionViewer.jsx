@@ -2286,10 +2286,16 @@ window.open(url);
         { type: "application/pdf" }
       );
 
+      const isCriteriaPdf =
+        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
+      const pdfTotalMarks = isCriteriaPdf
+        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
+        : sumQuestionMarks(editingQuestions);
+
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: sumQuestionMarks(editingQuestions),
+        totalMarks: pdfTotalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
@@ -2541,7 +2547,11 @@ window.open(url);
 
     setReturning(true);
     try {
-      const total = sumQuestionMarks(editingQuestions);
+      const isCriteriaPdf =
+        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
+      const total = isCriteriaPdf
+        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
+        : sumQuestionMarks(editingQuestions);
       const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
@@ -2886,7 +2896,7 @@ return (
 
   <input
     type="file"
-    accept=".pdf"
+    accept=".pdf,.kami,.kmi"
     style={{ display: "none" }}
     id="ms-upload"
     onChange={(e) => handleMsUpload(e.target.files[0])}
@@ -3453,8 +3463,8 @@ return (
                                             : <span className="pm-spinner" />
                                             : markingError
                                             ? <>❌ Retry</>
-                          : <><FiCpu size={12} /> Mark</>
-                        }
+                                            : <><FiCpu size={12} /> Mark All</>
+                                          }
                                         </button>
 
                                         {/* Single mark on gradingv2 — returns immediately,

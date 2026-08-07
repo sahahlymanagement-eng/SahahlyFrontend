@@ -12,6 +12,12 @@
   background: var(--background);
 }
 
+.directorSubjectsPage--embedded {
+  padding: 0;
+  min-height: auto;
+  background: transparent;
+}
+
 .dsHeader {
   display: flex;
   justify-content: space-between;
