@@ -46,7 +46,7 @@ import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 import { confirmToast } from "../utils/confirmToast";
 
 
-export default function ReportsWorkspace({ variant = "manager" }) {
+export default function ReportsWorkspace({ variant = "manager", assignmentOnly = false }) {
   const isTeacher = variant === "teacher";
   const isAssistant = variant === "assistant";
   const isDirector = isDirectorLikeVariant(variant);
@@ -1158,13 +1158,17 @@ export default function ReportsWorkspace({ variant = "manager" }) {
   };
 
   const pageTitle =
-    isTeacher || isAssistant || isDirector ? "Reports" : "Assignments";
+    assignmentOnly
+      ? "Grades & send report"
+      : isTeacher || isAssistant || isDirector
+        ? "Reports"
+        : "Assignments";
 
   const workflowStep = !selectedClassroom ? 1 : !selectedAssignment ? 2 : reportCount > 0 ? 4 : 3;
 
   if (!user) return null;
 
-  if (reportView === "monthly") {
+  if (!assignmentOnly && reportView === "monthly") {
     return (
       <MonthlyParentReportWorkspace
         variant={variant}
@@ -1174,7 +1178,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     );
   }
 
-  if (reportView === "executive") {
+  if (!assignmentOnly && reportView === "executive") {
     return (
       <TeacherExecutiveAnalysisWorkspace
         variant={variant}
@@ -1184,7 +1188,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
     );
   }
 
-  if (reportView === "sent") {
+  if (!assignmentOnly && reportView === "sent") {
     return (
       <ReportsSentWorkspace
         variant={variant}
@@ -1208,6 +1212,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                   : `Choose an assignment in ${selectedClassroom.name}`
                 : `Welcome back, ${user.name}`}
             </span>
+            {!assignmentOnly && (
             <div className="ma-report-tabs">
               <button
                 type="button"
@@ -1237,6 +1242,7 @@ export default function ReportsWorkspace({ variant = "manager" }) {
                 <FiSend size={12} /> Reports Sent
               </button>
             </div>
+            )}
           </div>
           {selectedClassroom && (
             <div className="rw-topbar-actions">

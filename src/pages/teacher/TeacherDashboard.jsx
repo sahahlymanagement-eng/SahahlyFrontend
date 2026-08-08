@@ -10,6 +10,8 @@ import {
   FiClipboard,
   FiMessageCircle,
   FiAlertCircle,
+  FiCalendar,
+  FiUsers,
 } from "react-icons/fi";
 import { TeacherActionLink } from "./TeacherUI";
 import "./teacher.css";
@@ -218,6 +220,40 @@ export default function TeacherDashboard() {
         <button
           type="button"
           className="tch-action-card"
+          style={{ animationDelay: "0.12s" }}
+          onClick={() => navigate("/teacher/students-parents")}
+        >
+          <div className="tch-action-card-icon">
+            <FiUsers />
+          </div>
+          <h3>Students & Parents</h3>
+          <p>
+            Open student analysis, review submission statuses and grades, then
+            send editable WhatsApp reports to parents.
+          </p>
+          <TeacherActionLink>Open students</TeacherActionLink>
+        </button>
+
+        <button
+          type="button"
+          className="tch-action-card"
+          style={{ animationDelay: "0.14s" }}
+          onClick={() => navigate("/teacher/sessions")}
+        >
+          <div className="tch-action-card-icon">
+            <FiCalendar />
+          </div>
+          <h3>Sessions & Calendar</h3>
+          <p>
+            Track assignment due dates and class sessions in one calendar for
+            attendance and parent reporting.
+          </p>
+          <TeacherActionLink>Open calendar</TeacherActionLink>
+        </button>
+
+        <button
+          type="button"
+          className="tch-action-card"
           style={{ animationDelay: "0.15s" }}
           onClick={() => navigate("/teacher/ai-agent")}
         >
@@ -264,6 +300,22 @@ export default function TeacherDashboard() {
             existing coursework.
           </p>
           <TeacherActionLink>Open courses</TeacherActionLink>
+        </button>
+
+        <button
+          type="button"
+          className="tch-action-card"
+          style={{ animationDelay: "0.22s" }}
+          onClick={() => navigate("/teacher/submissions")}
+        >
+          <div className="tch-action-card-icon">
+            <FiBarChart2 />
+          </div>
+          <h3>Submission Viewer</h3>
+          <p>
+            Review marked papers, statuses, and returned work for your classes.
+          </p>
+          <TeacherActionLink>Open viewer</TeacherActionLink>
         </button>
       </div>
 

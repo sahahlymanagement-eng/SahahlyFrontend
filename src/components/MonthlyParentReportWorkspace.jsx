@@ -48,6 +48,62 @@ function newSchoolSessionId() {
 
 const MULTI_PDF_PREVIEW_LIMIT = 8;
 
+/** Mirror backend buildWhatsAppIntro so teachers can edit before send. */
+function buildMonthlyWhatsAppDraft(report, student) {
+  if (!report?.meta) return "";
+  const parentName =
+    student?.parentName || `${report.meta.studentName || "Student"}'s parent`;
+  const k = report.kpis || {};
+  const riskLabel = k.risk?.displayLabel || k.risk?.label || null;
+  const topAction = (report.actionThisWeek || [])
+    .map((a) => (typeof a === "string" ? a : a?.text || a?.title || ""))
+    .filter(Boolean)[0];
+  const topLoss = (report.marksLostBreakdown || [])[0];
+  const weakTopic = [...(report.topicMastery || [])].sort(
+    (a, b) => (a.score ?? 100) - (b.score ?? 100)
+  )[0];
+
+  const snapshot = [
+    k.overallAverage != null ? `📊 Overall average: *${k.overallAverage}%*` : null,
+    k.submissionRate != null ? `📥 Submission rate: *${k.submissionRate}%*` : null,
+    riskLabel ? `⚠️ Risk: *${riskLabel}*` : null,
+    report.classComparison?.hasComparison && report.classComparison.rank != null
+      ? `🏅 Class rank: *#${report.classComparison.rank}*`
+      : null,
+    k.homeworkAverage != null || k.quizAverage != null || k.mockAverage != null
+      ? `📘 HW/Quiz/Mock: *${k.homeworkAverage ?? "—"}%* / *${k.quizAverage ?? "—"}%* / *${
+          k.mockAverage ?? "—"
+        }%*`
+      : null,
+    weakTopic?.topic
+      ? `🎯 Focus topic: *${weakTopic.topic}*${
+          weakTopic.score != null ? ` (${weakTopic.score}%)` : ""
+        }`
+      : null,
+    topLoss?.category || topLoss?.label
+      ? `📉 Marks lost mostly on: *${topLoss.category || topLoss.label}*${
+          topLoss.percent != null ? ` (${topLoss.percent}%)` : ""
+        }`
+      : null,
+    topAction ? `✅ This week: ${topAction}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let body = String(report.parentMessage || "").trim();
+  if (body) body = body.replace(/^Dear parents,\s*\n+/i, "");
+
+  return (
+    `Dear *${parentName}*,\n\n` +
+    `🏫 *${report.meta.classroomName}*\n` +
+    `📚 *${report.meta.subject}*\n` +
+    `📅 *${report.meta.month}*\n\n` +
+    (snapshot ? `${snapshot}\n\n` : "") +
+    `${body}\n\n` +
+    `📎 The full branded PDF report follows in the next message.`
+  );
+}
+
 function blankAttendanceMap(roster) {
   const map = {};
   for (const s of roster || []) {
@@ -118,6 +174,8 @@ export default function MonthlyParentReportWorkspace({
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const activeSendIdRef = useRef(null);
   const [showAutoSendModal, setShowAutoSendModal] = useState(false);
+  const [editedWhatsAppMessage, setEditedWhatsAppMessage] = useState("");
+  const [whatsAppMessageDirty, setWhatsAppMessageDirty] = useState(false);
 
 
   const [schoolSessionList, setSchoolSessionList] = useState([]);
@@ -290,6 +348,16 @@ export default function MonthlyParentReportWorkspace({
       .finally(() => setLoadingReport(false));
 
   }, [selectedClassroom?._id, previewStudent?._id, year, month]);
+
+  useEffect(() => {
+    if (!report) {
+      setEditedWhatsAppMessage("");
+      setWhatsAppMessageDirty(false);
+      return;
+    }
+    setEditedWhatsAppMessage(buildMonthlyWhatsAppDraft(report, previewStudent));
+    setWhatsAppMessageDirty(false);
+  }, [report, previewStudent]);
 
 
 
@@ -657,6 +725,9 @@ export default function MonthlyParentReportWorkspace({
 
       if (idsToSend.length === 1) {
         payload.studentId = idsToSend[0];
+        if (whatsAppMessageDirty && String(editedWhatsAppMessage || "").trim()) {
+          payload.messageOverride = String(editedWhatsAppMessage).trim();
+        }
       } else {
         payload.studentIds = idsToSend;
       }
@@ -735,13 +806,14 @@ export default function MonthlyParentReportWorkspace({
 
   const copyParentMessage = async () => {
 
-    if (!report?.parentMessage) return;
+    const text = editedWhatsAppMessage || report?.parentMessage;
+    if (!text) return;
 
     try {
 
-      await navigator.clipboard.writeText(report.parentMessage);
+      await navigator.clipboard.writeText(text);
 
-      toast.success("Parent message copied");
+      toast.success("Parent WhatsApp message copied");
 
     } catch {
 
@@ -749,6 +821,13 @@ export default function MonthlyParentReportWorkspace({
 
     }
 
+  };
+
+  const resetWhatsAppMessage = () => {
+    if (!report) return;
+    setEditedWhatsAppMessage(buildMonthlyWhatsAppDraft(report, previewStudent));
+    setWhatsAppMessageDirty(false);
+    toast.info("WhatsApp message reset to default");
   };
 
 
@@ -1845,11 +1924,48 @@ export default function MonthlyParentReportWorkspace({
 
                     <FiFileText size={15} />
 
-                    <span>Summary message for parents</span>
+                    <span>Editable WhatsApp message for parents</span>
+
+                    {whatsAppMessageDirty ? (
+                      <em className="mpr-message-edited">Edited — used when sending this student</em>
+                    ) : null}
 
                   </div>
 
-                  <p className="mpr-message-text">{report.parentMessage}</p>
+                  <textarea
+                    className="mpr-message-editor"
+                    value={editedWhatsAppMessage}
+                    onChange={(e) => {
+                      setEditedWhatsAppMessage(e.target.value);
+                      setWhatsAppMessageDirty(true);
+                    }}
+                    rows={14}
+                    spellCheck
+                  />
+
+                  <div className="mpr-message-actions">
+                    <button
+                      type="button"
+                      className="mpr-btn mpr-btn--ghost"
+                      onClick={resetWhatsAppMessage}
+                      disabled={!report}
+                    >
+                      Reset to default
+                    </button>
+                    <button
+                      type="button"
+                      className="mpr-btn mpr-btn--ghost"
+                      onClick={copyParentMessage}
+                      disabled={!editedWhatsAppMessage}
+                    >
+                      <FiCopy size={14} /> Copy WhatsApp text
+                    </button>
+                  </div>
+
+                  <p className="mpr-muted">
+                    Edits apply when you send this student&apos;s report. Bulk send still uses
+                    each student&apos;s default personalized message.
+                  </p>
 
                 </div>
 

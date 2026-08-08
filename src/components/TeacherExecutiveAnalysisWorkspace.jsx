@@ -452,6 +452,18 @@ export default function TeacherExecutiveAnalysisWorkspace({
                     </strong>
                   </div>
                   <div className="tea-kpi">
+                    <span>Median</span>
+                    <strong>
+                      {report.kpis.classMedian != null ? `${report.kpis.classMedian}%` : "—"}
+                    </strong>
+                  </div>
+                  <div className="tea-kpi">
+                    <span>Pass rate</span>
+                    <strong>
+                      {report.kpis.passRate != null ? `${report.kpis.passRate}%` : "—"}
+                    </strong>
+                  </div>
+                  <div className="tea-kpi">
                     <span>Submission rate</span>
                     <strong>
                       {report.kpis.submissionRate != null
@@ -462,6 +474,14 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   <div className="tea-kpi">
                     <span>Papers marked</span>
                     <strong>{report.meta.papersMarked ?? "—"}</strong>
+                  </div>
+                  <div className="tea-kpi">
+                    <span>AI agreement</span>
+                    <strong>
+                      {report.aiAgreement?.agreementRate != null
+                        ? `${report.aiAgreement.agreementRate}%`
+                        : "—"}
+                    </strong>
                   </div>
                 </div>
                 <p className="mpr-month-hint">Full PDF preview appears below.</p>
@@ -507,6 +527,72 @@ export default function TeacherExecutiveAnalysisWorkspace({
                       {report.executiveSummary.map((line) => (
                         <li key={line}>{line}</li>
                       ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="tea-perf-grid">
+                  <div className="tea-block">
+                    <h4>Top performers</h4>
+                    {(report.studentPerformance?.topPerformers || []).length === 0 ? (
+                      <p className="tea-empty-list">No graded top performers yet.</p>
+                    ) : (
+                      <ul className="tea-perf-list tea-perf-list--good">
+                        {report.studentPerformance.topPerformers.map((s) => (
+                          <li key={`top-${s.name}`}>
+                            <strong>{s.name}</strong>
+                            <span>
+                              {s.score != null ? `${s.score}%` : "—"}
+                              {s.edited ? " · teacher edited" : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="tea-block">
+                    <h4>Needs support</h4>
+                    {(report.studentPerformance?.needsSupport || []).length === 0 ? (
+                      <p className="tea-empty-list">No students flagged for support.</p>
+                    ) : (
+                      <ul className="tea-perf-list tea-perf-list--risk">
+                        {report.studentPerformance.needsSupport.map((s) => (
+                          <li key={`support-${s.name}`}>
+                            <strong>{s.name}</strong>
+                            <span>
+                              {s.score != null ? `${s.score}%` : "—"}
+                              {s.edited ? " · teacher edited" : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                {(report.aiAgreement?.papersCompared > 0 ||
+                  report.aiAgreement?.agreementRate != null) && (
+                  <div className="tea-block">
+                    <h4>Marking quality</h4>
+                    <ul>
+                      <li>
+                        AI agreement:{" "}
+                        {report.aiAgreement.agreementRate != null
+                          ? `${report.aiAgreement.agreementRate}%`
+                          : "—"}
+                      </li>
+                      <li>
+                        Unchanged papers: {report.aiAgreement.papersUnchanged ?? 0} · Edited:{" "}
+                        {report.aiAgreement.papersWithEdits ??
+                          report.aiAgreement.teacherEditedPapers ??
+                          0}
+                      </li>
+                      <li>
+                        Question-level edits: {report.aiAgreement.totalQuestionEdits ?? 0}
+                      </li>
+                      {report.workflow?.recheckCycles != null && (
+                        <li>Recheck cycles: {report.workflow.recheckCycles}</li>
+                      )}
                     </ul>
                   </div>
                 )}

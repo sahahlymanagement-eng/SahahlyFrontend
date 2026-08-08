@@ -104,6 +104,8 @@ import TeacherCourses from "./pages/teacher/TeacherCourses";
 import TeacherReports from "./pages/teacher/TeacherReports";
 import TeacherChatbot from "./pages/teacher/TeacherChatbot";
 import TeacherActionsChatbot from "./pages/teacher/TeacherActionsChatbot";
+import TeacherStudentsParents from "./pages/teacher/TeacherStudentsParents";
+import TeacherSessionsCalendar from "./pages/teacher/TeacherSessionsCalendar";
 import ViewCoursework from "./components/CourseManagment/ViewCourseWork";
 
 function ThemedToaster() {
@@ -202,6 +204,8 @@ function App() {
         }>
           <Route path="dashboard" element={<TeacherDashboard />} />
           <Route path="courses" element={<TeacherCourses />} />
+          <Route path="sessions" element={<TeacherSessionsCalendar />} />
+          <Route path="students-parents" element={<TeacherStudentsParents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="teacher" />} />
           <Route path="reports" element={<TeacherReports />} />
           <Route path="ai-agent" element={<TeacherChatbot />} />
