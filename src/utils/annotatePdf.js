@@ -9,6 +9,7 @@ import {
   yPercentOf,
 } from "./normalizeQuestionPlacement";
 import { resolveTeacherAnnotationsForPdf } from "./teacherAnnotations";
+import { isBackfilledStub, splitBackfilledStubs } from "./backfilledStub";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const GREEN = rgb(0.04, 0.60, 0.25);
@@ -262,6 +263,12 @@ function buildTopicsMap(questions) {
   const topicsMap = {};
 
   questions
+    // A backfilled stub means "we could not find this question", not "the
+    // student got it wrong". Its studyTopic comes from the mark scheme, not
+    // from anything observed on the script, so listing it as a topic to revise
+    // is invented feedback — and until the matcher was fixed a long paper could
+    // produce 29 of them beside a 100% score.
+    .filter((q) => !isBackfilledStub(q))
     .filter((q) => Number(q.marksAwarded) < Number(q.maxMarks))
     .forEach((q) => {
       const topic = q.studyTopic || "General Revision";
@@ -687,6 +694,12 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
 function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary }) {
+  // Stubs are questions the marker could not locate on the script. They belong
+  // to the teacher, who awards them manually, not to the student's feedback —
+  // their reason text ("please verify the student's script and adjust marks")
+  // is addressed to staff. They are listed separately at the end instead.
+  const { graded: gradedQuestions, undetected } = splitBackfilledStubs(questions);
+
   const summaryPage = pdfDoc.insertPage(0, [595, 842]);
   const { width: sw, height: sh } = summaryPage.getSize();
   const M = 38;
@@ -1005,8 +1018,8 @@ const isUngraded =
   let rowIndex = 0;
   yPos = drawBreakdownColumnHeaders(reportPage, yPos, M, CW, bold);
 
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
+  for (let i = 0; i < gradedQuestions.length; i++) {
+    const q = gradedQuestions[i];
     const { topicLines, noteLines, rowH } = measureBreakdownRow(q, reg, bold, noteW);
 
     if (yPos - rowH < BD_FOOTER_Y) {
@@ -1093,6 +1106,92 @@ const isUngraded =
 
     yPos -= rowH;
     rowIndex += 1;
+  }
+
+  if (undetected.length) {
+    const HEAD_H = 26;
+    if (yPos - HEAD_H < BD_FOOTER_Y) {
+      const next = openNextReportPage(
+        pdfDoc,
+        reportPageCount,
+        reportPage,
+        sw,
+        sh,
+        M,
+        bold,
+        reg,
+        "GRADING REPORT (continued)"
+      );
+      reportPage = next.page;
+      reportPageCount = next.reportPageCount;
+      yPos = next.yPos;
+    }
+
+    yPos -= 12;
+    reportPage.drawText("NOT DETECTED - REVIEW MANUALLY", {
+      x: M,
+      y: yPos,
+      size: 8,
+      font: bold,
+      color: AMBER,
+    });
+    yPos -= 10;
+    reportPage.drawText(
+      "These mark-scheme questions were not found on the script and are not counted above. Please check them by hand.",
+      { x: M, y: yPos, size: 6.5, font: reg, color: rgb(0.35, 0.35, 0.4) }
+    );
+    yPos -= 6;
+    yPos = drawBreakdownColumnHeaders(reportPage, yPos, M, CW, bold);
+
+    for (const q of undetected) {
+      const rowH = BD_MIN_ROW_H;
+      if (yPos - rowH < BD_FOOTER_Y) {
+        const next = openNextReportPage(
+          pdfDoc,
+          reportPageCount,
+          reportPage,
+          sw,
+          sh,
+          M,
+          bold,
+          reg,
+          "NOT DETECTED - REVIEW MANUALLY (continued)"
+        );
+        reportPage = next.page;
+        reportPageCount = next.reportPageCount;
+        yPos = drawBreakdownColumnHeaders(reportPage, next.yPos, M, CW, bold);
+      }
+
+      const textY = yPos - 10;
+      reportPage.drawRectangle({
+        x: M,
+        y: yPos - rowH,
+        width: 2.5,
+        height: rowH,
+        color: AMBER,
+      });
+
+      reportPage.drawText(san(`Q${q.questionNumber}`), {
+        x: M + 5,
+        y: textY,
+        size: BD_TOPIC_SIZE,
+        font: bold,
+        color: NAVY,
+      });
+      reportPage.drawText(`0/${Number(q.maxMarks) || 0}`, {
+        x: M + 38,
+        y: textY,
+        size: BD_TOPIC_SIZE,
+        font: bold,
+        color: AMBER,
+      });
+      reportPage.drawText(
+        san(wrap(q.studyTopic || "-", bold, BD_TOPIC_SIZE, CW - 115)[0] || "-"),
+        { x: M + 110, y: textY, size: BD_TOPIC_SIZE, font: bold, color: NAVY }
+      );
+
+      yPos -= rowH;
+    }
   }
 
   drawReportFooter(reportPage, sw, reg);
@@ -1239,7 +1338,14 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
-  const enrichedBase = enrichMarkingQuestions(questions || []);
+  // Stubs never get placed on the script. Their pageNumber/yPercent are
+  // synthesised by the backend from the mark scheme's assumed layout, so the
+  // bubble lands wherever that page happens to be in this student's scan —
+  // beside an unrelated answer — and their page marks deflate every "Page
+  // marks: x/y" footer they touch. Extra rows on a page also trip the
+  // placement-reliability heuristic, which then re-spreads the real badges.
+  const placeableQuestions = (questions || []).filter((q) => !isBackfilledStub(q));
+  const enrichedBase = enrichMarkingQuestions(placeableQuestions);
   const enrichedQuestions = lockPlacement
     ? enrichedBase.map((q) => ({
         ...q,

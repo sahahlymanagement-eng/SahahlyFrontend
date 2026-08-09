@@ -1,5 +1,6 @@
 import { estimateMarkingCost } from "./markingCost";
 import { questionRowHasEdits, criteriaGradeHasEdits } from "./markingQuestionEdits";
+import { isBackfilledStub } from "./backfilledStub";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
 
@@ -350,7 +351,13 @@ export function rebuildMarkingSummary({
 
   const bullets = [`• Score: ${total}/${max} (${pct}%) — ${performance} performance`];
 
+  // This summary is written to the PDF cover and posted as the Google Classroom
+  // / grading-partner comment, so a stub named here tells a student they got
+  // something wrong that was never actually read. Count them, don't name them.
+  const undetectedCount = (questions || []).filter(isBackfilledStub).length;
+
   const lost = (questions || []).filter((q) => {
+    if (isBackfilledStub(q)) return false;
     const aw = Number(q.marksAwarded) || 0;
     const mx = Number(q.maxMarks) || 0;
     return mx > 0 && aw < mx;
@@ -374,6 +381,12 @@ export function rebuildMarkingSummary({
     if (lost.length > 4) {
       bullets.push(`• ${lost.length - 4} more question(s) with lost marks`);
     }
+  }
+
+  if (undetectedCount > 0) {
+    bullets.push(
+      `• ${undetectedCount} question(s) could not be detected automatically — your teacher will review them`
+    );
   }
 
   const prevBullets = normalizeMarkingSummaryBullets(previousSummary)

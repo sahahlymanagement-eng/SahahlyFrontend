@@ -94,6 +94,7 @@ import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
+import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import {
   geminiModelLabel,
@@ -4153,6 +4154,7 @@ return (
                       result={resultModal?.result}
                       questionCount={questionsForDisplay.length}
                     />
+                    <MarkingPageShiftNotice result={resultModal?.result} />
 
                     {Array.isArray(editingOutOfScopeNotes) && editingOutOfScopeNotes.length > 0 && (
                       <div

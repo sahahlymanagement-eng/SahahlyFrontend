@@ -62,6 +62,7 @@ import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
+import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import QuestionNumberBadge from "../../components/QuestionNumberBadge";
 import {
@@ -5338,6 +5339,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 result={resultModal?.result}
                 questionCount={questionsForDisplay.length}
               />
+              <MarkingPageShiftNotice result={resultModal?.result} />
               <AddMarkingQuestionBar
                 onAdd={(q) => {
                   setEditingQuestions((prev) => [...prev, q]);

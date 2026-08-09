@@ -43,6 +43,7 @@ import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
+import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import QuestionNumberBadge from "../../components/QuestionNumberBadge";
 import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
 import MarkSchemeVerificationModal, {
@@ -3469,6 +3470,7 @@ export default function GradingProviderPage({ slug, label }) {
                   result={resultModal?.result}
                   questionCount={questionsForDisplay.length}
                 />
+                <MarkingPageShiftNotice result={resultModal?.result} />
                 {!isCriteria && (
                   <AddMarkingQuestionBar
                     onAdd={(q) => {

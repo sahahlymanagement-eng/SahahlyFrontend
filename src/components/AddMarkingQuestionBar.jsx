@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createManualQuestion } from "../utils/markingFormData";
+import { isBackfilledStub } from "../utils/backfilledStub";
 
 export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -130,7 +131,7 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
 
 export function MarkingCompletenessNotice({ result, questionCount }) {
   const info = result?.markingCompleteness;
-  const backfilled = (result?.questions || []).filter((q) => q._backfilled).length;
+  const backfilled = (result?.questions || []).filter(isBackfilledStub).length;
   if (!info?.backfilledCount && !backfilled) return null;
 
   const added = info?.backfilledCount ?? backfilled;
