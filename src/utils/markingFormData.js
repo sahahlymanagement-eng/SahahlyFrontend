@@ -1,4 +1,5 @@
 import { estimateMarkingCost } from "./markingCost";
+import { canViewMoneyCostsFromStorage } from "./moneyVisibility";
 import { questionRowHasEdits, criteriaGradeHasEdits } from "./markingQuestionEdits";
 import { isBackfilledStub } from "./backfilledStub";
 import {
@@ -7,6 +8,18 @@ import {
 } from "./blankQuestionFeedback";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
+
+function attachEstimatedCost(result, geminiModel, tokenUsage, options) {
+  if (!canViewMoneyCostsFromStorage()) return;
+  if (!tokenUsage || !geminiModel) return;
+  const cost = estimateMarkingCost(geminiModel, tokenUsage, options);
+  if (!cost) return;
+  result.estimatedCost = cost;
+  result.estimatedCostUsd = cost.usd;
+  result.estimatedCostEgp = cost.egp;
+  if (options?.batch) result.batchPricing = true;
+  if (options?.priority) result.priorityPricing = true;
+}
 
 /** Attach assignment context for backend logging (person comes from JWT only). */
 export function appendMarkingContext(formData, { assignmentId, classroomId } = {}) {
@@ -957,15 +970,7 @@ export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, pdfComp
     result.pdfCompression = pdfCompression;
   }
 
-  if (tokenUsage && geminiModel) {
-    const cost = estimateMarkingCost(geminiModel, tokenUsage, { batch: true });
-    if (cost) {
-      result.estimatedCost = cost;
-      result.estimatedCostUsd = cost.usd;
-      result.estimatedCostEgp = cost.egp;
-      result.batchPricing = true;
-    }
-  }
+  attachEstimatedCost(result, geminiModel, tokenUsage, { batch: true });
 
   return result;
 }
@@ -998,15 +1003,7 @@ export function buildV2MarkingResult(
   if (pdfCompression) result.pdfCompression = pdfCompression;
   if (diagnostics) result.gradingV2Diagnostics = diagnostics;
 
-  if (tokenUsage && geminiModel) {
-    const cost = estimateMarkingCost(geminiModel, tokenUsage, { batch });
-    if (cost) {
-      result.estimatedCost = cost;
-      result.estimatedCostUsd = cost.usd;
-      result.estimatedCostEgp = cost.egp;
-      if (batch) result.batchPricing = true;
-    }
-  }
+  attachEstimatedCost(result, geminiModel, tokenUsage, { batch });
 
   return result;
 }
@@ -1023,15 +1020,7 @@ export function buildPriorityMarkingResult(parsed, tokenUsage, geminiModel, serv
     servedServiceTier: servedServiceTier || null,
   };
 
-  if (tokenUsage && geminiModel) {
-    const cost = estimateMarkingCost(geminiModel, tokenUsage, { priority: servedPriority });
-    if (cost) {
-      result.estimatedCost = cost;
-      result.estimatedCostUsd = cost.usd;
-      result.estimatedCostEgp = cost.egp;
-      if (servedPriority) result.priorityPricing = true;
-    }
-  }
+  attachEstimatedCost(result, geminiModel, tokenUsage, { priority: servedPriority });
 
   return result;
 }

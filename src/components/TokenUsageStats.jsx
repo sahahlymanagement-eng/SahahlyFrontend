@@ -1,4 +1,5 @@
 import { formatBatchPricingNote, formatPriorityPricingNote, formatCostEgp, formatCostUsd, resolveMarkingCost } from "../utils/markingCost";
+import { canViewMoneyCostsFromStorage } from "../utils/moneyVisibility";
 
 function tokenLines(tokenUsage) {
   const cached = Number(tokenUsage.cachedContentTokens) || 0;
@@ -29,7 +30,7 @@ export default function TokenUsageStats({
   result,
   compact = false,
   title = "AI Token Usage",
-  hideCost = false,
+  hideCost = !canViewMoneyCostsFromStorage(),
 }) {
   const tokenUsage = result?.tokenUsage;
   if (!tokenUsage) return null;

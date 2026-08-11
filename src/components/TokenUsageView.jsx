@@ -229,52 +229,66 @@ const TOKEN_COLUMNS = [
   { key: "input", label: "Input", numeric: true, render: (r) => formatNum(r.inputTokens) },
   { key: "output", label: "Output", numeric: true, render: (r) => formatNum(r.outputTokens) },
   { key: "total", label: "Total", numeric: true, render: (r) => formatNum(r.totalTokens) },
-  { key: "costUsd", label: "Cost (USD)", numeric: true, render: (r) => formatCostUsd(r.costUsd) },
-  { key: "costEgp", label: "Cost (EGP)", numeric: true, render: (r) => formatCostEgp(r.costEgp) },
+  { key: "costUsd", label: "Cost (USD)", numeric: true, money: true, render: (r) => formatCostUsd(r.costUsd) },
+  { key: "costEgp", label: "Cost (EGP)", numeric: true, money: true, render: (r) => formatCostEgp(r.costEgp) },
   { key: "requests", label: "Requests", numeric: true, render: (r) => r.requestCount },
 ];
+
+function tokenColumns(showCosts) {
+  return showCosts ? TOKEN_COLUMNS : TOKEN_COLUMNS.filter((c) => !c.money);
+}
 
 const REPORT_TYPE_COLUMNS = [
   { key: "type", label: "Report type", render: (r) => r.label || r.source },
   DATE_COLUMN,
   { key: "deliveries", label: "Deliveries", numeric: true, render: (r) => r.deliveryCount },
-  ...TOKEN_COLUMNS.filter((c) => c.key !== "requests"),
 ];
 
 const REPORT_CHANNEL_COLUMNS = [
   { key: "type", label: "Report type", render: (r) => r.sourceLabel },
   { key: "channel", label: "Channel", render: (r) => r.channelLabel },
   { key: "deliveries", label: "Deliveries", numeric: true, render: (r) => r.deliveryCount },
-  ...TOKEN_COLUMNS.filter((c) => c.key !== "requests"),
 ];
+
+function reportTypeColumns(showCosts) {
+  return [...REPORT_TYPE_COLUMNS, ...tokenColumns(showCosts).filter((c) => c.key !== "requests")];
+}
+
+function reportChannelColumns(showCosts) {
+  return [...REPORT_CHANNEL_COLUMNS, ...tokenColumns(showCosts).filter((c) => c.key !== "requests")];
+}
 
 function formatRole(role) {
   return role || "—";
 }
 
-function staffColumns(showRole) {
+function staffColumns(showRole, showCosts) {
   const cols = [
     { key: "name", label: "Name", render: (r) => r.personName },
   ];
   if (showRole) {
     cols.push({ key: "role", label: "Role", render: (r) => formatRole(r.personRole) });
   }
-  cols.push(DATE_COLUMN, ...TOKEN_COLUMNS);
+  cols.push(DATE_COLUMN, ...tokenColumns(showCosts));
   return cols;
 }
 
-const ASSIGNMENT_COLUMNS = [
-  { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
-  { key: "classroom", label: "Classroom", render: (r) => r.classroomName || "—" },
-  DATE_COLUMN,
-  ...TOKEN_COLUMNS,
-];
+function assignmentColumns(showCosts) {
+  return [
+    { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
+    { key: "classroom", label: "Classroom", render: (r) => r.classroomName || "—" },
+    DATE_COLUMN,
+    ...tokenColumns(showCosts),
+  ];
+}
 
-const CLASSROOM_ASSIGNMENT_COLUMNS = [
-  { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
-  DATE_COLUMN,
-  ...TOKEN_COLUMNS,
-];
+function classroomAssignmentColumns(showCosts) {
+  return [
+    { key: "name", label: "Assignment", render: (r) => r.assignmentTitle },
+    DATE_COLUMN,
+    ...tokenColumns(showCosts),
+  ];
+}
 
 /**
  * @param {{ apiBase: string, scope: 'manager' | 'director', embedded?: boolean }} props
@@ -283,8 +297,13 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const navigate = useNavigate();
   const requiredRole = scope === "manager" ? "manager" : "admin";
   const isDirector = scope === "director";
+  const showCosts = isDirector;
   const tabs = isDirector ? TABS : MANAGER_TABS;
-  const personColumns = staffColumns(isDirector);
+  const personColumns = staffColumns(isDirector, showCosts);
+  const assignmentCols = assignmentColumns(showCosts);
+  const classroomAssignmentCols = classroomAssignmentColumns(showCosts);
+  const reportTypeCols = reportTypeColumns(showCosts);
+  const reportChannelCols = reportChannelColumns(showCosts);
   const [user, setUser] = useState(null);
   const [tab, setTab] = usePersistedState(`tokenusage:${scope}:tab`, "classroom");
   const [period, setPeriod] = useState("custom");
@@ -742,14 +761,18 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           <h3 className="tu-num">{formatNum(grandTotal)}</h3>
           <span>Total tokens</span>
         </div>
-        <div className="tu-summary-card">
-          <h3 className="tu-num">{formatCostUsd(grandCostUsd)}</h3>
-          <span>Est. cost (USD)</span>
-        </div>
-        <div className="tu-summary-card">
-          <h3 className="tu-num">{formatCostEgp(grandCostEgp)}</h3>
-          <span>Est. cost (EGP)</span>
-        </div>
+        {showCosts && (
+          <>
+            <div className="tu-summary-card">
+              <h3 className="tu-num">{formatCostUsd(grandCostUsd)}</h3>
+              <span>Est. cost (USD)</span>
+            </div>
+            <div className="tu-summary-card">
+              <h3 className="tu-num">{formatCostEgp(grandCostEgp)}</h3>
+              <span>Est. cost (EGP)</span>
+            </div>
+          </>
+        )}
         {summarySecondary && (
           <div className="tu-summary-card">
             <h3>{summarySecondary.count}</h3>
@@ -807,10 +830,14 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                     <div className="tu-click-row-meta">
                       <span className="tu-num">
                         {formatNum(c.totalTokens)} tokens
-                        {" · "}
-                        {formatCostUsd(c.costUsd)}
-                        {" · "}
-                        {formatCostEgp(c.costEgp)}
+                        {showCosts ? (
+                          <>
+                            {" · "}
+                            {formatCostUsd(c.costUsd)}
+                            {" · "}
+                            {formatCostEgp(c.costEgp)}
+                          </>
+                        ) : null}
                       </span>
                       <FiChevronRight size={18} />
                     </div>
@@ -879,7 +906,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
               columns={
                 classroomBreakdown === "assistant"
                   ? personColumns
-                  : CLASSROOM_ASSIGNMENT_COLUMNS
+                  : classroomAssignmentCols
               }
               rows={classroomDetail.rows}
               rowKey={(r) =>
@@ -912,7 +939,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             <div className="tu-empty">No token usage recorded for this period.</div>
           ) : (
             <UsageTable
-              columns={ASSIGNMENT_COLUMNS}
+              columns={assignmentCols}
               rows={byAssignment.assignments}
               rowKey={(r) => String(r.assignmentId)}
             />
@@ -937,7 +964,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                     <p>Email vs WhatsApp and other channels · {rangeLabel}</p>
                   </div>
                   <UsageTable
-                    columns={REPORT_CHANNEL_COLUMNS}
+                    columns={reportChannelCols}
                     rows={reportsAnalytics.byChannel}
                     rowKey={(r) => `${r.source}-${r.reportChannel || "none"}`}
                   />
@@ -971,8 +998,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                     <div className="tu-click-row-meta">
                       <span className="tu-num">
                         {formatNum(t.totalTokens)} tokens
-                        {" · "}
-                        {formatCostUsd(t.costUsd)}
+                        {showCosts ? (
+                          <>
+                            {" · "}
+                            {formatCostUsd(t.costUsd)}
+                          </>
+                        ) : null}
                       </span>
                       <FiChevronRight size={18} />
                     </div>
@@ -1012,7 +1043,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           )}
           {!detailLoading && reportBreakdownData?.rows?.length > 0 && (
             <UsageTable
-              columns={reportBreakdownColumns(reportBreakdown)}
+              columns={reportBreakdownColumns(reportBreakdown, showCosts)}
               rows={reportBreakdownData.rows}
               rowKey={(r) => reportBreakdownRowKey(r, reportBreakdown)}
             />
@@ -1023,7 +1054,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   );
 }
 
-function reportBreakdownColumns(groupBy) {
+function reportBreakdownColumns(groupBy, showCosts = true) {
   const nameCol = (() => {
     if (groupBy === "classroom") {
       return { key: "name", label: "Classroom", render: (r) => r.classroomName || "—" };
@@ -1047,7 +1078,7 @@ function reportBreakdownColumns(groupBy) {
     nameCol,
     DATE_COLUMN,
     { key: "deliveries", label: "Deliveries", numeric: true, render: (r) => r.deliveryCount },
-    ...TOKEN_COLUMNS.filter((c) => c.key !== "requests"),
+    ...tokenColumns(showCosts).filter((c) => c.key !== "requests"),
   ];
 }
 

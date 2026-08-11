@@ -78,6 +78,7 @@ import {
   resolveMarkingCost,
   sahahlyModelLabel,
 } from "../../utils/markingCost";
+import { canViewMoneyCostsFromStorage, maybeStripMoney } from "../../utils/moneyVisibility";
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
@@ -750,10 +751,12 @@ const fetchSavedResults = useCallback(async () => {
     const map = {};
     const synced = {};
     res.data.data.forEach(r => {
+      const result = maybeStripMoney(r.result);
+      const aiOriginalResult = maybeStripMoney(r.aiOriginalResult || r.result);
       map[r.submissionId] = {
         status: "done",
-        result: r.result,
-        aiOriginalResult: r.aiOriginalResult || r.result,
+        result,
+        aiOriginalResult,
         studentFile: r.studentFileMeta,
         totalMarks: resolveSavedMarkingGrade(r),
         classroomAssignedGrade: r.classroomAssignedGrade ?? null,
@@ -2029,7 +2032,9 @@ useEffect(() => {
 
       const tokenTotal = enrichedResult?.tokenUsage?.totalTokens;
       if (tokenTotal) {
-        const cost = resolveMarkingCost(enrichedResult);
+        const cost = canViewMoneyCostsFromStorage()
+          ? resolveMarkingCost(enrichedResult)
+          : null;
         const costText = cost ? ` · ${formatCostPair(cost)}` : "";
         toast.success(
           `Priority mark complete — ${Number(tokenTotal).toLocaleString()} tokens${costText}`
@@ -2160,7 +2165,9 @@ useEffect(() => {
         );
       } else {
         const tokenTotal = enrichedResult?.tokenUsage?.totalTokens;
-        const cost = resolveMarkingCost(enrichedResult);
+        const cost = canViewMoneyCostsFromStorage()
+          ? resolveMarkingCost(enrichedResult)
+          : null;
         const costText = cost ? ` · ${formatCostPair(cost)}` : "";
         toast.success(
           `v2 mark complete — ${diag.windowCount ?? "?"} windows` +
@@ -3047,7 +3054,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     const zeroed = (data.zeroed || []).length;
     const failed = (data.failed || []).length;
     const tokenTotal = data.aggregateTokenUsage?.totalTokens;
-    const aggregateCost = data.aggregateEstimatedCost;
+    const aggregateCost = canViewMoneyCostsFromStorage()
+      ? data.aggregateEstimatedCost
+      : null;
     const tokenSummary =
       tokenTotal != null
         ? ` · ${Number(tokenTotal).toLocaleString()} tokens` +
