@@ -6,7 +6,6 @@ import {
   markingResultHasPendingCriteriaEdits,
   questionsForConfirmEdits,
   resolveDisplayMaxTotal,
-  sumQuestionMarks,
   getOutOfScopeNotes,
   getTeacherAnnotations,
   getApiErrorMessage,
@@ -19,6 +18,7 @@ function getSubmissionId(modal) {
 }
 
 const PREVIEW_TIMEOUT_MS = 120_000;
+const LIVE_PREVIEW_DEBOUNCE_MS = 700;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -73,6 +73,16 @@ export function useExternalAnnotatedPreview({
   resultModalRef.current = resultModal;
   const editingMaxTotalRef = useRef(editingMaxTotal);
   editingMaxTotalRef.current = editingMaxTotal;
+  const editingQuestionsRef = useRef(editingQuestions);
+  editingQuestionsRef.current = editingQuestions;
+  const editingAnnotationsRef = useRef(editingAnnotations);
+  editingAnnotationsRef.current = editingAnnotations;
+  const editingSummaryRef = useRef(editingSummary);
+  editingSummaryRef.current = editingSummary;
+  const editingCriteriaGradeRef = useRef(editingCriteriaGrade);
+  editingCriteriaGradeRef.current = editingCriteriaGrade;
+  const effectiveMaxTotalRef = useRef(effectiveMaxTotal);
+  effectiveMaxTotalRef.current = effectiveMaxTotal;
 
   const pendingRemovedRef = useRef(pendingRemovedIndices);
   pendingRemovedRef.current = pendingRemovedIndices;
@@ -81,6 +91,66 @@ export function useExternalAnnotatedPreview({
     () => questionsForConfirmEdits(editingQuestions, pendingRemovedIndices),
     [editingQuestions, pendingRemovedIndices]
   );
+
+  const livePreviewSignature = useMemo(
+    () =>
+      JSON.stringify({
+        questions: questionsForPreviewEdits.map((q) => [
+          q.questionNumber,
+          q.marksAwarded,
+          q.maxMarks,
+          q.reason,
+          q.pageNumber,
+          q.yPercent,
+        ]),
+        summary: editingSummary,
+        maxTotal: effectiveMaxTotal,
+        criteria: editingCriteriaGrade,
+        annotations: editingAnnotations,
+        removed: pendingRemovedIndices ? [...pendingRemovedIndices].sort() : [],
+      }),
+    [
+      questionsForPreviewEdits,
+      editingSummary,
+      effectiveMaxTotal,
+      editingCriteriaGrade,
+      editingAnnotations,
+      pendingRemovedIndices,
+    ]
+  );
+
+  const buildLivePreviewSnapshot = useCallback(() => {
+    const modal = resultModalRef.current;
+    const base = confirmedSnapshot;
+    if (!modal || !base) return null;
+    const submissionId = getSubmissionId(modal);
+    if (!submissionId) return null;
+
+    const questions = questionsForConfirmEdits(
+      editingQuestionsRef.current,
+      pendingRemovedRef.current
+    ).map((q) => ({ ...q }));
+    const maxTotal = Math.max(1, Number(effectiveMaxTotalRef.current) || 1);
+    const summary =
+      String(editingSummaryRef.current ?? "").trim() || base.summary || "";
+
+    return {
+      submissionId,
+      questions,
+      maxTotal,
+      summary,
+      outOfScopeNotes: base.outOfScopeNotes,
+      teacherAnnotations: (
+        editingAnnotationsRef.current ||
+        base.teacherAnnotations ||
+        []
+      ).map((a) => ({ ...a })),
+      criteriaGrade: cloneCriteriaGrade(
+        editingCriteriaGradeRef.current ?? base.criteriaGrade
+      ),
+      studentFile: modal.studentFile || base.studentFile || null,
+    };
+  }, [confirmedSnapshot]);
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
@@ -123,27 +193,28 @@ export function useExternalAnnotatedPreview({
     setPreviewError(null);
 
     try {
-      let studentFile = snapshot.studentFile;
-      if (!studentFile && getStudentFileRef.current) {
-        studentFile = await withTimeout(
-          getStudentFileRef.current(snapshot.submissionId),
-          90_000,
-          "Loading student PDF"
-        );
+      if (!getStudentFileRef.current) {
+        throw new Error("Student PDF unavailable for preview");
       }
+      const studentFile = await withTimeout(
+        getStudentFileRef.current(snapshot.submissionId),
+        90_000,
+        "Loading student PDF"
+      );
       if (requestId !== previewRequestRef.current) return;
       if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
-      const totalMarks = sumQuestionMarks(snapshot.questions);
+      const markingMode = resultModalRef.current?.result?.markingMode || "normal";
       const pdfBytes = await withTimeout(
         annotatePdf({
           studentFile,
           questions: snapshot.questions,
-          totalMarks,
           maxTotalMarks: snapshot.maxTotal,
           summary: snapshot.summary,
           outOfScopeNotes: snapshot.outOfScopeNotes,
           teacherAnnotations: snapshot.teacherAnnotations,
+          criteriaGrade: snapshot.criteriaGrade,
+          markingMode,
           skipCompress: true,
           lockPlacement,
         }),
@@ -230,6 +301,26 @@ export function useExternalAnnotatedPreview({
     effectiveMaxTotal,
     editingMaxTotal,
     editingCriteriaGrade,
+  ]);
+
+  useEffect(() => {
+    if (!openSubmissionId || !confirmedSnapshot || !hasPendingEdits) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      const snapshot = buildLivePreviewSnapshot();
+      if (snapshot) generatePreview(snapshot, { lockPlacement: true });
+    }, LIVE_PREVIEW_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [
+    openSubmissionId,
+    confirmedSnapshot,
+    hasPendingEdits,
+    livePreviewSignature,
+    buildLivePreviewSnapshot,
+    generatePreview,
   ]);
 
   /**
@@ -344,6 +435,11 @@ export function useExternalAnnotatedPreview({
     };
   }, [confirmedSnapshot]);
 
+  const revertPreviewToConfirmed = useCallback(() => {
+    if (!confirmedSnapshot) return;
+    generatePreview(confirmedSnapshot, { lockPlacement: true });
+  }, [confirmedSnapshot, generatePreview]);
+
   const refreshPreviewFromQuestions = useCallback(
     async (questions) => {
       if (!confirmedSnapshot) return;
@@ -385,6 +481,7 @@ export function useExternalAnnotatedPreview({
     confirmEdits,
     buildEditedResult,
     resetToConfirmed,
+    revertPreviewToConfirmed,
     reportPageCount,
     refreshPreviewFromQuestions,
   };

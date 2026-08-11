@@ -21,6 +21,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      error.isSessionExpired = true;
+      const serverMsg = error.response?.data?.message || error.response?.data?.error;
+      error.sessionMessage =
+        serverMsg && !/invalid or expired token/i.test(serverMsg)
+          ? serverMsg
+          : "Your session has expired. Please sign in again.";
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;
     

@@ -124,11 +124,12 @@ export async function runReturnAllQueue({
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQs,
-        totalMarks: total,
         maxTotalMarks: max,
         summary: resolvePdfSummary(submissionId, result),
         outOfScopeNotes: getOutOfScopeNotes(result),
         teacherAnnotations: getTeacherAnnotations(result),
+        criteriaGrade: result.criteriaGrade,
+        markingMode: result.markingMode || "normal",
       });
 
       const fd = new FormData();

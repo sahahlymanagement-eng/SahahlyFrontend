@@ -29,6 +29,7 @@ import {
   getTeacherAnnotations,
   rebuildMarkingSummary,
   resolveTotalMarksFromResult,
+  resolveAnnotatePdfTotalMarks,
   resolveDisplayMaxTotal,
   buildPriorityMarkingResult,
   appendMarkingContext,
@@ -204,6 +205,7 @@ export default function GradingProviderPage({ slug, label }) {
     { grading: true, provider: PROVIDER }
   );
   const [listTotal, setListTotal] = useState(0);
+  const [sessionError, setSessionError] = useState(null);
   const [promptGenOpen, setPromptGenOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [msVerifyOpen, setMsVerifyOpen] = useState(false);
@@ -499,6 +501,7 @@ export default function GradingProviderPage({ slug, label }) {
     confirmEdits,
     buildEditedResult,
     resetToConfirmed,
+    revertPreviewToConfirmed,
     reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
@@ -655,6 +658,7 @@ export default function GradingProviderPage({ slug, label }) {
     setLoadingAssignments(true);
     try {
       const { data } = await api.get(`${BASE}/submissions/assignments`);
+      setSessionError(null);
       setAssignmentIndex(
         (data?.assignments || []).map((a) => ({
           key: a.id != null ? String(a.id) : "__none__",
@@ -672,7 +676,13 @@ export default function GradingProviderPage({ slug, label }) {
       setListTotal(data?.total ?? 0);
     } catch (err) {
       console.error("Failed to load assignments", err);
-      toast.error((await getApiErrorMessage(err)) || "Failed to load assignments");
+      if (err.response?.status === 401 || err.isSessionExpired) {
+        setSessionError(err.sessionMessage || "Your session has expired. Please sign in again.");
+        setAssignmentIndex([]);
+        setListTotal(0);
+      } else {
+        toast.error((await getApiErrorMessage(err)) || "Failed to load assignments");
+      }
     } finally {
       setLoadingAssignments(false);
     }
@@ -1639,22 +1649,22 @@ export default function GradingProviderPage({ slug, label }) {
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first");
+      toast.warn("Save & regenerate PDF first");
       return;
     }
     setDownloading(true);
     try {
       const submissionId = resultModal.submissionId;
-      const studentFile = resultModal.studentFile || (await getStudentFile(submissionId));
-      const totalMarks = editingQuestions.reduce((s, q) => s + (Number(q.marksAwarded) || 0), 0);
+      const studentFile = await getStudentFile(submissionId);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
+        criteriaGrade: resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
@@ -1668,7 +1678,7 @@ export default function GradingProviderPage({ slug, label }) {
   const uploadToProvider = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first so the uploaded PDF matches the preview");
+      toast.warn("Save & regenerate PDF first so the uploaded PDF matches the preview");
       return;
     }
     const submissionId = resultModal.submissionId;
@@ -1683,17 +1693,22 @@ export default function GradingProviderPage({ slug, label }) {
 
     setReturning(true);
     try {
-      const studentFile = resultModal.studentFile || (await getStudentFile(submissionId));
-      const totalMarks = editingQuestions.reduce((s, q) => s + (Number(q.marksAwarded) || 0), 0);
+      const studentFile = await getStudentFile(submissionId);
+      const totalMarks = resolveAnnotatePdfTotalMarks({
+        questions: editingQuestions,
+        criteriaGrade: resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
+      });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary,
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
+        criteriaGrade: resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
       });
 
       const fd = new FormData();
@@ -2066,6 +2081,10 @@ export default function GradingProviderPage({ slug, label }) {
                 <div className="ma-scroll-list">
                   {loadingAssignments ? (
                     <p className="ma-loading-msg">Loading…</p>
+                  ) : sessionError ? (
+                    <p className="ma-empty-msg" style={{ color: "var(--danger)" }}>
+                      {sessionError}
+                    </p>
                   ) : filteredAssignments.length === 0 ? (
                     <p className="ma-empty-msg">
                       {assignmentSearch ? "No assignments match your search." : "No assignments found."}
@@ -3170,6 +3189,7 @@ export default function GradingProviderPage({ slug, label }) {
                             setEditingMaxTotal(null);
                             setEditingTotal(null);
                             setPendingRemovedIndices(new Set());
+                            revertPreviewToConfirmed();
                           } else {
                             setEditingTotal(null);
                             setEditingMaxTotal(null);
@@ -3251,7 +3271,7 @@ export default function GradingProviderPage({ slug, label }) {
                     style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                   >
                     <FiCheck size={13} />
-                    {confirmingEdits ? "Confirming…" : "Confirm Edits"}
+                    {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
                   </button>
                 )}
                 {pendingEdits.status !== "restored" && (
@@ -3760,7 +3780,7 @@ export default function GradingProviderPage({ slug, label }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {hasPendingEdits && (
                       <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
-                        Confirm edits to update preview
+                        {previewLoading ? "Updating preview…" : "Click Save & regenerate PDF to persist"}
                       </span>
                     )}
                   </div>
@@ -3794,6 +3814,7 @@ export default function GradingProviderPage({ slug, label }) {
                         removing a question off it. That is the whole of a
                         review-only reviewer's view. */}
                     <AnnotatedPdfPreview
+                      key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                       url={annotatedPreviewUrl}
                       placementQuestions={canEdit ? placementQuestions : null}
                       reportPageCount={reportPageCount}

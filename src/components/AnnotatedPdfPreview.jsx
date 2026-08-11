@@ -80,7 +80,7 @@ function PlacementHandle({
         zIndex: zIndex ?? undefined,
       }}
       onPointerDown={(e) => onPointerDown(e, q, column, yPercent)}
-      title="Drag to move this marking box (any page). Positions apply on Confirm Edits."
+      title="Drag to move this marking box (any page). Positions apply on Save & regenerate PDF."
     >
       {showRemove && column === "left" && (
         <button

@@ -80,6 +80,7 @@ import {
   questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
+  resolveAnnotatePdfTotalMarks,
   resolveSavedMarkingGrade,
   getOutOfScopeNotes,
   getTeacherAnnotations,
@@ -684,6 +685,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     confirmEdits,
     buildEditedResult,
     resetToConfirmed,
+    revertPreviewToConfirmed,
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
@@ -2263,7 +2265,7 @@ window.open(url);
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first");
+      toast.warn("Save & regenerate PDF first");
       return;
     }
 
@@ -2290,20 +2292,15 @@ window.open(url);
         { type: "application/pdf" }
       );
 
-      const isCriteriaPdf =
-        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
-      const pdfTotalMarks = isCriteriaPdf
-        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
-        : sumQuestionMarks(editingQuestions);
-
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: pdfTotalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
       });
 
       downloadBlob(new Blob([pdfBytes]), `${resultModal.student.name}_graded.pdf`);
@@ -2542,7 +2539,7 @@ window.open(url);
   const returnToStudent = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first so the returned PDF matches the preview");
+      toast.warn("Save & regenerate PDF first so the returned PDF matches the preview");
       return;
     }
 
@@ -2551,11 +2548,11 @@ window.open(url);
 
     setReturning(true);
     try {
-      const isCriteriaPdf =
-        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
-      const total = isCriteriaPdf
-        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
-        : sumQuestionMarks(editingQuestions);
+      const total = resolveAnnotatePdfTotalMarks({
+        questions: editingQuestions,
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
+      });
       const db = savedResults[resultModal.student?.submissionId];
     
       const submissionId =
@@ -2580,11 +2577,12 @@ window.open(url);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: total,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
       });
 
       const fd = new FormData();
@@ -2783,7 +2781,7 @@ window.open(url);
     }
 
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first so returned PDFs match the preview");
+      toast.warn("Save & regenerate PDF first so returned PDFs match the preview");
       return;
     }
 
@@ -3979,6 +3977,7 @@ return (
                                     setEditingMaxTotal(null);
                                     setEditingTotal(null);
                                     setPendingRemovedIndices(new Set());
+                                    revertPreviewToConfirmed();
                                   } else {
                                     setEditingTotal(null);
                                     setEditingMaxTotal(null);
@@ -4039,7 +4038,7 @@ return (
                               style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                             >
                               <FiCheck size={13} />
-                              {confirmingEdits ? "Confirming…" : "Confirm Edits"}
+                              {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
                             </button>
                           )}
                           {pendingEdits.status !== "restored" && (
@@ -4271,7 +4270,7 @@ return (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {hasPendingEdits && (
                             <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
-                              Confirm edits to update preview
+                              {previewLoading ? "Updating preview…" : "Click Save & regenerate PDF to persist"}
                             </span>
                           )}
                 </div>
@@ -4312,6 +4311,7 @@ return (
                           }}
                         >
                           <AnnotatedPdfPreview
+                            key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                             url={annotatedPreviewUrl}
                             placementQuestions={placementQuestions}
                             reportPageCount={reportPageCount}

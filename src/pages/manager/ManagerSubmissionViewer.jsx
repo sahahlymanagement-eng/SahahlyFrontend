@@ -35,6 +35,7 @@ import {
   questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
+  resolveAnnotatePdfTotalMarks,
   resolveSavedMarkingGrade,
   currentUserId,
   getApiErrorMessage,
@@ -609,6 +610,7 @@ const resolvePdfSummary = (submissionId, result) =>
     confirmEdits,
     buildEditedResult,
     resetToConfirmed,
+    revertPreviewToConfirmed,
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
@@ -3126,7 +3128,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     if (!resultModal) return;
     if (!selectedAssignment?._id) return;
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first");
+      toast.warn("Save & regenerate PDF first");
       return;
     }
     setDownloading(true);
@@ -3152,20 +3154,15 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         { type: "application/pdf" }
       );
 
-      const isCriteriaPdf =
-        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
-      const pdfTotalMarks = isCriteriaPdf
-        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
-        : sumQuestionMarks(editingQuestions);
-
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks: pdfTotalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
       });
 
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "student"}_graded.pdf`);
@@ -3395,7 +3392,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   const returnToStudent = async () => {
     if (!resultModal) return;
     if (hasPendingEdits) {
-      toast.warn("Confirm your edits first so the returned PDF matches the preview");
+      toast.warn("Save & regenerate PDF first so the returned PDF matches the preview");
       return;
     }
 
@@ -3426,19 +3423,20 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         );
       }
 
-      const isCriteriaPdf =
-        resultModal?.result?.markingMode === "criteria" && editingCriteriaGrade;
-      const totalMarks = isCriteriaPdf
-        ? Number(editingCriteriaGrade.totalMarks) || sumQuestionMarks(editingQuestions)
-        : sumQuestionMarks(editingQuestions);
+      const totalMarks = resolveAnnotatePdfTotalMarks({
+        questions: editingQuestions,
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
+      });
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
-        totalMarks,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
         outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+        markingMode: resultModal.result?.markingMode || "normal",
       });
       const fd = new FormData();
       fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
@@ -3503,7 +3501,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     }
 
     if (showMarkingTools && hasPendingEdits) {
-      toast.warn("Confirm your edits first so returned PDFs match the preview");
+      toast.warn("Save & regenerate PDF first so returned PDFs match the preview");
       return;
     }
 
@@ -3740,6 +3738,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       ? Number(editingCriteriaGrade.totalMarks) || 0
       : sumQuestionMarks(questionsForDisplay);
   const totalMismatch =
+    !hasPendingEdits &&
+    !previewLoading &&
     questionsForDisplay.length > 0 &&
     Number.isFinite(coverTotal) &&
     Number.isFinite(paperTotal) &&
@@ -5123,6 +5123,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           setEditingMaxTotal(null);
                           setEditingTotal(null);
                           setPendingRemovedIndices(new Set());
+                          revertPreviewToConfirmed();
                         } else {
                           setEditingTotal(null);
                           setEditingMaxTotal(null);
@@ -5205,7 +5206,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
                   >
                     <FiCheck size={13} />
-                    {confirmingEdits ? "Confirming…" : "Confirm Edits"}
+                    {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
                   </button>
                 )}
                 {showMarkingTools && pendingEdits.status !== "restored" && (
@@ -5396,7 +5397,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {hasPendingEdits && (
                             <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
-                              Confirm edits to update preview
+                              {previewLoading ? "Updating preview…" : "Click Save & regenerate PDF to persist"}
                             </span>
                           )}
                         </div>
@@ -5437,6 +5438,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           }}
                         >
                           <AnnotatedPdfPreview
+                            key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                             url={annotatedPreviewUrl}
                             placementQuestions={placementQuestions}
                             reportPageCount={reportPageCount}

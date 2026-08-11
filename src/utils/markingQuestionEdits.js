@@ -80,11 +80,9 @@ export function updateQuestionAt(questions, index, patch) {
 /**
  * Replace one edited row in the editing list.
  *
- * A backfilled stub a marker has actually changed stops being "undetected" and
- * becomes marked work: it gets a placement handle in the results modal, a badge
- * and examiner note on the annotated PDF, and it counts in the summary and
- * revision topics. The stamp is only applied when a field really changed, so
- * merely opening or re-rendering a card does not promote a stub.
+ * `_stubEdited` records that a marker reviewed a backfilled row. It does not
+ * promote the row onto the student's answer pages — undetected questions stay
+ * in the report breakdown only (see isBackfilledStub).
  */
 export function applyQuestionRowEdit(questions, index, updated) {
   return (questions || []).map((q, i) => {

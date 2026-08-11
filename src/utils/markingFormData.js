@@ -271,6 +271,82 @@ export function sumQuestionMarks(questions) {
   );
 }
 
+const STAFF_ONLY_COPY_PATTERNS = [
+  /added manually by teacher/i,
+  /question not detected during automated marking/i,
+  /was not detected during automated marking/i,
+  /please verify the student'?s script/i,
+  /please review manually/i,
+  /please review the script manually/i,
+  /added manually after automated marking/i,
+  /adjust marks and feedback as needed/i,
+];
+
+/** True when copy is meant for staff/QC only — must not appear on student PDFs. */
+export function isStaffOnlyCopy(text) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  return STAFF_ONLY_COPY_PATTERNS.some((re) => re.test(t));
+}
+
+function studentFacingReasonForQuestion(q) {
+  const max = Math.max(0, Number(q.maxMarks) || 0);
+  const aw = Math.max(0, Number(q.marksAwarded) || 0);
+  const qNum = q.questionNumber != null ? String(q.questionNumber) : "?";
+  if (max > 0 && aw >= max) return `Full marks awarded for Q${qNum}.`;
+  if (aw === 0) {
+    const topic = q.studyTopic ? String(q.studyTopic).trim() : "";
+    return topic
+      ? `No marks awarded — review ${topic}.`
+      : `No marks awarded for Q${qNum}.`;
+  }
+  return `Awarded ${aw}/${max} marks for Q${qNum}.`;
+}
+
+/** Strip internal staff/QC wording before rendering a returned student PDF. */
+export function sanitizeQuestionForStudentPdf(q) {
+  if (!q) return q;
+  const next = { ...q };
+
+  if (isStaffOnlyCopy(next.studentAnswer)) {
+    next.studentAnswer =
+      Number(next.marksAwarded) > 0
+        ? ""
+        : "Question left blank — no answer provided.";
+  }
+
+  if (isStaffOnlyCopy(next.reason)) {
+    next.reason = studentFacingReasonForQuestion(next);
+  }
+
+  if (next._manual && next.checklist) {
+    next.checklist = { ...next.checklist, answerIsBlank: false };
+  }
+
+  return next;
+}
+
+export function sanitizeQuestionsForStudentPdf(questions) {
+  return (questions || []).map(sanitizeQuestionForStudentPdf);
+}
+
+/** Total marks for annotatePdf cover + score box — always matches edited rows. */
+export function resolveAnnotatePdfTotalMarks({
+  questions = [],
+  criteriaGrade = null,
+  markingMode = "normal",
+} = {}) {
+  if (markingMode === "criteria" && criteriaGrade) {
+    if (Array.isArray(criteriaGrade.breakdown) && criteriaGrade.breakdown.length) {
+      return sumQuestionMarks(criteriaGrade.breakdown);
+    }
+    if (criteriaGrade.totalMarks != null && criteriaGrade.totalMarks !== "") {
+      return Number(criteriaGrade.totalMarks) || 0;
+    }
+  }
+  return sumQuestionMarks(questions);
+}
+
 /** Authoritative grade from per-question marks when available. */
 export function resolveTotalMarksFromResult(result) {
   if (!result) return null;
@@ -440,13 +516,19 @@ export function createManualQuestion({
       scanningClarity: true,
       handwritingClarity: true,
       markSchemeUnderstanding: true,
-      studentAnswerUnderstanding: false,
+      studentAnswerUnderstanding: true,
       answerIsBlank: awarded === 0,
     },
-    studentAnswer: "Added manually by teacher — adjust marks and feedback as needed.",
+    studentAnswer: awarded === 0 ? "Question left blank — no answer provided." : "",
     correctAnswer: "",
-    reason: `Awarded ${awarded}/${max} marks. Q${qNum} was added manually after automated marking.`,
+    reason:
+      awarded >= max
+        ? `Full marks awarded for Q${qNum}.`
+        : awarded === 0
+          ? `No marks awarded for Q${qNum}.`
+          : `Awarded ${awarded}/${max} marks for Q${qNum}.`,
     _manual: true,
+    _staffNote: "Added manually by teacher — adjust marks and feedback as needed.",
   };
 }
 
@@ -509,9 +591,8 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
       next.marksAwarded = Math.min(max, Math.max(0, Number(next.marksAwarded) || 0));
     }
 
-    // A correction that fills in a backfilled stub turns it into real marked
-    // work, so it stops being a hidden placeholder and starts rendering — the
-    // same rule a manual edit follows. See applyQuestionRowEdit.
+    // A correction that fills in a backfilled stub turns it into reviewed work
+    // in the editor (_stubEdited) but it stays in the report breakdown only.
     if (isBackfilledStub(q) && questionRowHasEdits(next, q)) {
       next._stubEdited = true;
     }
@@ -723,16 +804,18 @@ export function applyTeacherEditsToResult(
             ...row,
           })),
         }
-      : finalResult.criteriaGrade;
+      : { ...finalResult.criteriaGrade };
+    const breakdownSum = Array.isArray(criteria.breakdown) && criteria.breakdown.length
+      ? sumQuestionMarks(criteria.breakdown)
+      : totalMarks;
     finalResult.criteriaGrade = {
       ...criteria,
       maxTotalMarks: max,
-      totalMarks:
-        editingCriteriaGrade != null
-          ? Number(editingCriteriaGrade.totalMarks) || 0
-          : criteria.totalMarks,
+      totalMarks: breakdownSum,
     };
-    finalResult.totalMarks = finalResult.criteriaGrade.totalMarks;
+    finalResult.totalMarks = breakdownSum;
+  } else {
+    finalResult.totalMarks = totalMarks;
   }
 
   if (editingAnnotations != null) {

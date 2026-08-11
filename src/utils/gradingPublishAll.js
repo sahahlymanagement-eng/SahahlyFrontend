@@ -113,11 +113,12 @@ export async function runGradingPublishAll({
       const pdfBytes = await annotatePdf({
         studentFile,
         questions,
-        totalMarks,
         maxTotalMarks,
         summary,
         outOfScopeNotes: getOutOfScopeNotes(result),
         teacherAnnotations: getTeacherAnnotations(result),
+        criteriaGrade: result.criteriaGrade,
+        markingMode: result.markingMode || "normal",
       });
 
       const fd = new FormData();
