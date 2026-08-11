@@ -116,3 +116,42 @@ export function enrichMarkingQuestions(questions) {
   if (!Array.isArray(questions)) return questions;
   return questions.map(enrichBlankQuestionFeedback);
 }
+
+/**
+ * Blank / unanswered rows that still cost marks (0 awarded) — listed on the
+ * grading report only, never annotated onto the student script pages.
+ * Backfilled "not detected" stubs are handled separately.
+ */
+export function isReportOnlyBlankQuestion(q, { isBackfilledStub } = {}) {
+  if (!q || !isBlankQuestion(q)) return false;
+  if (Number(q.marksAwarded) > 0) return false;
+  if (typeof isBackfilledStub === "function" && isBackfilledStub(q)) return false;
+  return true;
+}
+
+/** Top-level unanswered summary for the marking JSON + PDF report box. */
+export function summarizeUnansweredQuestions(questions, { isBackfilledStub } = {}) {
+  const blanks = (questions || []).filter((q) =>
+    isReportOnlyBlankQuestion(q, { isBackfilledStub })
+  );
+  const questionNumbers = blanks
+    .map((q) => String(q.questionNumber ?? "").trim())
+    .filter(Boolean);
+  const marksDeducted = blanks.reduce(
+    (sum, q) => sum + (Number(q.maxMarks) || 0),
+    0
+  );
+  const count = questionNumbers.length;
+  const listed = questionNumbers.join(", ");
+  return {
+    questionNumbers,
+    count,
+    marksDeducted,
+    message:
+      count === 0
+        ? null
+        : count === 1
+          ? `The student has left question ${listed} unanswered — ${marksDeducted} mark(s) deducted.`
+          : `The student has left questions ${listed} unanswered — ${marksDeducted} mark(s) deducted.`,
+  };
+}

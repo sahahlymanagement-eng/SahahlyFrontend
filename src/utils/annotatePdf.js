@@ -1,6 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
-import { enrichMarkingQuestions, isBlankQuestion } from "./blankQuestionFeedback";
+import { enrichMarkingQuestions, isBlankQuestion, summarizeUnansweredQuestions, isReportOnlyBlankQuestion } from "./blankQuestionFeedback";
 import {
   compareQuestionNumbers,
   normalizeQuestionPlacement,
@@ -701,6 +701,9 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
 function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary, studentFacing = true }) {
   const breakdownQuestions = questions || [];
+  const unanswered = summarizeUnansweredQuestions(breakdownQuestions, {
+    isBackfilledStub,
+  });
 
   const summaryPage = pdfDoc.insertPage(0, [595, 842]);
   const { width: sw, height: sh } = summaryPage.getSize();
@@ -837,7 +840,70 @@ const isUngraded =
 
   yPos -= 14;
 
-  summaryPage.drawText("TIME TO FOCUS YOUR REVISION", {
+  if (unanswered.count > 0 && unanswered.message) {
+    const listed = unanswered.questionNumbers.map((n) => `Q${n}`).join(", ");
+    const body = studentFacing
+      ? `You left the following question${unanswered.count === 1 ? "" : "s"} unanswered. ${unanswered.marksDeducted} mark${unanswered.marksDeducted === 1 ? "" : "s"} deducted: ${listed}.`
+      : unanswered.message;
+    const title = studentFacing
+      ? "QUESTIONS LEFT UNANSWERED"
+      : "THE STUDENT HAS LEFT QUESTIONS UNANSWERED";
+    const bodyLines = wrap(body, reg, 7.4, CW - 28);
+    const boxH = Math.max(44, 28 + bodyLines.length * 10);
+
+    if (yPos - boxH < BD_FOOTER_Y + 20) {
+      const next = openNextReportPage(
+        pdfDoc,
+        reportPageCount,
+        reportPage,
+        sw,
+        sh,
+        M,
+        bold,
+        reg,
+        "GRADING REPORT (continued)"
+      );
+      reportPage = next.page;
+      reportPageCount = next.reportPageCount;
+      yPos = next.yPos;
+    }
+
+    reportPage.drawRectangle({
+      x: M,
+      y: yPos - boxH,
+      width: CW,
+      height: boxH,
+      color: rgb(0.99, 0.95, 0.87),
+      borderColor: AMBER,
+      borderWidth: 1,
+    });
+    reportPage.drawRectangle({
+      x: M,
+      y: yPos - boxH,
+      width: 5,
+      height: boxH,
+      color: AMBER,
+    });
+    reportPage.drawText(title, {
+      x: M + 14,
+      y: yPos - 16,
+      size: 9,
+      font: bold,
+      color: AMBER,
+    });
+    bodyLines.forEach((line, i) => {
+      reportPage.drawText(san(line), {
+        x: M + 14,
+        y: yPos - 30 - i * 10,
+        size: 7.4,
+        font: reg,
+        color: rgb(0.25, 0.25, 0.3),
+      });
+    });
+    yPos -= boxH + 12;
+  }
+
+  reportPage.drawText("TIME TO FOCUS YOUR REVISION", {
     x: M,
     y: yPos,
     size: 8,
@@ -853,7 +919,7 @@ const isUngraded =
   wrap(focusIntro, reg, 7.4, CW)
     .slice(0, 2)
     .forEach((line) => {
-    summaryPage.drawText(san(line), {
+    reportPage.drawText(san(line), {
       x: M,
       y: yPos,
       size: 7.4,
@@ -1267,13 +1333,15 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
-  // Stubs never get placed on the script. Their pageNumber/yPercent are
-  // synthesised by the backend from the mark scheme's assumed layout, so the
-  // bubble lands wherever that page happens to be in this student's scan —
-  // beside an unrelated answer — and their page marks deflate every "Page
-  // marks: x/y" footer they touch. Extra rows on a page also trip the
-  // placement-reliability heuristic, which then re-spreads the real badges.
-  const placeableQuestions = renderQuestions.filter((q) => !isBackfilledStub(q));
+  // Stubs and unanswered blanks never get placed on the script. Blank rows
+  // belong in the report "questions left unanswered" box (and still deduct
+  // marks via marksAwarded 0). Dropping them here stops them clustering as
+  // annotation badges on page 1 of the student submission.
+  const placeableQuestions = renderQuestions.filter(
+    (q) =>
+      !isBackfilledStub(q) &&
+      !isReportOnlyBlankQuestion(q, { isBackfilledStub })
+  );
   const enrichedBase = enrichMarkingQuestions(placeableQuestions);
   const enrichedQuestions = lockPlacement
     ? enrichedBase.map((q) => ({

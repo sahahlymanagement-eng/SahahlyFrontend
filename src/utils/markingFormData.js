@@ -1,6 +1,10 @@
 import { estimateMarkingCost } from "./markingCost";
 import { questionRowHasEdits, criteriaGradeHasEdits } from "./markingQuestionEdits";
 import { isBackfilledStub } from "./backfilledStub";
+import {
+  isReportOnlyBlankQuestion,
+  summarizeUnansweredQuestions,
+} from "./blankQuestionFeedback";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
 
@@ -434,6 +438,7 @@ export function rebuildMarkingSummary({
 
   const lost = (questions || []).filter((q) => {
     if (isBackfilledStub(q)) return false;
+    if (isReportOnlyBlankQuestion(q, { isBackfilledStub })) return false;
     const aw = Number(q.marksAwarded) || 0;
     const mx = Number(q.maxMarks) || 0;
     return mx > 0 && aw < mx;
@@ -462,6 +467,18 @@ export function rebuildMarkingSummary({
   if (undetectedCount > 0) {
     bullets.push(
       `• ${undetectedCount} question(s) could not be detected automatically — your teacher will review them`
+    );
+  }
+
+  const unanswered = summarizeUnansweredQuestions(questions, { isBackfilledStub });
+  if (unanswered.count > 0) {
+    const listed = unanswered.questionNumbers.slice(0, 6).join(", ");
+    const more =
+      unanswered.questionNumbers.length > 6
+        ? ` (+${unanswered.questionNumbers.length - 6} more)`
+        : "";
+    bullets.push(
+      `• Left unanswered: ${listed}${more} — ${unanswered.marksDeducted} mark(s) deducted`
     );
   }
 
@@ -731,18 +748,15 @@ export function applyPlacementChange(questions, { placementIndex, pageNumber, yP
 /**
  * Preview overlay list — keeps original indices for remove handlers.
  *
- * Backfilled stubs are excluded for the same reason annotatePdf skips them:
- * their pageNumber/yPercent are synthesised from the mark scheme's assumed
- * layout, not observed on this script, so a handle for one sits beside an
- * unrelated answer — a label with no question in front of it. They also get no
- * badge in the annotated PDF being previewed, so a draggable handle for one
- * promises a placement that never renders.
+ * Backfilled stubs and unanswered blanks are excluded: they belong on the
+ * grading report only, not as drag handles on the student script pages.
  */
 export function buildPlacementQuestions(questions, pendingRemovedIndices) {
   return (questions || [])
     .map((q, i) => ({ ...q, _placementIndex: i }))
     .filter((q) => !pendingRemovedIndices?.has(q._placementIndex))
-    .filter((q) => !isBackfilledStub(q));
+    .filter((q) => !isBackfilledStub(q))
+    .filter((q) => !isReportOnlyBlankQuestion(q, { isBackfilledStub }));
 }
 
 export function stripQuestionPlacementMeta(question) {
@@ -831,6 +845,10 @@ export function applyTeacherEditsToResult(
       previousSummary: baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
     });
   }
+
+  finalResult.unansweredQuestions = summarizeUnansweredQuestions(editingQuestions, {
+    isBackfilledStub,
+  });
 
   return finalResult;
 }
