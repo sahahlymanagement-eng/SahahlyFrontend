@@ -6,7 +6,7 @@ import {
   useGradingNotifications,
   useGradingDelegations,
 } from "../../context/GradingNotificationContext";
-import { canGradeProvider } from "../../utils/gradingAccess";
+import { canGradeProvider, isGradingOnlyAccount } from "../../utils/gradingAccess";
 
 // External grading company tabs — each visible only to the accounts allowed to
 // grade for that particular partner, and badged with its own unread count. Keyed
@@ -36,9 +36,15 @@ export default function AssistantSidebar() {
   const { counts } = useGradingNotifications();
   const { delegations } = useGradingDelegations();
 
+  // A grading-only account has no business in the coursework side of the portal,
+  // so its sidebar is nothing but the partner tab(s) it can grade for. Every
+  // other assistant keeps the full list.
+  const gradingOnly = isGradingOnlyAccount();
+
   const navItems = NAV_ITEMS.filter((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
-    return !slug || canGradeProvider(slug, delegations);
+    if (!slug) return !gradingOnly;
+    return canGradeProvider(slug, delegations);
   }).map((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
     const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;

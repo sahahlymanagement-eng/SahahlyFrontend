@@ -6,13 +6,25 @@
  *
  * 1. THE STATIC ALLOW-LIST (GRADING_ACCOUNTS below) — the original, per-account
  *    grant. Access is per-account, not per-role: the tabs are shared by one
- *    manager and one assistant, so no single role name covers them. The manager
- *    is matched by email (stable, human-readable); the assistant by Person._id
+ *    manager and two assistants, so no single role name covers them. The manager
+ *    is matched by email (stable, human-readable); the assistants by Person._id
  *    because that is what we were given and it survives an email change.
- *    These two accounts do NOT have the same rights. Every marking process —
- *    single, bulk, priority, batch, prompt generation, mark scheme verification
- *    — belongs to manager01. The assistant account only reviews what manager01
- *    produced: open the results modal, edit it, publish it.
+ *    These accounts do NOT have the same rights — there are three tiers, and an
+ *    account's tier is the pair (canMark, canEdit):
+ *
+ *      canMark + canEdit  — manager01. Every marking process (single, bulk,
+ *          priority, batch, prompt generation, mark scheme verification) plus
+ *          everything below it.
+ *      canEdit only       — the original assistant. Reviews what manager01
+ *          produced: opens the results modal, edits marks/feedback/annotations,
+ *          confirms, publishes.
+ *      neither            — a REVIEW-ONLY reviewer. The results modal shows the
+ *          corrected PDF and nothing else: no question editor, no annotating, no
+ *          confirm-edits, no unconfirmed-edits autosave. What is left is reading
+ *          the PDF and sending it on — Upload to <partner> for one submission,
+ *          Publish All for an assignment. Because this tier exists to keep an
+ *          account away from the marking itself, it is never overridden by a
+ *          director delegation: see canRunGradingMarking below.
  *
  * 2. DIRECTOR DELEGATIONS — the director can hand ONE partner assignment to a
  *    manager or an assistant with a deadline (backend model
@@ -29,7 +41,15 @@
  * already routes through the two predicates underneath it.
  */
 
+// Person._id of the review-only Mariam Gabalawy reviewer. Kept as a named
+// constant because it is filled in after the account is created — the backend's
+// scripts/createGradingReviewerAccount.js prints the id to paste here. While it
+// still holds the placeholder it matches no signed-in user, so the tier is inert.
+const MARIAMGABALAWY_REVIEWER_PERSON_ID = "6a7b0d6841b2c3cf6b6e9360";
+
 // `providers: null` means every provider.
+// `canEdit` defaults to true when omitted, so leaving it off keeps an account's
+// existing rights (see canEditGradingResults).
 const GRADING_ACCOUNTS = [
   {
     email: "manager01@manager",
@@ -41,6 +61,23 @@ const GRADING_ACCOUNTS = [
     personId: "6a6abc72df0dd2a61a15214f",
     providers: ["mariamgabalawy", "drpeter"],
     canMark: false,
+  },
+  {
+    // Review-only reviewer for every Mariam Gabalawy assignment: reads the
+    // corrected PDFs and publishes them back to the partner, and does nothing
+    // else. `gradingOnly` also strips the rest of the assistant portal down to
+    // this one tab (AssistantSidebar / AssistantLayout / authRoutes).
+    //
+    // Deliberately holds NO GradingAssignmentDelegation rows: an account with no
+    // delegations for a partner is unscoped by the backend and therefore sees
+    // every assignment in that partner's tab. Delegating even one assignment to
+    // it would narrow it to that assignment — see the backend's
+    // services/gradingDelegationScope.js.
+    personId: MARIAMGABALAWY_REVIEWER_PERSON_ID,
+    providers: ["mariamgabalawy"],
+    canMark: false,
+    canEdit: false,
+    gradingOnly: true,
   },
 ];
 
@@ -97,11 +134,20 @@ export function getDelegatedProviders() {
   return delegatedProviders;
 }
 
-function currentGradingAccount() {
+/**
+ * The allow-list entry for the signed-in account, or null.
+ *
+ * @param {object} [forUser] judge this user object instead of the stored session.
+ *   Used by the post-login redirect, which knows the user before it is read back
+ *   out of localStorage.
+ */
+function currentGradingAccount(forUser = null) {
   try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const user = forUser || JSON.parse(localStorage.getItem("user") || "{}");
     const email = String(user?.email || "").trim().toLowerCase();
-    const id = currentPersonId();
+    const id = forUser
+      ? String(forUser?.id ?? forUser?._id ?? "").trim().toLowerCase()
+      : currentPersonId();
     return (
       GRADING_ACCOUNTS.find(
         (account) =>
@@ -139,6 +185,54 @@ export function canGradeProvider(slug, grant = delegatedProviders) {
  * @param {object} [grant] see canGradeProvider.
  */
 export function canRunGradingMarking(slug, grant = delegatedProviders) {
+  // A review-only account is review-only whatever it is handed: the point of the
+  // tier is that this login never runs marking, so a delegation cannot promote it.
+  if (isGradingReviewOnly()) return false;
   if (currentGradingAccount()?.canMark === true) return true;
   return !!slug && grant?.[slug] === "manager";
+}
+
+/**
+ * Is this account the review-only tier — corrected PDF and publish, nothing else?
+ *
+ * @param {object} [forUser] see currentGradingAccount.
+ */
+export function isGradingReviewOnly(forUser = null) {
+  return currentGradingAccount(forUser)?.canEdit === false;
+}
+
+/**
+ * May this account change a marking result — marks, feedback, the summary, PDF
+ * annotations, the paper total, the assignment's page/grade settings?
+ *
+ * True for everybody except the review-only tier, so no existing account and no
+ * director delegation is affected by its introduction. Unlike
+ * canRunGradingMarking this takes no slug: the restriction is a property of the
+ * account, not of one partner.
+ */
+export function canEditGradingResults() {
+  return !isGradingReviewOnly();
+}
+
+/**
+ * Is this account confined to its grading tab(s), with the rest of its portal
+ * hidden? Set per-account by `gradingOnly` on the allow-list entry.
+ *
+ * @param {object} [forUser] see currentGradingAccount.
+ */
+export function isGradingOnlyAccount(forUser = null) {
+  return currentGradingAccount(forUser)?.gradingOnly === true;
+}
+
+/**
+ * The only partner slugs a grading-only account may reach, in nav order — its
+ * landing tab first. Empty for every other account, which is what callers use to
+ * tell "confine this login" from "leave it alone".
+ *
+ * @param {object} [forUser] see currentGradingAccount.
+ */
+export function gradingOnlyProviders(forUser = null) {
+  const account = currentGradingAccount(forUser);
+  if (account?.gradingOnly !== true) return [];
+  return account.providers || [];
 }

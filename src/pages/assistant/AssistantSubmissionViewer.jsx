@@ -88,7 +88,10 @@ import {
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
-import { cloneCriteriaGrade } from "../../utils/markingQuestionEdits";
+import {
+  cloneCriteriaGrade,
+  applyQuestionRowEdit,
+} from "../../utils/markingQuestionEdits";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AddMarkingQuestionBar, {
@@ -4230,7 +4233,7 @@ return (
                           getScoreColor={getScoreColor}
                           onChange={(index, updated) =>
                             setEditingQuestions((prev) =>
-                              prev.map((x, i) => (i === index ? updated : x))
+                              applyQuestionRowEdit(prev, index, updated)
                             )
                           }
                           onRemove={(questionIndex) => handleQuestionRemove(questionIndex)}

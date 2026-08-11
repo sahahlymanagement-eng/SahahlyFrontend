@@ -508,6 +508,13 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
     if (max > 0) {
       next.marksAwarded = Math.min(max, Math.max(0, Number(next.marksAwarded) || 0));
     }
+
+    // A correction that fills in a backfilled stub turns it into real marked
+    // work, so it stops being a hidden placeholder and starts rendering — the
+    // same rule a manual edit follows. See applyQuestionRowEdit.
+    if (isBackfilledStub(q) && questionRowHasEdits(next, q)) {
+      next._stubEdited = true;
+    }
     return next;
   });
 
@@ -640,11 +647,21 @@ export function applyPlacementChange(questions, { placementIndex, pageNumber, yP
   );
 }
 
-/** Preview overlay list — keeps original indices for remove handlers. */
+/**
+ * Preview overlay list — keeps original indices for remove handlers.
+ *
+ * Backfilled stubs are excluded for the same reason annotatePdf skips them:
+ * their pageNumber/yPercent are synthesised from the mark scheme's assumed
+ * layout, not observed on this script, so a handle for one sits beside an
+ * unrelated answer — a label with no question in front of it. They also get no
+ * badge in the annotated PDF being previewed, so a draggable handle for one
+ * promises a placement that never renders.
+ */
 export function buildPlacementQuestions(questions, pendingRemovedIndices) {
   return (questions || [])
     .map((q, i) => ({ ...q, _placementIndex: i }))
-    .filter((q) => !pendingRemovedIndices?.has(q._placementIndex));
+    .filter((q) => !pendingRemovedIndices?.has(q._placementIndex))
+    .filter((q) => !isBackfilledStub(q));
 }
 
 export function stripQuestionPlacementMeta(question) {

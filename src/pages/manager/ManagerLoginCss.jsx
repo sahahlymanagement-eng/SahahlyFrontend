@@ -38,6 +38,10 @@ import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
+import {
+  applyQuestionRowEdit,
+  patchQuestionRowEdit,
+} from "../../utils/markingQuestionEdits";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AddMarkingQuestionBar, {
@@ -156,8 +160,12 @@ export default function ManagerLoginCss() {
   // every time the selection changes. Seeded with the persisted value, then
   // kept in sync from an effect — assigning during render is not allowed.
   const selectedAssignmentRef = useRef(selectedAssignment);
+  // `grading: true` is required: these ids are LoginCSS's own numbers, and the
+  // classroom /marking/assignment-prompt routes only accept Mongo ObjectIds —
+  // they answer "Assignment not found" for every LoginCSS assignment.
   const assignmentPrompt = useAssignmentMarkingPrompt(
-    selectedAssignment?.id != null ? String(selectedAssignment.id) : null
+    selectedAssignment?.id != null ? String(selectedAssignment.id) : null,
+    { grading: true, provider: PROVIDER }
   );
   const [listTotal, setListTotal] = useState(0);
   const [promptGenOpen, setPromptGenOpen] = useState(false);
@@ -898,9 +906,11 @@ export default function ManagerLoginCss() {
     setMsVerifying(true);
     setMsVerifyResult(null);
     try {
+      // `grading: true` is required — see the note on assignmentPrompt above.
       const result = await runMarkSchemeVerification(
         String(selectedAssignment.id),
-        extraInstructions
+        extraInstructions,
+        { grading: true, provider: PROVIDER }
       );
       setMsVerifyResult(result);
       if (result.status === "pass") toast.success("Mark scheme verification passed");
@@ -3497,17 +3507,12 @@ export default function ManagerLoginCss() {
                                 value={awarded}
                                 onChange={(e) =>
                                   setEditingQuestions((prev) =>
-                                    prev.map((x, i) =>
-                                      i === idx
-                                        ? {
-                                            ...x,
-                                            marksAwarded: Math.min(
-                                              qMax,
-                                              Math.max(0, Number(e.target.value) || 0)
-                                            ),
-                                          }
-                                        : x
-                                    )
+                                    patchQuestionRowEdit(prev, idx, {
+                                      marksAwarded: Math.min(
+                                        qMax,
+                                        Math.max(0, Number(e.target.value) || 0)
+                                      ),
+                                    })
                                   )
                                 }
                                 style={{
@@ -3602,7 +3607,7 @@ export default function ManagerLoginCss() {
                             question={q}
                             onChange={(updated) =>
                               setEditingQuestions((prev) =>
-                                prev.map((x, i) => (i === idx ? updated : x))
+                                applyQuestionRowEdit(prev, idx, updated)
                               )
                             }
                           />
@@ -3629,7 +3634,7 @@ export default function ManagerLoginCss() {
                             value={q.reason}
                             onChange={(e) =>
                               setEditingQuestions((prev) =>
-                                prev.map((x, i) => (i === idx ? { ...x, reason: e.target.value } : x))
+                                patchQuestionRowEdit(prev, idx, { reason: e.target.value })
                               )
                             }
                             rows={3}

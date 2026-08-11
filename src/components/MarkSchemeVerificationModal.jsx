@@ -222,9 +222,37 @@ export default function MarkSchemeVerificationModal({
   );
 }
 
-export async function runMarkSchemeVerification(assignmentId, masterPrompt = "") {
-  const res = await api.post(`/marking/markscheme-verification/${assignmentId}`, {
-    masterPrompt: String(masterPrompt || "").trim(),
-  });
+// Two id spaces, same as the assignment prompt — see useAssignmentMarkingPrompt.js.
+//
+// Classroom assignments have an Assignment document, so /marking/markscheme-verification
+// is keyed by a Mongo ObjectId. Grading-partner assignments (LoginCSS, Mariam
+// Gabalawy, Dr Peter) have none — they arrive inline on each submission, keyed by
+// the partner's own numeric id — so that route answers "Assignment not found" for
+// every one of them. Their verification lives behind the provider-scoped routes
+// below, which take the mark scheme and samples from the partner instead of Drive.
+//
+// `provider` null/undefined means LoginCSS, which keeps its own /external-grading
+// routes; any slug goes through the shared /grading/:provider registry.
+function markSchemeVerificationPath({ grading, provider, assignmentId }) {
+  if (!grading) return `/marking/markscheme-verification/${assignmentId}`;
+  return provider
+    ? `/grading/${provider}/assignments/${assignmentId}/markscheme-verification`
+    : `/external-grading/assignments/${assignmentId}/markscheme-verification`;
+}
+
+/**
+ * @param {string|number} assignmentId
+ * @param {string} [masterPrompt]
+ * @param {{grading?: boolean, provider?: string|null}} [options]
+ */
+export async function runMarkSchemeVerification(assignmentId, masterPrompt = "", options) {
+  const res = await api.post(
+    markSchemeVerificationPath({
+      grading: Boolean(options?.grading),
+      provider: options?.provider ?? null,
+      assignmentId,
+    }),
+    { masterPrompt: String(masterPrompt || "").trim() }
+  );
   return res.data;
 }

@@ -1,4 +1,5 @@
 import { MARKING_CHECKLIST_CONFIG } from "../constants/markingChecklist";
+import { isBackfilledStub } from "./backfilledStub";
 
 function normKeywords(arr) {
   return JSON.stringify((arr || []).map((s) => String(s).trim()).filter(Boolean));
@@ -14,19 +15,31 @@ function normChecklist(c) {
   return JSON.stringify(out);
 }
 
+/**
+ * NaN-safe compare: `Number(undefined) !== Number(undefined)` is true, so a
+ * plain `!==` reports an edit between two rows that both simply lack the field
+ * (rows carry no pageNumber/yPercent until something places them).
+ */
+function numChanged(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  if (Number.isNaN(na) && Number.isNaN(nb)) return false;
+  return na !== nb;
+}
+
 export function questionRowHasEdits(current, confirmed) {
   if (!current || !confirmed) return true;
   return (
     String(current.questionNumber ?? "") !== String(confirmed.questionNumber ?? "") ||
-    Number(current.marksAwarded) !== Number(confirmed.marksAwarded) ||
-    Number(current.maxMarks) !== Number(confirmed.maxMarks) ||
+    numChanged(current.marksAwarded, confirmed.marksAwarded) ||
+    numChanged(current.maxMarks, confirmed.maxMarks) ||
     String(current.reason ?? "") !== String(confirmed.reason ?? "") ||
     String(current.studentAnswer ?? "") !== String(confirmed.studentAnswer ?? "") ||
     String(current.correctAnswer ?? "") !== String(confirmed.correctAnswer ?? "") ||
     String(current.studyTopic ?? "") !== String(confirmed.studyTopic ?? "") ||
     String(current.mistakeAdvice ?? "") !== String(confirmed.mistakeAdvice ?? "") ||
-    Number(current.pageNumber) !== Number(confirmed.pageNumber) ||
-    Number(current.yPercent) !== Number(confirmed.yPercent) ||
+    numChanged(current.pageNumber, confirmed.pageNumber) ||
+    numChanged(current.yPercent, confirmed.yPercent) ||
     normKeywords(current.markedKeywords) !== normKeywords(confirmed.markedKeywords) ||
     normKeywords(current.missingKeywords) !== normKeywords(confirmed.missingKeywords) ||
     normChecklist(current.checklist) !== normChecklist(confirmed.checklist)
@@ -62,4 +75,29 @@ export function cloneCriteriaGrade(grade) {
 
 export function updateQuestionAt(questions, index, patch) {
   return (questions || []).map((q, i) => (i === index ? { ...q, ...patch } : q));
+}
+
+/**
+ * Replace one edited row in the editing list.
+ *
+ * A backfilled stub a marker has actually changed stops being "undetected" and
+ * becomes marked work: it gets a placement handle in the results modal, a badge
+ * and examiner note on the annotated PDF, and it counts in the summary and
+ * revision topics. The stamp is only applied when a field really changed, so
+ * merely opening or re-rendering a card does not promote a stub.
+ */
+export function applyQuestionRowEdit(questions, index, updated) {
+  return (questions || []).map((q, i) => {
+    if (i !== index) return q;
+    if (!isBackfilledStub(q)) return updated;
+    if (!questionRowHasEdits(updated, q)) return updated;
+    return { ...updated, _stubEdited: true };
+  });
+}
+
+/** Same, for call sites that build a field patch rather than a whole row. */
+export function patchQuestionRowEdit(questions, index, patch) {
+  const current = (questions || [])[index];
+  if (!current) return questions || [];
+  return applyQuestionRowEdit(questions, index, { ...current, ...patch });
 }

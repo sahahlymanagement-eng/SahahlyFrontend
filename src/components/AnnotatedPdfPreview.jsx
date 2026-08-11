@@ -350,7 +350,11 @@ export default function AnnotatedPdfPreview({
       if (!removeEnabled) return;
       onQuestionRemove(questionIndex);
       setLocalPlacement((prev) => {
-        const q = placementQuestions?.[questionIndex];
+        // questionIndex is the row's index in the full editing list; this array
+        // is already filtered (pending removals, stubs), so match on the id.
+        const q = placementQuestions?.find(
+          (row) => row?._placementIndex === questionIndex
+        );
         if (!q) return prev;
         const key = placementKey(q);
         if (!(key in prev)) return prev;

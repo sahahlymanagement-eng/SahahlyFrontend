@@ -38,6 +38,10 @@ import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import QuestionKeywordFields from "../../components/QuestionKeywordFields";
+import {
+  applyQuestionRowEdit,
+  patchQuestionRowEdit,
+} from "../../utils/markingQuestionEdits";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import AddMarkingQuestionBar, {
@@ -67,7 +71,11 @@ import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
 import PendingEditsBanner, {
   PendingEditsSavingHint,
 } from "../../components/PendingEditsBanner";
-import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
+import {
+  canGradeProvider,
+  canRunGradingMarking,
+  canEditGradingResults,
+} from "../../utils/gradingAccess";
 import { useGradingDelegations } from "../../context/GradingNotificationContext";
 import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
 import GradingTeamAlert from "../../components/GradingTeamAlert";
@@ -159,6 +167,13 @@ export default function GradingProviderPage({ slug, label }) {
   // control that would start or undo a marking run hangs off this flag.
   const canMark = canRunGradingMarking(slug, delegations);
 
+  // A tier below that: the review-only reviewer, who may not change a result at
+  // all. For them the results modal is the corrected PDF and nothing else — no
+  // question editor, no annotating, no confirm-edits, and no autosave of
+  // unconfirmed edits, because there are none to make. Publishing is untouched:
+  // Upload to <partner> and Publish All both send the result exactly as marked.
+  const canEdit = canEditGradingResults();
+
   const [user, setUser] = useState(null);
 
   // ── submissions list ──
@@ -181,8 +196,12 @@ export default function GradingProviderPage({ slug, label }) {
   // every time the selection changes. Seeded with the persisted value, then
   // kept in sync from an effect — assigning during render is not allowed.
   const selectedAssignmentRef = useRef(selectedAssignment);
+  // `grading: true` is required: these ids are the partner's own numbers, and
+  // the classroom /marking/assignment-prompt routes only accept Mongo ObjectIds
+  // — they answer "Assignment not found" for every partner assignment.
   const assignmentPrompt = useAssignmentMarkingPrompt(
-    selectedAssignment?.id != null ? String(selectedAssignment.id) : null
+    selectedAssignment?.id != null ? String(selectedAssignment.id) : null,
+    { grading: true, provider: PROVIDER }
   );
   const [listTotal, setListTotal] = useState(0);
   const [promptGenOpen, setPromptGenOpen] = useState(false);
@@ -427,7 +446,9 @@ export default function GradingProviderPage({ slug, label }) {
 
   useEffect(() => {
     const sid = resultModal?.submissionId;
-    if (!sid) {
+    // No mark scheme column for a review-only reviewer, so don't pull the file
+    // from the partner to render into it.
+    if (!sid || !canEdit) {
       setMarkSchemePreviewUrl(null);
       setMarkSchemeError(null);
       return;
@@ -461,7 +482,7 @@ export default function GradingProviderPage({ slug, label }) {
       })
       .finally(() => { if (!cancelled) setMarkSchemeLoading(false); });
     return () => { cancelled = true; };
-  }, [resultModal?.submissionId, fetchPdfs]);
+  }, [resultModal?.submissionId, fetchPdfs, canEdit]);
 
   // Revoke the cached mark scheme object URL on unmount.
   useEffect(() => () => {
@@ -532,6 +553,10 @@ export default function GradingProviderPage({ slug, label }) {
   }, []);
 
   const pendingEdits = usePendingEditsAutosave({
+    // Nothing to autosave or restore for a reviewer who cannot edit — and it must
+    // not restore somebody else's unconfirmed edits into the PDF they are about
+    // to publish.
+    enabled: canEdit,
     submissionId: resultModalSubmissionId,
     ready: editorSubmissionId === resultModalSubmissionId,
     dirty: hasPendingEdits,
@@ -571,8 +596,13 @@ export default function GradingProviderPage({ slug, label }) {
 
   // Auto-rebuild the editable summary from current marks/feedback until the
   // teacher manually edits it (summaryTouched).
+  // Skipped for a review-only reviewer: with no editable marks there is nothing
+  // for the summary to follow, and rebuilding it would make an untouched paper
+  // differ from its confirmed state — i.e. read as pending edits, which is what
+  // blocks publishing. Leaving it at the stored summary means the PDF they
+  // publish is byte-for-byte the one Publish All would send.
   useEffect(() => {
-    if (!resultModal || summaryTouched) return;
+    if (!resultModal || summaryTouched || !canEdit) return;
     setEditingSummary(
       rebuildMarkingSummary({
         questions: questionsForDisplay,
@@ -582,7 +612,7 @@ export default function GradingProviderPage({ slug, label }) {
           getMarkingResultSummary(resultModal.result, {}),
       })
     );
-  }, [resultModal, questionsForDisplay, effectiveMaxTotal, summaryTouched]);
+  }, [resultModal, questionsForDisplay, effectiveMaxTotal, summaryTouched, canEdit]);
 
   // ── Defensive normalisation of the partner list envelope ──
   const normalizeItem = (raw) => {
@@ -924,9 +954,11 @@ export default function GradingProviderPage({ slug, label }) {
     setMsVerifying(true);
     setMsVerifyResult(null);
     try {
+      // `grading: true` is required — see the note on assignmentPrompt above.
       const result = await runMarkSchemeVerification(
         String(selectedAssignment.id),
-        extraInstructions
+        extraInstructions,
+        { grading: true, provider: PROVIDER }
       );
       setMsVerifyResult(result);
       if (result.status === "pass") toast.success("Mark scheme verification passed");
@@ -1574,6 +1606,11 @@ export default function GradingProviderPage({ slug, label }) {
   useEffect(() => {
     const sid = resultModalSubmissionId;
     if (!sid) return;
+    // A review-only reviewer shows the result verbatim and never rebuilds the
+    // summary, so there is no displayed-vs-stored gap for this to close — and it
+    // would be a write to somebody else's draft on nothing more than opening a
+    // paper to look at it.
+    if (!canEdit) return;
     if (editorSubmissionId !== sid) return;
     if (!confirmedSnapshot || confirmedSnapshot.submissionId !== sid) return;
     // Never auto-confirm on top of edits somebody made and did not confirm —
@@ -1596,6 +1633,7 @@ export default function GradingProviderPage({ slug, label }) {
     confirmedSnapshot,
     resultModal?.result?.markingRunId,
     pendingEdits.status,
+    canEdit,
   ]);
 
   const downloadGradedPdf = async () => {
@@ -2275,7 +2313,10 @@ export default function GradingProviderPage({ slug, label }) {
                   </div>
                 )}
 
-                {selectedAssignment.id != null && (
+                {/* Expected pages and the paper total are marking setup — and
+                    maxGrade changes every grade published from here — so they are
+                    not a reviewer's to change. */}
+                {selectedAssignment.id != null && canEdit && (
                   <GradingAssignmentSettingsBar
                     state={assignmentSettings}
                     partnerGrade={selectedAssignment.grade ?? null}
@@ -3096,6 +3137,7 @@ export default function GradingProviderPage({ slug, label }) {
                     <input
                       type="number"
                       min={1}
+                      readOnly={!canEdit}
                       value={editingMaxTotal !== null ? editingMaxTotal : effectiveMaxTotal}
                       onChange={(e) => setEditingMaxTotal(Math.max(1, Number(e.target.value)))}
                       style={{
@@ -3109,6 +3151,7 @@ export default function GradingProviderPage({ slug, label }) {
                         fontSize: 15,
                         textAlign: "center",
                         outline: "none",
+                        ...(canEdit ? null : { cursor: "not-allowed" }),
                       }}
                     />
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>({pct}%)</span>
@@ -3162,6 +3205,11 @@ export default function GradingProviderPage({ slug, label }) {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {/* Everything that changes the result — annotate, undo/redo,
+                    confirm, and the autosave hint that reports on them — belongs
+                    to an editor. A reviewer keeps Download PDF and Upload. */}
+                {canEdit && (
+                <>
                 <button
                   type="button"
                   className="msv-btn-ai"
@@ -3209,6 +3257,8 @@ export default function GradingProviderPage({ slug, label }) {
                 {pendingEdits.status !== "restored" && (
                   <PendingEditsSavingHint saving={pendingEdits.saving} />
                 )}
+                </>
+                )}
                 <button
                   className="ma-send-btn"
                   onClick={downloadGradedPdf}
@@ -3238,7 +3288,11 @@ export default function GradingProviderPage({ slug, label }) {
               className="msv-modal-body msv-results-body"
               style={{ display: "flex", gap: 20, height: "80vh", overflow: "hidden" }}
             >
-              {/* LEFT: results / editor */}
+              {/* LEFT: results / editor — the whole column is the editor (marks,
+                  examiner notes, summary, add/remove question, AI correction
+                  chat), so a review-only reviewer simply does not get it and the
+                  annotated PDF beside it takes the full width. */}
+              {canEdit && (
               <div style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
                 {pendingEdits.status === "restored" && (
                   <PendingEditsBanner
@@ -3521,17 +3575,12 @@ export default function GradingProviderPage({ slug, label }) {
                                 value={awarded}
                                 onChange={(e) =>
                                   setEditingQuestions((prev) =>
-                                    prev.map((x, i) =>
-                                      i === idx
-                                        ? {
-                                            ...x,
-                                            marksAwarded: Math.min(
-                                              qMax,
-                                              Math.max(0, Number(e.target.value) || 0)
-                                            ),
-                                          }
-                                        : x
-                                    )
+                                    patchQuestionRowEdit(prev, idx, {
+                                      marksAwarded: Math.min(
+                                        qMax,
+                                        Math.max(0, Number(e.target.value) || 0)
+                                      ),
+                                    })
                                   )
                                 }
                                 style={{
@@ -3626,7 +3675,7 @@ export default function GradingProviderPage({ slug, label }) {
                             question={q}
                             onChange={(updated) =>
                               setEditingQuestions((prev) =>
-                                prev.map((x, i) => (i === idx ? updated : x))
+                                applyQuestionRowEdit(prev, idx, updated)
                               )
                             }
                           />
@@ -3653,7 +3702,7 @@ export default function GradingProviderPage({ slug, label }) {
                             value={q.reason}
                             onChange={(e) =>
                               setEditingQuestions((prev) =>
-                                prev.map((x, i) => (i === idx ? { ...x, reason: e.target.value } : x))
+                                patchQuestionRowEdit(prev, idx, { reason: e.target.value })
                               )
                             }
                             rows={3}
@@ -3677,6 +3726,7 @@ export default function GradingProviderPage({ slug, label }) {
                   })}
                 </div>
               </div>
+              )}
 
               {/* MIDDLE: annotated preview */}
               <div
@@ -3739,12 +3789,16 @@ export default function GradingProviderPage({ slug, label }) {
                   <div style={{ color: "var(--danger)", fontSize: 13 }}>{previewError}</div>
                 ) : annotatedPreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                    {/* Without the placement/remove props the preview is a plain
+                        read-only PDF: no dragging a mark box to another page, no
+                        removing a question off it. That is the whole of a
+                        review-only reviewer's view. */}
                     <AnnotatedPdfPreview
                       url={annotatedPreviewUrl}
-                      placementQuestions={placementQuestions}
+                      placementQuestions={canEdit ? placementQuestions : null}
                       reportPageCount={reportPageCount}
-                      onPlacementChange={handleAnnotationPlacementChange}
-                      onQuestionRemove={handleQuestionRemove}
+                      onPlacementChange={canEdit ? handleAnnotationPlacementChange : null}
+                      onQuestionRemove={canEdit ? handleQuestionRemove : null}
                       labelGuidance={assignmentPrompt.content}
                     />
                   </div>
@@ -3753,7 +3807,10 @@ export default function GradingProviderPage({ slug, label }) {
                 )}
               </div>
 
-              {/* RIGHT: mark scheme (read-only) */}
+              {/* RIGHT: mark scheme (read-only) — for marking against, so it goes
+                  with the editor. A reviewer who wants it still has "View mark
+                  scheme" on the submission row. */}
+              {canEdit && (
               <div
                 style={{
                   flex: "1 1 0",
@@ -3791,6 +3848,7 @@ export default function GradingProviderPage({ slug, label }) {
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>No mark scheme available</div>
                 )}
               </div>
+              )}
             </div>
           </div>
         </div>
