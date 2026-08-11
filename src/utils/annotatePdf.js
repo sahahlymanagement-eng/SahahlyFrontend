@@ -1315,17 +1315,27 @@ export async function annotatePdf({
   studentFacing = true,
   criteriaGrade = null,
   markingMode = "normal",
+  // Prefer canonical totals from normalizeFinalGradingResult when present.
+  finalObtainedMarks = null,
+  finalMaximumMarks = null,
   // Legacy callers may still pass totalMarks; cover totals are always recomputed.
   totalMarks: _totalMarksInput,
 }) {
   const renderQuestions = studentFacing
     ? sanitizeQuestionsForStudentPdf(questions)
     : questions || [];
-  const totalMarks = resolveAnnotatePdfTotalMarks({
-    questions: renderQuestions,
-    criteriaGrade,
-    markingMode,
-  });
+  const totalMarks =
+    finalObtainedMarks != null && Number.isFinite(Number(finalObtainedMarks))
+      ? Number(finalObtainedMarks)
+      : resolveAnnotatePdfTotalMarks({
+          questions: renderQuestions,
+          criteriaGrade,
+          markingMode,
+        });
+  const resolvedMax =
+    finalMaximumMarks != null && Number.isFinite(Number(finalMaximumMarks))
+      ? Math.max(1, Number(finalMaximumMarks))
+      : Math.max(1, Number(maxTotalMarks) || 1);
 
   const buf = await studentFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
@@ -1381,7 +1391,7 @@ export async function annotatePdf({
     reg,
     questions: renderQuestions,
     totalMarks,
-    maxTotalMarks,
+    maxTotalMarks: resolvedMax,
     summary,
     studentFacing,
   });

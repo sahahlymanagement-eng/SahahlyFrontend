@@ -1036,15 +1036,17 @@ export default function GradingProviderPage({ slug, label }) {
 
   // ── Server-side draft persistence (survives refresh / other devices) ──
   // Only the result JSON is stored; studentFile is always re-fetchable from the partner.
-  const saveDraft = (submissionId, result, originalAiResult) => {
-    api
-      .put(`${BASE}/submissions/${submissionId}/draft`, {
+  const saveDraft = async (submissionId, result, originalAiResult) => {
+    try {
+      const { data } = await api.put(`${BASE}/submissions/${submissionId}/draft`, {
         result,
         originalAiResult: originalAiResult || result,
-      })
-      .catch(async (err) =>
-        toast.error((await getApiErrorMessage(err)) || "Failed to save grading draft")
-      );
+      });
+      return data?.finalResult || result;
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to save grading draft");
+      throw err;
+    }
   };
 
   const deleteDraft = (submissionId) =>
@@ -1284,7 +1286,7 @@ export default function GradingProviderPage({ slug, label }) {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
-      });
+      }, { timeout: 900_000 });
       ({ msUri, succeeded, failed } = res.data || {});
     } catch (err) {
       patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
@@ -1331,7 +1333,7 @@ export default function GradingProviderPage({ slug, label }) {
           ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
           : {}),
         geminiModel: selectedModel,
-      });
+      }, { timeout: 300_000 });
       jobId = res.data?.jobId;
       firstBatch = res.data?.firstBatch;
     } catch (err) {
@@ -1547,30 +1549,35 @@ export default function GradingProviderPage({ slug, label }) {
     ).map((q) => ({ ...q }));
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
-        setResults((prev) => ({
-          ...prev,
-          [submissionId]: { ...(prev[submissionId] || {}), result: finalResult },
-        }));
-        saveDraft(
+        const canonical = await saveDraft(
           submissionId,
           finalResult,
           results[submissionId]?.originalAiResult || resultModal?.originalAiResult
         );
-        setResultModal((prev) => ({ ...prev, result: finalResult }));
-        setEditingSummary(finalResult.summary || "");
+        setResults((prev) => ({
+          ...prev,
+          [submissionId]: { ...(prev[submissionId] || {}), result: canonical },
+        }));
+        setResultModal((prev) => ({ ...prev, result: canonical }));
+        setEditingSummary(canonical.summary || "");
         setSummaryTouched(false);
         setEditingMaxTotal(null);
         setEditingTotal(null);
         setSubmissions((prev) =>
           prev.map((s) =>
             s.submissionId === submissionId
-              ? { ...s, localGrade: resolveTotalMarksFromResult(finalResult) }
+              ? { ...s, localGrade: resolveTotalMarksFromResult(canonical) }
               : s
           )
         );
+        return canonical;
       });
       if (finalResult) {
-        setEditingQuestions(appliedQuestions);
+        setEditingQuestions(
+          (finalResult.finalQuestions || finalResult.questions || appliedQuestions).map(
+            (q) => ({ ...q })
+          )
+        );
         setPendingRemovedIndices(new Set());
         toast.success("Edits confirmed — preview and grade updated");
       }

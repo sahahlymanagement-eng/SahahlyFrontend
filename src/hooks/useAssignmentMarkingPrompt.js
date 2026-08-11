@@ -85,9 +85,12 @@ function usePromptState({ assignmentId, basePath, generatePath }) {
     if (!generatePath) return null;
     setGenerating(true);
     try {
-      const res = await api.post(generatePath, {
-        masterPrompt: String(masterPrompt || "").trim(),
-      });
+      // Mark scheme + sample PDFs via OpenAI often exceed 2 minutes.
+      const res = await api.post(
+        generatePath,
+        { masterPrompt: String(masterPrompt || "").trim() },
+        { timeout: 900_000 }
+      );
       setContent(res.data?.content || "");
       setMaxPoints(res.data?.maxPoints ?? null);
       setGeneratedAt(res.data?.generatedAt || new Date().toISOString());
@@ -107,7 +110,11 @@ function usePromptState({ assignmentId, basePath, generatePath }) {
       toast.success(`Assignment prompt generated${detail}`);
       return res.data;
     } catch (err) {
-      toast.error(err.response?.data?.message || "Prompt generation failed");
+      const msg =
+        err.code === "ECONNABORTED" || /timed?\s*out/i.test(err.message || "")
+          ? "Prompt generation timed out. The saved prompt was not changed — try again, or use the already-saved prompt and start marking."
+          : err.response?.data?.message || err.message || "Prompt generation failed";
+      toast.error(msg);
       throw err;
     } finally {
       setGenerating(false);

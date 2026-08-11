@@ -157,6 +157,11 @@ export function useAnnotatedResultPreview({
       outOfScopeNotes,
       teacherAnnotations,
       criteriaGrade,
+      finalObtainedMarks: questions.reduce(
+        (s, q) => s + (Number(q.marksAwarded) || 0),
+        0
+      ),
+      finalMaximumMarks: maxTotal,
     };
   }, [confirmedSnapshot]);
 
@@ -194,6 +199,11 @@ export function useAnnotatedResultPreview({
       outOfScopeNotes,
       teacherAnnotations,
       criteriaGrade,
+      finalObtainedMarks: questions.reduce(
+        (s, q) => s + (Number(q.marksAwarded) || 0),
+        0
+      ),
+      finalMaximumMarks: maxTotal,
     };
   }, []);
 
@@ -235,6 +245,8 @@ export function useAnnotatedResultPreview({
             teacherAnnotations: snapshot.teacherAnnotations,
             criteriaGrade: snapshot.criteriaGrade,
             markingMode,
+            finalObtainedMarks: snapshot.finalObtainedMarks,
+            finalMaximumMarks: snapshot.finalMaximumMarks ?? snapshot.maxTotal,
             skipCompress: true,
             lockPlacement,
           }),
@@ -454,17 +466,33 @@ export function useAnnotatedResultPreview({
           outOfScopeNotes: getOutOfScopeNotes(finalResult),
           teacherAnnotations,
           criteriaGrade: cloneCriteriaGrade(finalResult.criteriaGrade),
+          finalObtainedMarks: finalResult.finalObtainedMarks,
+          finalMaximumMarks: finalResult.finalMaximumMarks ?? maxTotal,
         };
 
         if (onPersist) {
           try {
-            await onPersist({
+            const persisted = await onPersist({
               finalResult,
               submissionId,
               questions,
               maxTotal,
               teacherAnnotations,
             });
+            if (persisted && typeof persisted === "object" && Array.isArray(persisted.questions)) {
+              Object.assign(finalResult, persisted);
+              snapshot.questions = (persisted.finalQuestions || persisted.questions).map((q) => ({
+                ...q,
+              }));
+              snapshot.maxTotal =
+                persisted.finalMaximumMarks ?? persisted.maxTotalMarks ?? maxTotal;
+              snapshot.summary = persisted.summary || snapshot.summary;
+              snapshot.criteriaGrade = cloneCriteriaGrade(persisted.criteriaGrade);
+              snapshot.finalObtainedMarks = persisted.finalObtainedMarks;
+              snapshot.finalMaximumMarks =
+                persisted.finalMaximumMarks ?? snapshot.maxTotal;
+              snapshot.outOfScopeNotes = getOutOfScopeNotes(persisted);
+            }
           } catch (err) {
             // This confirm dropped whatever preview was in flight, so put the
             // last confirmed one back — a failed save must not leave the modal

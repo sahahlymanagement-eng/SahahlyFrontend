@@ -2723,7 +2723,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
         studentName:  s.name,     // v2 reads studentName; v1 ignores it
         state:        s.state,   // HEAD: included for zeroed detection
       })),
-    }, isV2(engine) ? { timeout: 900_000 } : undefined);
+    }, { timeout: 900_000 });
     ({ msUri, msPageUris, succeeded, failed, zeroed } = res.data);
   } catch (err) {
     const message = recordMarkingErrorsForStudents(
@@ -2819,7 +2819,9 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
   const submitResult = await runWithMarkingRetries({
     execute: async () => {
       try {
-        const res = await api.post(`${base}/mark-batch/submit`, submitPayload);
+        const res = await api.post(`${base}/mark-batch/submit`, submitPayload, {
+          timeout: 300_000,
+        });
         return { jobId: res.data.jobId, resumed: false, firstBatch: res.data.firstBatch };
       } catch (err) {
         if (err.response?.data?.reason === "first_batch_pending") {
@@ -3266,7 +3268,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     submissionId,
     { origin, mode, provider } = {}
   ) => {
-    await api.post("/submission-files/save-results", {
+    const { data } = await api.post("/submission-files/save-results", {
       assignmentId: selectedAssignment._id,
       submissionId,
       studentId: resultModal.student.studentId,
@@ -3276,13 +3278,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       result: finalResult,
       ...(origin ? { origin } : {}),
     });
-    if (finalResult.summary?.trim()) {
+    // Backend returns the canonical FINAL RESULT — use it everywhere after save.
+    const canonical = data?.finalResult || data?.data?.result || finalResult;
+    if (canonical.summary?.trim()) {
       await api.post("/submission-files/save-summary", {
         assignmentId: selectedAssignment._id,
         submissionId,
-        summary: finalResult.summary,
+        summary: canonical.summary,
       });
     }
+    return canonical;
   };
 
   const handleConfirmEdits = async () => {
@@ -3293,26 +3298,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     ).map((q) => ({ ...q }));
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
-        await persistMarkingResult(
+        const canonical = await persistMarkingResult(
           finalResult,
           resultModal.student.submissionId || submissionId
         );
         setResultModal((prev) => ({
           ...prev,
-          result: finalResult,
+          result: canonical,
         }));
-        setEditingSummary(finalResult.summary || "");
+        setEditingSummary(canonical.summary || "");
         setSummaryTouched(false);
         setEditingMaxTotal(null);
         setEditingTotal(null);
         await fetchSavedResults();
         syncSessionMarkingCaches(
           resultModal.student.submissionId || submissionId,
-          finalResult
+          canonical
         );
+        return canonical;
       });
       if (finalResult) {
-        setEditingQuestions(appliedQuestions);
+        setEditingQuestions(
+          (finalResult.finalQuestions || finalResult.questions || appliedQuestions).map(
+            (q) => ({ ...q })
+          )
+        );
         setEditingCriteriaGrade(cloneCriteriaGrade(finalResult.criteriaGrade));
         setPendingRemovedIndices(new Set());
         toast.success("Edits confirmed — preview and grade updated");

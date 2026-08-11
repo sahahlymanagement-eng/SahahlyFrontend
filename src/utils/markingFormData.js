@@ -139,6 +139,13 @@ export async function getApiErrorMessage(err) {
     }
   }
 
+  if (
+    err?.code === "ECONNABORTED" ||
+    /timed?\s*out|timeout of \d+ms exceeded/i.test(String(err?.message || ""))
+  ) {
+    return "Request timed out. The server may still be working — wait a moment and refresh, or try again with fewer submissions.";
+  }
+
   return formatGoogleOAuthError(err?.message) || err?.message || "Request failed";
 
 }
@@ -339,7 +346,11 @@ export function resolveAnnotatePdfTotalMarks({
   questions = [],
   criteriaGrade = null,
   markingMode = "normal",
+  result = null,
 } = {}) {
+  if (result?.finalObtainedMarks != null && Number.isFinite(Number(result.finalObtainedMarks))) {
+    return Number(result.finalObtainedMarks);
+  }
   if (markingMode === "criteria" && criteriaGrade) {
     if (Array.isArray(criteriaGrade.breakdown) && criteriaGrade.breakdown.length) {
       return sumQuestionMarks(criteriaGrade.breakdown);
@@ -354,6 +365,10 @@ export function resolveAnnotatePdfTotalMarks({
 /** Authoritative grade from per-question marks when available. */
 export function resolveTotalMarksFromResult(result) {
   if (!result) return null;
+
+  if (result.finalObtainedMarks != null && Number.isFinite(Number(result.finalObtainedMarks))) {
+    return Number(result.finalObtainedMarks);
+  }
 
   if (Array.isArray(result.questions) && result.questions.length > 0) {
     return sumQuestionMarks(result.questions);
@@ -849,6 +864,36 @@ export function applyTeacherEditsToResult(
   finalResult.unansweredQuestions = summarizeUnansweredQuestions(editingQuestions, {
     isBackfilledStub,
   });
+
+  // Canonical final fields — same shape the backend persists on Save.
+  // Preview / download / return must prefer these over ad-hoc recalculation.
+  finalResult.finalQuestions = editingQuestions;
+  finalResult.finalObtainedMarks = finalResult.totalMarks;
+  finalResult.finalMaximumMarks = max;
+  finalResult.finalPercentage = gradeScorePercent(finalResult.totalMarks, max);
+  finalResult.backfilledQuestions = {
+    questionNumbers: editingQuestions
+      .filter(isBackfilledStub)
+      .map((q) => String(q.questionNumber ?? "").trim())
+      .filter(Boolean),
+    count: editingQuestions.filter(isBackfilledStub).length,
+  };
+  finalResult.studentFeedback = {
+    summary: finalResult.summary || "",
+    questions: sanitizeQuestionsForStudentPdf(editingQuestions),
+    unansweredMessage: finalResult.unansweredQuestions?.message || null,
+  };
+  finalResult.staffOnlyMetadata = {
+    notes: editingQuestions
+      .filter((q) => q?._staffNote || isBackfilledStub(q))
+      .map((q) => ({
+        questionNumber: String(q.questionNumber ?? "").trim() || "?",
+        note:
+          String(q._staffNote || "").trim() ||
+          "Question not detected during automated marking — please review manually.",
+      })),
+    backfilledQuestions: finalResult.backfilledQuestions,
+  };
 
   return finalResult;
 }

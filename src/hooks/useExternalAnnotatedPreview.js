@@ -215,6 +215,8 @@ export function useExternalAnnotatedPreview({
           teacherAnnotations: snapshot.teacherAnnotations,
           criteriaGrade: snapshot.criteriaGrade,
           markingMode,
+          finalObtainedMarks: snapshot.finalObtainedMarks,
+          finalMaximumMarks: snapshot.finalMaximumMarks ?? snapshot.maxTotal,
           skipCompress: true,
           lockPlacement,
         }),
@@ -392,7 +394,26 @@ export function useExternalAnnotatedPreview({
 
         if (onPersist) {
           try {
-            await onPersist({ finalResult, submissionId, questions, maxTotal, teacherAnnotations });
+            const persisted = await onPersist({
+              finalResult,
+              submissionId,
+              questions,
+              maxTotal,
+              teacherAnnotations,
+            });
+            if (persisted && typeof persisted === "object" && Array.isArray(persisted.questions)) {
+              Object.assign(finalResult, persisted);
+              snapshot.questions = (persisted.finalQuestions || persisted.questions).map((q) => ({
+                ...q,
+              }));
+              snapshot.maxTotal =
+                persisted.finalMaximumMarks ?? persisted.maxTotalMarks ?? maxTotal;
+              snapshot.summary = persisted.summary || snapshot.summary;
+              snapshot.criteriaGrade = cloneCriteriaGrade(persisted.criteriaGrade);
+              snapshot.finalObtainedMarks = persisted.finalObtainedMarks;
+              snapshot.finalMaximumMarks =
+                persisted.finalMaximumMarks ?? snapshot.maxTotal;
+            }
           } catch (err) {
             // This confirm dropped whatever preview was in flight, so put the
             // last confirmed one back — a failed save must not leave the modal
