@@ -18,7 +18,6 @@ function getSubmissionId(modal) {
 }
 
 const PREVIEW_TIMEOUT_MS = 120_000;
-const LIVE_PREVIEW_DEBOUNCE_MS = 700;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -40,7 +39,7 @@ function withTimeout(promise, ms, label) {
 
 /**
  * Annotated PDF preview for the results modal.
- * Regenerates when the modal opens, after Confirm Edits, or when Classroom max points sync.
+ * Regenerates when the modal opens or when Save & regenerate PDF is clicked.
  */
 export function useAnnotatedResultPreview({
   api,
@@ -93,77 +92,6 @@ export function useAnnotatedResultPreview({
     () => questionsForConfirmEdits(editingQuestions, pendingRemovedIndices),
     [editingQuestions, pendingRemovedIndices]
   );
-
-  const livePreviewSignature = useMemo(
-    () =>
-      JSON.stringify({
-        questions: questionsForPreviewEdits.map((q) => [
-          q.questionNumber,
-          q.marksAwarded,
-          q.maxMarks,
-          q.reason,
-          q.pageNumber,
-          q.yPercent,
-        ]),
-        summary: editingSummary,
-        maxTotal: effectiveMaxTotal,
-        criteria: editingCriteriaGrade,
-        annotations: editingAnnotations,
-        outOfScope: outOfScopeNotesOverride,
-        removed: pendingRemovedIndices ? [...pendingRemovedIndices].sort() : [],
-      }),
-    [
-      questionsForPreviewEdits,
-      editingSummary,
-      effectiveMaxTotal,
-      editingCriteriaGrade,
-      editingAnnotations,
-      outOfScopeNotesOverride,
-      pendingRemovedIndices,
-    ]
-  );
-
-  const buildLivePreviewSnapshot = useCallback(() => {
-    const modal = resultModalRef.current;
-    const base = confirmedSnapshot;
-    if (!modal || !base) return null;
-    const submissionId = getSubmissionId(modal);
-    if (!submissionId) return null;
-
-    const questions = questionsForConfirmEdits(
-      editingQuestionsRef.current,
-      pendingRemovedRef.current
-    ).map((q) => ({ ...q }));
-    const maxTotal = Math.max(1, Number(effectiveMaxTotalRef.current) || 1);
-    const summary =
-      String(editingSummaryRef.current ?? "").trim() || base.summary || "";
-    const outOfScopeNotes = Array.isArray(outOfScopeNotesOverrideRef.current)
-      ? outOfScopeNotesOverrideRef.current.map((n) => ({ ...n }))
-      : base.outOfScopeNotes;
-    const teacherAnnotations = (
-      editingAnnotationsRef.current ||
-      base.teacherAnnotations ||
-      []
-    ).map((a) => ({ ...a }));
-    const criteriaGrade = cloneCriteriaGrade(
-      editingCriteriaGradeRef.current ?? base.criteriaGrade
-    );
-
-    return {
-      submissionId,
-      questions,
-      maxTotal,
-      summary,
-      outOfScopeNotes,
-      teacherAnnotations,
-      criteriaGrade,
-      finalObtainedMarks: questions.reduce(
-        (s, q) => s + (Number(q.marksAwarded) || 0),
-        0
-      ),
-      finalMaximumMarks: maxTotal,
-    };
-  }, [confirmedSnapshot]);
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
@@ -301,8 +229,6 @@ export function useAnnotatedResultPreview({
   }, [
     openSubmissionId,
     assignmentId,
-    assignmentMaxPoints,
-    editingMaxTotal,
     buildSnapshotFromModal,
     generatePreview,
     revokePreviewUrl,
@@ -366,29 +292,6 @@ export function useAnnotatedResultPreview({
     editingMaxTotal,
     editingCriteriaGrade,
     outOfScopeNotesOverride,
-  ]);
-
-  // Regenerate the preview from live editor state while edits are pending so
-  // the cover-page total and question marks stay in sync with the header grade.
-  useEffect(() => {
-    if (!openSubmissionId || !assignmentId || !confirmedSnapshot || !hasPendingEdits) {
-      return undefined;
-    }
-
-    const timer = setTimeout(() => {
-      const snapshot = buildLivePreviewSnapshot();
-      if (snapshot) generatePreview(snapshot, { lockPlacement: true });
-    }, LIVE_PREVIEW_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [
-    openSubmissionId,
-    assignmentId,
-    confirmedSnapshot,
-    hasPendingEdits,
-    livePreviewSignature,
-    buildLivePreviewSnapshot,
-    generatePreview,
   ]);
 
   /**

@@ -18,7 +18,6 @@ function getSubmissionId(modal) {
 }
 
 const PREVIEW_TIMEOUT_MS = 120_000;
-const LIVE_PREVIEW_DEBOUNCE_MS = 700;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -91,66 +90,6 @@ export function useExternalAnnotatedPreview({
     () => questionsForConfirmEdits(editingQuestions, pendingRemovedIndices),
     [editingQuestions, pendingRemovedIndices]
   );
-
-  const livePreviewSignature = useMemo(
-    () =>
-      JSON.stringify({
-        questions: questionsForPreviewEdits.map((q) => [
-          q.questionNumber,
-          q.marksAwarded,
-          q.maxMarks,
-          q.reason,
-          q.pageNumber,
-          q.yPercent,
-        ]),
-        summary: editingSummary,
-        maxTotal: effectiveMaxTotal,
-        criteria: editingCriteriaGrade,
-        annotations: editingAnnotations,
-        removed: pendingRemovedIndices ? [...pendingRemovedIndices].sort() : [],
-      }),
-    [
-      questionsForPreviewEdits,
-      editingSummary,
-      effectiveMaxTotal,
-      editingCriteriaGrade,
-      editingAnnotations,
-      pendingRemovedIndices,
-    ]
-  );
-
-  const buildLivePreviewSnapshot = useCallback(() => {
-    const modal = resultModalRef.current;
-    const base = confirmedSnapshot;
-    if (!modal || !base) return null;
-    const submissionId = getSubmissionId(modal);
-    if (!submissionId) return null;
-
-    const questions = questionsForConfirmEdits(
-      editingQuestionsRef.current,
-      pendingRemovedRef.current
-    ).map((q) => ({ ...q }));
-    const maxTotal = Math.max(1, Number(effectiveMaxTotalRef.current) || 1);
-    const summary =
-      String(editingSummaryRef.current ?? "").trim() || base.summary || "";
-
-    return {
-      submissionId,
-      questions,
-      maxTotal,
-      summary,
-      outOfScopeNotes: base.outOfScopeNotes,
-      teacherAnnotations: (
-        editingAnnotationsRef.current ||
-        base.teacherAnnotations ||
-        []
-      ).map((a) => ({ ...a })),
-      criteriaGrade: cloneCriteriaGrade(
-        editingCriteriaGradeRef.current ?? base.criteriaGrade
-      ),
-      studentFile: modal.studentFile || base.studentFile || null,
-    };
-  }, [confirmedSnapshot]);
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
@@ -263,7 +202,7 @@ export function useExternalAnnotatedPreview({
 
     setConfirmedSnapshot(snapshot);
     generatePreview(snapshot);
-  }, [openSubmissionId, editingMaxTotal, buildSnapshotFromModal, generatePreview, revokePreviewUrl]);
+  }, [openSubmissionId, buildSnapshotFromModal, generatePreview, revokePreviewUrl]);
 
   useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
 
@@ -303,26 +242,6 @@ export function useExternalAnnotatedPreview({
     effectiveMaxTotal,
     editingMaxTotal,
     editingCriteriaGrade,
-  ]);
-
-  useEffect(() => {
-    if (!openSubmissionId || !confirmedSnapshot || !hasPendingEdits) {
-      return undefined;
-    }
-
-    const timer = setTimeout(() => {
-      const snapshot = buildLivePreviewSnapshot();
-      if (snapshot) generatePreview(snapshot, { lockPlacement: true });
-    }, LIVE_PREVIEW_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [
-    openSubmissionId,
-    confirmedSnapshot,
-    hasPendingEdits,
-    livePreviewSignature,
-    buildLivePreviewSnapshot,
-    generatePreview,
   ]);
 
   /**

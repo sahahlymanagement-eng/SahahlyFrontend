@@ -4279,7 +4279,7 @@ return (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {hasPendingEdits && (
                             <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
-                              {previewLoading ? "Updating preview…" : "Click Save & regenerate PDF to persist"}
+                              {confirmingEdits ? "Regenerating PDF…" : "Click Save & regenerate PDF to update preview"}
                             </span>
                           )}
                 </div>
