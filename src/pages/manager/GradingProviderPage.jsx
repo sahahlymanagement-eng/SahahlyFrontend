@@ -1218,9 +1218,17 @@ export default function GradingProviderPage({ slug, label }) {
                 failed += 1;
               }
             }
-            toast.success(
-              `Batch complete — ${ok} submission${ok === 1 ? "" : "s"} marked${failed ? `, ${failed} failed` : ""}.`
-            );
+            if (ok === 0) {
+              toast.error(
+                results.length === 0
+                  ? "Batch finished with 0 results — Gemini returned nothing. Retry or check API/quota."
+                  : `Batch finished — 0 marked${failed ? ` (${failed} failed)` : ""}`
+              );
+            } else {
+              toast.success(
+                `Batch complete — ${ok} submission${ok === 1 ? "" : "s"} marked${failed ? `, ${failed} failed` : ""}.`
+              );
+            }
           } else {
             // No inline results — re-hydrate drafts from the server.
             loadAll();

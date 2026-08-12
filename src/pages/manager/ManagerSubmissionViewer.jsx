@@ -2564,11 +2564,13 @@ useEffect(() => {
 
     const jobEngine = jobMeta.engine || "v1";
     const jobBase = engineBasePath(jobEngine);
+    let pollFailStreak = 0;
 
     const doPoll = async () => {
       if (isBatchStopped(assignId)) return;
       try {
         const { data } = await api.get(`${jobBase}/mark-batch/status/${jobId}`);
+        pollFailStreak = 0;
 
         if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
@@ -2648,16 +2650,47 @@ useEffect(() => {
           results: { ...prev?.results, ...resultMap },
         }));
         const okCount = data.results.filter((r) => r.success).length;
-        toast.success(`Batch complete — ${okCount} student${okCount === 1 ? "" : "s"} marked.`);
+        const failCount = data.results.length - okCount;
+        const firstFail = data.results.find((r) => !r.success);
+        const failReason =
+          typeof firstFail?.error === "string"
+            ? firstFail.error
+            : firstFail?.error?.message || null;
+        if (okCount === 0) {
+          toast.error(
+            data.results.length === 0
+              ? "Batch finished with 0 results — Gemini returned nothing. Retry or check API/quota."
+              : `Batch finished — 0 marked${failCount ? ` (${failCount} failed)` : ""}${
+                  failReason ? `: ${failReason}` : ""
+                }`
+          );
+        } else {
+          toast.success(
+            `Batch complete — ${okCount} student${okCount === 1 ? "" : "s"} marked${
+              failCount ? `, ${failCount} failed` : ""
+            }.`
+          );
+        }
         if (isViewingThisAssignment()) {
           const { fetchPage, page } = pollCtxRef.current;
           fetchPage?.(page);
         }
       } catch (err) {
         console.error("Poll error:", err);
+        pollFailStreak += 1;
+        const message = extractHumanError(err) || "Polling failed";
+        const transient =
+          /fetch failed|network|timeout|econnreset|econnrefused|503|unavailable/i.test(
+            String(message)
+          );
+        if (transient && pollFailStreak < 4) {
+          toast.warn(`Batch status check hiccup (${pollFailStreak}/3) — retrying…`);
+          patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+          return;
+        }
         clearBatchPoll(jobId);
         patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
-        toast.error(`Polling failed: ${extractHumanError(err)}`);
+        toast.error(`Polling failed: ${message}`);
       }
     };
 
