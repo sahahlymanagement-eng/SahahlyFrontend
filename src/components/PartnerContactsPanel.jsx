@@ -23,16 +23,18 @@ import { confirmToast } from "../utils/confirmToast";
 /**
  * The partner student contact directory.
  *
- * This panel exists because a grading partner sends us a student NAME and
- * nothing else — no phone number, and its API has no contacts endpoint. Without
- * a number here, no parent-facing partner report can be delivered at all, which
- * is why the header leads with how many students are still missing one.
+ * This panel exists because a grading partner sends us a student's name and its
+ * own student code and nothing else — no phone number, and its API has no
+ * contacts endpoint. Without a number here, no parent-facing partner report can
+ * be delivered at all, which is why the header leads with how many students are
+ * still missing one.
  *
  * Students are discovered from the partner's own submissions, so the list is
  * always exactly the people who have handed work in. Rows are matched to stored
- * contacts by a normalized form of the name (the backend's
- * utils/partnerStudentKey.js), so "Ahmed  Hassan" and "ahmed hassan" are one
- * person.
+ * contacts by the partner's student CODE where there is one, and otherwise by a
+ * normalized form of the name (the backend's utils/partnerStudentKey.js) so that
+ * "Ahmed  Hassan" and "ahmed hassan" are one person. Keying on the code is what
+ * keeps two students who share a name from sharing a phone number.
  */
 export default function PartnerContactsPanel({ slug, providerLabel, onContactsChanged }) {
   const [loading, setLoading] = useState(true);

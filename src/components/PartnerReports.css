@@ -514,6 +514,20 @@
   margin-right: 6px;
 }
 
+/* The partner's student code — an identifier, so it reads as one rather than
+   competing with the name beside it. */
+.prw-student-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #64748b);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
 .prw-actions-cell {
   display: flex;
   gap: 5px;

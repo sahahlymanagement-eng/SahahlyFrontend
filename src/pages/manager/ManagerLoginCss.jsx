@@ -155,6 +155,12 @@ export default function ManagerLoginCss() {
   const [listMeta, setListMeta] = useState({ total: 0, lastPage: 1 });
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
+  // Search spans the whole assignment, not the page on screen: the first
+  // keystroke pulls the full roster once and later keystrokes filter it in
+  // memory. LoginCSS offers no name/id search endpoint to delegate to.
+  const [searchRoster, setSearchRoster] = useState(null);
+  const [loadingSearchRoster, setLoadingSearchRoster] = useState(false);
+  const searchRosterRef = useRef(null);
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [selectedAssignment, setSelectedAssignment] = usePersistedState("logincss:assignment", null);
   // Read by loadAll and the mount effect so neither has to re-create itself
@@ -585,6 +591,14 @@ export default function ManagerLoginCss() {
         raw.name ||
         raw.title ||
         (id != null ? `Submission #${id}` : "Submission"),
+      // True when LoginCSS sent no student name, so the row title is the
+      // "Submission #id" placeholder — the id sub-line is redundant there.
+      nameIsFallback: !(
+        raw.studentName ||
+        raw.student?.name ||
+        raw.name ||
+        raw.title
+      ),
       // LoginCSS names this `submission_date` — the other three are never
       // present in its payload, which is why this column read empty.
       submittedAt:
@@ -708,13 +722,27 @@ export default function ManagerLoginCss() {
     return (data?.data || []).map(normalizeItem);
   }, []);
 
+  // Keep the ref and the rendered copy of the search roster in step.
+  const applySearchRoster = useCallback((rows) => {
+    searchRosterRef.current = rows;
+    setSearchRoster(rows);
+  }, []);
+
   // Reload whatever the manager is currently looking at.
   const loadAll = useCallback(async () => {
     await loadAssignments();
     if (selectedAssignmentRef.current) {
       await loadAssignmentSubmissions(selectedAssignmentRef.current, pageRef.current);
+      // A cached search roster would otherwise keep serving pre-refresh rows.
+      if (searchRosterRef.current) {
+        try {
+          applySearchRoster(await fetchAssignmentRoster(selectedAssignmentRef.current));
+        } catch {
+          applySearchRoster(null);
+        }
+      }
     }
-  }, [loadAssignments, loadAssignmentSubmissions]);
+  }, [loadAssignments, loadAssignmentSubmissions, fetchAssignmentRoster, applySearchRoster]);
 
   // ── Reconcile our copy against LoginCSS ──
   // The list above is served from our own database, which the webhook keeps in
@@ -790,6 +818,34 @@ export default function ManagerLoginCss() {
       toast.error((await getApiErrorMessage(err)) || "Failed to load all submissions");
     } finally {
       setSelectingMarkingAll(false);
+    }
+  };
+
+  // Pull the whole assignment once so search can reach rows the current page
+  // never loaded. Fetched from the search box rather than an effect so the
+  // request only happens when someone actually types.
+  const ensureSearchRoster = async () => {
+    if (!selectedAssignment || searchRosterRef.current || loadingSearchRoster) return;
+    setLoadingSearchRoster(true);
+    try {
+      applySearchRoster(await fetchAssignmentRoster(selectedAssignment));
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to search all submissions");
+    } finally {
+      setLoadingSearchRoster(false);
+    }
+  };
+
+  const onSearchChange = (value) => {
+    const wasSearching = !!search.trim();
+    setSearch(value);
+    setPage(1);
+    if (value.trim()) {
+      ensureSearchRoster();
+    } else if (wasSearching && selectedAssignment) {
+      // Searching pages through memory; clearing it hands paging back to the
+      // server, which needs page 1 loaded to match the reset page number.
+      loadAssignmentSubmissions(selectedAssignment, 1);
     }
   };
 
@@ -1901,6 +1957,8 @@ export default function ManagerLoginCss() {
     setSelectedAssignment(a);
     setSearch("");
     setPage(1);
+    // The cached roster belongs to the assignment being left behind.
+    applySearchRoster(null);
     // Submissions are fetched a page at a time, so opening one loads page 1.
     loadAssignmentSubmissions(a, 1);
   };
@@ -1909,6 +1967,7 @@ export default function ManagerLoginCss() {
     setSelectedAssignment(null);
     setSearch("");
     setPage(1);
+    applySearchRoster(null);
     // Drop the previous assignment's rows so they can't leak into the next one.
     setSubmissions([]);
   };
@@ -1942,20 +2001,39 @@ export default function ManagerLoginCss() {
     safeAssignmentPage * ASSIGNMENTS_PER_PAGE
   );
 
-  // `submissions` already holds exactly the page the server returned, so there
-  // is nothing left to slice. Search still narrows what's on screen — it only
-  // covers the current page, since the server has no name index to search on
-  // (the partner payload carries no student name; rows fall back to their id).
+  // `submissions` already holds exactly the page the server returned, so with no
+  // query there is nothing left to slice.
+  //
+  // A query instead runs over `searchRoster` — every submission in the
+  // assignment — so it reaches rows on pages that were never loaded, and matches
+  // either the student name or the submission id ("4471" or "#4471"). Rows
+  // already on screen win over roster rows, since only the paged fetch carries
+  // drafts. Until the roster lands, the current page is all we can filter.
   const q = search.trim().toLowerCase();
+  const idQuery = q.replace(/^#/, "");
   const assignmentSubmissions = selectedAssignment ? submissions : [];
+  const pagedById = new Map(assignmentSubmissions.map((s) => [s.submissionId, s]));
+  const searchPool = (searchRoster || assignmentSubmissions).map(
+    (s) => pagedById.get(s.submissionId) || s
+  );
   const filteredSubmissions = q
-    ? assignmentSubmissions.filter((s) => (s.name || "").toLowerCase().includes(q))
+    ? searchPool.filter(
+        (s) =>
+          (s.name || "").toLowerCase().includes(q) ||
+          (!!idQuery && String(s.submissionId ?? "").includes(idQuery))
+      )
     : assignmentSubmissions;
 
-  // Pagination comes from the server for this list.
-  const clientTotalPages = Math.max(1, listMeta.lastPage);
+  // Pagination comes from the server for this list — except while searching,
+  // where the matches are already in memory and get sliced here.
+  const isSearching = !!q;
+  const clientTotalPages = isSearching
+    ? Math.max(1, Math.ceil(filteredSubmissions.length / PER_PAGE))
+    : Math.max(1, listMeta.lastPage);
   const safePage = Math.min(page, clientTotalPages);
-  const visibleSubmissions = filteredSubmissions;
+  const visibleSubmissions = isSearching
+    ? filteredSubmissions.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)
+    : filteredSubmissions;
 
   // "Select page" only ever covers the rows on screen; "Select all" (above)
   // reaches the rest of the assignment.
@@ -2126,7 +2204,11 @@ export default function ManagerLoginCss() {
                   <div className="ma-panel-title-wrap">
                     <div className="ma-panel-dot" />
                     <h2 className="ma-panel-title">{selectedAssignment.name}</h2>
-                    <span className="ma-panel-count">{listMeta.total} total</span>
+                    <span className="ma-panel-count">
+                      {isSearching
+                        ? `${filteredSubmissions.length} of ${listMeta.total} match`
+                        : `${listMeta.total} total`}
+                    </span>
                     <span className="ma-panel-count">
                       {loadingList ? "Counting PDFs…" : `Corrected ${correctedCount} / ${listMeta.total} PDFs`}
                     </span>
@@ -2135,9 +2217,10 @@ export default function ManagerLoginCss() {
                     <input
                       className="msv-student-search"
                       type="text"
-                      placeholder="Search by name…"
+                      placeholder="Search by name or ID…"
+                      title="Searches every submission in this assignment, by student name or submission id"
                       value={search}
-                      onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                      onChange={(e) => onSearchChange(e.target.value)}
                     />
                     {canMark && (
                     <>
@@ -2421,7 +2504,10 @@ export default function ManagerLoginCss() {
                 )}
 
                 {loadingList && <p className="ma-loading-msg">Loading submissions…</p>}
-                {!loadingList && visibleSubmissions.length === 0 && (
+                {!loadingList && loadingSearchRoster && visibleSubmissions.length === 0 && (
+                  <p className="ma-loading-msg">Searching all submissions…</p>
+                )}
+                {!loadingList && !loadingSearchRoster && visibleSubmissions.length === 0 && (
                   <p className="ma-empty-msg">
                     {search
                       ? `No submissions match "${search}".`
@@ -2482,7 +2568,14 @@ export default function ManagerLoginCss() {
                                     <div className="ma-avatar">
                                       {(s.name || "?").charAt(0).toUpperCase()}
                                     </div>
-                                    <span className="ma-cell-name">{s.name || "—"}</span>
+                                    <div className="ma-cell-identity">
+                                      <span className="ma-cell-name">{s.name || "—"}</span>
+                                      {s.submissionId != null && !s.nameIsFallback && (
+                                        <span className="ma-cell-subid" title="Submission ID">
+                                          #{s.submissionId}
+                                        </span>
+                                      )}
+                                    </div>
                                     {(() => {
                                       // Either the live pre-grading check or a
                                       // fileWarning baked into a saved result.
@@ -2656,8 +2749,9 @@ export default function ManagerLoginCss() {
                     totalPages={clientTotalPages}
                     onPageChange={(p) => {
                       setPage(p);
-                      // Each page is its own request now.
-                      loadAssignmentSubmissions(selectedAssignment, p);
+                      // Search matches are already in memory; otherwise each
+                      // page is its own request.
+                      if (!isSearching) loadAssignmentSubmissions(selectedAssignment, p);
                     }}
                   />
                 )}

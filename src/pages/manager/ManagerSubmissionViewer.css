@@ -21,6 +21,34 @@
   line-height: 1.35;
 }
 
+/* Name over submission id — the id is the sub-line, so the wrapper takes over
+   the flex sizing that .ma-cell-name used to own as a direct flex child. */
+.ma-cell-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* .ma-cell-name carries `flex: 1 1 0` for its old role as a direct flex child;
+   inside the column wrapper that would size it against the block axis. */
+.ma-avatar-cell .ma-cell-identity .ma-cell-name {
+  flex: 0 0 auto;
+}
+
+.ma-cell-subid {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.ma-table.ma-table--cards .ma-cell-identity {
+  flex: 1 1 0;
+}
+
 .ma-table.ma-table--cards .msv-review-warn {
   flex: 1 1 100%;
   margin-left: 40px !important;

@@ -589,8 +589,10 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
 
       {unnamed > 0 && (
         <p className="prw-note prw-note--warn">
-          <FiInfo size={13} /> {unnamed} submission(s) have no student name in{" "}
-          {providerLabel}&apos;s data and are not listed here.
+          <FiInfo size={13} /> {unnamed} submission(s) carry no student name or student
+          code in {providerLabel}&apos;s data, so they cannot be attributed to a person
+          and are not listed here. Running Sync on the {providerLabel} grading tab
+          refreshes the stored payloads and usually resolves it.
         </p>
       )}
 
@@ -624,6 +626,14 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                   </td>
                   <td data-label="Student">
                     <span className="prw-student-name">{s.studentName}</span>
+                    {/* The partner's own student code. Shown because two students
+                        genuinely do share a name, and the code is what tells the
+                        person maintaining the numbers which row is which. */}
+                    {s.studentCode && (
+                      <span className="prw-student-code" title="Partner student code">
+                        {s.studentCode.toUpperCase()}
+                      </span>
+                    )}
                     {!s.hasContact && <span className="prw-pill prw-pill--warn">No number</span>}
                   </td>
                   <td data-label="Parent">{s.parentName || "—"}</td>
