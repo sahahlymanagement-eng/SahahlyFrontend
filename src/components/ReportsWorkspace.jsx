@@ -22,6 +22,8 @@ import ReportGradesRefreshButton from "./ReportGradesRefreshButton";
 import MonthlyParentReportWorkspace from "./MonthlyParentReportWorkspace";
 import TeacherExecutiveAnalysisWorkspace from "./TeacherExecutiveAnalysisWorkspace";
 import ReportsSentWorkspace from "./ReportsSentWorkspace";
+import PartnerReportsWorkspace from "./PartnerReportsWorkspace";
+import PartnerReportsTabButton from "./PartnerReportsTabButton";
 import AssignmentReportPreviewModal from "./AssignmentReportPreviewModal";
 import ReportPdfPreview from "./ReportPdfPreview";
 import "./MonthlyParentReport.css";
@@ -1198,6 +1200,20 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     );
   }
 
+  // The grading partners (LoginCSS / Mariam Gabalawy / Dr Peter) as a report
+  // scope, in place of a classroom. The tab that reaches this is hidden for
+  // accounts with no partner access, and the workspace refuses to render for
+  // them too, so a stale persisted reportView cannot expose it.
+  if (!assignmentOnly && reportView === "partner") {
+    return (
+      <PartnerReportsWorkspace
+        variant={variant}
+        onBack={() => setReportView("assignment")}
+        onNavigate={setReportView}
+      />
+    );
+  }
+
   const mainContent = (
       <main className="ma-main">
 
@@ -1241,6 +1257,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
               >
                 <FiSend size={12} /> Reports Sent
               </button>
+              <PartnerReportsTabButton onNavigate={setReportView} />
             </div>
             )}
           </div>

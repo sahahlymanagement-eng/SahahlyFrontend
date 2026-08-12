@@ -11,6 +11,7 @@ import {
 } from "react-icons/fi";
 import { isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import Pagination from "./Pagination";
+import PartnerReportsTabButton from "./PartnerReportsTabButton";
 import "../pages/manager/ManagerAssignments.css";
 
 function formatSentAt(value) {
@@ -102,6 +103,7 @@ export default function ReportsSentWorkspace({ variant = "manager", onBack, onNa
             <button type="button" className="ma-report-tab ma-report-tab--active">
               <FiSend size={12} /> Reports Sent
             </button>
+            <PartnerReportsTabButton onNavigate={onNavigate} />
           </div>
         </div>
         <div className="ma-topbar-right">

@@ -1,0 +1,758 @@
+/*
+ * Partner Reports workspace.
+ *
+ * The page shell (ma-main / ma-topbar / ma-content / ma-report-tab) comes from
+ * ManagerAssignments.css so this view sits inside the Reports tab looking like
+ * every other one. Everything specific to it is prefixed prw- and defined here,
+ * so the component pulls in no other stylesheet.
+ *
+ * Colours go through the existing CSS variables and always carry a fallback, so
+ * the panel renders correctly in both themes and in any portal that has not
+ * defined the full palette.
+ */
+
+.prw-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Partner + view tab bars ─────────────────────────────────────────────── */
+
+.prw-partner-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.prw-partner-tab {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.prw-partner-tab:hover {
+  border-color: var(--primary, #2563eb);
+}
+
+.prw-partner-tab--active {
+  background: var(--primary, #2563eb);
+  border-color: var(--primary, #2563eb);
+  color: #fff;
+}
+
+.prw-view-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  padding-bottom: 10px;
+}
+
+.prw-view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.prw-view-tab:hover {
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, transparent);
+  color: var(--text, #0f172a);
+}
+
+.prw-view-tab--active {
+  background: color-mix(in srgb, var(--primary, #2563eb) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary, #2563eb) 30%, transparent);
+  color: var(--primary, #2563eb);
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+
+.prw-panel {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.prw-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.prw-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.prw-panel-sub {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted, #64748b);
+  max-width: 68ch;
+}
+
+.prw-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prw-panel-actions--end {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.prw-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.prw-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.prw-btn--primary {
+  background: var(--primary, #2563eb);
+  border-color: var(--primary, #2563eb);
+  color: #fff;
+}
+
+.prw-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.prw-btn--ghost:hover:not(:disabled) {
+  border-color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 6%, transparent);
+}
+
+.prw-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.prw-icon-btn:hover {
+  color: var(--primary, #2563eb);
+  border-color: var(--primary, #2563eb);
+}
+
+.prw-icon-btn--ok:hover {
+  color: var(--success, #16a34a);
+  border-color: var(--success, #16a34a);
+}
+
+.prw-icon-btn--danger:hover {
+  color: var(--danger, #dc2626);
+  border-color: var(--danger, #dc2626);
+}
+
+/* ── Assignment cards ────────────────────────────────────────────────────── */
+
+.prw-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.prw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 11px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.prw-card:hover {
+  border-color: var(--primary, #2563eb);
+}
+
+.prw-card--active {
+  border-color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, transparent);
+}
+
+.prw-card-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.prw-card-meta {
+  font-size: 0.74rem;
+  color: var(--text-muted, #64748b);
+}
+
+/* ── Stats ───────────────────────────────────────────────────────────────── */
+
+.prw-stat-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.prw-stat {
+  flex: 1 1 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: color-mix(in srgb, var(--primary, #2563eb) 4%, transparent);
+}
+
+.prw-stat--ok {
+  border-color: color-mix(in srgb, var(--success, #16a34a) 30%, transparent);
+  background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent);
+}
+
+.prw-stat--warn {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 35%, transparent);
+  background: color-mix(in srgb, var(--warning, #d97706) 10%, transparent);
+}
+
+.prw-stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.prw-stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
+}
+
+/* ── Notes, pills, empty states ──────────────────────────────────────────── */
+
+.prw-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: color-mix(in srgb, var(--primary, #2563eb) 5%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-muted, #64748b);
+}
+
+.prw-note code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text, #0f172a) 8%, transparent);
+  font-size: 0.94em;
+}
+
+.prw-note--warn {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 35%, transparent);
+  background: color-mix(in srgb, var(--warning, #d97706) 10%, transparent);
+  color: var(--text, #0f172a);
+}
+
+.prw-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.prw-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.prw-pill--ok {
+  background: color-mix(in srgb, var(--success, #16a34a) 14%, transparent);
+  color: var(--success, #16a34a);
+}
+
+.prw-pill--warn {
+  background: color-mix(in srgb, var(--warning, #d97706) 16%, transparent);
+  color: var(--warning, #b45309);
+}
+
+.prw-pill--muted {
+  background: color-mix(in srgb, var(--text, #0f172a) 8%, transparent);
+  color: var(--text-muted, #64748b);
+}
+
+.prw-empty {
+  margin: 0;
+  padding: 26px 14px;
+  text-align: center;
+  font-size: 0.83rem;
+  color: var(--text-muted, #64748b);
+}
+
+/* ── Search + form controls ──────────────────────────────────────────────── */
+
+.prw-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text-muted, #64748b);
+}
+
+.prw-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.83rem;
+  color: var(--text, #0f172a);
+}
+
+.prw-input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  font-size: 0.82rem;
+}
+
+.prw-input:focus {
+  outline: none;
+  border-color: var(--primary, #2563eb);
+}
+
+.prw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  min-width: 170px;
+}
+
+.prw-field--grow {
+  flex: 1 1 240px;
+}
+
+.prw-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text, #0f172a);
+  cursor: pointer;
+}
+
+.prw-destination {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.prw-segmented {
+  display: inline-flex;
+  border-radius: 9px;
+  border: 1px solid var(--border, #e2e8f0);
+  overflow: hidden;
+}
+
+.prw-segmented button {
+  padding: 7px 14px;
+  border: none;
+  background: var(--surface, #fff);
+  color: var(--text-muted, #64748b);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.prw-segmented .prw-seg--active {
+  background: var(--primary, #2563eb);
+  color: #fff;
+}
+
+.prw-chip-row {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.prw-chip {
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.prw-chip--active {
+  background: var(--primary, #2563eb);
+  border-color: var(--primary, #2563eb);
+  color: #fff;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+/* The wrapper scrolls, never the page — a wide roster must not make the whole
+   workspace scroll sideways. */
+.prw-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 11px;
+}
+
+.prw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.81rem;
+}
+
+.prw-table th,
+.prw-table td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  color: var(--text, #0f172a);
+  vertical-align: middle;
+}
+
+.prw-table th {
+  background: color-mix(in srgb, var(--text, #0f172a) 4%, transparent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.prw-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prw-row--missing {
+  background: color-mix(in srgb, var(--warning, #d97706) 6%, transparent);
+}
+
+.prw-student-name {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.prw-actions-cell {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* ── Preview list ────────────────────────────────────────────────────────── */
+
+.prw-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prw-preview {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 11px;
+  padding: 12px;
+}
+
+.prw-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  color: var(--text, #0f172a);
+}
+
+.prw-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  font-family: inherit;
+  font-size: 0.79rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.prw-textarea:focus {
+  outline: none;
+  border-color: var(--primary, #2563eb);
+}
+
+.prw-reco-list {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: var(--text, #0f172a);
+}
+
+/* ── Import report ───────────────────────────────────────────────────────── */
+
+.prw-import-report {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 30%, transparent);
+  background: color-mix(in srgb, var(--warning, #d97706) 8%, transparent);
+}
+
+.prw-import-report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--text, #0f172a);
+}
+
+.prw-import-skipped {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 0.77rem;
+  line-height: 1.6;
+  color: var(--text-muted, #64748b);
+}
+
+/* ── Auto-send modal ─────────────────────────────────────────────────────── */
+
+.prw-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.prw-modal {
+  width: 100%;
+  max-width: 660px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  overflow: hidden;
+}
+
+.prw-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.prw-modal-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.prw-modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.prw-rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prw-rule {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 11px;
+  padding: 12px 14px;
+}
+
+.prw-rule-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.prw-rule-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.87rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.prw-rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prw-rule-help,
+.prw-rule-summary {
+  margin: 6px 0 0;
+  font-size: 0.77rem;
+  line-height: 1.55;
+  color: var(--text-muted, #64748b);
+}
+
+.prw-rule-summary {
+  font-weight: 600;
+  color: var(--primary, #2563eb);
+}
+
+.prw-rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.prw-rule-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── Narrow screens: tables become stacked cards ─────────────────────────── */
+
+@media (max-width: 720px) {
+  .prw-table thead {
+    display: none;
+  }
+
+  .prw-table,
+  .prw-table tbody,
+  .prw-table tr,
+  .prw-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .prw-table tr {
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    padding: 6px 0;
+  }
+
+  .prw-table td {
+    border-bottom: none;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 12px;
+  }
+
+  .prw-table td::before {
+    content: attr(data-label);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted, #64748b);
+  }
+
+  .prw-actions-cell {
+    justify-content: flex-end;
+  }
+}

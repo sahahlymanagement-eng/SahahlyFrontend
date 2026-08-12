@@ -12,6 +12,7 @@ import {
 
 } from "react-icons/fi";
 import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
+import PartnerReportsTabButton from "./PartnerReportsTabButton";
 
 import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
@@ -872,6 +873,7 @@ export default function MonthlyParentReportWorkspace({
               <button type="button" className="ma-report-tab" onClick={() => onNavigate?.("sent")}>
                 <FiSend size={12} /> Reports Sent
               </button>
+              <PartnerReportsTabButton onNavigate={onNavigate} />
             </div>
 
           </div>
