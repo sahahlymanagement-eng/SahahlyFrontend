@@ -12,6 +12,7 @@ import {
   FiAlertCircle,
   FiCalendar,
   FiUsers,
+  FiSend,
 } from "react-icons/fi";
 import { TeacherActionLink } from "./TeacherUI";
 import "./teacher.css";
@@ -220,6 +221,23 @@ export default function TeacherDashboard() {
         <button
           type="button"
           className="tch-action-card"
+          style={{ animationDelay: "0.1s" }}
+          onClick={() => navigate("/teacher/students")}
+        >
+          <div className="tch-action-card-icon">
+            <FiUsers />
+          </div>
+          <h3>Students Data</h3>
+          <p>
+            View your class rosters and edit student / parent contact numbers
+            saved per class.
+          </p>
+          <TeacherActionLink>Open students data</TeacherActionLink>
+        </button>
+
+        <button
+          type="button"
+          className="tch-action-card"
           style={{ animationDelay: "0.12s" }}
           onClick={() => navigate("/teacher/students-parents")}
         >
@@ -266,6 +284,23 @@ export default function TeacherDashboard() {
             class comparisons, and weak topics.
           </p>
           <TeacherActionLink>Open AI Agent</TeacherActionLink>
+        </button>
+
+        <button
+          type="button"
+          className="tch-action-card"
+          style={{ animationDelay: "0.16s" }}
+          onClick={() => navigate("/teacher/whatsapp-scheduler")}
+        >
+          <div className="tch-action-card-icon">
+            <FiSend />
+          </div>
+          <h3>WhatsApp Scheduler</h3>
+          <p>
+            Add your class WhatsApp groups and queue one-off or repeating
+            messages — only your groups and schedules.
+          </p>
+          <TeacherActionLink>Open scheduler</TeacherActionLink>
         </button>
 
         <button

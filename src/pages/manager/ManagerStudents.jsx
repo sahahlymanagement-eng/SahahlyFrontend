@@ -24,11 +24,15 @@ import {
 import { useClassroomRosterSync } from "../../hooks/useClassroomRosterSync";
 import { confirmToast } from "../../utils/confirmToast";
 
-export default function ManagerStudents() {
+export default function ManagerStudents({ scope = "manager" }) {
   const navigate = useNavigate();
+  const isTeacherScope = scope === "teacher";
   const [user, setUser] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [selectedClassroom, setSelectedClassroom] = usePersistedState("students:manager:classroom", null);
+  const [selectedClassroom, setSelectedClassroom] = usePersistedState(
+    `students:${scope}:classroom`,
+    null
+  );
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -44,11 +48,14 @@ export default function ManagerStudents() {
     if (!storedUser || !token) { navigate("/login", { replace: true }); return; }
     const parsed = JSON.parse(storedUser);
     const role = parsed?.roleId?.name?.toLowerCase();
-    if (role !== "manager" && role !== "quality manager") {
+    const allowed = isTeacherScope
+      ? role === "teacher"
+      : role === "manager" || role === "quality manager";
+    if (!allowed) {
       navigate("/login", { replace: true }); return;
     }
     setUser(parsed);
-  }, [navigate]);
+  }, [navigate, isTeacherScope]);
 
   const {
     teacherFilter,
@@ -57,7 +64,7 @@ export default function ManagerStudents() {
     classroomParams,
     showTeacherFilter,
   } = useClassroomTeacherFilter({
-    isTeacher: false,
+    isTeacher: isTeacherScope,
     userId: user?.id,
     classroomSearch,
   });
@@ -241,7 +248,9 @@ export default function ManagerStudents() {
               <span className="ms-topbar-sub">
                 {selectedClassroom
                   ? `Viewing ${selectedClassroom.name} — contact numbers are saved per teacher/class`
-                  : `Welcome back, ${user.name}`}
+                  : isTeacherScope
+                    ? `Your classes only — welcome back, ${user.name}`
+                    : `Welcome back, ${user.name}`}
               </span>
             </div>
             <div className="ms-topbar-right">
@@ -308,7 +317,7 @@ export default function ManagerStudents() {
                             {c.section}
                             </div>
                         )}
-                        {c.teacherId?.name && (
+                        {!isTeacherScope && c.teacherId?.name && (
                             <div className="ms-classroom-teacher">Teacher: {c.teacherId.name}</div>
                         )}
                         </div>

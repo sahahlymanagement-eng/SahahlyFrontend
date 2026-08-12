@@ -7,6 +7,7 @@ import {
   FiCpu,
   FiCalendar,
   FiUsers,
+  FiSend,
 } from "react-icons/fi";
 import RoleSidebar from "../../components/RoleSidebar";
 
@@ -14,9 +15,11 @@ const NAV_ITEMS = [
   { icon: <FiHome />, label: "Dashboard", path: "/teacher/dashboard" },
   { icon: <FiBookOpen />, label: "My Courses", path: "/teacher/courses" },
   { icon: <FiCalendar />, label: "Sessions & Calendar", path: "/teacher/sessions" },
+  { icon: <FiUsers />, label: "Students Data", path: "/teacher/students" },
   { icon: <FiUsers />, label: "Students & Parents", path: "/teacher/students-parents" },
   { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/teacher/submissions" },
   { icon: <FiClipboard />, label: "Reports", path: "/teacher/reports" },
+  { icon: <FiSend />, label: "WhatsApp Scheduler", path: "/teacher/whatsapp-scheduler" },
   { icon: <FiCpu />, label: "AI Agent", path: "/teacher/ai-agent" },
   { icon: <FiMessageCircle />, label: "Chatbot", path: "/teacher/chatbot" },
 ];

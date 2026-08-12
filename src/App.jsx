@@ -205,9 +205,11 @@ function App() {
           <Route path="dashboard" element={<TeacherDashboard />} />
           <Route path="courses" element={<TeacherCourses />} />
           <Route path="sessions" element={<TeacherSessionsCalendar />} />
+          <Route path="students" element={<ManagerStudents scope="teacher" />} />
           <Route path="students-parents" element={<TeacherStudentsParents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="teacher" />} />
           <Route path="reports" element={<TeacherReports />} />
+          <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler scope="teacher" />} />
           <Route path="ai-agent" element={<TeacherChatbot />} />
           <Route path="chatbot" element={<TeacherActionsChatbot />} />
           <Route path="coursework/:courseId" element={<CourseWork />} />
@@ -331,6 +333,7 @@ function App() {
           <Route path="teachers" element={<DirectorTeachers />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
+          <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler scope="director" />} />
           <Route path="insights" element={<DirectorReports />} />
           <Route path="reports" element={<DirectorAssignments />} />
           <Route

@@ -18,7 +18,8 @@ import "../../components/whatsappScheduler/whatsappScheduler.css";
 // re-reads itself on a slow timer rather than waiting for a manual refresh.
 const REFRESH_MS = 45000;
 
-export default function ManagerWhatsAppScheduler() {
+export default function ManagerWhatsAppScheduler({ scope = "manager" }) {
+  const isTeacherScope = scope === "teacher";
   const [groups, setGroups] = useState([]);
   const [messages, setMessages] = useState([]);
   const [loadingGroups, setLoadingGroups] = useState(true);
@@ -31,8 +32,8 @@ export default function ManagerWhatsAppScheduler() {
   // controls, not the whole composer.
   const [uploading, setUploading] = useState(false);
 
-  const [statusFilter, setStatusFilter] = usePersistedState("mws:status", "");
-  const [groupFilter, setGroupFilter] = usePersistedState("mws:group", "");
+  const [statusFilter, setStatusFilter] = usePersistedState(`${scope}:mws:status`, "");
+  const [groupFilter, setGroupFilter] = usePersistedState(`${scope}:mws:group`, "");
 
   // Accepts a plain patch or `prev => patch`. The functional form matters for
   // fields derived from their own previous value (the day toggles): several
@@ -290,8 +291,9 @@ export default function ManagerWhatsAppScheduler() {
       <header className="mws-page-header">
         <h1 className="mws-page-title">WhatsApp Scheduler</h1>
         <p className="mws-page-subtitle">
-          Queue a message — with an optional image or file — to a WhatsApp group,
-          once or on a repeating schedule.
+          {isTeacherScope
+            ? "Your groups and schedules only — queue a message, with an optional image or file, once or on a repeating schedule."
+            : "Queue a message — with an optional image or file — to a WhatsApp group, once or on a repeating schedule."}
         </p>
       </header>
 

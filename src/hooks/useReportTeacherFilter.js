@@ -61,10 +61,9 @@ export function useReportTeacherFilter({
   }, [isTeacher, loadGlobalTeachers, userId]);
 
   const classroomParams = useMemo(() => {
-    if (isTeacher) return { search: classroomSearch };
     const params = { search: classroomSearch };
     if (!omitPersonId && userId) params.personId = userId;
-    if (teacherFilter !== "all") params.teacherId = teacherFilter;
+    if (!isTeacher && teacherFilter !== "all") params.teacherId = teacherFilter;
     return params;
   }, [isTeacher, omitPersonId, userId, classroomSearch, teacherFilter]);
 

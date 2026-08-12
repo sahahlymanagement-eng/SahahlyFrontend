@@ -10,7 +10,8 @@
  * `swErr` below) and surface the backend's own validation text.
  *
  * Writes (POST/PATCH/DELETE) require the caller's role to be
- * director / admin / manager; reads are open to any logged-in user.
+ * director / admin / manager / teacher; reads are open to any logged-in user.
+ * Teacher accounts only see groups and schedules they created.
  */
 import api from "./api";
 

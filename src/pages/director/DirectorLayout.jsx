@@ -24,6 +24,7 @@ import {
   FiTarget,
 
   FiMessageCircle,
+  FiSend,
 
 } from "react-icons/fi";
 
@@ -104,6 +105,8 @@ const NAV_SECTIONS = [
       { icon: <FiBarChart2 />, label: "Token Usage", path: "/director/token-usage" },
 
       { icon: <FiMessageSquare />, label: "Report Feedback", path: "/director/feedback" },
+
+      { icon: <FiSend />, label: "WhatsApp Scheduler", path: "/director/whatsapp-scheduler" },
 
       { icon: <FiCpu />, label: "AI Agent", path: "/director/ai-agent" },
 
