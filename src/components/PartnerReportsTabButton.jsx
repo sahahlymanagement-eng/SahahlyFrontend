@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { FiUsers } from "react-icons/fi";
-import { canGradeProvider } from "../utils/gradingAccess";
+import { canReportOnPartner } from "../utils/gradingAccess";
 import { useGradingDelegations } from "../context/GradingNotificationContext";
 
 const PARTNER_SLUGS = ["logincss", "mariamgabalawy", "drpeter"];
@@ -13,15 +13,19 @@ const PARTNER_SLUGS = ["logincss", "mariamgabalawy", "drpeter"];
  * granted a grading partner) must not see this tab in any of them. Renders
  * nothing at all for those accounts.
  *
- * The delegation grant is passed explicitly to canGradeProvider rather than left
- * to its module cache, so the tab appears the moment a director-delegated grant
- * resolves instead of only after the next reload.
+ * canReportOnPartner rather than canGradeProvider, so this tab also appears in
+ * the director's Reports page: reporting on a partner is oversight, and the
+ * director is who owns the partner's logo and its parent-facing sends.
+ *
+ * The delegation grant is passed explicitly rather than left to the module
+ * cache, so the tab appears the moment a director-delegated grant resolves
+ * instead of only after the next reload.
  */
 export default function PartnerReportsTabButton({ active = false, onNavigate }) {
   const { delegations } = useGradingDelegations();
 
   const hasAnyPartner = useMemo(
-    () => PARTNER_SLUGS.some((slug) => canGradeProvider(slug, delegations)),
+    () => PARTNER_SLUGS.some((slug) => canReportOnPartner(slug, delegations)),
     [delegations]
   );
 

@@ -36,10 +36,16 @@
  *    bounces an unauthorized user must wait for `delegationsLoaded` from that
  *    context before deciding.
  *
+ * Neither grant covers REPORTING on a partner, which is a third, wider door:
+ * canReportOnPartner also lets an org-wide oversight role (director / admin /
+ * backup) open the Partner Reports tab without granting it any marking rights.
+ *
  * Client-side only — the backend enforces access and scoping on its own. To
  * change who gets what statically, edit GRADING_ACCOUNTS; every call site
  * already routes through the two predicates underneath it.
  */
+
+import { isDirectorLikeRole } from "./directorLikeAccess";
 
 // Person._id of the review-only Mariam Gabalawy reviewer. Kept as a named
 // constant because it is filled in after the account is created — the backend's
@@ -174,6 +180,60 @@ export function canGradeProvider(slug, grant = delegatedProviders) {
   const account = currentGradingAccount();
   if (!account) return false;
   return account.providers === null || account.providers.includes(slug);
+}
+
+/** The signed-in role name, lowercased ("admin", "director", "manager", …). */
+function currentRoleName(forUser = null) {
+  try {
+    const user = forUser || JSON.parse(localStorage.getItem("user") || "{}");
+    // Same shapes authRoutes.getRoleName tolerates. Read here rather than
+    // imported from there because authRoutes already imports THIS module.
+    const raw =
+      user?.roleName ?? user?.roleId?.name ?? user?.role?.name ?? user?.role ?? "";
+    return String(raw).trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Is this an org-wide oversight account — director / admin / backup?
+ *
+ * Deliberately the same set as the backend's UNSCOPED_ROLES
+ * (services/gradingDelegationScope.js) and the roles /api/report-logos accepts
+ * writes from, so what the UI offers matches what the API allows.
+ *
+ * @param {object} [forUser] judge this user object instead of the stored session.
+ */
+export function isReportsOverseer(forUser = null) {
+  return isDirectorLikeRole(currentRoleName(forUser));
+}
+
+/**
+ * May this account open the Partner Reports tab for one partner?
+ *
+ * Wider than canGradeProvider on purpose: reporting on a partner is oversight,
+ * not marking. A director is in neither the static allow-list (those are the
+ * marking accounts) nor the delegation grant (they are the one handing it out),
+ * yet they are exactly who signs off on what goes to parents — and the backend
+ * already serves /api/partner-reports and /api/report-logos to those roles,
+ * unscoped. Marking rights are untouched: canGradeProvider and
+ * canRunGradingMarking still decide who sees a grading tab and who may mark in it.
+ *
+ * @param {string} slug
+ * @param {object} [grant] see canGradeProvider.
+ */
+export function canReportOnPartner(slug, grant = delegatedProviders) {
+  return isReportsOverseer() || canGradeProvider(slug, grant);
+}
+
+/**
+ * May this account upload or remove a report logo? Mirrors the role gate on
+ * POST/DELETE /api/report-logos, so a grading manager sees the partner's logo
+ * read-only instead of an upload button that 403s.
+ */
+export function canManageReportLogos() {
+  return isReportsOverseer();
 }
 
 /**

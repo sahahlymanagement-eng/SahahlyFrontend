@@ -61,6 +61,13 @@
   border-radius: 6px;
 }
 
+/* Stands in for the action buttons in read-only mode, so the row is not just an
+   empty placeholder with no explanation. */
+.lp-readonly-note {
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+}
+
 .lp-thumb-dash {
   color: var(--text-muted, #94a3b8);
 }

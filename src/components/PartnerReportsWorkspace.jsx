@@ -31,7 +31,7 @@ import {
   sendPartnerExecutiveReport,
   sendPartnerMonthlyReports,
 } from "../api/partnerReports";
-import { canGradeProvider } from "../utils/gradingAccess";
+import { canManageReportLogos, canReportOnPartner } from "../utils/gradingAccess";
 import { useGradingDelegations } from "../context/GradingNotificationContext";
 import { downloadBlob } from "../utils/downloadBlob";
 import { confirmToast } from "../utils/confirmToast";
@@ -98,13 +98,15 @@ function newSendId(parts) {
 }
 
 export default function PartnerReportsWorkspace({ variant = "manager", onBack, onNavigate }) {
-  // The delegation grant is passed explicitly rather than left to
-  // canGradeProvider's module cache, so this render is tied to it and a
-  // director-delegated partner appears the moment the grant resolves.
+  // The delegation grant is passed explicitly rather than left to the module
+  // cache, so this render is tied to it and a director-delegated partner appears
+  // the moment the grant resolves. Directors reach every partner by role instead
+  // (canReportOnPartner), which is why the director shell needs no grading
+  // delegation provider around it.
   const { delegations } = useGradingDelegations();
 
   const allowedPartners = useMemo(
-    () => PARTNERS.filter((p) => canGradeProvider(p.slug, delegations)),
+    () => PARTNERS.filter((p) => canReportOnPartner(p.slug, delegations)),
     [delegations]
   );
 
@@ -776,7 +778,11 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
 
         {view === "contacts" && (
           <>
-            <PartnerLogoPanel slug={slug} providerLabel={providerLabel} />
+            <PartnerLogoPanel
+              slug={slug}
+              providerLabel={providerLabel}
+              readOnly={!canManageReportLogos()}
+            />
             <PartnerContactsPanel
               slug={slug}
               providerLabel={providerLabel}

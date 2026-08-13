@@ -27,6 +27,11 @@ const MAX_BYTES = 2 * 1024 * 1024;
  *                    exists. The parent owns `pendingFile`, so clearing the form
  *                    clears the preview.
  *
+ * `readOnly` drops it to preview-only — the picker still shows what is stored,
+ * but offers no upload or remove. Reads are open to any signed-in account while
+ * writes are not, so this is what an account without write rights should see
+ * rather than buttons that fail at the API.
+ *
  * The stored preview is fetched as a blob rather than used as a bare <img src>,
  * because the bytes endpoint needs the bearer token an <img> tag cannot send.
  */
@@ -40,6 +45,7 @@ export default function LogoPicker({
   label = "Logo",
   hint = "Shown next to the Sahahly logo on this teacher's reports.",
   disabled = false,
+  readOnly = false,
 }) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -178,14 +184,16 @@ export default function LogoPicker({
         <span className="lp-optional">optional</span>
       </span>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept={ACCEPT}
-        className="lp-file-input"
-        onChange={handleChange}
-        disabled={locked}
-      />
+      {!readOnly && (
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPT}
+          className="lp-file-input"
+          onChange={handleChange}
+          disabled={locked}
+        />
+      )}
 
       <div className="lp-row">
         <div className={`lp-thumb ${hasSomething ? "" : "lp-thumb--empty"}`}>
@@ -196,30 +204,36 @@ export default function LogoPicker({
           )}
         </div>
 
-        <div className="lp-actions">
-          <button
-            type="button"
-            className="lp-btn"
-            onClick={() => inputRef.current?.click()}
-            disabled={locked}
-          >
-            <FiUploadCloud size={14} aria-hidden="true" />
-            <span>{busy ? "Saving…" : hasSomething ? "Replace" : "Upload logo"}</span>
-          </button>
-
-          {hasSomething && (
+        {!readOnly && (
+          <div className="lp-actions">
             <button
               type="button"
-              className="lp-btn lp-btn--danger"
-              onClick={handleRemove}
+              className="lp-btn"
+              onClick={() => inputRef.current?.click()}
               disabled={locked}
-              title="Remove logo"
             >
-              <FiTrash2 size={14} aria-hidden="true" />
-              <span>Remove</span>
+              <FiUploadCloud size={14} aria-hidden="true" />
+              <span>{busy ? "Saving…" : hasSomething ? "Replace" : "Upload logo"}</span>
             </button>
-          )}
-        </div>
+
+            {hasSomething && (
+              <button
+                type="button"
+                className="lp-btn lp-btn--danger"
+                onClick={handleRemove}
+                disabled={locked}
+                title="Remove logo"
+              >
+                <FiTrash2 size={14} aria-hidden="true" />
+                <span>Remove</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {readOnly && !hasSomething && (
+          <span className="lp-readonly-note">No logo set</span>
+        )}
       </div>
 
       <p className="lp-hint">

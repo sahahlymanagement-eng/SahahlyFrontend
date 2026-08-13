@@ -10,8 +10,12 @@ import LogoPicker from "./LogoPicker";
  *
  * Keyed on `slug` so switching the partner tab remounts the picker and it cannot
  * show the previous partner's logo.
+ *
+ * `readOnly` for accounts the logo API refuses writes from (anyone but
+ * director / admin / backup): a grading manager can see which mark goes on the
+ * partner's reports without being offered an upload that would 403.
  */
-export default function PartnerLogoPanel({ slug, providerLabel }) {
+export default function PartnerLogoPanel({ slug, providerLabel, readOnly = false }) {
   return (
     <section className="prw-panel">
       <div className="prw-panel-head">
@@ -30,8 +34,13 @@ export default function PartnerLogoPanel({ slug, providerLabel }) {
         key={slug}
         ownerType="partner"
         ownerKey={slug}
+        readOnly={readOnly}
         label={`${providerLabel} logo`}
-        hint="Saved immediately. PNG with a transparent background works best — it sits on a dark navy header."
+        hint={
+          readOnly
+            ? "Set by a director from the Reports tab."
+            : "Saved immediately. PNG with a transparent background works best — it sits on a dark navy header."
+        }
       />
     </section>
   );
