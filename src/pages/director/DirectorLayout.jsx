@@ -5,6 +5,7 @@ import {
   FiHome,
 
   FiUsers,
+  FiRadio,
 
   FiLayers,
 
@@ -107,6 +108,8 @@ const NAV_SECTIONS = [
       { icon: <FiMessageSquare />, label: "Report Feedback", path: "/director/feedback" },
 
       { icon: <FiSend />, label: "WhatsApp Scheduler", path: "/director/whatsapp-scheduler" },
+
+      { icon: <FiRadio />, label: "WhatsApp Broadcast", path: "/director/whatsapp-broadcast" },
 
       { icon: <FiCpu />, label: "AI Agent", path: "/director/ai-agent" },
 

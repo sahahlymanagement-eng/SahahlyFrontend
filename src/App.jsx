@@ -69,6 +69,7 @@ import DirectorChatbot from "./pages/director/DirectorChatbot";
 import DirectorActionsChatbot from "./pages/director/DirectorActionsChatbot";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
+import WhatsAppBroadcast from "./pages/manager/WhatsAppBroadcast";
 import ManagerAutomation from "./pages/manager/ManagerAutomation";
 import ManagerChatbot from "./pages/manager/ManagerChatbot";
 import ManagerActionsChatbot from "./pages/manager/ManagerActionsChatbot";
@@ -270,6 +271,7 @@ function App() {
           <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
           <Route path="automation" element={<ManagerAutomation scope="manager" />} />
           <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler />} />
+          <Route path="whatsapp-broadcast" element={<WhatsAppBroadcast />} />
           <Route path="marking" element={<PaperMarking />} />
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
@@ -334,6 +336,7 @@ function App() {
           <Route path="token-usage" element={<DirectorTokenUsage />} />
           <Route path="feedback" element={<DirectorFeedback />} />
           <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler scope="director" />} />
+          <Route path="whatsapp-broadcast" element={<WhatsAppBroadcast />} />
           <Route path="insights" element={<DirectorReports />} />
           <Route path="reports" element={<DirectorAssignments />} />
           <Route
