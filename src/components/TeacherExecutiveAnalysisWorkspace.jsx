@@ -522,6 +522,47 @@ export default function TeacherExecutiveAnalysisWorkspace({
                   frameClassName="mpr-pdf-preview-frame--tall"
                 />
 
+                {report.postAssignment && (
+                  <div className="tea-block">
+                    <h4>Bottom line</h4>
+                    <p className="tea-verdict">{report.postAssignment.verdict}</p>
+                    <p className="tea-verdict-sub">{report.postAssignment.priorityLine}</p>
+
+                    {report.postAssignment.performanceGroups?.length > 0 && (
+                      <ul className="tea-groups">
+                        {report.postAssignment.performanceGroups.map((g) => (
+                          <li key={g.key} className={`tea-group tea-group--${g.key}`}>
+                            <strong>{g.count}</strong>
+                            <span>
+                              {g.label}
+                              <em>{g.range}</em>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {report.postAssignment?.actionPlan?.length > 0 && (
+                  <div className="tea-block">
+                    <h4>Next lesson — three actions</h4>
+                    <ol className="tea-actions">
+                      {report.postAssignment.actionPlan.map((a) => (
+                        <li key={a.title}>
+                          <div className="tea-action-head">
+                            <strong>{a.title}</strong>
+                            <span className="tea-action-badge">{a.badge}</span>
+                          </div>
+                          {a.lines.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
                 {report.executiveSummary?.length > 0 && (
                   <div className="tea-block">
                     <h4>Key insights</h4>

@@ -179,6 +179,13 @@
   color: var(--text-secondary);
 }
 
+/* ── LOGO ────────────────────────────────────────────────────────────────── */
+/* Sits below the three text fields, ruled off so it does not read as a fourth one. */
+.tc-form-logo {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── FORM ACTIONS ────────────────────────────────────────────────────────── */
 .tc-form-actions {
   display: flex;

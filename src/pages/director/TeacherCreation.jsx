@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
+import LogoPicker from "../../components/LogoPicker";
+import ReportLogoThumb from "../../components/ReportLogoThumb";
+import { listReportLogos, uploadReportLogo, logoErr } from "../../api/reportLogos";
 import "./TeacherCreation.css";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
@@ -28,6 +31,12 @@ export default function TeacherCreation() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  // Held until the account exists — there is no person id to upload against yet.
+  const [pendingLogo, setPendingLogo] = useState(null);
+
+  // Which teachers already have a logo, so the grid and the edit modal can show
+  // one without probing the bytes endpoint per row.
+  const [logoOwners, setLogoOwners] = useState([]);
 
   // Edit modal
   const [editPerson, setEditPerson] = useState(null);
@@ -39,12 +48,22 @@ export default function TeacherCreation() {
     loadInitialData();
   }, []);
 
+  // updatedAt is part of the key so replacing a logo busts the <img> cache.
+  const logoStamps = useMemo(() => {
+    const map = {};
+    for (const row of logoOwners) map[row.ownerKey] = row.updatedAt || "1";
+    return map;
+  }, [logoOwners]);
+
   const loadInitialData = async () => {
     try {
-      const [rolesRes, peopleRes] = await Promise.all([
+      const [rolesRes, peopleRes, logosRes] = await Promise.all([
         api.get("/roles"),
         api.get("/people", { params: { page: 1, limit: 5000 } }),
+        // Metadata only — a failure here must not cost us the teacher list.
+        listReportLogos("person").catch(() => []),
       ]);
+      setLogoOwners(logosRes || []);
 
       const allRoles = rolesRes.data || [];
       setRoles(allRoles);
@@ -102,10 +121,25 @@ export default function TeacherCreation() {
         roleId: teacherRoleId,
       });
 
+      // 3. Logo, only if one was picked — the account has to exist first, so this
+      // cannot be folded into the create call. A failed upload must not read as a
+      // failed creation: the teacher exists either way and the logo can be added
+      // from Edit.
+      if (pendingLogo && newPersonId) {
+        try {
+          await uploadReportLogo("person", newPersonId, pendingLogo);
+        } catch (logoError) {
+          toast.warn(
+            `Teacher created, but the logo failed to upload: ${logoErr(logoError)}`
+          );
+        }
+      }
+
       toast.success("Teacher created successfully");
       setName("");
       setEmail("");
       setPhone("");
+      setPendingLogo(null);
       await loadInitialData();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create teacher");
@@ -292,6 +326,18 @@ export default function TeacherCreation() {
 
               </div>
 
+              <div className="tc-form-logo">
+                <LogoPicker
+                  ownerType="person"
+                  ownerKey={null}
+                  pendingFile={pendingLogo}
+                  onPendingChange={setPendingLogo}
+                  label="Teacher logo"
+                  hint="Drawn next to the Sahahly logo on this teacher's report PDFs. PNG with a transparent background works best."
+                  disabled={loading}
+                />
+              </div>
+
               <div className="tc-form-actions">
                 <button
                   className="tc-primary-btn"
@@ -322,6 +368,7 @@ export default function TeacherCreation() {
               <table className="tc-table sah-table--cards">
                 <thead>
                   <tr>
+                    <th>Logo</th>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Phone</th>
@@ -335,6 +382,14 @@ export default function TeacherCreation() {
                       const disabled = t.status === "disabled";
                       return (
                         <tr key={t._id} className={`tc-row ${disabled ? "tc-row-disabled" : ""}`}>
+                          <td data-label="Logo">
+                            <ReportLogoThumb
+                              ownerType="person"
+                              ownerKey={t._id}
+                              present={Boolean(logoStamps[t._id])}
+                              stamp={logoStamps[t._id]}
+                            />
+                          </td>
                           <td data-label="Name">
                             <span className="tc-cell-primary">{t.name}</span>
                           </td>
@@ -386,7 +441,7 @@ export default function TeacherCreation() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan="5">
+                      <td colSpan="6">
                         <div className="tc-empty-state">
                           <FiUsers size={38} />
                           <p>No teachers yet. Add one above.</p>
@@ -455,6 +510,20 @@ export default function TeacherCreation() {
                       style: { maxHeight: "300px", zIndex: 9999 },
                     },
                   }}
+                />
+              </div>
+
+              {/* The account already exists here, so the logo saves on its own
+                  rather than waiting for Save Changes. */}
+              <div className="tc-input-field">
+                <LogoPicker
+                  ownerType="person"
+                  ownerKey={editPerson._id}
+                  hasLogo={Boolean(logoStamps[editPerson._id])}
+                  label="Teacher logo"
+                  hint="Saved immediately. Drawn next to the Sahahly logo on this teacher's report PDFs."
+                  disabled={loading}
+                  onChange={loadInitialData}
                 />
               </div>
 

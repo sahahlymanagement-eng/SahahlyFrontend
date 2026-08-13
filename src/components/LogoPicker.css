@@ -1,0 +1,119 @@
+.lp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lp-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+
+.lp-optional {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted, #64748b);
+}
+
+/* Driven by the buttons below — a bare file input cannot be styled consistently. */
+.lp-file-input {
+  display: none;
+}
+
+.lp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/*
+ * Previewed on the report header's navy, not on white: these logos are drawn on
+ * that band, so a transparent PNG that would disappear there disappears here too.
+ */
+.lp-thumb {
+  width: 88px;
+  height: 56px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: #1e3a5f;
+  color: #94a3b8;
+  overflow: hidden;
+}
+
+.lp-thumb--empty {
+  background: var(--surface-2, #f1f5f9);
+  border-style: dashed;
+}
+
+/* Grid-row size — see ReportLogoThumb. */
+.lp-thumb--sm {
+  width: 52px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.lp-thumb-dash {
+  color: var(--text-muted, #94a3b8);
+}
+
+.lp-thumb-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.lp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface-2, #f8fafc);
+  color: var(--text-primary, #0f172a);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.lp-btn:hover:not(:disabled) {
+  background: var(--surface-3, #e2e8f0);
+}
+
+.lp-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.lp-btn--danger {
+  color: var(--danger, #dc2626);
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 35%, transparent);
+}
+
+.lp-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #dc2626) 10%, transparent);
+}
+
+.lp-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-muted, #64748b);
+}

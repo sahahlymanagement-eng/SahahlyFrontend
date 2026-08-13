@@ -1227,6 +1227,144 @@
   line-height: 1.55;
 }
 
+/* Mirrors the redesigned post-assignment PDF: the verdict, the three
+   performance bands and the next-lesson plan, in the same wording the teacher
+   is about to send. */
+.tea-verdict {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tea-verdict-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tea-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.tea-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.tea-group strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.tea-group span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.tea-group em {
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.tea-group--high {
+  background: var(--success-bg);
+}
+.tea-group--high strong {
+  color: var(--success);
+}
+
+.tea-group--average {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+.tea-group--average strong {
+  color: #d97706;
+}
+
+.tea-group--low {
+  background: var(--danger-bg);
+}
+.tea-group--low strong {
+  color: var(--danger);
+}
+
+.tea-actions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: tea-action;
+}
+
+.tea-actions li {
+  position: relative;
+  padding: 10px 12px 10px 34px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  counter-increment: tea-action;
+}
+
+.tea-actions li::before {
+  content: counter(tea-action);
+  position: absolute;
+  left: 10px;
+  top: 11px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.tea-action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tea-action-head strong {
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.tea-action-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tea-actions p {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
 .tea-missing-list {
   list-style: none;
   padding-left: 0 !important;

@@ -37,6 +37,7 @@ import { downloadBlob } from "../utils/downloadBlob";
 import { confirmToast } from "../utils/confirmToast";
 import usePersistedState from "../hooks/usePersistedState";
 import PartnerContactsPanel from "./PartnerContactsPanel";
+import PartnerLogoPanel from "./PartnerLogoPanel";
 import PartnerReportAutoSendModal from "./PartnerReportAutoSendModal";
 import Pagination from "./Pagination";
 import "../pages/manager/ManagerAssignments.css";
@@ -69,7 +70,7 @@ const VIEWS = [
   { key: "collective", label: "Collective Reports", icon: FiUsers },
   { key: "monthly", label: "Monthly Parent Reports", icon: FiCalendar },
   { key: "executive", label: "Executive Analysis", icon: FiBarChart2 },
-  { key: "contacts", label: "Contacts", icon: FiUsers },
+  { key: "contacts", label: "Contacts & Logo", icon: FiUsers },
   { key: "sent", label: "Reports Sent", icon: FiSend },
 ];
 
@@ -774,11 +775,14 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         </div>
 
         {view === "contacts" && (
-          <PartnerContactsPanel
-            slug={slug}
-            providerLabel={providerLabel}
-            onContactsChanged={() => loadStudents(assignmentId)}
-          />
+          <>
+            <PartnerLogoPanel slug={slug} providerLabel={providerLabel} />
+            <PartnerContactsPanel
+              slug={slug}
+              providerLabel={providerLabel}
+              onContactsChanged={() => loadStudents(assignmentId)}
+            />
+          </>
         )}
 
         {view === "assignment" && (
