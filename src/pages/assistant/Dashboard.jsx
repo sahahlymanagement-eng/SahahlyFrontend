@@ -11,6 +11,8 @@ import {
   FiChevronRight,
 } from "react-icons/fi";
 import { AssistantLoading } from "./AssistantUI";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 // Each tile combines the classroom count with its external grading-partner
 // counterpart (EXTERNAL_ASSIGNED already folds in IN_PROGRESS — see
@@ -31,6 +33,7 @@ function getGreeting() {
 
 export default function AssistantDashboard() {
   const navigate = useNavigate();
+  const period = useDashboardPeriod();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState(() => {
@@ -63,7 +66,7 @@ export default function AssistantDashboard() {
     try {
       setLoading(true);
       const res = await api.get("/assignment-workflow/assistant/summary", {
-        params: { personId },
+        params: { personId, ...period.params },
       });
       const data = res.data || {};
       const safe = {};
@@ -81,7 +84,7 @@ export default function AssistantDashboard() {
   useEffect(() => {
     if (!user?.id) return;
     loadSummary(user.id);
-  }, [user?.id]);
+  }, [user?.id, period.params.from, period.params.to]);
 
   const refresh = () => {
     if (!user?.id) return;
@@ -115,6 +118,15 @@ export default function AssistantDashboard() {
           </button>
         </div>
       </section>
+
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
 
       <h2 className="ast-section-title">Workload overview</h2>
 

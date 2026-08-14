@@ -21,6 +21,8 @@ import {
   FiLayers,
 } from "react-icons/fi";
 import usePersistedState from "../../hooks/usePersistedState";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 import "./DirectorReports.css";
 
 const TABS = [
@@ -134,6 +136,7 @@ function DataTable({ columns, rows, empty }) {
 
 export default function DirectorReports() {
   const [tab, setTab] = usePersistedState("insights:tab", "overview");
+  const period = useDashboardPeriod();
   const [data, setData] = useState(null);
   const [delivery, setDelivery] = useState(null);
   const [feedback, setFeedback] = useState(null);
@@ -144,7 +147,9 @@ export default function DirectorReports() {
   const loadOrg = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get("/director/org-reports");
+      const res = await api.get("/director/org-reports", {
+        params: period.params,
+      });
       setData(res.data || null);
     } catch (err) {
       console.error(err);
@@ -155,16 +160,18 @@ export default function DirectorReports() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [period.params.from, period.params.to]);
 
   const loadDeliveryExtras = useCallback(async () => {
     try {
       setDeliveryLoading(true);
       const [tokenRes, feedbackRes] = await Promise.all([
         api.get("/director-token-usage/reports-analytics", {
-          params: { period: "month" },
+          params: period.params,
         }),
-        api.get("/director-feedback/stats"),
+        api.get("/director-feedback/stats", {
+          params: period.params,
+        }),
       ]);
       setDelivery(tokenRes.data || null);
       setFeedback(feedbackRes.data || null);
@@ -176,17 +183,19 @@ export default function DirectorReports() {
     } finally {
       setDeliveryLoading(false);
     }
-  }, []);
+  }, [period.params.from, period.params.to]);
 
   useEffect(() => {
     loadOrg();
   }, [loadOrg]);
 
   useEffect(() => {
-    if (tab === "delivery" && delivery == null && !deliveryLoading) {
+    if (tab === "delivery") {
+      setDelivery(null);
+      setFeedback(null);
       loadDeliveryExtras();
     }
-  }, [tab, delivery, deliveryLoading, loadDeliveryExtras]);
+  }, [tab, loadDeliveryExtras]);
 
   const overview = data?.overview;
   const academic = data?.academic;
@@ -240,6 +249,15 @@ export default function DirectorReports() {
           Refresh
         </button>
       </div>
+
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
 
       <div className="dr-tabs" role="tablist">
         {TABS.map((t) => (

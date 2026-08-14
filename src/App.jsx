@@ -53,6 +53,7 @@ import DirectorManagerAnalytics from "./pages/director/DirectorManagerAnalytics"
 import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
 import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
 import DirectorAccuracyMetrics from "./pages/director/DirectorAccuracyMetrics";
+import DirectorManualCorrection from "./pages/director/DirectorManualCorrection";
 import DirectorTeachers from "./pages/director/DirectorTeachers";
 import DirectorFeedback from "./pages/director/DirectorFeedback";
 import DirectorReports from "./pages/director/DirectorReports";
@@ -317,7 +318,7 @@ function App() {
         <Route
           path="/director"
           element={
-            <RoleProtectedRoute allowedRole="admin">
+            <RoleProtectedRoute allowedRole={["admin", "director"]}>
               <DirectorLayout/>
             </RoleProtectedRoute>
           }
@@ -348,6 +349,7 @@ function App() {
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
+          <Route path="manual-correction" element={<DirectorManualCorrection />} />
           <Route path="assign-assistants" element={<ManagerDashboard scope="director" />} />
           <Route path="ai-agent" element={<DirectorChatbot />} />
           <Route path="chatbot" element={<DirectorActionsChatbot />} />

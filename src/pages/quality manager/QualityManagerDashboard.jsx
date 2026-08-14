@@ -13,9 +13,12 @@ import {
   FiChevronDown,
   FiSearch,
 } from "react-icons/fi";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 export default function QualityManagerDashboard() {
   const navigate = useNavigate();
+  const period = useDashboardPeriod();
   const [user, setUser] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [delegations, setDelegations] = useState([]);
@@ -42,12 +45,14 @@ export default function QualityManagerDashboard() {
   useEffect(() => {
     if (!user?.id) return;
     loadDashboard();
-  }, [user?.id]);
+  }, [user?.id, period.params.from, period.params.to]);
 
   const loadDashboard = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/quality-manager/dashboard?managerId=${user.id}`);
+      const res = await api.get(`/quality-manager/dashboard`, {
+        params: { managerId: user.id, ...period.params },
+      });
       const { assignments, delegations, classrooms, qualityMembersMap } = res.data;
       setAssignments(assignments);
       setDelegations(delegations);
@@ -196,9 +201,15 @@ export default function QualityManagerDashboard() {
       const res = await api.post("/assignment-submissions/batch-counts", {
         assignmentIds: [assignmentId],
       });
+      const payload = res.data?.[assignmentId];
+      if (payload?.gone) {
+        setExpandedRows((prev) => ({ ...prev, [assignmentId]: false }));
+        await loadDashboard();
+        return;
+      }
       setSubmissionCounts((prev) => ({
         ...prev,
-        [assignmentId]: res.data?.[assignmentId] || null,
+        [assignmentId]: payload || null,
       }));
     } catch {
       setSubmissionCounts((prev) => ({ ...prev, [assignmentId]: null }));
@@ -242,6 +253,15 @@ export default function QualityManagerDashboard() {
             <p className="qm2-page-sub">Monitor assignments, trace assistants, and assign quality reviewers</p>
           </div>
         </div>
+
+        <DashboardPeriodFilter
+          from={period.from}
+          to={period.to}
+          setFrom={period.setFrom}
+          setTo={period.setTo}
+          resetToThisMonth={period.resetToThisMonth}
+          monthLabel={period.monthLabel}
+        />
 
         {/* STATS */}
         <div className="qm2-stats">
@@ -500,10 +520,20 @@ export default function QualityManagerDashboard() {
                                         <span className="qm2-counts-spinner" />
                                       </div>
                                     ))
+                                  ) : counts?.gone ? (
+                                    <div className="qm2-detail-item">
+                                      <span className="qm2-detail-label">Submissions</span>
+                                      <span className="qm2-muted">Removed from Google Classroom</span>
+                                    </div>
+                                  ) : counts?.unpublished ? (
+                                    <div className="qm2-detail-item">
+                                      <span className="qm2-detail-label">Submissions</span>
+                                      <span className="qm2-muted">Not published</span>
+                                    </div>
                                   ) : counts === null ? (
                                     <div className="qm2-detail-item">
-                                      <span className="qm2-detail-label">Error</span>
-                                      <span className="qm2-muted">Failed to load</span>
+                                      <span className="qm2-detail-label">Submissions</span>
+                                      <span className="qm2-muted">Could not load stats</span>
                                     </div>
                                   ) : (
                                     <>

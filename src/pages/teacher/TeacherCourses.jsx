@@ -47,13 +47,27 @@ function SubmissionDetailGrid({ counts }) {
     );
   }
 
+  if (counts?.gone) {
+    return (
+      <p className="tch-stats-hint">
+        This assignment was deleted from Google Classroom and has been removed.
+      </p>
+    );
+  }
+
+  if (counts?.unpublished) {
+    return (
+      <p className="tch-stats-hint">This assignment is not published yet.</p>
+    );
+  }
+
   if (counts === null) {
     return (
       <div className="tch-detail-grid">
         {STAT_LABELS.map((label) => (
           <div className="tch-detail-item" key={label}>
             <span className="tch-detail-label">{label}</span>
-            <span className="tch-detail-error">Error</span>
+            <span className="tch-detail-error">Unavailable</span>
           </div>
         ))}
       </div>
@@ -225,9 +239,27 @@ export default function TeacherCourses() {
       const res = await api.post("/assignment-submissions/batch-counts", {
         assignmentIds: [assignmentId],
       });
+      const payload = res.data?.[assignmentId];
+      if (payload?.gone) {
+        setExpandedAssignments((prev) => ({ ...prev, [assignmentId]: false }));
+        setCourseCache((prev) => {
+          const next = { ...prev };
+          for (const [courseId, cache] of Object.entries(next)) {
+            if (!cache?.assignments) continue;
+            next[courseId] = {
+              ...cache,
+              assignments: cache.assignments.filter(
+                (cw) => String(cache.dbMap?.[cw.id]?._id) !== String(assignmentId)
+              ),
+            };
+          }
+          return next;
+        });
+        return;
+      }
       setSubmissionCounts((prev) => ({
         ...prev,
-        [assignmentId]: res.data?.[assignmentId] ?? null,
+        [assignmentId]: payload ?? null,
       }));
     } catch {
       setSubmissionCounts((prev) => ({ ...prev, [assignmentId]: null }));

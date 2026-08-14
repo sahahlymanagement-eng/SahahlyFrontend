@@ -12,6 +12,8 @@ import {
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { FiLogOut } from "react-icons/fi";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 function formatStatus(status = "") {
   return status
@@ -39,6 +41,7 @@ function formatDateTime(date) {
 export default function QualityTeamDashboard() {
   const [personId, setPersonId] = useState("");
   const [user, setUser] = useState(null);
+  const period = useDashboardPeriod();
 
   const [delegations, setDelegations] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -73,6 +76,11 @@ export default function QualityTeamDashboard() {
       initialLoad(storedUser.id);
     }
   }, []);
+
+  useEffect(() => {
+    if (!personId) return;
+    loadAssignments(personId);
+  }, [personId, period.params.from, period.params.to]);
 
   const initialLoad = async (id) => {
     try {
@@ -122,10 +130,15 @@ export default function QualityTeamDashboard() {
       params: {
         personId: id,
         role: "quality team",
+        page: 1,
+        limit: 5000,
+        ...period.params,
       },
     });
 
-    setDelegations(res.data || []);
+    const payload = res.data;
+    const list = Array.isArray(payload) ? payload : payload?.data || [];
+    setDelegations(list);
   };
 
   const selectScore = (item, level) => {
@@ -331,6 +344,15 @@ export default function QualityTeamDashboard() {
 
         </div>
         </header>
+
+        <DashboardPeriodFilter
+          from={period.from}
+          to={period.to}
+          setFrom={period.setFrom}
+          setTo={period.setTo}
+          resetToThisMonth={period.resetToThisMonth}
+          monthLabel={period.monthLabel}
+        />
 
         <div className="qt-stats">
           <div className="qt-stat-card" style={{ "--accent": "var(--primary)" }}>

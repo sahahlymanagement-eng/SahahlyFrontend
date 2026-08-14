@@ -40,6 +40,8 @@ import PartnerContactsPanel from "./PartnerContactsPanel";
 import PartnerLogoPanel from "./PartnerLogoPanel";
 import PartnerReportAutoSendModal from "./PartnerReportAutoSendModal";
 import Pagination from "./Pagination";
+import DashboardPeriodFilter from "./DashboardPeriodFilter";
+import { useDashboardPeriod } from "../hooks/useDashboardPeriod";
 import "../pages/manager/ManagerAssignments.css";
 import "./PartnerReports.css";
 
@@ -476,7 +478,15 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   };
 
   // ── 5. Sent history ──
-  const [history, setHistory] = useState({ items: [], page: 1, totalPages: 0, total: 0 });
+  const sentPeriod = useDashboardPeriod();
+  const [history, setHistory] = useState({
+    items: [],
+    page: 1,
+    totalPages: 0,
+    total: 0,
+    coverage: null,
+  });
+  const [historyReportType, setHistoryReportType] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const loadHistory = useCallback(
@@ -484,14 +494,21 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
       if (!slug) return;
       setLoadingHistory(true);
       try {
-        setHistory(await listPartnerSentHistory(slug, { page, limit: 20 }));
+        setHistory(
+          await listPartnerSentHistory(slug, {
+            page,
+            limit: 20,
+            ...sentPeriod.params,
+            ...(historyReportType ? { reportType: historyReportType } : {}),
+          })
+        );
       } catch (err) {
         toast.error(partnerReportErr(err, "Failed to load sent reports"));
       } finally {
         setLoadingHistory(false);
       }
     },
-    [slug]
+    [slug, sentPeriod.params.from, sentPeriod.params.to, historyReportType]
   );
 
   useEffect(() => {
@@ -1099,10 +1116,62 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
               </button>
             </div>
 
+            <DashboardPeriodFilter
+              from={sentPeriod.from}
+              to={sentPeriod.to}
+              setFrom={sentPeriod.setFrom}
+              setTo={sentPeriod.setTo}
+              resetToThisMonth={sentPeriod.resetToThisMonth}
+              monthLabel={sentPeriod.monthLabel}
+            />
+
+            <div className="ma-sent-filters">
+              <label className="ma-sent-filter">
+                <span>Report type</span>
+                <select
+                  value={historyReportType}
+                  onChange={(e) => setHistoryReportType(e.target.value)}
+                >
+                  <option value="">All types</option>
+                  {(history.filters?.reportTypes?.length
+                    ? history.filters.reportTypes
+                    : [
+                        { value: "assignment_parent", label: "Assignment reports to parents" },
+                        { value: "teacher_collective", label: "Teacher collective PDF" },
+                        { value: "custom_collective", label: "Custom collective PDF" },
+                        { value: "monthly_parent", label: "Monthly parent report" },
+                        { value: "executive_teacher", label: "Executive analysis to teacher" },
+                      ]
+                  ).map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {history.coverage?.studentsTotal > 0 && (
+              <div className="ma-sent-coverage-card">
+                <FiUsers size={16} />
+                <div>
+                  <strong>
+                    {history.coverage.studentsSent} of {history.coverage.studentsTotal} students
+                  </strong>
+                  <span>
+                    covered by sends in this period
+                    {history.coverage.percent != null
+                      ? ` (${history.coverage.percent}%)`
+                      : ""}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {loadingHistory && !history.items.length ? (
               <p className="prw-empty">Loading sent reports…</p>
             ) : !history.items.length ? (
-              <p className="prw-empty">No {providerLabel} reports have been sent yet.</p>
+              <p className="prw-empty">No {providerLabel} reports match this filter.</p>
             ) : (
               <>
                 <div className="prw-table-wrap">
@@ -1113,7 +1182,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                         <th>Type</th>
                         <th>To</th>
                         <th>Assignments / period</th>
-                        <th>Counts</th>
+                        <th>Students</th>
                         <th>Sent by</th>
                       </tr>
                     </thead>
@@ -1129,10 +1198,17 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                                 ? row.assignmentTitles.join(", ")
                                 : "—")}
                           </td>
-                          <td data-label="Counts">
-                            {row.sentCount > 0 && `${row.sentCount} sent`}
+                          <td data-label="Students">
+                            <strong>
+                              {row.coverageLabel ||
+                                (row.studentCount > 0
+                                  ? `${row.sentCount} of ${row.studentCount} students`
+                                  : row.sentCount > 0
+                                    ? `${row.sentCount} sent`
+                                    : "—")}
+                            </strong>
                             {row.skippedCount > 0 &&
-                              `${row.sentCount > 0 ? ", " : ""}${row.skippedCount} skipped`}
+                              ` · ${row.skippedCount} skipped`}
                           </td>
                           <td data-label="Sent by">{row.sentByPersonName || "—"}</td>
                         </tr>

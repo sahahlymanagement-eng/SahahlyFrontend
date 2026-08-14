@@ -189,10 +189,17 @@ export default function ViewCoursework() {
         setSubmissionCounts((prev) => {
           const next = { ...prev };
           missing.forEach((id) => {
-            next[id] = res.data?.[id] ?? null;
+            const payload = res.data?.[id];
+            next[id] = payload?.gone ? { gone: true } : payload ?? null;
           });
           return next;
         });
+        const goneIds = missing.filter((id) => res.data?.[id]?.gone);
+        if (goneIds.length) {
+          setDbAssignments((prev) =>
+            prev.filter((a) => !goneIds.includes(String(a._id)))
+          );
+        }
       } catch {
         if (cancelled) return;
         setSubmissionCounts((prev) => {
@@ -567,6 +574,9 @@ function TeacherSubmissionStats({ counts }) {
   if (counts === "loading") {
     return <p className="tch-stats-hint">Loading submission stats…</p>;
   }
+  if (counts?.gone) {
+    return <p className="tch-stats-hint">Removed — no longer on Google Classroom.</p>;
+  }
   if (counts === null) {
     return <p className="tch-stats-hint">Could not load submission stats.</p>;
   }
@@ -597,6 +607,10 @@ function TeacherSubmissionStats({ counts }) {
 function SubmissionStats({ counts }) {
   if (counts === "loading") {
     return <p className="vcw-stats-hint">Loading submission stats…</p>;
+  }
+
+  if (counts?.gone) {
+    return <p className="vcw-stats-hint">Removed — no longer on Google Classroom.</p>;
   }
 
   if (counts === null) {

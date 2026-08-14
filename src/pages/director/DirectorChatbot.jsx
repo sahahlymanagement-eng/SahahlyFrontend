@@ -38,6 +38,7 @@ import "../teacher/TeacherChatbot.css";
 
 const SUGGESTIONS = [
   "Give me today's briefing",
+  "List students who submitted late and we haven't corrected, with their classes",
   "Show manager workload across the organization",
   "Who are the top and bottom performing assistants?",
   "Assign Sara as classroom manager for Grade 10A",

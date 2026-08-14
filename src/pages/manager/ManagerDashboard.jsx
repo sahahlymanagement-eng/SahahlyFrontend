@@ -19,6 +19,8 @@ import {
 import { isDirectorLikeRole } from "../../utils/directorLikeAccess";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 const DASHBOARD_STATUSES = [
   "UNASSIGNED",
@@ -62,6 +64,7 @@ const formatExportDate = (value) => {
 export default function ManagerDashboard({ scope = "manager" }) {
   const navigate = useNavigate();
   const isDirectorScope = scope === "director";
+  const period = useDashboardPeriod();
 
   const [user, setUser] = useState(null);
   const [classroomIds, setClassroomIds] = useState([]);
@@ -98,6 +101,7 @@ export default function ManagerDashboard({ scope = "manager" }) {
         params: {
           personId: user.id,
           scope: isDirectorScope ? "director" : "manager",
+          ...period.params,
         },
       });
       setBriefing(res.data);
@@ -106,7 +110,7 @@ export default function ManagerDashboard({ scope = "manager" }) {
     } finally {
       setBriefingLoading(false);
     }
-  }, [user?.id, isDirectorScope]);
+  }, [user?.id, isDirectorScope, period.params.from, period.params.to]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -129,7 +133,7 @@ export default function ManagerDashboard({ scope = "manager" }) {
   };
 
   const paginationParams = useMemo(() => {
-    const base = { classroomIds: classroomIds.join(",") };
+    const base = { classroomIds: classroomIds.join(","), ...period.params };
     if (!selectedStatus) return base;
     return {
       ...base,
@@ -142,7 +146,7 @@ export default function ManagerDashboard({ scope = "manager" }) {
       ...(filterQuality ? { filterQuality } : {}),
       ...(filterDate ? { filterDate: filterDate.toISOString() } : {}),
     };
-  }, [classroomIds, selectedStatus, filterClassroom, filterTeacher, filterAssignment, filterAssistant, filterQuality, filterDate]);
+  }, [classroomIds, selectedStatus, filterClassroom, filterTeacher, filterAssignment, filterAssistant, filterQuality, filterDate, period.params.from, period.params.to]);
 
   const { data, page, totalPages, loading, fetchPage, extra } =
     usePagination(
@@ -541,9 +545,18 @@ const loadCountsForAssignment = async (assignmentId) => {
       { assignmentIds: [assignmentId] }
     );
 
+    const payload = res.data?.[assignmentId];
+    if (payload?.gone) {
+      toast.info("This assignment was deleted from Google Classroom and has been removed.");
+      setExpandedRows((prev) => ({ ...prev, [assignmentId]: false }));
+      fetchPage(page);
+      loadBriefing();
+      return;
+    }
+
     setSubmissionCounts(prev => ({
       ...prev,
-      [assignmentId]: res.data?.[assignmentId] || null
+      [assignmentId]: payload || null
     }));
 
   } catch (err) {
@@ -600,10 +613,19 @@ const goToSubmissionViewer = (assignment) => {
         </p>
       </section>
 
-      <section className="tch-briefing" aria-label="Today's briefing">
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
+
+      <section className="tch-briefing" aria-label="Monthly briefing">
         <div className="tch-briefing-head">
           <div>
-            <div className="tch-briefing-eyebrow">Today&apos;s briefing</div>
+            <div className="tch-briefing-eyebrow">{period.monthLabel} briefing</div>
             <h2 className="tch-briefing-title">What needs attention</h2>
           </div>
           <div className="md-total-pill">
@@ -1105,11 +1127,21 @@ const goToSubmissionViewer = (assignment) => {
                                               <span className="md-counts-spinner" />
                                             </div>
                                           ))
+                                        ) : counts?.gone ? (
+                                          <div className="md-detail-item">
+                                            <span className="md-detail-label">Submissions</span>
+                                            <span className="md-no-assistants">Removed from Google Classroom</span>
+                                          </div>
+                                        ) : counts?.unpublished ? (
+                                          <div className="md-detail-item">
+                                            <span className="md-detail-label">Submissions</span>
+                                            <span className="md-no-assistants">Not published</span>
+                                          </div>
                                         ) : counts === null ? (
                                           ["Submissions","Not Turned In","On Time","Late", "Returned"].map((label) => (
                                             <div className="md-detail-item" key={label}>
                                               <span className="md-detail-label">{label}</span>
-                                              <span className="md-no-assistants">Error</span>                                            </div>
+                                              <span className="md-no-assistants">Unavailable</span>                                            </div>
                                           ))
                                         ) : (
                                           <>

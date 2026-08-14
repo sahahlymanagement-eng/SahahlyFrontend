@@ -30,6 +30,7 @@ import "../teacher/TeacherChatbot.css";
 
 const SUGGESTIONS = [
   "Give me today's briefing",
+  "List students who submitted late and we haven't corrected, with their classes",
   "Schedule a WhatsApp message to the Parents group tomorrow at 6pm",
   "Show me the submissions for the Physics test in Grade 10A",
   "Show Omar's marked submission for the last Chemistry homework",

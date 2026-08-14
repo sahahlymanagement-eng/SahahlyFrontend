@@ -489,12 +489,20 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     [students, reportCart, selectedAssignment?._id]
   );
 
+  const sentStudentCount = useMemo(
+    () => students.filter((s) => s.reportSent).length,
+    [students]
+  );
+
   const filteredStudents = useMemo(() => {
     if (studentFilter === "selected") {
       return students.filter((s) => isStudentSelected(s._id));
     }
     if (studentFilter === "not_sent") {
       return students.filter((s) => !s.reportSent);
+    }
+    if (studentFilter === "sent") {
+      return students.filter((s) => s.reportSent);
     }
     return students;
   }, [students, studentFilter, reportCart, selectedAssignment?._id]);
@@ -1577,11 +1585,22 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                       className={`rw-filter-tab ${studentFilter === "not_sent" ? "rw-filter-tab--active" : ""}`}
                       onClick={() => setStudentFilter("not_sent")}
                     >
-                      Not sent
+                      Not sent ({students.length - sentStudentCount})
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      className={`rw-filter-tab ${studentFilter === "sent" ? "rw-filter-tab--active" : ""}`}
+                      onClick={() => setStudentFilter("sent")}
+                    >
+                      Sent ({sentStudentCount})
                     </button>
                   </div>
                   <span className="rw-student-count">
-                    Showing {filteredStudents.length} of {students.length}
+                    Sent {sentStudentCount} of {students.length} students
+                    {studentFilter !== "all"
+                      ? ` · showing ${filteredStudents.length}`
+                      : ""}
                   </span>
                 </div>
 

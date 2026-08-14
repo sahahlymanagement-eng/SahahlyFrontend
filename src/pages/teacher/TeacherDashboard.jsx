@@ -15,6 +15,8 @@ import {
   FiSend,
 } from "react-icons/fi";
 import { TeacherActionLink } from "./TeacherUI";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 import "./teacher.css";
 
 function getGreeting() {
@@ -27,6 +29,7 @@ function getGreeting() {
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const period = useDashboardPeriod();
   const [courseCount, setCourseCount] = useState(null);
   const [briefing, setBriefing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +55,7 @@ export default function TeacherDashboard() {
     try {
       setBriefingLoading(true);
       const res = await api.get("/teacher-chatbot/briefing", {
-        params: { personId: user.id },
+        params: { personId: user.id, ...period.params },
       });
       setBriefing(res.data);
     } catch {
@@ -60,12 +63,15 @@ export default function TeacherDashboard() {
     } finally {
       setBriefingLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, period.params.from, period.params.to]);
 
   useEffect(() => {
     loadStats();
+  }, [loadStats]);
+
+  useEffect(() => {
     loadBriefing();
-  }, [loadStats, loadBriefing]);
+  }, [loadBriefing]);
 
   const refreshAll = () => {
     loadStats();
@@ -89,10 +95,19 @@ export default function TeacherDashboard() {
         </p>
       </section>
 
-      <section className="tch-briefing" aria-label="Today's briefing">
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
+
+      <section className="tch-briefing" aria-label="Monthly briefing">
         <div className="tch-briefing-head">
           <div>
-            <div className="tch-briefing-eyebrow">Today&apos;s briefing</div>
+            <div className="tch-briefing-eyebrow">{period.monthLabel} briefing</div>
             <h2 className="tch-briefing-title">What needs attention</h2>
           </div>
           <button
@@ -114,7 +129,7 @@ export default function TeacherDashboard() {
                 <span className="tch-briefing-stat-value">
                   {summary?.papersMarkedToday ?? 0}
                 </span>
-                <span className="tch-briefing-stat-label">Marked today</span>
+                <span className="tch-briefing-stat-label">Marked in period</span>
               </div>
               <div className="tch-briefing-stat">
                 <span className="tch-briefing-stat-value">

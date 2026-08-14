@@ -2,13 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
 import {
   FiTarget,
   FiSearch,
   FiRefreshCw,
-  FiCalendar,
   FiEdit3,
   FiFileText,
   FiTrendingUp,
@@ -20,6 +17,8 @@ import {
   FiUser,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 import "./DirectorAccuracyMetrics.css";
 
 const TABS = [
@@ -46,13 +45,6 @@ function accuracyTone(value) {
   if (value >= 90) return "dam-good";
   if (value >= 75) return "dam-ok";
   return "dam-warn";
-}
-
-/** Serialise a Date to the yyyy-MM-dd the API expects, in local time. */
-function toApiDate(date) {
-  if (!date) return undefined;
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function AccuracyBar({ value }) {
@@ -85,13 +77,12 @@ function SummaryPill({ icon, label, value, sub, tone }) {
 }
 
 export default function DirectorAccuracyMetrics() {
+  const period = useDashboardPeriod();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState("assignments");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [from, setFrom] = useState(null);
-  const [to, setTo] = useState(null);
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -100,7 +91,7 @@ export default function DirectorAccuracyMetrics() {
     try {
       setLoading(true);
       const res = await api.get("/director-accuracy/overview", {
-        params: { from: toApiDate(from), to: toApiDate(to) },
+        params: period.params,
       });
       setData(res.data);
     } catch (err) {
@@ -109,7 +100,7 @@ export default function DirectorAccuracyMetrics() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [period.params.from, period.params.to]);
 
   useEffect(() => {
     loadData();
@@ -118,7 +109,7 @@ export default function DirectorAccuracyMetrics() {
   // A new tab or a new search means the old page number is meaningless.
   useEffect(() => {
     setPage(1);
-  }, [tab, search, from, to]);
+  }, [tab, search, period.params.from, period.params.to]);
 
   const rows = useMemo(() => {
     const all = data?.[tab] || [];
@@ -142,7 +133,7 @@ export default function DirectorAccuracyMetrics() {
       setDetailLoading(true);
       setDetail({ loading: true });
       const res = await api.get(`/director-accuracy/assignment/${assignmentId}`, {
-        params: { from: toApiDate(from), to: toApiDate(to) },
+        params: period.params,
       });
       setDetail(res.data);
     } catch (err) {
@@ -179,45 +170,14 @@ export default function DirectorAccuracyMetrics() {
         </button>
       </div>
 
-      <div className="dam-filters">
-        <div className="dam-filter-wrap">
-          <FiCalendar className="dam-filter-icon" size={13} />
-          <DatePicker
-            selected={from}
-            onChange={setFrom}
-            dateFormat="yyyy-MM-dd"
-            className="dam-datepicker-input"
-            placeholderText="From"
-            isClearable
-            portalId="root"
-          />
-        </div>
-        <div className="dam-filter-wrap">
-          <FiCalendar className="dam-filter-icon" size={13} />
-          <DatePicker
-            selected={to}
-            onChange={setTo}
-            dateFormat="yyyy-MM-dd"
-            className="dam-datepicker-input"
-            placeholderText="To"
-            isClearable
-            minDate={from || undefined}
-            portalId="root"
-          />
-        </div>
-        {(from || to) && (
-          <button
-            type="button"
-            className="dam-clear-btn"
-            onClick={() => {
-              setFrom(null);
-              setTo(null);
-            }}
-          >
-            <FiX /> Clear dates
-          </button>
-        )}
-      </div>
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
 
       <div className="dam-summary-row">
         <SummaryPill

@@ -24,6 +24,8 @@ import {
   FiDownload,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 function readStoredUser() {
   try {
@@ -126,6 +128,7 @@ const EXTERNAL_BUCKET_FOR_TILE = {
 
 export default function DirectorDashboard() {
   const navigate = useNavigate();
+  const period = useDashboardPeriod();
   const [user] = useState(readStoredUser);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -141,7 +144,10 @@ export default function DirectorDashboard() {
   // separate from the main dashboard load so switching tiles doesn't
   // re-fetch managers/assistants/external-grading.
   const [selectedBucket, setSelectedBucket] = useState(null);
-  const bucketParams = useMemo(() => ({ bucket: selectedBucket }), [selectedBucket]);
+  const bucketParams = useMemo(
+    () => ({ bucket: selectedBucket, ...period.params }),
+    [selectedBucket, period.params.from, period.params.to]
+  );
   const {
     data: bucketRows,
     page: bucketPage,
@@ -168,7 +174,10 @@ export default function DirectorDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get("/director/dashboard");
+        setLoading(true);
+        const res = await api.get("/director/dashboard", {
+          params: period.params,
+        });
         if (!cancelled) setData(res.data);
       } catch (err) {
         console.error("Failed loading dashboard", err);
@@ -182,7 +191,7 @@ export default function DirectorDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, period.params.from, period.params.to]);
 
   const openManagerDetail = async (m) => {
     setDetailTarget({ type: "manager", name: m.name });
@@ -190,7 +199,7 @@ export default function DirectorDashboard() {
     setDetailLoading(true);
     try {
       const res = await api.get("/director/manager-workload/detail", {
-        params: { personId: m.managerId },
+        params: { personId: m.managerId, ...period.params },
       });
       setDetail(res.data);
     } catch (err) {
@@ -291,6 +300,15 @@ export default function DirectorDashboard() {
           performance across every classroom — all from one place.
         </p>
       </section>
+
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
 
       {loading && <p className="ddx-loading">Loading dashboard…</p>}
 

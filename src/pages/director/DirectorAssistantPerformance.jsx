@@ -16,6 +16,8 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import "./DirectorAssistantPerformance.css";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 function formatNum(n) {
   return (Number(n) || 0).toLocaleString();
@@ -62,6 +64,7 @@ function CapacityBar({ usage, ceiling }) {
 }
 
 export default function DirectorAssistantPerformance() {
+  const period = useDashboardPeriod();
   const [assistants, setAssistants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -70,12 +73,14 @@ export default function DirectorAssistantPerformance() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [period.params.from, period.params.to]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await api.get("/director/assistant-performance");
+      const res = await api.get("/director/assistant-performance", {
+        params: period.params,
+      });
       setAssistants(res.data?.assistants || []);
     } catch (err) {
       toast.error(
@@ -91,7 +96,7 @@ export default function DirectorAssistantPerformance() {
     try {
       setDetailLoading(true);
       const res = await api.get("/director/assistant-performance/detail", {
-        params: { personId },
+        params: { personId, ...period.params },
       });
       setDetail(res.data);
     } catch (err) {
@@ -154,6 +159,15 @@ export default function DirectorAssistantPerformance() {
           Refresh
         </button>
       </div>
+
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
 
       <div className="dap-summary-row">
         <SummaryPill icon={<FiUsers />} label="Assistants" value={filtered.length} />

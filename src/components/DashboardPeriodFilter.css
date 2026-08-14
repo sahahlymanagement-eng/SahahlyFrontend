@@ -1,0 +1,62 @@
+.dpf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.dpf-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  margin-right: 4px;
+}
+
+.dpf-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.dpf-input {
+  width: 124px;
+  border: 1px solid var(--border);
+  background: var(--surface-2, var(--bg));
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+}
+
+.dpf-reset {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--primary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dpf-reset:hover {
+  border-color: var(--primary);
+}
+
+.dpf-hint {
+  width: 100%;
+  font-size: 0.75rem;
+  color: var(--muted);
+}

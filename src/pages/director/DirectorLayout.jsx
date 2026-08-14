@@ -24,6 +24,7 @@ import {
   FiCpu,
   FiTarget,
 
+  FiEdit3,
   FiMessageCircle,
   FiSend,
 
@@ -82,6 +83,7 @@ const NAV_SECTIONS = [
       { icon: <FiBookOpen />, label: "Course Management", path: "/director/courses" },
 
       { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
+      { icon: <FiEdit3 />, label: "Manual Correction", path: "/director/manual-correction" },
       { icon: <FiUser />, label: "Assign Assistants", path: "/director/assign-assistants" },
       { icon: <FiUploadCloud />, label: "Assign Grading Partners", path: "/director/grading-delegations" },
 

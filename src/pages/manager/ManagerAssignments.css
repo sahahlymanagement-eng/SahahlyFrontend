@@ -1493,6 +1493,70 @@ select.ma-search-input option {
   color: var(--primary);
 }
 
+.ma-sent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.ma-sent-filter {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 160px;
+}
+
+.ma-sent-filter select {
+  border: 1px solid var(--border);
+  background: var(--surface-2, var(--bg));
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+}
+
+.ma-sent-coverage-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.ma-sent-coverage-card strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.ma-sent-coverage-card span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.ma-sent-coverage-pill {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.ma-sent-skipped {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
 .ma-sent-latest-card {
   margin-bottom: 18px;
   padding: 16px 18px;

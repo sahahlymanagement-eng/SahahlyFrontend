@@ -13,6 +13,8 @@ import {
   FiFileText,
 } from "react-icons/fi";
 import { AssistantPageHeader, AssistantLoading } from "./AssistantUI";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 function formatNum(n) {
   const v = Number(n) || 0;
@@ -21,6 +23,7 @@ function formatNum(n) {
 
 export default function AssistantPerformance() {
   const navigate = useNavigate();
+  const period = useDashboardPeriod();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -47,7 +50,7 @@ export default function AssistantPerformance() {
     try {
       setLoading(true);
       const res = await api.get("/assignment-workflow/assistant/performance", {
-        params: { personId },
+        params: { personId, ...period.params },
       });
       setData(res.data);
     } catch (err) {
@@ -61,7 +64,7 @@ export default function AssistantPerformance() {
   useEffect(() => {
     if (!user?.id) return;
     loadPerformance(user.id);
-  }, [user?.id]);
+  }, [user?.id, period.params.from, period.params.to]);
 
   if (!user) return null;
 
@@ -86,6 +89,15 @@ export default function AssistantPerformance() {
             Refresh
           </button>
         }
+      />
+
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
       />
 
       {loading && !data ? (

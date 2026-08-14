@@ -19,6 +19,8 @@ import {
   FiX,
   FiFileText,
 } from "react-icons/fi";
+import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 const STATUS_FILTERS = [
   { key: "all", label: "All managers" },
@@ -39,6 +41,7 @@ function healthTone(value) {
 }
 
 export default function DirectorManagerWorkload() {
+  const period = useDashboardPeriod();
   const [managers, setManagers] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -49,12 +52,14 @@ export default function DirectorManagerWorkload() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [period.params.from, period.params.to]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await api.get("/director/manager-workload");
+      const res = await api.get("/director/manager-workload", {
+        params: period.params,
+      });
       setManagers(res.data?.managers || []);
       setSummary(res.data?.summary || null);
     } catch (err) {
@@ -74,7 +79,7 @@ export default function DirectorManagerWorkload() {
     setDetailLoading(true);
     try {
       const res = await api.get("/director/manager-workload/detail", {
-        params: { personId: manager.managerId },
+        params: { personId: manager.managerId, ...period.params },
       });
       setDetail(res.data);
     } catch (err) {
@@ -117,6 +122,15 @@ export default function DirectorManagerWorkload() {
           </div>
         </div>
       </div>
+
+      <DashboardPeriodFilter
+        from={period.from}
+        to={period.to}
+        setFrom={period.setFrom}
+        setTo={period.setTo}
+        resetToThisMonth={period.resetToThisMonth}
+        monthLabel={period.monthLabel}
+      />
 
       {summary && !loading && (
         <div className="mw-summary-grid">
