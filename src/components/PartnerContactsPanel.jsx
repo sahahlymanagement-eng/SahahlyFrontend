@@ -3,6 +3,7 @@ import { toast } from "react-toastify";
 import {
   FiAlertTriangle,
   FiCheck,
+  FiDownloadCloud,
   FiEdit2,
   FiRefreshCw,
   FiSearch,
@@ -19,15 +20,53 @@ import {
   savePartnerContact,
 } from "../api/partnerReports";
 import { confirmToast } from "../utils/confirmToast";
+import Pagination from "./Pagination";
+
+/** Rows per page. "All" stays available — a 272-student roster is still a
+ *  reasonable thing to want in one scrollable list, e.g. to print or Ctrl+F. */
+const PAGE_SIZES = [25, 50, 100];
+const ALL_ROWS = "all";
+
+/** "14 Aug 2026", or the raw value if it is not a date we can read. */
+function formatSyncedAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * A number the partner sent that is NOT the one we would send to.
+ *
+ * There are two ways to get here and both are worth seeing. Either the partner's
+ * number was rejected as unroutable (a placeholder, a truncated number) and the
+ * saved one was left alone, or somebody edited this row by hand since the last
+ * delivery — in which case the edit is living on borrowed time, because the
+ * student's next submission overwrites it.
+ *
+ * Silent otherwise: on a healthy row the partner's number IS the saved one, and
+ * repeating it under every phone would bury the handful that need attention.
+ */
+function UnusedPartnerNumber({ inUse, fromPartner, providerLabel }) {
+  if (!fromPartner || fromPartner === inUse) return null;
+  return (
+    <span className="prw-cell-sub prw-cell-sub--warn">
+      <FiAlertTriangle size={11} /> {providerLabel} sent {fromPartner} — not in use
+    </span>
+  );
+}
 
 /**
  * The partner student contact directory.
  *
- * This panel exists because a grading partner sends us a student's name and its
- * own student code and nothing else — no phone number, and its API has no
- * contacts endpoint. Without a number here, no parent-facing partner report can
- * be delivered at all, which is why the header leads with how many students are
- * still missing one.
+ * The partners now send a parent phone, a student phone and both emails on every
+ * new submission and resubmission, and the backend writes them straight in
+ * (utils/partnerPayloadContacts.js). So this panel is no longer the only way a
+ * number gets here — it is where you see what arrived, fill the gaps for students
+ * whose latest submission predates that change, and correct anything wrong.
+ *
+ * The partner's own values WIN: the next submission a student hands in
+ * overwrites what is saved here. That is why a hand-edited row says so, and why
+ * the fix for a wrong number is to fix it in the partner's platform.
  *
  * Students are discovered from the partner's own submissions, so the list is
  * always exactly the people who have handed work in. Rows are matched to stored
@@ -41,6 +80,8 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
   const [students, setStudents] = useState([]);
   const [unnamed, setUnnamed] = useState(0);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [editingKey, setEditingKey] = useState(null);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
@@ -74,11 +115,33 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
         s.studentName.toLowerCase().includes(q) ||
         (s.parentName || "").toLowerCase().includes(q) ||
         (s.parentPhone || "").includes(q) ||
-        (s.phone || "").includes(q)
+        (s.phone || "").includes(q) ||
+        (s.parentEmail || "").toLowerCase().includes(q) ||
+        (s.email || "").toLowerCase().includes(q)
     );
   }, [students, search]);
 
+  // Paging is applied to the FILTERED list, never the other way round: the
+  // search box matches every student the partner has ever sent us, not just the
+  // page you happen to be looking at, and a hit on page 9 pulls that student
+  // onto page 1 of the results. The stats and the counts below are whole-roster
+  // for the same reason — a directory that reported "3 missing a number" when
+  // it meant "3 on this page" would be worse than not reporting it.
+  const perPage = pageSize === ALL_ROWS ? Math.max(filtered.length, 1) : pageSize;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  // Clamped on read rather than corrected in an effect: a search that narrows
+  // the list, or deleting the last contact on the final page, must not leave
+  // you staring at an empty table with no way back.
+  const safePage = Math.min(page, totalPages);
+  const firstIndex = (safePage - 1) * perPage;
+  const visible = filtered.slice(firstIndex, firstIndex + perPage);
+
   const missingCount = students.filter((s) => !s.hasContact).length;
+  // Rows the partner's own payload has filled in at least once. Worth its own
+  // number: it is the difference between "the directory is maintained by hand"
+  // and "the directory maintains itself", and it is how you tell at a glance
+  // whether the partner has started sending contacts for a given cohort.
+  const fromPartnerCount = students.filter((s) => s.partnerData?.syncedAt).length;
 
   const startEdit = (student) => {
     setEditingKey(student.studentKey);
@@ -87,6 +150,8 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
       parentName: student.parentName || "",
       parentPhone: student.parentPhone || "",
       phone: student.phone || "",
+      parentEmail: student.parentEmail || "",
+      email: student.email || "",
       notes: student.notes || "",
     });
   };
@@ -94,6 +159,26 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
   const cancelEdit = () => {
     setEditingKey(null);
     setDraft({});
+  };
+
+  // Paging away from a row that is mid-edit would leave it in edit state with
+  // its Save button off-screen, so the edit is dropped with the page.
+  const goToPage = (next) => {
+    setPage(Math.min(Math.max(1, next), totalPages));
+    cancelEdit();
+  };
+
+  // Any change to what is being listed starts again at page 1 — landing on
+  // page 4 of 2 results, or holding page 4 while the list changes underneath,
+  // is never what was meant.
+  const changeSearch = (value) => {
+    setSearch(value);
+    setPage(1);
+  };
+
+  const changePageSize = (value) => {
+    setPageSize(value === ALL_ROWS ? ALL_ROWS : Number(value));
+    setPage(1);
   };
 
   const saveEdit = async (student) => {
@@ -105,6 +190,8 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
         parentName: draft.parentName?.trim() || null,
         parentPhone: draft.parentPhone?.trim() || null,
         phone: draft.phone?.trim() || null,
+        parentEmail: draft.parentEmail?.trim() || null,
+        email: draft.email?.trim() || null,
         notes: draft.notes?.trim() || null,
       });
       toast.success(`Saved contact for ${student.studentName}`);
@@ -120,7 +207,8 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
 
   const removeContact = async (student) => {
     const ok = await confirmToast(
-      `Remove the saved numbers for ${student.studentName}? Their reports can no longer be sent.`
+      `Remove the saved numbers for ${student.studentName}? Their reports can no longer be sent` +
+        `${student.partnerData?.syncedAt ? `, until ${providerLabel} sends them again on their next submission` : ""}.`
     );
     if (!ok) return;
     try {
@@ -167,8 +255,8 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
             <FiUsers size={15} /> {providerLabel} contacts
           </h2>
           <p className="prw-panel-sub">
-            {providerLabel} sends us a student name but never a phone number, so parent
-            reports can only go to numbers saved here.
+            Parent reports go to the numbers saved here. {providerLabel} now sends them
+            with each new submission; anything it does not cover is filled in below.
           </p>
         </div>
         <div className="prw-panel-actions">
@@ -202,6 +290,10 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
           <span className="prw-stat-value">{missingCount}</span>
           <span className="prw-stat-label">Missing a number</span>
         </div>
+        <div className="prw-stat">
+          <span className="prw-stat-value">{fromPartnerCount}</span>
+          <span className="prw-stat-label">Sent by {providerLabel}</span>
+        </div>
         {unnamed > 0 && (
           <div className="prw-stat prw-stat--warn">
             <span className="prw-stat-value">{unnamed}</span>
@@ -219,10 +311,23 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
       )}
 
       <p className="prw-note">
+        <FiDownloadCloud size={13} />
+        <span>
+          {providerLabel} sends a parent number, a student number and both emails with
+          every new submission and resubmission, and those <strong>overwrite</strong> what
+          is saved here when they arrive. So an edit below holds until that student hands
+          in again — if a number is wrong, correcting it in {providerLabel} is what makes
+          it stay corrected. Students whose last submission predates this still need
+          filling in by hand or by import.
+        </span>
+      </p>
+
+      <p className="prw-note">
         Import accepts any spreadsheet with a student-name column. Headings like{" "}
         <code>Student Name</code>, <code>Parent Name</code>, <code>Parent Phone</code>,{" "}
-        <code>Student Phone</code> and <code>Notes</code> are recognised in any order and
-        any capitalisation. Rows with no phone number are reported back, not imported.
+        <code>Student Phone</code>, <code>Parent Email</code>, <code>Email</code> and{" "}
+        <code>Notes</code> are recognised in any order and any capitalisation. Rows with no
+        phone number are reported back, not imported.
       </p>
 
       {importReport && (
@@ -255,9 +360,9 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
         <FiSearch size={14} />
         <input
           type="text"
-          placeholder="Search students, parents or numbers…"
+          placeholder="Search all students, parents, numbers or emails…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => changeSearch(e.target.value)}
         />
       </div>
 
@@ -270,8 +375,36 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
             : `No submissions found for ${providerLabel} yet.`}
         </p>
       ) : (
+        <>
+        <div className="prw-table-meta">
+          <span>
+            Showing <strong>{firstIndex + 1}–{firstIndex + visible.length}</strong> of{" "}
+            {filtered.length}
+            {search.trim()
+              ? ` student(s) matching “${search.trim()}” — searched across all ${students.length}`
+              : " student(s)"}
+          </span>
+          <label className="prw-page-size">
+            Rows per page
+            <select
+              className="prw-input"
+              value={pageSize}
+              onChange={(e) => changePageSize(e.target.value)}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+              <option value={ALL_ROWS}>All</option>
+            </select>
+          </label>
+        </div>
+
         <div className="prw-table-wrap">
-          <table className="prw-table">
+          {/* --stacked: cells here carry an email under the name and a warning
+              under a number, so the row has to top-align. */}
+          <table className="prw-table prw-table--stacked">
             <thead>
               <tr>
                 <th>Student</th>
@@ -284,7 +417,7 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
               </tr>
             </thead>
             <tbody>
-              {filtered.map((student) => {
+              {visible.map((student) => {
                 const editing = editingKey === student.studentKey;
                 return (
                   <tr
@@ -293,29 +426,65 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
                   >
                     <td data-label="Student">
                       {editing ? (
-                        <input
-                          className="prw-input"
-                          value={draft.studentName}
-                          onChange={(e) => setDraft({ ...draft, studentName: e.target.value })}
-                        />
+                        <>
+                          <input
+                            className="prw-input"
+                            value={draft.studentName}
+                            onChange={(e) => setDraft({ ...draft, studentName: e.target.value })}
+                          />
+                          <input
+                            className="prw-input prw-input--sub"
+                            type="email"
+                            placeholder="Student email"
+                            value={draft.email}
+                            onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                          />
+                        </>
                       ) : (
                         <>
                           <span className="prw-student-name">{student.studentName}</span>
                           {!student.hasContact && (
                             <span className="prw-pill prw-pill--warn">No number</span>
                           )}
+                          {student.partnerData?.syncedAt && (
+                            <span
+                              className="prw-pill prw-pill--muted"
+                              title={`${providerLabel} last sent this student's contact details on ${formatSyncedAt(
+                                student.partnerData.syncedAt
+                              )}`}
+                            >
+                              From {providerLabel}
+                            </span>
+                          )}
+                          {student.email && (
+                            <span className="prw-cell-sub">{student.email}</span>
+                          )}
                         </>
                       )}
                     </td>
                     <td data-label="Parent name">
                       {editing ? (
-                        <input
-                          className="prw-input"
-                          value={draft.parentName}
-                          onChange={(e) => setDraft({ ...draft, parentName: e.target.value })}
-                        />
+                        <>
+                          <input
+                            className="prw-input"
+                            value={draft.parentName}
+                            onChange={(e) => setDraft({ ...draft, parentName: e.target.value })}
+                          />
+                          <input
+                            className="prw-input prw-input--sub"
+                            type="email"
+                            placeholder="Parent email"
+                            value={draft.parentEmail}
+                            onChange={(e) => setDraft({ ...draft, parentEmail: e.target.value })}
+                          />
+                        </>
                       ) : (
-                        student.parentName || "—"
+                        <>
+                          {student.parentName || "—"}
+                          {student.parentEmail && (
+                            <span className="prw-cell-sub">{student.parentEmail}</span>
+                          )}
+                        </>
                       )}
                     </td>
                     <td data-label="Parent WhatsApp">
@@ -328,7 +497,14 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
                           onChange={(e) => setDraft({ ...draft, parentPhone: e.target.value })}
                         />
                       ) : (
-                        student.parentPhone || "—"
+                        <>
+                          {student.parentPhone || "—"}
+                          <UnusedPartnerNumber
+                            inUse={student.parentPhone}
+                            fromPartner={student.partnerData?.parentPhone}
+                            providerLabel={providerLabel}
+                          />
+                        </>
                       )}
                     </td>
                     <td data-label="Student WhatsApp">
@@ -340,7 +516,14 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
                           onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
                         />
                       ) : (
-                        student.phone || "—"
+                        <>
+                          {student.phone || "—"}
+                          <UnusedPartnerNumber
+                            inUse={student.phone}
+                            fromPartner={student.partnerData?.studentPhone}
+                            providerLabel={providerLabel}
+                          />
+                        </>
                       )}
                     </td>
                     <td data-label="Work">
@@ -407,6 +590,9 @@ export default function PartnerContactsPanel({ slug, providerLabel, onContactsCh
             </tbody>
           </table>
         </div>
+
+        <Pagination page={safePage} totalPages={totalPages} onPageChange={goToPage} />
+        </>
       )}
     </section>
   );

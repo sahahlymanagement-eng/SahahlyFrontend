@@ -386,6 +386,13 @@
   border-color: var(--primary, #2563eb);
 }
 
+/* Second field stacked under a main one in the same table cell (an email under
+   a name), so the row keeps its column count while carrying both. */
+.prw-input--sub {
+  margin-top: 5px;
+  font-size: 0.76rem;
+}
+
 .prw-field {
   display: flex;
   flex-direction: column;
@@ -468,6 +475,35 @@
 
 /* ── Tables ──────────────────────────────────────────────────────────────── */
 
+/* The line above a paged table: what you are looking at on the left, how much
+   of it to show on the right. It states the filtered total as well as the page
+   range on purpose — the search runs over the whole roster, and this is where
+   that is visible. */
+.prw-table-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.76rem;
+  color: var(--text-muted, #64748b);
+}
+
+.prw-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.prw-page-size select {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 0.76rem;
+}
+
 /* The wrapper scrolls, never the page — a wide roster must not make the whole
    workspace scroll sideways. */
 .prw-table-wrap {
@@ -489,6 +525,17 @@
   border-bottom: 1px solid var(--border, #e2e8f0);
   color: var(--text, #0f172a);
   vertical-align: middle;
+}
+
+/* Tables whose cells can carry a second line (an email under a name, a warning
+   under a number). Centring those rows leaves every single-line cell floating
+   halfway down beside the tall one; top-aligning puts all the first lines on one
+   line, which is what makes the row scan as a row. Opt-in rather than the
+   default for .prw-table, because the tables whose cells are all one line look
+   better centred and this must not disturb them. */
+.prw-table--stacked th,
+.prw-table--stacked td {
+  vertical-align: top;
 }
 
 .prw-table th {
@@ -528,11 +575,46 @@
   white-space: nowrap;
 }
 
+/* Secondary line inside a table cell — an email under the name it belongs to, or
+   the number the partner sent that we are not using. Its own line rather than a
+   wider table: the contacts table already carries seven columns, and emails are
+   read, not scanned. */
+.prw-cell-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-muted, #64748b);
+  word-break: break-word;
+}
+
+.prw-cell-sub--warn {
+  color: var(--warning, #b45309);
+}
+
+.prw-cell-sub--warn svg {
+  vertical-align: -1px;
+  margin-right: 3px;
+}
+
+/* Deliberately NOT display:flex. A <td> with display:flex stops being a
+   table-cell, so it no longer stretches to the height of its row: its
+   border-bottom gets drawn at the height of the buttons instead of level with
+   the rule under every other column. That step was invisible while every row
+   was one line tall, and obvious the moment a row carried two.
+   The buttons need no flex container — .prw-icon-btn is already inline-flex. */
 .prw-actions-cell {
-  display: flex;
-  gap: 5px;
-  align-items: center;
   white-space: nowrap;
+}
+
+/* vertical-align kills the inline-baseline descender gap under the buttons,
+   which would otherwise pad the cell a few px taller than its neighbours. */
+.prw-actions-cell .prw-icon-btn {
+  vertical-align: middle;
+}
+
+.prw-actions-cell .prw-icon-btn + .prw-icon-btn {
+  margin-left: 5px;
 }
 
 /* ── Preview list ────────────────────────────────────────────────────────── */
@@ -755,6 +837,19 @@
     justify-content: space-between;
     gap: 12px;
     padding: 5px 12px;
+    /* Each cell becomes a label on the left and its value on the right, which
+       makes every child of the cell a flex item on that one line. A cell with a
+       second line (an email, a warning) has to be allowed to wrap, or its extra
+       lines are squeezed into the label row. */
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  /* Takes the whole of the next line rather than sitting beside the value, and
+     stays on the value's side of the cell. */
+  .prw-table td .prw-cell-sub {
+    flex: 1 0 100%;
+    text-align: right;
   }
 
   .prw-table td::before {
@@ -766,7 +861,15 @@
     color: var(--text-muted, #64748b);
   }
 
+  /* Mobile re-declares display:flex on every td, so this cell IS a flex row
+     here and spaces its buttons with the cell's own gap — the desktop
+     sibling margin would stack on top of it. */
   .prw-actions-cell {
     justify-content: flex-end;
+    gap: 5px;
+  }
+
+  .prw-actions-cell .prw-icon-btn + .prw-icon-btn {
+    margin-left: 0;
   }
 }
