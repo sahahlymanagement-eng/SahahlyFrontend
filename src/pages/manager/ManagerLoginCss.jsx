@@ -102,6 +102,7 @@ import {
   useOrientationCheck,
   buildOrientationFlagMap,
   orientationWarningText,
+  applyOrientationDecision,
 } from "../../hooks/useOrientationCheck";
 
 // LoginCSS keeps its own /external-grading routes rather than the shared
@@ -278,6 +279,13 @@ export default function ManagerLoginCss() {
     []
   );
 
+  // Runs both advisory checks and returns WHICH submissions to grade, or null
+  // to stop. The orientation review has three outcomes — cancel, grade all
+  // anyway, or grade without the flagged papers — so a bare boolean can no
+  // longer carry the answer. The submissions are passed whole rather than as
+  // bare ids so the review modal can name every flagged paper: LoginCSS stores
+  // its payload once, on insert, so older rows never gained a student block and
+  // the list on screen is the only place their name exists.
   const confirmPreGradingChecks = async (eligible) => {
     const proceedPageCount = await confirmGradingPageCounts({
       provider: PROVIDER,
@@ -285,13 +293,27 @@ export default function ManagerLoginCss() {
       submissionIds: eligible.map((s) => s.submissionId),
       onReport: applyPageCountReport,
     });
-    if (!proceedPageCount) return false;
-    return confirmGradingOrientations({
+    if (!proceedPageCount) return null;
+
+    const decision = await confirmGradingOrientations({
       provider: PROVIDER,
       assignmentId: selectedAssignment.id,
-      submissionIds: eligible.map((s) => s.submissionId),
+      // `nameIsFallback` rows carry the "Submission #id" placeholder, not a
+      // person — send nothing and let the modal print its own placeholder.
+      submissions: eligible.map((s) => ({
+        submissionId: s.submissionId,
+        name: s.nameIsFallback ? null : s.name,
+      })),
       onReport: applyOrientationReport,
     });
+    const toGrade = applyOrientationDecision(eligible, decision);
+    if (!toGrade) return null;
+
+    const dropped = eligible.length - toGrade.length;
+    if (dropped > 0) {
+      toast.info(`Skipping ${dropped} submission${dropped === 1 ? "" : "s"} with mixed page orientation`);
+    }
+    return toGrade;
   };
 
   // Cache of fetched PDFs per submission (avoids re-downloading base64 from LoginCSS).
@@ -1127,13 +1149,15 @@ export default function ManagerLoginCss() {
       // The whole assignment, not the page on screen — `submissions` only holds
       // the current page now. Ticked rows narrow it further.
       const roster = await fetchAssignmentRoster(selectedAssignment);
-      const eligible = resolveEligibleForMarking(roster);
-      if (!eligible) return;
+      const candidates = resolveEligibleForMarking(roster);
+      if (!candidates) return;
 
       // Advisory page-count / orientation review before any tokens are spent.
-      // Returning here still runs the finally block, which clears the running flags.
-      const proceed = await confirmPreGradingChecks(eligible);
-      if (!proceed) return;
+      // Returning here still runs the finally block, which clears the running
+      // flags. The review can drop the flagged papers, so what it hands back —
+      // not `candidates` — is the list that gets marked.
+      const eligible = await confirmPreGradingChecks(candidates);
+      if (!eligible) return;
 
       const pending = {};
       eligible.forEach((s) => {
@@ -1274,13 +1298,14 @@ export default function ManagerLoginCss() {
     // The whole assignment, not the page on screen — `submissions` only holds
     // the current page now. Ticked rows narrow it further.
     const roster = await fetchAssignmentRoster(selectedAssignment);
-    const eligible = resolveEligibleForMarking(roster);
-    if (!eligible) return;
+    const candidates = resolveEligibleForMarking(roster);
+    if (!candidates) return;
 
     // Advisory page-count / orientation review before any tokens are spent.
-    // Passes silently when nothing is flagged.
-    const proceed = await confirmPreGradingChecks(eligible);
-    if (!proceed) return;
+    // Passes silently when nothing is flagged; when the user grades without the
+    // flagged papers, those are already dropped from `eligible` here.
+    const eligible = await confirmPreGradingChecks(candidates);
+    if (!eligible) return;
 
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);

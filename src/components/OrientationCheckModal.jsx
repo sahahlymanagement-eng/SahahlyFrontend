@@ -1,5 +1,14 @@
 import { FiX, FiRefreshCw, FiEye } from "react-icons/fi";
 
+// Pre-grading review of mixed portrait/landscape papers.
+//
+// Three outcomes, resolved as a decision object (see useOrientationCheck.js):
+//   Cancel grading        → { proceed: false }
+//   Grade without these   → { proceed: true, excludedIds: [...the flagged ids] }
+//   Grade all anyway      → { proceed: true, excludedIds: [] }
+//
+// "Grade without these" is hidden when every submission in the run is flagged —
+// excluding them all would grade nothing, which is what Cancel already does.
 export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
   if (!state) return null;
 
@@ -9,8 +18,18 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
   const unreadable = checked.filter((c) => c.unreadable);
   const skipped = report?.skipped || [];
   const errored = report?.errored || [];
-  const nameOf = (row) =>
-    row.student?.name || row.studentName || row.student?.studentId || row.submissionId || "Unknown";
+
+  // Only the flagged rows are dropped. An unreadable PDF is a warning, not a
+  // known-bad paper, and skipped/errored rows were never part of the run.
+  const excludedIds = flagged.map((c) => c.submissionId);
+  const remaining = checked.length - flagged.length + skipped.length + errored.length;
+
+  const nameOf = (row) => {
+    const name = row.student?.name || row.studentName;
+    if (name) return name;
+    if (row.student?.studentId) return row.student.studentId;
+    return row.submissionId != null ? `Submission #${row.submissionId}` : "Unknown";
+  };
 
   const summaryText = (c) => {
     if (c.unreadable) return "PDF unreadable";
@@ -18,11 +37,13 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
     return `Mixed orientation on page${c.mismatchedPages?.length === 1 ? "" : "s"} ${pages}`;
   };
 
+  const cancel = () => onResolve({ proceed: false, excludedIds: [] });
+
   return (
     <div
       className="msv-overlay"
       onClick={() => {
-        if (!state.loading) onResolve(false);
+        if (!state.loading) cancel();
       }}
     >
       <div
@@ -33,7 +54,7 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
         <div className="msv-modal-header">
           <div style={{ fontSize: 15, fontWeight: 700 }}>↔ Page Orientation Check</div>
           {!state.loading && (
-            <button className="msv-icon-btn" onClick={() => onResolve(false)}>
+            <button className="msv-icon-btn" onClick={cancel}>
               <FiX />
             </button>
           )}
@@ -60,8 +81,20 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
                     padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13,
                   }}
                 >
-                  <span style={{ fontWeight: 600, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                    {nameOf(c)}
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span
+                      style={{
+                        display: "block", fontWeight: 600, color: "white",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {nameOf(c)}
+                    </span>
+                    {c.submissionId != null && (
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontVariantNumeric: "tabular-nums" }}>
+                        #{c.submissionId}
+                      </span>
+                    )}
                   </span>
                   <span style={{ color: "#fca5a5", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
                     {summaryText(c)}
@@ -88,12 +121,22 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
-              <button className="msv-cancel-btn" onClick={() => onResolve(false)}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+              <button className="msv-cancel-btn" onClick={cancel}>
                 Cancel grading
               </button>
-              <button className="ma-send-btn" onClick={() => onResolve(true)}>
-                Grade anyway
+              {remaining > 0 && (
+                <button
+                  className="msv-action-btn"
+                  onClick={() => onResolve({ proceed: true, excludedIds })}
+                  style={{ padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 500 }}
+                  title={`Skip the ${flagged.length} flagged submission${flagged.length === 1 ? "" : "s"} and grade the rest`}
+                >
+                  Grade without these ({remaining})
+                </button>
+              )}
+              <button className="ma-send-btn" onClick={() => onResolve({ proceed: true, excludedIds: [] })}>
+                Grade all anyway
               </button>
             </div>
           </div>

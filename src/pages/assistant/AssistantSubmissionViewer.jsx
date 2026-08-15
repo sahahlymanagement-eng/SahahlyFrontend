@@ -10,7 +10,12 @@ import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
-import { useOrientationCheck, buildOrientationFlagMap, orientationWarningText } from "../../hooks/useOrientationCheck";
+import {
+  useOrientationCheck,
+  buildOrientationFlagMap,
+  orientationWarningText,
+  applyOrientationDecision,
+} from "../../hooks/useOrientationCheck";
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
 import OrientationCheckModal from "../../components/OrientationCheckModal";
@@ -608,10 +613,23 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     setOrientationFlags((prev) => ({ ...prev, ...buildOrientationFlagMap(report) }));
   const orientationCheckArgs = (students) => ({ assignmentId, classroomId, students, onReport: applyOrientationReport });
 
+  // Runs both advisory checks and returns WHICH submissions to grade, or null
+  // to stop. The orientation review has three outcomes — cancel, grade all
+  // anyway, or grade without the flagged papers — so a bare boolean can no
+  // longer carry the answer.
   const confirmPreGradingChecks = async (students) => {
     const proceedPageCount = await confirmPageCounts(pageCheckArgs(students));
-    if (!proceedPageCount) return false;
-    return confirmOrientations(orientationCheckArgs(students));
+    if (!proceedPageCount) return null;
+
+    const decision = await confirmOrientations(orientationCheckArgs(students));
+    const toGrade = applyOrientationDecision(students, decision);
+    if (!toGrade) return null;
+
+    const dropped = students.length - toGrade.length;
+    if (dropped > 0) {
+      toast.info(`Skipping ${dropped} submission${dropped === 1 ? "" : "s"} with mixed page orientation`);
+    }
+    return toGrade;
   };
 
   const assignmentMaxPoints = useMemo(
@@ -1326,8 +1344,7 @@ window.open(url);
 
   const runMarkStudent = async (student, guidanceText, mode = "normal", markingProvider) => {
     // Advisory page-count / orientation check before spending AI tokens on a possibly-wrong file.
-    const proceed = await confirmPreGradingChecks([student]);
-    if (!proceed) return;
+    if (!(await confirmPreGradingChecks([student]))) return;
 
     setMarkingStudentId(student.submissionId);
     setSingleProgress(prev => ({
@@ -1474,8 +1491,7 @@ window.open(url);
       toast.error("You are not allowed to use v2 marking.");
       return;
     }
-    const proceed = await confirmPreGradingChecks([student]);
-    if (!proceed) return;
+    if (!(await confirmPreGradingChecks([student]))) return;
 
     setMarkingStudentId(student.submissionId);
     setSingleProgress((prev) => ({
@@ -1595,11 +1611,12 @@ window.open(url);
     try {
     const loaded = await resolveEligibleForMarking(false);
     if (!loaded) return;
-    const { eligible } = loaded;
 
-    // Advisory page-count / orientation check before spending AI tokens on possibly-wrong files.
-    const proceed = await confirmPreGradingChecks(eligible);
-    if (!proceed) return;
+    // Advisory page-count / orientation check before spending AI tokens on
+    // possibly-wrong files. The orientation review can drop the flagged papers,
+    // so the list it hands back — not `loaded.eligible` — is what gets marked.
+    const eligible = await confirmPreGradingChecks(loaded.eligible);
+    if (!eligible) return;
 
     const guidanceValue = guidanceForForm(guidanceText);
 
@@ -2100,9 +2117,12 @@ window.open(url);
       return;
     }
 
-    // Advisory page-count / orientation check before spending AI tokens on possibly-wrong files.
-    const proceed = await confirmPreGradingChecks(eligible);
-    if (!proceed) return;
+    // Advisory page-count / orientation check before spending AI tokens on
+    // possibly-wrong files. Papers the orientation review excluded are dropped
+    // from `eligible` here, so every step below sees only what will be marked.
+    const toGrade = await confirmPreGradingChecks(eligible);
+    if (!toGrade) return;
+    eligible = toGrade;
 
     const guidanceValue = guidanceForForm(guidanceText);
 
