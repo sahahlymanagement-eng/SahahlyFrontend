@@ -1180,34 +1180,6 @@ const isUngraded =
   return reportPageCount;
 }
 
-function drawOutOfScopeNote(page, note, paperW, bold) {
-  const { height } = page.getSize();
-  const yPct = Math.min(92, Math.max(5, note.yPercent ?? 30));
-  const anchorY = height - (height * yPct) / 100;
-  const label = san(note.label || "not included in your assignment");
-  const boxH = 24;
-  const boxW = Math.min(paperW - 16, Math.max(160, bold.widthOfTextAtSize(label, 8) + 16));
-  const boxX = 8;
-  const boxY = Math.max(30, anchorY - boxH / 2);
-
-  page.drawRectangle({
-    x: boxX,
-    y: boxY,
-    width: boxW,
-    height: boxH,
-    color: rgb(0.99, 0.95, 0.87),
-    borderColor: AMBER,
-    borderWidth: 1.2,
-  });
-  page.drawText(label, {
-    x: boxX + 8,
-    y: boxY + 8,
-    size: 8,
-    font: bold,
-    color: AMBER,
-  });
-}
-
 function wrapTeacherLines(text, font, size, maxWidth, maxLines = 5) {
   const words = san(text).split(/\s+/).filter(Boolean);
   const lines = [];
@@ -1308,7 +1280,7 @@ export async function annotatePdf({
   questions,
   maxTotalMarks,
   summary,
-  outOfScopeNotes = [],
+  // outOfScopeNotes is still accepted by callers but intentionally not drawn.
   teacherAnnotations = [],
   skipCompress = false,
   lockPlacement = false,
@@ -1368,12 +1340,6 @@ export async function annotatePdf({
   for (const q of enrichedQuestions) {
     const p = Math.max(1, Math.min(q.pageNumber || 1, studentPageCount));
     (byPage[p] = byPage[p] || []).push(q);
-  }
-
-  const scopeByPage = {};
-  for (const note of outOfScopeNotes || []) {
-    const p = Math.max(1, Math.min(note.pageNumber || 1, studentPageCount));
-    (scopeByPage[p] = scopeByPage[p] || []).push(note);
   }
 
   const resolvedTeacher = resolveTeacherAnnotationsForPdf(
@@ -1511,9 +1477,8 @@ export async function annotatePdf({
     }
     drawTeacherAnnotationsInColumn(page, layout, teacherByPage[pageNum] || [], bold, reg);
 
-    for (const note of scopeByPage[pageNum] || []) {
-      drawOutOfScopeNote(page, note, paperW, bold);
-    }
+    // Out-of-scope notes are kept in the result data (and editable in the results
+    // modal) but are no longer stamped on the paper.
 
     const pageAwarded = qs.reduce((s, q) => s + Number(q.marksAwarded || 0), 0);
     const pageMax = qs.reduce((s, q) => s + Number(q.maxMarks || 0), 0);
