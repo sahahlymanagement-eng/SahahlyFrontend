@@ -56,6 +56,7 @@ import MarkSchemeVerificationModal, {
 } from "../../components/MarkSchemeVerificationModal";
 import { isBlankQuestion } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
+import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
 import {
   patchBatchJob,
@@ -866,7 +867,7 @@ export default function ManagerLoginCss() {
     const eligible = pool.filter(
       (s) =>
         s.submissionId &&
-        s.localStatus !== "done" &&
+        !isPublished(s) &&
         !s.hasDraft &&
         !results[s.submissionId]?.result
     );
@@ -1083,7 +1084,7 @@ export default function ManagerLoginCss() {
           ? {
               ...s,
               localGrade: resolveTotalMarksFromResult(result),
-              localStatus: s.localStatus === "done" ? s.localStatus : "grading",
+              localStatus: isPublished(s) ? s.localStatus : "grading",
             }
           : s
       )
@@ -1551,7 +1552,7 @@ export default function ManagerLoginCss() {
     setSubmissions((prev) =>
       prev.map((s) =>
         s.submissionId === id
-          ? { ...s, localGrade: s.localStatus === "done" ? s.localGrade : null }
+          ? { ...s, localGrade: isPublished(s) ? s.localGrade : null }
           : s
       )
     );
@@ -1702,8 +1703,8 @@ export default function ManagerLoginCss() {
     }
     const submissionId = resultModal.submissionId;
 
-    if (resultModal.student?.localStatus === "done") {
-      const ok = await confirmToast("This submission was already graded. Re-upload and overwrite?", {
+    if (isPublishedStatus(resultModal.student?.localStatus)) {
+      const ok = await confirmToast("This submission was already published. Re-upload and overwrite?", {
         title: "Re-upload to LoginCSS",
         confirmLabel: "Re-upload",
       });
@@ -1748,7 +1749,7 @@ export default function ManagerLoginCss() {
       setSubmissions((prev) =>
         prev.map((s) =>
           s.submissionId === submissionId
-            ? { ...s, localStatus: "done", localGrade: totalMarks, hasFeedbackPdf: true }
+            ? { ...s, localStatus: PUBLISHED, localGrade: totalMarks, hasFeedbackPdf: true }
             : s
         )
       );
@@ -1847,7 +1848,7 @@ export default function ManagerLoginCss() {
           gradeById.has(s.submissionId)
             ? {
                 ...s,
-                localStatus: "done",
+                localStatus: PUBLISHED,
                 localGrade: gradeById.get(s.submissionId),
                 hasFeedbackPdf: true,
                 hasDraft: false,
@@ -1920,9 +1921,13 @@ export default function ManagerLoginCss() {
   };
 
   const statusBadge = (s) => {
+    // "Published" rather than "Graded": the green badge means the mark and the
+    // annotated PDF have gone to LoginCSS, which is the only state that also
+    // guarantees a grade to show beside it.
+    if (isPublished(s)) {
+      return <span className="ma-badge ma-badge--green">Published</span>;
+    }
     switch (s.localStatus) {
-      case "done":
-        return <span className="ma-badge ma-badge--green">Graded</span>;
       case "grading":
         return <span className="ma-badge ma-badge--orange">Grading</span>;
       case "failed":
