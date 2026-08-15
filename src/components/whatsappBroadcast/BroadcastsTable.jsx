@@ -1,6 +1,22 @@
 import { FiInbox, FiRefreshCw } from "react-icons/fi";
 import { STATUS_LABEL, STATUS_TONE, formatDateTime } from "./format";
 
+const AUDIENCE_SUFFIX = {
+  parent: "parents",
+  student: "students",
+  both: "parents + students",
+};
+
+/**
+ * Which list this went to. Broadcasts created before roster sources existed carry
+ * no `source`, so the filename they were imported from is the fallback.
+ */
+function sourceLine(b) {
+  if (!b.source?.label) return b.sourceFilename || null;
+  const audience = AUDIENCE_SUFFIX[b.source.audience];
+  return audience ? `${b.source.label} — ${audience}` : b.source.label;
+}
+
 /** Past and running broadcasts. Selecting one opens its live progress view. */
 export default function BroadcastsTable({ broadcasts, loading, selectedId, onSelect, onRefresh }) {
   return (
@@ -43,6 +59,7 @@ export default function BroadcastsTable({ broadcasts, loading, selectedId, onSel
                       <button type="button" className="wbc-link" onClick={() => onSelect(b._id)}>
                         {b.title || "Untitled broadcast"}
                       </button>
+                      {sourceLine(b) ? <div className="mws-note">{sourceLine(b)}</div> : null}
                       {b.attachment?.filename ? (
                         <div className="mws-note">{b.attachment.filename}</div>
                       ) : null}

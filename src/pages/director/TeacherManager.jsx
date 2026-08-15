@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
+import { clearSession } from "../../utils/session";
 import "./TeacherManager.css";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
@@ -164,8 +165,7 @@ export default function TeacherManager() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    clearSession();
     navigate("/login", { replace: true });
   };
 

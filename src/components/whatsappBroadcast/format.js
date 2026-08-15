@@ -18,6 +18,20 @@ export function formatDuration(ms) {
   return `about ${days} day${days === 1 ? "" : "s"}`;
 }
 
+/**
+ * "4 hours" — a bare duration for use inside a sentence, unlike `formatDuration`
+ * which prefixes "about" because it is estimating. The cooldown window is exact,
+ * and it comes from the server so this text can never drift from the rule the
+ * worker actually applies.
+ */
+export function formatWindow(ms) {
+  const mins = Math.round(Number(ms) / 60000);
+  if (!Number.isFinite(mins) || mins <= 0) return "";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"}`;
+  const hours = Math.round(mins / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
 export function formatDateTime(value) {
   if (!value) return "—";
   const d = new Date(value);

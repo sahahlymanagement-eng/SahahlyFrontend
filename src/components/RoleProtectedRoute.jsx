@@ -1,20 +1,25 @@
 import { Navigate } from "react-router-dom";
 import { getRoleName } from "../utils/authRoutes";
+import { clearSession, getStoredUser, hasLiveSession } from "../utils/session";
 
 export default function RoleProtectedRoute({ children, allowedRole }) {
-  const storedUser = localStorage.getItem("user");
+  const user = getStoredUser();
 
-  if (!storedUser) {
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  const user = JSON.parse(storedUser);
+  // The stored `user` outlives the token — it is written at login and nothing
+  // used to remove it — so presence alone is not proof of a live session. Guard
+  // on the token's own expiry, otherwise an expired session still renders the
+  // whole portal and only fails one silent request at a time.
+  if (!hasLiveSession()) {
+    clearSession();
+    return <Navigate to="/login?expired=1" replace />;
+  }
 
   const roleName = getRoleName(user);
 
-  // if (roleName !== allowedRole.toLowerCase()) {
-  //   return <Navigate to="/login" replace />;
-  // }
   const allowedRoles = Array.isArray(allowedRole)
     ? allowedRole.map(role => role.toLowerCase())
     : [allowedRole?.toLowerCase()];

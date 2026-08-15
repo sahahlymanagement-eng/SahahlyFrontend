@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
+import { clearSession } from "../../utils/session";
 import "./QualityManagerDashboard.css";
 
 import {
@@ -128,8 +129,7 @@ export default function QualityManagerDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    clearSession();
     navigate("/login", { replace: true });
   };
 

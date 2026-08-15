@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
+import SessionRefresher from "./components/SessionRefresher";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -131,6 +132,9 @@ function App() {
     <ThemeProvider>
     <BrowserRouter>
       <ThemedToaster />
+      {/* Keeps the access token rolling while the app is open, and pulls role /
+          delegation changes into this browser without a re-login. */}
+      <SessionRefresher />
       <Routes>
         
         <Route path="/" element={<Navigate to="/login" replace />} />

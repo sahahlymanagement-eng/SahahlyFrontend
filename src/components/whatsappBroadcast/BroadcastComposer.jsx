@@ -5,9 +5,15 @@ import BroadcastAttachmentPicker from "./BroadcastAttachmentPicker";
  * The message itself: a title for your own reference, the body, and one optional
  * attachment everyone receives.
  *
- * `{{name}}` is the only placeholder. It is substituted per recipient from the name
- * column in the sheet, and a recipient with no name gets an empty string — which is
- * why the live preview below shows the rendered result rather than the raw template.
+ * Two placeholders, substituted per recipient:
+ *   {{name}}    — whoever the message is addressed to.
+ *   {{student}} — the student it is about. On a send to parents those are two
+ *                 different people, which is what makes "your son Omar scored…"
+ *                 writable once for a whole class. It falls back to {{name}} when
+ *                 the list has no student behind it, as a sheet import never does.
+ *
+ * A recipient with no name gets an empty string, which is why the live preview
+ * shows the rendered result rather than the raw template.
  */
 export default function BroadcastComposer({
   title,
@@ -16,12 +22,15 @@ export default function BroadcastComposer({
   busy,
   uploading,
   sampleName,
+  sampleStudent,
   onChange,
   onPickAttachment,
   onRemoveAttachment,
 }) {
-  const usesName = /\{\{\s*name\s*\}\}/i.test(text || "");
-  const rendered = (text || "").replace(/\{\{\s*name\s*\}\}/gi, sampleName || "");
+  const usesName = /\{\{\s*(name|student)\s*\}\}/i.test(text || "");
+  const rendered = (text || "")
+    .replace(/\{\{\s*name\s*\}\}/gi, sampleName || "")
+    .replace(/\{\{\s*student\s*\}\}/gi, sampleStudent || sampleName || "");
 
   return (
     <section className="mws-card">
@@ -61,14 +70,16 @@ export default function BroadcastComposer({
           placeholder={
             attachment
               ? "Caption sent with the file. Type {{name}} to personalise it."
-              : "Type your message. Use {{name}} to insert each person's name from the sheet."
+              : "Type your message. Use {{name}} for the recipient and {{student}} for the student it's about."
           }
           onChange={(e) => onChange({ text: e.target.value })}
           disabled={busy}
         />
         <p className="mws-note">
-          Type <code>{"{{name}}"}</code> anywhere to insert the name from the sheet.
-          {usesName ? null : " Leave it out and everyone gets the identical message."}
+          Type <code>{"{{name}}"}</code> to insert the recipient’s name, and{" "}
+          <code>{"{{student}}"}</code> for the student the message is about — on a send to
+          parents those are two different people.
+          {usesName ? null : " Leave them out and everyone gets the identical message."}
         </p>
       </div>
 

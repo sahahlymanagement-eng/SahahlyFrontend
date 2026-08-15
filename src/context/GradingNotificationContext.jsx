@@ -108,12 +108,13 @@ export function GradingNotificationProvider({ children }) {
         setDelegations(map);
       })
       .catch(() => {
-        // No delegations resolvable (offline, or an account the endpoint has
-        // nothing for) — fall back to the static allow-list alone.
-        if (!cancelled) {
-          setDelegatedProviders({});
-          setDelegations({});
-        }
+        // Keep the last-known grant. Only a SUCCESSFUL response is evidence
+        // that this account holds no delegations, and that path already writes
+        // the empty map above. Wiping here meant an expired token or a dropped
+        // connection erased a delegate's partner tabs from the sidebar — and,
+        // because the wipe was persisted, kept them gone across reloads.
+        // A 401 is not our problem to interpret: the api interceptor has
+        // already ended the session and redirected to /login.
       })
       .finally(() => {
         if (!cancelled) setDelegationsLoaded(true);

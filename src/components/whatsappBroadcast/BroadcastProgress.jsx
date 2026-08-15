@@ -66,6 +66,16 @@ export default function BroadcastProgress({
           <span className={`mws-badge ${STATUS_TONE[broadcast.status] || "mws-badge--muted"}`}>
             {STATUS_LABEL[broadcast.status] || broadcast.status}
           </span>
+          {/* Waiving the cooldown is a deliberate exception, so the campaign that used
+              it says so — that is the point of recording it per campaign. */}
+          {broadcast.bypassCooldown ? (
+            <span
+              className="mws-badge mws-badge--neutral"
+              title="This campaign was sent to people who had received another broadcast inside the cooldown window"
+            >
+              cooldown waived
+            </span>
+          ) : null}
         </h2>
         <div className="wbc-actions">
           <button type="button" className="mws-btn mws-btn--ghost" onClick={onRefresh} disabled={busy}>
@@ -224,7 +234,14 @@ export default function BroadcastProgress({
               {recipients.map((r) => (
                 <tr key={r._id}>
                   <td data-label="Row">{r.rowNumber ?? "—"}</td>
-                  <td data-label="Name">{r.name || "—"}</td>
+                  <td data-label="Name">
+                    {r.name || "—"}
+                    {/* A parent row's name is not the student's, so say whose message
+                        this is — otherwise a failed row can't be traced to a student. */}
+                    {r.audience === "parent" && r.studentName ? (
+                      <div className="mws-note">parent of {r.studentName}</div>
+                    ) : null}
+                  </td>
                   <td data-label="Number" className="mws-mono">
                     {maskPhone(r.phoneDigits)}
                   </td>

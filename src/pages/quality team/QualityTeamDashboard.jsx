@@ -13,6 +13,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { FiLogOut } from "react-icons/fi";
 import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
+import { clearSession } from "../../utils/session";
 import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
 
 function formatStatus(status = "") {
@@ -64,8 +65,7 @@ export default function QualityTeamDashboard() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    clearSession();
     navigate("/login", { replace: true });
   };
   useEffect(() => {

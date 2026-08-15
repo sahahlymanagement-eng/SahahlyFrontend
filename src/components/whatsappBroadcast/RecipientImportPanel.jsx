@@ -1,22 +1,36 @@
 import { useRef, useState } from "react";
 import { FiAlertTriangle, FiCheckCircle, FiCopy, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
 import { REJECTION_LABEL } from "./format";
+import RosterPicker from "./RosterPicker";
 
 const PAGE = 25;
 
+/** The three ways to build a list. All three end at the same review table. */
+const SOURCE_TABS = [
+  ["sheet", "Excel sheet"],
+  ["classroom", "Classroom"],
+  ["partner", "Grading partner"],
+];
+
+const AUDIENCE_LABEL = { parent: "Parent", student: "Student" };
+
 /**
- * Upload a sheet, then review exactly who will and will not be messaged.
+ * Build a recipient list, then review exactly who will and will not be messaged.
  *
  * The review is the point of this panel, not decoration. A broadcast has no undo,
- * so every row the parser rejected is shown with the reason AND the raw cell value
- * as it appeared in the sheet — seeing "1/1/24" in the phone column is what tells
- * someone Excel reformatted it, which no error message alone would convey.
+ * so every rejected row is shown with the reason AND the raw value it came from —
+ * seeing "1/1/24" in a sheet's phone column is what tells someone Excel reformatted
+ * it, and seeing a blank against a student is what tells them the roster is missing
+ * a number, which no error message alone would convey.
  *
- * Removing a row here removes it from what gets sent: the create request posts the
- * reviewed list as JSON rather than re-uploading the file, so edits made here are
- * not undone by a re-parse on the server.
+ * The source only affects how the list is PRODUCED. Removing a row here removes it
+ * from what gets sent either way: the create request posts the reviewed list as
+ * JSON rather than re-uploading or re-resolving, so edits made here are not undone
+ * by the server.
  */
 export default function RecipientImportPanel({
+  mode,
+  onModeChange,
   preview,
   recipients,
   importing,
@@ -24,6 +38,14 @@ export default function RecipientImportPanel({
   onFile,
   onRemoveRecipient,
   onClear,
+  // Roster mode
+  classrooms,
+  partners,
+  partnerAssignments,
+  rosterSelection,
+  loadingRosterOptions,
+  onRosterChange,
+  onLoadRoster,
 }) {
   const fileInputRef = useRef(null);
   const [tab, setTab] = useState("valid");
@@ -42,6 +64,10 @@ export default function RecipientImportPanel({
   const invalid = preview?.invalid ?? [];
   const duplicates = preview?.duplicates ?? [];
   const detected = preview?.detectedColumns;
+  // Roster previews carry a `source` block; sheet previews carry a filename.
+  const source = preview?.source ?? null;
+  const isRoster = Boolean(source) && source.kind !== "sheet";
+  const showsAudience = isRoster && source.audience === "both";
 
   return (
     <section className="mws-card">
@@ -60,32 +86,80 @@ export default function RecipientImportPanel({
               <FiTrash2 aria-hidden="true" /> Clear list
             </button>
           ) : null}
-          <button
-            type="button"
-            className="mws-btn mws-btn--primary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || importing}
-          >
-            <FiUpload aria-hidden="true" /> {importing ? "Reading…" : preview ? "Replace sheet" : "Upload Excel / CSV"}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleFile}
-            style={{ display: "none" }}
-          />
+          {mode === "sheet" ? (
+            <>
+              <button
+                type="button"
+                className="mws-btn mws-btn--primary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || importing}
+              >
+                <FiUpload aria-hidden="true" />{" "}
+                {importing ? "Reading…" : preview ? "Replace sheet" : "Upload Excel / CSV"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFile}
+                style={{ display: "none" }}
+              />
+            </>
+          ) : null}
         </div>
       </div>
 
+      {/* Switching source clears the list: a half-swapped list, part sheet and part
+          classroom, is the one thing nobody could review honestly. */}
+      <div className="wbc-tabs" role="tablist">
+        {SOURCE_TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={mode === key}
+            className={`wbc-tab ${mode === key ? "wbc-tab--on" : ""}`}
+            onClick={() => {
+              setTab("valid");
+              setShown(PAGE);
+              onModeChange(key);
+            }}
+            disabled={disabled || importing}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode !== "sheet" ? (
+        <RosterPicker
+          mode={mode}
+          classrooms={classrooms}
+          partners={partners}
+          partnerAssignments={partnerAssignments}
+          selection={rosterSelection}
+          loadingOptions={loadingRosterOptions}
+          loading={importing}
+          disabled={disabled}
+          onChange={onRosterChange}
+          onLoad={() => {
+            setTab("valid");
+            setShown(PAGE);
+            onLoadRoster();
+          }}
+        />
+      ) : null}
+
       {!preview ? (
-        <p className="mws-hint">
-          Upload a sheet with a name column and a phone column. Headings can be English or
-          Arabic — <code>Name</code>/<code>الاسم</code> and <code>Phone</code>,{" "}
-          <code>Mobile</code>, <code>WhatsApp</code>/<code>رقم الموبايل</code> are all
-          recognised, and Egyptian numbers written as <code>01…</code> are handled. Nothing
-          is sent at this stage: you will see the full list to check first.
-        </p>
+        mode === "sheet" ? (
+          <p className="mws-hint">
+            Upload a sheet with a name column and a phone column. Headings can be English or
+            Arabic — <code>Name</code>/<code>الاسم</code> and <code>Phone</code>,{" "}
+            <code>Mobile</code>, <code>WhatsApp</code>/<code>رقم الموبايل</code> are all
+            recognised, and Egyptian numbers written as <code>01…</code> are handled. Nothing
+            is sent at this stage: you will see the full list to check first.
+          </p>
+        ) : null
       ) : (
         <>
           <div className="wbc-stat-row">
@@ -95,30 +169,59 @@ export default function RecipientImportPanel({
             </div>
             <div className={`wbc-stat ${invalid.length ? "wbc-stat--warn" : ""}`}>
               <span className="wbc-stat-value">{invalid.length}</span>
-              <span className="wbc-stat-label">Cannot be sent</span>
+              <span className="wbc-stat-label">
+                {isRoster ? "No usable number" : "Cannot be sent"}
+              </span>
             </div>
             <div className={`wbc-stat ${duplicates.length ? "wbc-stat--warn" : ""}`}>
               <span className="wbc-stat-value">{duplicates.length}</span>
               <span className="wbc-stat-label">Duplicates removed</span>
             </div>
             <div className="wbc-stat">
-              <span className="wbc-stat-value">{preview.totalRows}</span>
-              <span className="wbc-stat-label">Rows in sheet</span>
+              <span className="wbc-stat-value">
+                {isRoster ? preview.studentCount ?? 0 : preview.totalRows}
+              </span>
+              <span className="wbc-stat-label">{isRoster ? "Students" : "Rows in sheet"}</span>
             </div>
           </div>
 
-          <p className="mws-note">
-            Reading <strong>{preview.sourceFilename}</strong>
-            {preview.sheetNames?.length > 1 ? ` (sheet “${preview.sheetName}”)` : ""} — names from{" "}
-            <code>{detected?.name || "—"}</code>, numbers from <code>{detected?.phone}</code>.
-            {detected?.detectedBy === "heuristic" ? (
-              <>
-                {" "}
-                <FiAlertTriangle aria-hidden="true" /> These columns were <strong>guessed</strong>{" "}
-                because the headings weren’t recognised — check the list below before sending.
-              </>
-            ) : null}
-          </p>
+          {isRoster ? (
+            <p className="mws-note">
+              Reading <strong>{source.label}</strong> — sending to{" "}
+              <strong>
+                {source.audience === "both"
+                  ? "parents and students"
+                  : source.audience === "parent"
+                  ? "parents"
+                  : "students"}
+              </strong>
+              . Numbers come from each student's saved contact details, so anything wrong
+              here is fixed on the student record, not in this panel.
+            </p>
+          ) : (
+            <p className="mws-note">
+              Reading <strong>{preview.sourceFilename}</strong>
+              {preview.sheetNames?.length > 1 ? ` (sheet “${preview.sheetName}”)` : ""} — names
+              from <code>{detected?.name || "—"}</code>, numbers from{" "}
+              <code>{detected?.phone}</code>.
+              {detected?.detectedBy === "heuristic" ? (
+                <>
+                  {" "}
+                  <FiAlertTriangle aria-hidden="true" /> These columns were{" "}
+                  <strong>guessed</strong> because the headings weren’t recognised — check the
+                  list below before sending.
+                </>
+              ) : null}
+            </p>
+          )}
+
+          {preview.unnamedStudents ? (
+            <p className="mws-error">
+              <FiAlertTriangle aria-hidden="true" /> {preview.unnamedStudents} submission(s) on
+              this assignment carry no student name, so they are not in this list at all. Fix
+              the roster with the partner if that matters.
+            </p>
+          ) : null}
 
           {preview.droppedOverLimit > 0 ? (
             <p className="mws-error">
@@ -129,8 +232,8 @@ export default function RecipientImportPanel({
 
           {preview.recentBroadcastsWithSameSheet?.length ? (
             <p className="mws-error">
-              <FiAlertTriangle aria-hidden="true" /> This exact sheet was already used for a
-              broadcast in the last 7 days. Sending again will message these people a second
+              <FiAlertTriangle aria-hidden="true" /> This exact list of numbers was already
+              broadcast to in the last 7 days. Sending again will message these people a second
               time — you’ll be asked to confirm.
             </p>
           ) : null}
@@ -138,7 +241,10 @@ export default function RecipientImportPanel({
           <div className="wbc-tabs" role="tablist">
             {[
               ["valid", `Will receive it (${recipients.length})`],
-              ["invalid", `Cannot be sent (${invalid.length})`],
+              [
+                "invalid",
+                `${isRoster ? "No usable number" : "Cannot be sent"} (${invalid.length})`,
+              ],
               ["duplicates", `Duplicates (${duplicates.length})`],
             ].map(([key, label]) => (
               <button
@@ -164,13 +270,24 @@ export default function RecipientImportPanel({
                 total={recipients.length}
                 shown={shown}
                 onMore={() => setShown((n) => n + PAGE)}
-                columns={["Row", "Name", "Number", ""]}
+                columns={[
+                  "Row",
+                  "Name",
+                  ...(isRoster ? ["Student"] : []),
+                  ...(showsAudience ? ["To"] : []),
+                  "Number",
+                  "",
+                ]}
                 render={(r, i) => (
                   <tr key={`${r.phoneDigits}-${i}`}>
                     <td data-label="Row">{r.rowNumber ?? "—"}</td>
                     <td data-label="Name">
                       {r.name || <span className="mws-mono">(no name)</span>}
                     </td>
+                    {isRoster ? <td data-label="Student">{r.studentName || "—"}</td> : null}
+                    {showsAudience ? (
+                      <td data-label="To">{AUDIENCE_LABEL[r.audience] || "—"}</td>
+                    ) : null}
                     <td data-label="Number" className="mws-mono">
                       {r.rawPhone}
                     </td>
@@ -191,7 +308,8 @@ export default function RecipientImportPanel({
               />
             ) : (
               <p className="mws-empty">
-                No sendable numbers in this sheet. Check the “Cannot be sent” tab for why.
+                No sendable numbers here. Check the “
+                {isRoster ? "No usable number" : "Cannot be sent"}” tab for why.
               </p>
             )
           ) : null}
@@ -203,13 +321,24 @@ export default function RecipientImportPanel({
                 total={invalid.length}
                 shown={shown}
                 onMore={() => setShown((n) => n + PAGE)}
-                columns={["Row", "Name", "Cell value", "Why"]}
+                columns={[
+                  "Row",
+                  "Name",
+                  ...(isRoster ? ["Student"] : []),
+                  ...(showsAudience ? ["To"] : []),
+                  isRoster ? "Number on file" : "Cell value",
+                  "Why",
+                ]}
                 render={(r, i) => (
                   <tr key={`${r.rowNumber}-${i}`}>
                     <td data-label="Row">{r.rowNumber ?? "—"}</td>
                     <td data-label="Name">{r.name || "—"}</td>
+                    {isRoster ? <td data-label="Student">{r.studentName || "—"}</td> : null}
+                    {showsAudience ? (
+                      <td data-label="To">{AUDIENCE_LABEL[r.audience] || "—"}</td>
+                    ) : null}
                     {/* The raw value is the diagnostic: "1/1/24" tells them Excel ate it. */}
-                    <td data-label="Cell value" className="mws-mono">
+                    <td data-label="Value" className="mws-mono">
                       {r.rawPhone ?? <em>(blank)</em>}
                     </td>
                     <td data-label="Why">
@@ -223,7 +352,7 @@ export default function RecipientImportPanel({
               />
             ) : (
               <p className="mws-empty">
-                <FiCheckCircle aria-hidden="true" /> Every row in the sheet had a usable number.
+                <FiCheckCircle aria-hidden="true" /> Everyone here had a usable number.
               </p>
             )
           ) : null}
@@ -235,11 +364,18 @@ export default function RecipientImportPanel({
                 total={duplicates.length}
                 shown={shown}
                 onMore={() => setShown((n) => n + PAGE)}
-                columns={["Row", "Name", "Number", "Same as"]}
+                columns={[
+                  "Row",
+                  "Name",
+                  ...(isRoster ? ["Student"] : []),
+                  "Number",
+                  "Same as",
+                ]}
                 render={(r, i) => (
                   <tr key={`${r.rowNumber}-${i}`}>
                     <td data-label="Row">{r.rowNumber ?? "—"}</td>
                     <td data-label="Name">{r.name || "—"}</td>
+                    {isRoster ? <td data-label="Student">{r.studentName || "—"}</td> : null}
                     <td data-label="Number" className="mws-mono">
                       {r.rawPhone}
                     </td>
@@ -250,7 +386,11 @@ export default function RecipientImportPanel({
                 )}
               />
             ) : (
-              <p className="mws-empty">No repeated numbers in this sheet.</p>
+              <p className="mws-empty">
+                {isRoster
+                  ? "No number appears twice — no siblings or shared phones in this list."
+                  : "No repeated numbers in this sheet."}
+              </p>
             )
           ) : null}
         </>

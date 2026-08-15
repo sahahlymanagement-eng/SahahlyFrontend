@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FiSun, FiMoon, FiShield, FiVideo, FiLifeBuoy, FiFileText } from "react-icons/fi";
 import api from "../api/api";
 import "./Login.css";
@@ -8,6 +8,7 @@ import { useTheme } from "../context/ThemeContext";
 import { toast } from "react-toastify";
 import { clearPersistedUiState } from "../hooks/usePersistedState";
 import { getRoleName, getDashboardPathForUser } from "../utils/authRoutes";
+import { clearSession, getStoredUser, hasLiveSession, storeSession } from "../utils/session";
 
 // Icons (Lucide-react style or simple SVGs)
 const EmailIcon = () => (
@@ -20,22 +21,30 @@ const LockIcon = () => (
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { theme, toggleTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const noticeShown = useRef(false);
+
+  // Arrived here because the session ended (api interceptor or route guard).
+  // Say so — otherwise being dumped on the login screen mid-task reads as a bug.
+  useEffect(() => {
+    if (noticeShown.current || !searchParams.get("expired")) return;
+    noticeShown.current = true;
+    clearSession();
+    toast.info("Your session expired. Please sign in again.");
+  }, [searchParams]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const stored = localStorage.getItem("user");
-    if (!token || !stored) return;
-    try {
-      const user = JSON.parse(stored);
-      const path = getDashboardPathForUser(user);
-      if (path) navigate(path, { replace: true });
-    } catch {
-      // ignore malformed session
-    }
+    // Only bounce to the dashboard on a session that is actually still live;
+    // a stale `user` with a dead token belongs on this page.
+    if (!hasLiveSession()) return;
+    const user = getStoredUser();
+    if (!user) return;
+    const path = getDashboardPathForUser(user);
+    if (path) navigate(path, { replace: true });
   }, [navigate]);
 
   const handleLogin = async (e) => {
@@ -50,8 +59,10 @@ export default function Login() {
       const response = await api.post("/auth/login", { email, password });
       const { token, user } = response.data;
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      // Clear first: a previous account's grading-delegation cache must never
+      // survive into this session.
+      clearSession();
+      storeSession(token, user);
       // Drop any leftover tab-restore state so a new login starts clean.
       clearPersistedUiState();
 
@@ -59,8 +70,7 @@ export default function Login() {
       const destination = getDashboardPathForUser(user);
 
       if (!destination) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        clearSession();
         toast.error(`No portal configured for role "${roleName || "unknown"}". Contact an administrator.`);
         return;
       }

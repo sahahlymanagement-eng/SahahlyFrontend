@@ -1,4 +1,5 @@
 import axios from "axios";
+import { endSession } from "../utils/session";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:6001/api"
@@ -31,6 +32,13 @@ api.interceptors.response.use(
         serverMsg && !/invalid or expired token/i.test(serverMsg)
           ? serverMsg
           : "Your session has expired. Please sign in again.";
+
+      // Fail closed. Only a couple of pages ever read the flag above; every
+      // other caller swallows the rejection in a .catch() and keeps rendering
+      // whatever it last had, which is how a dead session used to look like
+      // "the site stopped updating" instead of "you were signed out".
+      // Clearing + redirecting here covers every page at once.
+      endSession({ expired: true });
     }
     return Promise.reject(error);
   }

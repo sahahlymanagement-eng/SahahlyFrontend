@@ -7,11 +7,23 @@ import BroadcastComposer from "../../components/whatsappBroadcast/BroadcastCompo
 import RecipientImportPanel from "../../components/whatsappBroadcast/RecipientImportPanel";
 import BroadcastProgress from "../../components/whatsappBroadcast/BroadcastProgress";
 import BroadcastsTable from "../../components/whatsappBroadcast/BroadcastsTable";
-import { formatDateTime, formatDuration } from "../../components/whatsappBroadcast/format";
+import {
+  formatDateTime,
+  formatDuration,
+  formatWindow,
+} from "../../components/whatsappBroadcast/format";
 import "../../components/whatsappScheduler/whatsappScheduler.css";
 import "../../components/whatsappBroadcast/broadcast.css";
 
 const emptyForm = { title: "", text: "", attachment: null };
+
+/** Nothing is selected until the operator picks it; parents is the usual intent. */
+const emptyRosterSelection = {
+  classroomId: "",
+  provider: "",
+  assignmentId: "",
+  audience: "parent",
+};
 
 /**
  * `crypto.randomUUID` only exists in a secure context, so it is undefined when the
@@ -33,10 +45,23 @@ export default function WhatsAppBroadcast() {
   const [preview, setPreview] = useState(null);
   const [recipients, setRecipients] = useState([]);
   const [importing, setImporting] = useState(false);
+
+  // Where the list comes from: an uploaded sheet, a classroom roster, or a grading
+  // partner's assignment. Switching wipes the list — see clearRecipients.
+  const [sourceMode, setSourceMode] = useState("sheet");
+  const [rosterSelection, setRosterSelection] = useState(emptyRosterSelection);
+  const [classrooms, setClassrooms] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [partnerAssignments, setPartnerAssignments] = useState([]);
+  const [loadingRosterOptions, setLoadingRosterOptions] = useState(false);
+
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [confirmText, setConfirmText] = useState("");
+  // Waives the per-number cooldown for this one send. Always starts off, and is reset
+  // with the list — it is a decision about a specific overlap, not a preference.
+  const [bypassCooldown, setBypassCooldown] = useState(false);
   const [testPhone, setTestPhone] = useState("");
 
   const [broadcasts, setBroadcasts] = useState([]);
@@ -55,6 +80,13 @@ export default function WhatsAppBroadcast() {
   const sampleName = useMemo(
     () => recipients.find((r) => r.name)?.name || "",
     [recipients]
+  );
+  // The message preview renders {{student}} too, which on a parents send is a
+  // different person from {{name}} — showing both is the only way to spot
+  // "Dear Omar, your son Omar…" before it goes out.
+  const sampleStudent = useMemo(
+    () => recipients.find((r) => r.studentName)?.studentName || sampleName,
+    [recipients, sampleName]
   );
 
   // Fetchers are pure — they return data and never touch state, which keeps the
@@ -166,6 +198,91 @@ export default function WhatsAppBroadcast() {
     setPreview(null);
     setRecipients([]);
     setConfirmText("");
+    setBypassCooldown(false);
+  };
+
+  // ── Roster sources ────────────────────────────────────────────────────────
+
+  // Options load when their tab is opened rather than on page load — most
+  // broadcasts are sheet imports and would never look at either list — and from
+  // the event handler rather than an effect, matching the fetchers above.
+  const loadRosterOptions = useCallback(async (fetcher, apply, failure) => {
+    setLoadingRosterOptions(true);
+    try {
+      apply(await fetcher());
+    } catch (err) {
+      toast.error(wbErr(err, failure));
+    } finally {
+      setLoadingRosterOptions(false);
+    }
+  }, []);
+
+  // A list half from a sheet and half from a classroom is the one thing nobody
+  // could review honestly, so switching source starts over.
+  const changeSourceMode = (next) => {
+    if (next === sourceMode) return;
+    setSourceMode(next);
+    clearRecipients();
+    if (next === "classroom" && !classrooms.length) {
+      loadRosterOptions(
+        () => wbApi.listClassroomSources({ limit: 200 }),
+        setClassrooms,
+        "Could not load classrooms"
+      );
+    }
+    if (next === "partner" && !partners.length) {
+      loadRosterOptions(wbApi.listPartnerSources, setPartners, "Could not load partners");
+    }
+  };
+
+  const patchRoster = (patch) => {
+    setRosterSelection((prev) => ({ ...prev, ...patch }));
+    // The loaded list belongs to the previous selection; keeping it on screen
+    // beside a changed dropdown is how the wrong class gets messaged.
+    clearRecipients();
+
+    // Assignment ids are per-partner, so a partner change always refetches.
+    if (patch.provider !== undefined) {
+      setPartnerAssignments([]);
+      if (patch.provider) {
+        loadRosterOptions(
+          () => wbApi.listPartnerAssignments(patch.provider),
+          setPartnerAssignments,
+          "Could not load assignments"
+        );
+      }
+    }
+  };
+
+  const loadRoster = async () => {
+    setImporting(true);
+    try {
+      const body =
+        sourceMode === "classroom"
+          ? {
+              kind: "classroom",
+              classroomId: rosterSelection.classroomId,
+              audience: rosterSelection.audience,
+            }
+          : {
+              kind: "partner",
+              provider: rosterSelection.provider,
+              assignmentId: Number(rosterSelection.assignmentId),
+              audience: rosterSelection.audience,
+            };
+      const data = await wbApi.previewRoster(body);
+      setPreview(data);
+      setRecipients(data.valid || []);
+      if (!data.validCount) {
+        toast.warn("Nobody here has a usable number — check the “No usable number” tab");
+      } else {
+        toast.success(`${data.validCount} recipient(s) ready to review`);
+      }
+    } catch (err) {
+      toast.error(wbErr(err, "Could not load that list"));
+    } finally {
+      setImporting(false);
+    }
   };
 
   // ── Attachment ────────────────────────────────────────────────────────────
@@ -189,6 +306,18 @@ export default function WhatsAppBroadcast() {
   const canSend =
     recipients.length > 0 && (form.text.trim() || form.attachment) && !busy && !importing;
 
+  // Rows the preview says the worker would skip for a recent message. Only counts the
+  // ones still in the list — removing someone by hand also removes them from this.
+  const skipCount = useMemo(() => {
+    const rows = preview?.wouldBeSkipped;
+    if (!preview?.wouldBeSkippedCount) return 0;
+    if (!rows?.length) return preview.wouldBeSkippedCount;
+    const live = new Set(recipients.map((r) => r.rowNumber));
+    // The sample is capped server-side, so anything beyond it is assumed still present.
+    const dropped = rows.filter((r) => !live.has(r.rowNumber)).length;
+    return Math.max(0, preview.wouldBeSkippedCount - dropped);
+  }, [preview, recipients]);
+
   const submit = async (confirmDuplicateSheet = false) => {
     setBusy(true);
     try {
@@ -200,10 +329,19 @@ export default function WhatsAppBroadcast() {
           name: r.name,
           phone: r.rawPhone,
           rowNumber: r.rowNumber,
+          // Roster rows only — the backend ignores both on a sheet import.
+          studentName: r.studentName ?? null,
+          audience: r.audience ?? null,
         })),
         clientRequestId: clientRequestId.current,
+        // Provenance, so the campaign record says which class or assignment this
+        // was. The reviewed list above is what actually sends.
+        source: preview?.source ?? null,
         sourceFilename: preview?.sourceFilename ?? null,
         sourceHash: preview?.sourceHash ?? null,
+        // Only ever sent when it would change something, so a checkbox left over from
+        // an earlier list cannot silently waive the guard on this one.
+        bypassCooldown: skipCount > 0 && bypassCooldown,
         confirmDuplicateSheet,
       });
 
@@ -255,7 +393,7 @@ export default function WhatsAppBroadcast() {
         toast.info("Start a broadcast first, then send yourself a test from its progress view");
         return;
       }
-      const out = await wbApi.testSend(selectedId, testPhone.trim(), sampleName);
+      const out = await wbApi.testSend(selectedId, testPhone.trim(), sampleName, sampleStudent);
       toast[out.skipped ? "warn" : "success"](
         out.skipped ? "Skipped — that test was already sent" : "Test message sent"
       );
@@ -290,8 +428,9 @@ export default function WhatsAppBroadcast() {
       <header className="mws-page-header">
         <h1 className="mws-page-title">WhatsApp Broadcast</h1>
         <p className="mws-page-subtitle">
-          Write one message, upload a sheet of names and numbers, and send it to everyone as
-          individual WhatsApp messages.
+          Write one message, choose who gets it — an uploaded sheet, a classroom’s students or
+          parents, or a grading partner’s assignment — and send it to everyone as individual
+          WhatsApp messages.
         </p>
       </header>
 
@@ -302,12 +441,15 @@ export default function WhatsAppBroadcast() {
         busy={busy}
         uploading={uploading}
         sampleName={sampleName}
+        sampleStudent={sampleStudent}
         onChange={patchForm}
         onPickAttachment={handlePickAttachment}
         onRemoveAttachment={() => patchForm({ attachment: null })}
       />
 
       <RecipientImportPanel
+        mode={sourceMode}
+        onModeChange={changeSourceMode}
         preview={preview}
         recipients={recipients}
         importing={importing}
@@ -315,6 +457,13 @@ export default function WhatsAppBroadcast() {
         onFile={handleSheet}
         onRemoveRecipient={removeRecipient}
         onClear={clearRecipients}
+        classrooms={classrooms}
+        partners={partners}
+        partnerAssignments={partnerAssignments}
+        rosterSelection={rosterSelection}
+        loadingRosterOptions={loadingRosterOptions}
+        onRosterChange={patchRoster}
+        onLoadRoster={loadRoster}
       />
 
       {/* The send gate. Everything above is reversible; this is the point of no return,
@@ -328,8 +477,9 @@ export default function WhatsAppBroadcast() {
 
         {!canSend ? (
           <p className="mws-empty">
-            Add a message {form.attachment ? "" : "or an attachment "}and upload a sheet of
-            recipients to enable sending.
+            Add a message {form.attachment ? "" : "or an attachment "}and load a list of
+            recipients — from a sheet, a classroom, or a partner assignment — to enable
+            sending.
           </p>
         ) : (
           <div className="wbc-gate">
@@ -349,10 +499,52 @@ export default function WhatsAppBroadcast() {
                 messages already delivered <strong>cannot be recalled</strong>.
               </li>
               <li>
-                Anyone who received a different broadcast in the last 24 hours is skipped
-                automatically.
+                Anyone who received a different broadcast in the last{" "}
+                {formatWindow(preview?.cooldownMs) || "few hours"} is skipped automatically
+                {skipCount ? (
+                  <>
+                    {" "}
+                    — <strong>about {skipCount}</strong> of these people would be
+                  </>
+                ) : null}
+                .
               </li>
             </ul>
+
+            {/* Only offered when it would actually change something. The cooldown catches
+                one list being armed twice; a parent with children in two classes is a
+                collision it cannot tell apart, and only the operator knows which it is. */}
+            {skipCount ? (
+              <div className="wbc-bypass">
+                <label className="wbc-bypass-option">
+                  <input
+                    type="checkbox"
+                    checked={bypassCooldown}
+                    onChange={(e) => setBypassCooldown(e.target.checked)}
+                    disabled={busy}
+                  />
+                  <span>
+                    <strong>Send to those {skipCount} anyway</strong>
+                    <span className="mws-note">
+                      Right when the same parent appears in more than one class — these are
+                      different messages about different students. They will receive a second
+                      message today either way, so leave it off if this list overlaps a blast
+                      you have already sent.
+                    </span>
+                  </span>
+                </label>
+                {preview?.wouldBeSkipped?.length ? (
+                  <p className="mws-note">
+                    Affected:{" "}
+                    {preview.wouldBeSkipped
+                      .slice(0, 5)
+                      .map((r) => r.studentName || r.name || `row ${r.rowNumber}`)
+                      .join(", ")}
+                    {skipCount > 5 ? ` and ${skipCount - 5} more` : ""}.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mws-field">
               <label className="mws-label" htmlFor="wbc-confirm">

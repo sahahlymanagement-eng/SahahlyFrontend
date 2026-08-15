@@ -13,6 +13,7 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
 import { usePagination } from "../../hooks/usePagination";
+import { clearSession } from "../../utils/session";
 import usePersistedState from "../../hooks/usePersistedState";
 import Pagination from "../../components/Pagination";
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
@@ -213,8 +214,7 @@ export default function ManagerStudents({ scope = "manager" }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    clearSession();
     navigate("/login", { replace: true });
   };
 

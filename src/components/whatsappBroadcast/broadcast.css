@@ -125,6 +125,96 @@
   border-bottom-color: var(--primary, #2563eb);
 }
 
+/* ─── Cooldown bypass ───
+   Inside the send gate, and only when it would change something. Tinted because it
+   waives a protection rather than setting a preference. */
+
+.wbc-bypass {
+  padding: 12px 14px;
+  margin: 12px 0;
+  border: 1px solid var(--warning, #f59e0b);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.wbc-bypass-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.wbc-bypass-option input {
+  margin-top: 3px;
+}
+
+.wbc-bypass-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ─── Roster picker ───
+   Shown in place of the upload button when the list comes from a classroom or a
+   partner assignment rather than a spreadsheet. */
+
+.wbc-roster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+/* The selects are the width of the names inside them, not of the card. */
+.wbc-roster .mws-field {
+  width: 100%;
+  max-width: 520px;
+  margin: 0;
+}
+
+.wbc-audience {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  margin: 0;
+}
+
+.wbc-audience-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.wbc-audience-option input {
+  margin-top: 3px;
+}
+
+/* The hint sits under its own label rather than trailing it, so the three options
+   stay scannable as three choices. */
+.wbc-audience-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+@media (max-width: 640px) {
+  .wbc-roster .mws-field {
+    max-width: none;
+  }
+}
+
 /* A long recipient list scrolls inside its own box rather than widening the page. */
 .wbc-table-scroll {
   overflow-x: auto;

@@ -10,6 +10,7 @@ import {
 } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
 import { clearPersistedUiState } from "../hooks/usePersistedState";
+import { clearSession } from "../utils/session";
 import logo from "../assets/images/Logo-trimmed.png";
 import "./RoleSidebar.css";
 
@@ -33,8 +34,7 @@ export default function RoleSidebar({
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    clearSession();
     clearPersistedUiState();
     navigate("/login", { replace: true });
   };
