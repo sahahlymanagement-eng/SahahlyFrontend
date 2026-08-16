@@ -101,6 +101,7 @@ import {
 } from "../../utils/markingQuestionEdits";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import BulkQuestionEditChat from "../../components/BulkQuestionEditChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
@@ -4184,7 +4185,23 @@ return (
                             onApplyPatch={handleCorrectionPatch}
                           />
                     )}
-      
+
+                        {/* Edits every paper in this assignment. Applying
+                            rewrites the paper on screen too, so close the modal
+                            rather than leave stale marks that Confirm Edits
+                            would write back over it. */}
+                        {assignmentId && (
+                          <BulkQuestionEditChat
+                            source="classroom"
+                            assignmentId={assignmentId}
+                            assignmentName={assignmentTitle}
+                            onApplied={async () => {
+                              setResultModal(null);
+                              await fetchSavedResults();
+                            }}
+                          />
+                        )}
+
                     {isCriteria && editingCriteriaGrade && (
                       <div style={{ marginBottom: 20 }}>
                         <CriteriaGradeEditor

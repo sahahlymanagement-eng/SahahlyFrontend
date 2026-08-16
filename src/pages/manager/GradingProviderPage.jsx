@@ -46,6 +46,7 @@ import {
 } from "../../utils/markingQuestionEdits";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import BulkQuestionEditChat from "../../components/BulkQuestionEditChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
@@ -3511,6 +3512,26 @@ export default function GradingProviderPage({ slug, label }) {
                     onApplyPatch={handleCorrectionPatch}
                   />
                 )}
+
+                {/* Edits every unpublished paper in this partner assignment.
+                    Applying rewrites the draft on screen too, so close the modal
+                    rather than leave stale marks that Confirm Edits would write
+                    back over it. */}
+                {canEdit &&
+                  (resultModal.student?.assignment?.id ?? selectedAssignment?.id) != null && (
+                    <BulkQuestionEditChat
+                      source="partner"
+                      provider={PROVIDER}
+                      assignmentId={
+                        resultModal.student?.assignment?.id ?? selectedAssignment?.id
+                      }
+                      assignmentName={selectedAssignment?.name}
+                      onApplied={async () => {
+                        setResultModal(null);
+                        await loadAll();
+                      }}
+                    />
+                  )}
 
                 {/* CRITERIA MODE */}
                 {isCriteria && resultModal.result.criteriaGrade && (

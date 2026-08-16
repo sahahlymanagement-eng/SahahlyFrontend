@@ -69,6 +69,7 @@ import {
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import BulkQuestionEditChat from "../../components/BulkQuestionEditChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
@@ -5381,6 +5382,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     totalMarks: sumQuestionMarks(questionsForDisplay),
                   }}
                   onApplyPatch={handleCorrectionPatch}
+                />
+              )}
+
+              {/* Edits every paper in the assignment, so it is gated on the
+                  marking tools like the rest of the editor. Applying rewrites
+                  the paper on screen too — close the modal rather than leave
+                  stale marks that Confirm Edits would write back over it. */}
+              {showMarkingTools && selectedAssignment?._id && (
+                <BulkQuestionEditChat
+                  source="classroom"
+                  assignmentId={selectedAssignment._id}
+                  assignmentName={selectedAssignment.title}
+                  onApplied={async () => {
+                    setResultModal(null);
+                    await fetchSavedResults();
+                  }}
                 />
               )}
 
