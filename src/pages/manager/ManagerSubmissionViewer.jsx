@@ -61,6 +61,7 @@ import {
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
 import {
   cloneCriteriaGrade,
@@ -548,6 +549,11 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // Set while the auto-save on open is confirming the displayed result, so the
   // unconfirmed-edits autosave does not store a copy of what is being confirmed.
   const [autoSavingOpenFor, setAutoSavingOpenFor] = useState(null);
+  // "Not included in your assignment" markers are stamped on the PDF but are not
+  // question rows, so they need their own editable copy to be removable.
+  const [editingOutOfScopeNotes, setEditingOutOfScopeNotes] = useState(() =>
+    resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
+  );
 
   const editHistory = useMarkingEditHistory({
     questions: editingQuestions,
@@ -646,6 +652,7 @@ const resolvePdfSummary = (submissionId, result) =>
     resolvePdfSummary,
     pendingRemovedIndices,
     editingCriteriaGrade,
+    outOfScopeNotesOverride: editingOutOfScopeNotes,
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -668,11 +675,17 @@ const resolvePdfSummary = (submissionId, result) =>
     }
   }, [editingQuestions]);
 
+  const handleOutOfScopeNoteRemove = useCallback((noteIndex) => {
+    setEditingOutOfScopeNotes((prev) => prev.filter((_, i) => i !== noteIndex));
+    toast.info("Out-of-scope note will be removed when you confirm edits");
+  }, []);
+
   const resultModalSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
 
   useEffect(() => {
     setPendingRemovedIndices(new Set());
+    setEditingOutOfScopeNotes(resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []);
   }, [resultModalSubmissionId]);
 
   // ── Unconfirmed edits: autosave + restore ─────────────────────────────────
@@ -686,6 +699,7 @@ const resolvePdfSummary = (submissionId, result) =>
     setEditingQuestions((restored.questions || []).map((q) => ({ ...q })));
     setEditingCriteriaGrade(cloneCriteriaGrade(restored.criteriaGrade));
     setEditingAnnotations(getTeacherAnnotations(restored).map((a) => ({ ...a })));
+    setEditingOutOfScopeNotes(getOutOfScopeNotes(restored));
     // Marked as touched so the auto-rebuild does not immediately overwrite the
     // summary the assistant had actually written.
     setEditingSummary(restored.summary || "");
@@ -730,6 +744,9 @@ const resolvePdfSummary = (submissionId, result) =>
       setSummaryTouched(false);
       setEditingMaxTotal(null);
       setPendingRemovedIndices(new Set());
+      setEditingOutOfScopeNotes(
+        resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
+      );
       toast.info("Unconfirmed edits discarded");
     },
   });
@@ -5440,6 +5457,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 questionCount={questionsForDisplay.length}
               />
               <MarkingPageShiftNotice result={resultModal?.result} />
+              <OutOfScopeNotesPanel
+                notes={editingOutOfScopeNotes}
+                onRemove={handleOutOfScopeNoteRemove}
+              />
               <AddMarkingQuestionBar
                 onAdd={(q) => {
                   setEditingQuestions((prev) => [...prev, q]);

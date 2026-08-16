@@ -55,6 +55,7 @@ export function useExternalAnnotatedPreview({
   getStudentFile,
   pendingRemovedIndices = null,
   editingCriteriaGrade = null,
+  outOfScopeNotesOverride = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -82,6 +83,8 @@ export function useExternalAnnotatedPreview({
   editingCriteriaGradeRef.current = editingCriteriaGrade;
   const effectiveMaxTotalRef = useRef(effectiveMaxTotal);
   effectiveMaxTotalRef.current = effectiveMaxTotal;
+  const outOfScopeNotesOverrideRef = useRef(outOfScopeNotesOverride);
+  outOfScopeNotesOverrideRef.current = outOfScopeNotesOverride;
 
   const pendingRemovedRef = useRef(pendingRemovedIndices);
   pendingRemovedRef.current = pendingRemovedIndices;
@@ -231,6 +234,23 @@ export function useExternalAnnotatedPreview({
     )) {
       return true;
     }
+
+    if (Array.isArray(outOfScopeNotesOverride)) {
+      const sig = (notes) =>
+        (notes || [])
+          .map((n) => {
+            const label = n?.label ?? "";
+            const y = n?.yPercent ?? n?.ypercent ?? "";
+            const q = n?.questionLabel ?? n?.questionNumber ?? "";
+            return `${label}|${y}|${q}`;
+          })
+          .join("~");
+
+      if (sig(outOfScopeNotesOverride) !== sig(confirmedSnapshot.outOfScopeNotes || [])) {
+        return true;
+      }
+    }
+
     const currentSummary = String(editingSummary ?? "").trim();
     const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
     return currentSummary !== confirmedSummary;
@@ -242,6 +262,7 @@ export function useExternalAnnotatedPreview({
     effectiveMaxTotal,
     editingMaxTotal,
     editingCriteriaGrade,
+    outOfScopeNotesOverride,
   ]);
 
   /**
@@ -255,7 +276,7 @@ export function useExternalAnnotatedPreview({
       editingQuestions,
       pendingRemovedRef.current
     ).map((q) => ({ ...q }));
-    return applyTeacherEditsToResult(
+    const finalResult = applyTeacherEditsToResult(
       resultModal.result,
       questions,
       Math.max(1, Number(effectiveMaxTotal) || 1),
@@ -263,6 +284,10 @@ export function useExternalAnnotatedPreview({
       editingSummary,
       editingCriteriaGrade
     );
+    if (Array.isArray(outOfScopeNotesOverride)) {
+      finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
+    }
+    return finalResult;
   }, [
     resultModal,
     editingQuestions,
@@ -270,6 +295,7 @@ export function useExternalAnnotatedPreview({
     editingSummary,
     effectiveMaxTotal,
     editingCriteriaGrade,
+    outOfScopeNotesOverride,
   ]);
 
   const confirmEdits = useCallback(
@@ -298,6 +324,11 @@ export function useExternalAnnotatedPreview({
           editingSummary,
           editingCriteriaGrade
         );
+        if (Array.isArray(outOfScopeNotesOverride)) {
+          // Lets a grader delete "Not included in your assignment" markers in the
+          // preview before confirming edits.
+          finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
+        }
         const summary = finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
         const studentFile = resultModalRef.current?.studentFile || null;
         const snapshot = {
@@ -332,6 +363,7 @@ export function useExternalAnnotatedPreview({
               snapshot.finalObtainedMarks = persisted.finalObtainedMarks;
               snapshot.finalMaximumMarks =
                 persisted.finalMaximumMarks ?? snapshot.maxTotal;
+              snapshot.outOfScopeNotes = getOutOfScopeNotes(persisted);
             }
           } catch (err) {
             // This confirm dropped whatever preview was in flight, so put the
@@ -358,6 +390,7 @@ export function useExternalAnnotatedPreview({
       effectiveMaxTotal,
       generatePreview,
       editingCriteriaGrade,
+      outOfScopeNotesOverride,
       confirmedSnapshot,
     ]
   );

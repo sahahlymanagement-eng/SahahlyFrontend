@@ -15,7 +15,6 @@ import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import {
   assertPdfBlob,
   sumQuestionMarks,
-  filterQuestionsPendingRemoval,
   buildPlacementQuestions,
   applyPlacementChange,
   applyQuestionLabelChange,
@@ -34,16 +33,20 @@ import {
   resolveDisplayMaxTotal,
   buildPriorityMarkingResult,
   appendMarkingContext,
+  prepareEditingQuestions,
 } from "../../utils/markingFormData";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
-import QuestionKeywordFields from "../../components/QuestionKeywordFields";
+import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
+import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
 import {
   applyQuestionRowEdit,
-  patchQuestionRowEdit,
+  cloneCriteriaGrade,
 } from "../../utils/markingQuestionEdits";
+import { sortQuestionsByPlacement } from "../../utils/normalizeQuestionPlacement";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
 import BulkQuestionEditChat from "../../components/BulkQuestionEditChat";
@@ -51,12 +54,11 @@ import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
-import QuestionNumberBadge from "../../components/QuestionNumberBadge";
 import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
 import MarkSchemeVerificationModal, {
   runMarkSchemeVerification,
 } from "../../components/MarkSchemeVerificationModal";
-import { isBlankQuestion } from "../../utils/blankQuestionFeedback";
+import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
@@ -113,14 +115,6 @@ const PROVIDER = null;
 
 const PER_PAGE = 10;
 const ASSIGNMENTS_PER_PAGE = 15;
-
-const CHECKLIST_CONFIG = [
-  { key: "scanningClarity",            label: "Scanning Clarity",          passIsGood: true  },
-  { key: "handwritingClarity",         label: "Handwriting Clarity",       passIsGood: true  },
-  { key: "markSchemeUnderstanding",    label: "Mark Scheme Understanding", passIsGood: true  },
-  { key: "studentAnswerUnderstanding", label: "Student Answer Understood", passIsGood: true  },
-  { key: "answerIsBlank",              label: "Answer is Blank",           passIsGood: false },
-];
 
 // Stable per-assignment key (submissions with no assignment fall under "__none__").
 const getScoreColor = (awarded, max) => {
@@ -223,6 +217,12 @@ export default function ManagerLoginCss() {
 
   const [resultModal, setResultModal] = useState(null);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  // Criteria-mode grade is edited in place like the question rows, so it lives
+  // in editor state rather than being read straight off the marking result.
+  const [editingCriteriaGrade, setEditingCriteriaGrade] = useState(null);
+  // "Not included in your assignment" markers are stamped on the PDF but are not
+  // question rows, so they need their own editable copy to be removable.
+  const [editingOutOfScopeNotes, setEditingOutOfScopeNotes] = useState([]);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingAnnotations, setEditingAnnotations] = useState([]);
   const [editingSummary, setEditingSummary] = useState("");
@@ -506,6 +506,8 @@ export default function ManagerLoginCss() {
     resolvePdfSummary,
     getStudentFile,
     pendingRemovedIndices,
+    editingCriteriaGrade,
+    outOfScopeNotesOverride: editingOutOfScopeNotes,
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -528,11 +530,17 @@ export default function ManagerLoginCss() {
     }
   }, [editingQuestions]);
 
+  const handleOutOfScopeNoteRemove = useCallback((noteIndex) => {
+    setEditingOutOfScopeNotes((prev) => prev.filter((_, i) => i !== noteIndex));
+    toast.info("Out-of-scope note will be removed when you confirm edits");
+  }, []);
+
   const resultModalSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
 
   useEffect(() => {
     setPendingRemovedIndices(new Set());
+    setEditingOutOfScopeNotes(resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []);
   }, [resultModalSubmissionId]);
 
   // ── Unconfirmed edits: autosave + restore ─────────────────────────────────
@@ -540,8 +548,13 @@ export default function ManagerLoginCss() {
   // so closing the tab no longer loses it, and dropped automatically after 24h if
   // nobody ever confirms. See hooks/usePendingEditsAutosave.js.
   const applyRestoredEdits = useCallback((restored) => {
+    // Stored verbatim, not re-normalised: this blob already went through the
+    // editor's normalizers on the way in, and running them again would risk
+    // moving rows the grader had deliberately placed.
     setEditingQuestions((restored.questions || []).map((q) => ({ ...q })));
+    setEditingCriteriaGrade(cloneCriteriaGrade(restored.criteriaGrade));
     setEditingAnnotations(getTeacherAnnotations(restored).map((a) => ({ ...a })));
+    setEditingOutOfScopeNotes(getOutOfScopeNotes(restored));
     // Marked as touched so the auto-rebuild does not immediately overwrite the
     // summary the grader had actually written.
     setEditingSummary(restored.summary || "");
@@ -573,19 +586,26 @@ export default function ManagerLoginCss() {
       const confirmed = resetToConfirmed();
       if (!confirmed) return;
       setEditingQuestions(confirmed.questions);
+      setEditingCriteriaGrade(cloneCriteriaGrade(confirmed.criteriaGrade));
       setEditingAnnotations(confirmed.teacherAnnotations);
       setEditingSummary(confirmed.summary);
       setSummaryTouched(false);
       setEditingMaxTotal(null);
       setPendingRemovedIndices(new Set());
+      setEditingOutOfScopeNotes(
+        resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
+      );
       toast.info("Unconfirmed edits discarded");
     },
   });
 
-  const questionsForDisplay = useMemo(
-    () => filterQuestionsPendingRemoval(editingQuestions, pendingRemovedIndices),
-    [editingQuestions, pendingRemovedIndices]
-  );
+  // `_placementIndex` is the row's index in editingQuestions, kept through the
+  // page-order sort so a card's Remove/edit still targets the right row.
+  const questionsForDisplay = useMemo(() => {
+    const withIdx = editingQuestions.map((q, i) => ({ ...q, _placementIndex: i }));
+    const filtered = withIdx.filter((q) => !pendingRemovedIndices.has(q._placementIndex));
+    return sortQuestionsByPlacement(filtered);
+  }, [editingQuestions, pendingRemovedIndices]);
 
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
@@ -973,7 +993,10 @@ export default function ManagerLoginCss() {
       studentFile,
       submissionId: student.submissionId,
     });
-    setEditingQuestions((result.questions || []).map((q) => ({ ...q })));
+    setEditingQuestions(
+      prepareEditingQuestions(enrichMarkingQuestions(result.questions || []))
+    );
+    setEditingCriteriaGrade(cloneCriteriaGrade(result.criteriaGrade));
     setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
     setEditingSummary(getMarkingResultSummary(result, {}) || "");
     setSummaryTouched(false);
@@ -984,7 +1007,7 @@ export default function ManagerLoginCss() {
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
-    setEditingQuestions(questions.map((q) => ({ ...q })));
+    setEditingQuestions(prepareEditingQuestions(questions));
     if (summary) {
       setEditingSummary(summary);
       setSummaryTouched(true);
@@ -1624,10 +1647,11 @@ export default function ManagerLoginCss() {
       });
       if (finalResult) {
         setEditingQuestions(
-          (finalResult.finalQuestions || finalResult.questions || appliedQuestions).map(
-            (q) => ({ ...q })
+          prepareEditingQuestions(
+            finalResult.finalQuestions || finalResult.questions || appliedQuestions
           )
         );
+        setEditingCriteriaGrade(cloneCriteriaGrade(finalResult.criteriaGrade));
         setPendingRemovedIndices(new Set());
         toast.success("Edits confirmed — preview and grade updated");
       }
@@ -1641,8 +1665,14 @@ export default function ManagerLoginCss() {
   // marking JSON, so an untouched paper used to read as "pending edits" and had
   // to be confirmed by hand before it could be published. Save the displayed
   // version to the draft once per paper instead, so Confirm Edits is only ever
-  // needed for real edits. Questions are shown verbatim here, so this save
-  // never registers as a correction (see services/gradingEditStats.js).
+  // needed for real edits.
+  //
+  // Caveat since the modal gained the classroom normalizers: questions are no
+  // longer shown verbatim. prepareEditingQuestions can re-label a mislabelled
+  // blank row and enrichMarkingQuestions rewrites a terse blank-question reason,
+  // so on those papers this save DOES land as a correction against the AI
+  // baseline (see services/gradingEditStats.js). Untouched papers are unaffected
+  // — both normalizers are no-ops when there is nothing to fix.
   const autoSavedResultsRef = useRef(new Set());
   const autoSaveOpenedResultRef = useRef(null);
 
@@ -1712,9 +1742,9 @@ export default function ManagerLoginCss() {
         questions: editingQuestions,
         maxTotalMarks: effectiveMaxTotal,
         summary: resolvePdfSummary(submissionId, resultModal.result),
-        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        outOfScopeNotes: editingOutOfScopeNotes,
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
-        criteriaGrade: resultModal.result?.criteriaGrade,
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
@@ -1747,7 +1777,7 @@ export default function ManagerLoginCss() {
       const studentFile = await getStudentFile(submissionId);
       const totalMarks = resolveAnnotatePdfTotalMarks({
         questions: editingQuestions,
-        criteriaGrade: resultModal.result?.criteriaGrade,
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
@@ -1756,9 +1786,9 @@ export default function ManagerLoginCss() {
         questions: editingQuestions,
         maxTotalMarks: effectiveMaxTotal,
         summary,
-        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+        outOfScopeNotes: editingOutOfScopeNotes,
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
-        criteriaGrade: resultModal.result?.criteriaGrade,
+        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
 
@@ -2090,7 +2120,36 @@ export default function ManagerLoginCss() {
   };
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
-  const total = sumQuestionMarks(questionsForDisplay);
+  const total =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : sumQuestionMarks(questionsForDisplay);
+  // The cover page prints the result's own total; the body prints the sum of the
+  // question rows. Editing, adding or removing a row can pull them apart, and the
+  // paper then contradicts itself — so say so before it is uploaded to the partner.
+  const coverTotal =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : Number(
+          resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks
+        );
+  const paperTotal =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : sumQuestionMarks(questionsForDisplay);
+  const totalMismatch =
+    !hasPendingEdits &&
+    !previewLoading &&
+    questionsForDisplay.length > 0 &&
+    Number.isFinite(coverTotal) &&
+    Number.isFinite(paperTotal) &&
+    coverTotal !== paperTotal
+      ? {
+          coverTotal,
+          paperTotal,
+          message: `Cover page total ${coverTotal} does not match paper total ${paperTotal}`,
+        }
+      : null;
   const pct = gradeScorePercent(total, effectiveMaxTotal);
   const color = getScoreColor(total, effectiveMaxTotal);
 
@@ -3270,7 +3329,8 @@ export default function ManagerLoginCss() {
                         onClick={() => {
                           const reset = resetToConfirmed();
                           if (reset) {
-                            setEditingQuestions(reset.questions);
+                            setEditingQuestions(prepareEditingQuestions(reset.questions));
+                            setEditingCriteriaGrade(cloneCriteriaGrade(reset.criteriaGrade));
                             setEditingAnnotations(reset.teacherAnnotations || []);
                             setEditingSummary(reset.summary || "");
                             setSummaryTouched(false);
@@ -3311,6 +3371,22 @@ export default function ManagerLoginCss() {
                     </div>
                   </div>
                 </div>
+                {totalMismatch && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)",
+                      background: "color-mix(in srgb, var(--warning) 12%, transparent)",
+                      color: "var(--warning)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {totalMismatch.message}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <button
@@ -3464,118 +3540,17 @@ export default function ManagerLoginCss() {
                   />
                 )}
 
-                {/* CRITERIA MODE */}
-                {isCriteria && resultModal.result.criteriaGrade && (
+                {/* CRITERIA MODE — the grade itself is editable, same as the
+                    classroom viewer: criterion rows, their marks and the criteria
+                    summary all feed the regenerated PDF. */}
+                {isCriteria && editingCriteriaGrade && (
                   <div style={{ marginBottom: 20 }}>
-                    <div
-                      style={{
-                        padding: "16px 20px",
-                        background: "color-mix(in srgb, var(--accent) 8%, transparent)",
-                        border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
-                        borderRadius: 12,
-                        marginBottom: 14,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "var(--accent)",
-                          marginBottom: 10,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                        }}
-                      >
-                        🎯 Criteria Grade (Final)
-                      </div>
-                      {(() => {
-                        const cg = resultModal.result.criteriaGrade;
-                        const cgTotal = cg.totalMarks || 0;
-                        const cgMax = effectiveMaxTotal;
-                        const cgPct = cgMax > 0 ? Math.round((cgTotal / cgMax) * 100) : 0;
-                        const cgColor = getScoreColor(cgTotal, cgMax);
-                        return (
-                          <>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 16,
-                                marginBottom: 12,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <div style={{ fontSize: 36, fontWeight: 800, color: cgColor, lineHeight: 1 }}>
-                                {cgTotal}
-                              </div>
-                              <div style={{ fontSize: 16, color: "var(--muted)" }}>/ {cgMax}</div>
-                              <div style={{ flex: 1, minWidth: 100 }}>
-                                <div style={{ height: 8, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
-                                  <div
-                                    style={{
-                                      width: `${cgPct}%`,
-                                      height: "100%",
-                                      background: cgColor,
-                                      borderRadius: 4,
-                                    }}
-                                  />
-                                </div>
-                                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                                  {cgPct}%
-                                </div>
-                              </div>
-                            </div>
-                            {cg.breakdown?.length > 0 && (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {cg.breakdown.map((row, i) => (
-                                  <div
-                                    key={i}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 12,
-                                      padding: "8px 12px",
-                                      background: "var(--surface-2)",
-                                      borderRadius: 8,
-                                      flexWrap: "wrap",
-                                    }}
-                                  >
-                                    <div style={{ fontWeight: 600, fontSize: 13, minWidth: 160 }}>
-                                      {row.criterion}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontWeight: 700,
-                                        fontSize: 13,
-                                        color: getScoreColor(row.marksAwarded, row.maxMarks),
-                                        minWidth: 60,
-                                      }}
-                                    >
-                                      {row.marksAwarded} / {row.maxMarks}
-                                    </div>
-                                    <div style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
-                                      {row.reason}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {cg.summary && (
-                              <p
-                                style={{
-                                  fontSize: 13,
-                                  color: "var(--muted)",
-                                  marginTop: 12,
-                                  lineHeight: 1.6,
-                                }}
-                              >
-                                {cg.summary}
-                              </p>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
+                    <CriteriaGradeEditor
+                      criteriaGrade={editingCriteriaGrade}
+                      maxTotal={effectiveMaxTotal}
+                      onChange={setEditingCriteriaGrade}
+                      getScoreColor={getScoreColor}
+                    />
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
                       <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                       <span
@@ -3594,46 +3569,45 @@ export default function ManagerLoginCss() {
                   </div>
                 )}
 
-                {/* NORMAL MODE summary (editable) */}
-                {!isCriteria && (
-                  <div className="msv-summary-box">
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "var(--muted)",
-                        marginBottom: 6,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}
-                    >
-                      Overall Summary
-                    </div>
-                    <textarea
-                      value={editingSummary}
-                      onChange={(e) => {
-                        setSummaryTouched(true);
-                        setEditingSummary(e.target.value);
-                      }}
-                      rows={4}
-                      placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
-                      style={{
-                        width: "100%",
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: "1px solid var(--border)",
-                        background: "var(--surface-2)",
-                        color: "var(--text-primary)",
-                        fontSize: 13,
-                        lineHeight: 1.6,
-                        resize: "vertical",
-                        boxSizing: "border-box",
-                        fontFamily: "inherit",
-                        outline: "none",
-                      }}
-                    />
+                {/* Overall summary (editable). Shown in criteria mode too — it is
+                    what the cover page prints there as well. */}
+                <div className="msv-summary-box">
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "var(--muted)",
+                      marginBottom: 6,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                    }}
+                  >
+                    Overall summary (PDF)
                   </div>
-                )}
+                  <textarea
+                    value={editingSummary}
+                    onChange={(e) => {
+                      setSummaryTouched(true);
+                      setEditingSummary(e.target.value);
+                    }}
+                    rows={4}
+                    placeholder="Short bullet points (one per line, start with •). Updates when you edit marks."
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--text-primary)",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      resize: "vertical",
+                      boxSizing: "border-box",
+                      fontFamily: "inherit",
+                      outline: "none",
+                    }}
+                  />
+                </div>
 
                 {/* QUESTIONS */}
                 <MarkingCompletenessNotice
@@ -3641,205 +3615,33 @@ export default function ManagerLoginCss() {
                   questionCount={questionsForDisplay.length}
                 />
                 <MarkingPageShiftNotice result={resultModal?.result} />
-                {!isCriteria && (
-                  <AddMarkingQuestionBar
-                    onAdd={(q) => {
-                      setEditingQuestions((prev) => [...prev, q]);
-                      toast.success(`Added Q${q.questionNumber}`);
-                    }}
-                  />
-                )}
+                <OutOfScopeNotesPanel
+                  notes={editingOutOfScopeNotes}
+                  onRemove={handleOutOfScopeNoteRemove}
+                />
+                <AddMarkingQuestionBar
+                  onAdd={(q) => {
+                    setEditingQuestions((prev) => [...prev, q]);
+                    toast.success(`Added Q${q.questionNumber}`);
+                  }}
+                />
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                  {editingQuestions.map((q, idx) => {
-                    if (pendingRemovedIndices.has(idx)) return null;
-                    const awarded = Number(q.marksAwarded) || 0;
-                    const qMax = Number(q.maxMarks) || 0;
-                    const qColor = getScoreColor(awarded, qMax);
-                    const qPct = qMax > 0 ? Math.round((awarded / qMax) * 100) : 0;
-                    return (
-                      <div key={idx} className="msv-q-card">
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            marginBottom: 10,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <QuestionNumberBadge question={q} guidance={assignmentPrompt.content} allQuestions={questionsForDisplay} />
-                          {isCriteria ? (
-                            <span
-                              style={{
-                                padding: "3px 10px",
-                                borderRadius: 6,
-                                border: `1px solid ${qColor}`,
-                                background: `color-mix(in srgb, ${qColor} 15%, transparent)`,
-                                color: qColor,
-                                fontWeight: 700,
-                                fontSize: 13,
-                              }}
-                            >
-                              {q.marksAwarded} / {q.maxMarks}
-                            </span>
-                          ) : (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <input
-                                type="number"
-                                min={0}
-                                max={q.maxMarks}
-                                value={awarded}
-                                onChange={(e) =>
-                                  setEditingQuestions((prev) =>
-                                    patchQuestionRowEdit(prev, idx, {
-                                      marksAwarded: Math.min(
-                                        qMax,
-                                        Math.max(0, Number(e.target.value) || 0)
-                                      ),
-                                    })
-                                  )
-                                }
-                                style={{
-                                  width: 52,
-                                  padding: "4px 8px",
-                                  borderRadius: 6,
-                                  border: `1px solid ${qColor}`,
-                                  background: `color-mix(in srgb, ${qColor} 15%, transparent)`,
-                                  color: qColor,
-                                  fontWeight: 700,
-                                  fontSize: 14,
-                                  textAlign: "center",
-                                  outline: "none",
-                                }}
-                              />
-                              <span style={{ color: "var(--muted)", fontSize: 13 }}>
-                                / {q.maxMarks}
-                              </span>
-                            </div>
-                          )}
-                          <div
-                            style={{
-                              flex: 1,
-                              minWidth: 60,
-                              height: 5,
-                              background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
-                              borderRadius: 3,
-                            }}
-                          >
-                            <div
-                              style={{ width: `${qPct}%`, height: "100%", background: qColor, borderRadius: 3 }}
-                            />
-                          </div>
-                          <span style={{ fontSize: 11, color: "var(--muted)" }}>{qPct}%</span>
-                        </div>
-
-                        {q.checklist && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-                            {CHECKLIST_CONFIG.map(({ key, label, passIsGood }) => {
-                              const val = q.checklist[key];
-                              const isGood = passIsGood ? val === true : val === false;
-                              return (
-                                <span
-                                  key={key}
-                                  style={{
-                                    padding: "2px 8px",
-                                    borderRadius: 12,
-                                    fontSize: 11,
-                                    background: isGood ? "var(--success-bg)" : "var(--danger-bg)",
-                                    color: isGood ? "var(--success)" : "var(--danger)",
-                                    border: `1px solid ${isGood ? "color-mix(in srgb, var(--success) 20%, transparent)" : "color-mix(in srgb, var(--danger) 20%, transparent)"}`,
-                                  }}
-                                >
-                                  {isGood ? "✅" : "❌"} {label}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {q.studentAnswer && !isBlankQuestion(q) && (
-                          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-                            <span style={{ fontWeight: 600, color: "var(--muted)" }}>Student: </span>
-                            {q.studentAnswer}
-                          </div>
-                        )}
-                        {isBlankQuestion(q) && (
-                          <div style={{ fontSize: 12, color: "var(--warning)", marginBottom: 6, lineHeight: 1.5 }}>
-                            📭 {q.studentAnswer || "Question left blank — no working or final answer was provided."}
-                          </div>
-                        )}
-
-                        {q.correctAnswer && (isCriteria || Number(q.maxMarks) === 1) && (
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: "var(--success)",
-                              marginBottom: 6,
-                              padding: "6px 10px",
-                              background: "color-mix(in srgb, var(--success) 7%, transparent)",
-                              borderRadius: 6,
-                              border: "1px solid color-mix(in srgb, var(--success) 15%, transparent)",
-                            }}
-                          >
-                            <span style={{ fontWeight: 600 }}>✅ Correct Answer: </span>
-                            {q.correctAnswer}
-                          </div>
-                        )}
-
-                        {!isCriteria && (
-                          <QuestionKeywordFields
-                            question={q}
-                            onChange={(updated) =>
-                              setEditingQuestions((prev) =>
-                                applyQuestionRowEdit(prev, idx, updated)
-                              )
-                            }
-                          />
-                        )}
-
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--muted)",
-                            marginBottom: 4,
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                          }}
-                        >
-                          {isCriteria ? "Comment" : "Examiner Note"}
-                        </div>
-                        {isCriteria ? (
-                          <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
-                            {q.reason}
-                          </p>
-                        ) : (
-                          <textarea
-                            value={q.reason}
-                            onChange={(e) =>
-                              setEditingQuestions((prev) =>
-                                patchQuestionRowEdit(prev, idx, { reason: e.target.value })
-                              )
-                            }
-                            rows={3}
-                            style={{
-                              width: "100%",
-                              padding: "8px 10px",
-                              borderRadius: 8,
-                              border: "1px solid var(--border)",
-                              background: "var(--surface-2)",
-                              color: "var(--text-primary)",
-                              fontSize: 12,
-                              resize: "vertical",
-                              boxSizing: "border-box",
-                              fontFamily: "inherit",
-                              outline: "none",
-                            }}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
+                  {questionsForDisplay.map((q) => (
+                    <MarkingQuestionCard
+                      key={q._placementIndex}
+                      question={q}
+                      index={q._placementIndex}
+                      guidance={assignmentPrompt.content}
+                      allQuestions={questionsForDisplay}
+                      getScoreColor={getScoreColor}
+                      onChange={(index, updated) =>
+                        setEditingQuestions((prev) =>
+                          applyQuestionRowEdit(prev, index, updated)
+                        )
+                      }
+                      onRemove={(questionIndex) => handleQuestionRemove(questionIndex)}
+                    />
+                  ))}
                 </div>
               </div>
 
