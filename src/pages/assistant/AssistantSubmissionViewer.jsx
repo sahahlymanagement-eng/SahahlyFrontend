@@ -82,6 +82,7 @@ import {
   filterQuestionsPendingRemoval,
   buildPlacementQuestions,
   applyPlacementChange,
+  applyQuestionLabelChange,
   questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
@@ -723,6 +724,10 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
   const handleAnnotationPlacementChange = useCallback((change) => {
     setEditingQuestions((prev) => applyPlacementChange(prev, change));
+  }, []);
+
+  const handleQuestionLabelChange = useCallback((change) => {
+    setEditingQuestions((prev) => applyQuestionLabelChange(prev, change));
   }, []);
 
   const handleQuestionRemove = useCallback((questionIndex) => {
@@ -4379,6 +4384,7 @@ return (
                             reportPageCount={reportPageCount}
                             onPlacementChange={handleAnnotationPlacementChange}
                             onQuestionRemove={handleQuestionRemove}
+                            onQuestionLabelChange={handleQuestionLabelChange}
                             labelGuidance={assignmentPrompt.content}
                           />
                         </div>

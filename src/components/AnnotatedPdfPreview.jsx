@@ -14,7 +14,7 @@ import "../utils/uint8ArrayToHexPolyfill";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
-import { placementKey } from "../utils/markingFormData";
+import { placementKey, normalizeQuestionLabelInput } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
 
 // CDN legacy worker must match the legacy API build above
@@ -53,34 +53,80 @@ function clampYPercent(n) {
   return Math.min(92, Math.max(5, Math.round(v * 100) / 100));
 }
 
+function LabelEditor({ initial, onCommit, onCancel }) {
+  const ref = useRef(null);
+  const [value, setValue] = useState(initial);
+
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  return (
+    <input
+      ref={ref}
+      className="pdf-place-handle__label-input"
+      value={value}
+      aria-label="Question label"
+      onChange={(e) => setValue(e.target.value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onCommit(value);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      onBlur={() => onCommit(value)}
+    />
+  );
+}
+
 function PlacementHandle({
   q,
   displayNumber,
   column,
   yPercent,
   active,
+  editing,
   onPointerDown,
+  onStartLabelEdit,
+  onCommitLabel,
+  onCancelLabelEdit,
   onRemove,
   showRemove,
   zIndex,
 }) {
   const labelNum = displayNumber || q?.questionNumber;
-  const label =
-    column === "left"
-      ? `Q${labelNum} ${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}`
-      : `Q${labelNum}`;
+  const marks = `${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}`;
+  const canRename = typeof onStartLabelEdit === "function";
 
   return (
     <div
-      className={`pdf-place-handle pdf-place-handle--${column}${active ? " pdf-place-handle--active" : ""}`}
+      className={`pdf-place-handle pdf-place-handle--${column}${active ? " pdf-place-handle--active" : ""}${
+        editing ? " pdf-place-handle--editing" : ""
+      }`}
       style={{
         top: `${yPercent}%`,
         left: column === "left" ? "0.6%" : `${RIGHT_COL_LEFT_PCT}%`,
         width: column === "left" ? `${LEFT_COL_WIDTH_PCT}%` : `${RIGHT_COL_WIDTH_PCT}%`,
         zIndex: zIndex ?? undefined,
       }}
-      onPointerDown={(e) => onPointerDown(e, q, column, yPercent)}
-      title="Drag to move this marking box (any page). Positions apply on Save & regenerate PDF."
+      onPointerDown={(e) => {
+        if (editing) {
+          e.stopPropagation();
+          return;
+        }
+        onPointerDown(e, q, column, yPercent);
+      }}
+      title={
+        canRename
+          ? "Drag to move. Double-click the label to rename. Positions apply on Save & regenerate PDF."
+          : "Drag to move this marking box (any page). Positions apply on Save & regenerate PDF."
+      }
     >
       {showRemove && column === "left" && (
         <button
@@ -101,7 +147,31 @@ function PlacementHandle({
       <span className="pdf-place-handle__grip" aria-hidden title="Drag">
         ⋮⋮
       </span>
-      <span className="pdf-place-handle__label">{label}</span>
+      {editing ? (
+        <LabelEditor
+          initial={String(labelNum ?? "")}
+          onCommit={(raw) => onCommitLabel(q._placementIndex, raw)}
+          onCancel={onCancelLabelEdit}
+        />
+      ) : (
+        <span
+          className="pdf-place-handle__label"
+          onPointerDown={(e) => {
+            if (canRename && e.detail >= 2) {
+              e.stopPropagation();
+              e.preventDefault();
+            }
+          }}
+          onDoubleClick={(e) => {
+            if (!canRename) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onStartLabelEdit(q._placementIndex);
+          }}
+        >
+          {column === "left" ? `Q${labelNum} ${marks}` : `Q${labelNum}`}
+        </span>
+      )}
     </div>
   );
 }
@@ -116,7 +186,11 @@ function LazyPdfPage({
   labelGuidance,
   duplicateQuestionNumbers,
   dragKey,
+  editingLabelIndex,
   onHandlePointerDown,
+  onStartLabelEdit,
+  onCommitLabel,
+  onCancelLabelEdit,
   onQuestionRemove,
   showRemove,
 }) {
@@ -232,7 +306,11 @@ function LazyPdfPage({
                   yPercent={yPercent}
                   zIndex={stackZ}
                   active={dragKey === `${key}:left`}
+                  editing={editingLabelIndex === q._placementIndex}
                   onPointerDown={onHandlePointerDown}
+                  onStartLabelEdit={onStartLabelEdit}
+                  onCommitLabel={onCommitLabel}
+                  onCancelLabelEdit={onCancelLabelEdit}
                   onRemove={onQuestionRemove}
                   showRemove={showRemove}
                 />
@@ -243,7 +321,11 @@ function LazyPdfPage({
                   yPercent={yPercent}
                   zIndex={stackZ + 1}
                   active={dragKey === `${key}:right`}
+                  editing={false}
                   onPointerDown={onHandlePointerDown}
+                  onStartLabelEdit={onStartLabelEdit}
+                  onCommitLabel={onCommitLabel}
+                  onCancelLabelEdit={onCancelLabelEdit}
                   showRemove={false}
                 />
               </div>
@@ -295,6 +377,7 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
  * Lazy page-by-page PDF preview with native-resolution zoom (re-renders at zoom level).
  * Optional placementQuestions + onPlacementChange: drag boxes across pages;
  * parent should apply pageNumber/yPercent and only regenerate on Confirm Edits.
+ * Optional onQuestionLabelChange: double-click a handle label to rename Q1a etc.
  */
 export default function AnnotatedPdfPreview({
   url,
@@ -302,6 +385,7 @@ export default function AnnotatedPdfPreview({
   reportPageCount = 0,
   onPlacementChange = null,
   onQuestionRemove = null,
+  onQuestionLabelChange = null,
   labelGuidance = "",
   openExternalLabel = "Open in browser",
 }) {
@@ -324,6 +408,7 @@ export default function AnnotatedPdfPreview({
   /** Local drag overrides keyed by placementKey (row index), not questionNumber alone. */
   const [localPlacement, setLocalPlacement] = useState({});
   const [dragKey, setDragKey] = useState(null);
+  const [editingLabelIndex, setEditingLabelIndex] = useState(null);
   const fitMenuRef = useRef(null);
   const dragRef = useRef(null);
   const pinchRef = useRef(null);
@@ -334,6 +419,7 @@ export default function AnnotatedPdfPreview({
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
   const removeEnabled = typeof onQuestionRemove === "function";
+  const labelEditEnabled = typeof onQuestionLabelChange === "function";
 
   const baseRenderWidth = Math.max(240, Math.floor(containerWidth) || 320);
   const visualScale = renderZoom > 0 ? zoomLevel / renderZoom : 1;
@@ -366,6 +452,29 @@ export default function AnnotatedPdfPreview({
     [removeEnabled, onQuestionRemove, placementQuestions]
   );
 
+  const handleStartLabelEdit = useCallback(
+    (questionIndex) => {
+      if (!labelEditEnabled) return;
+      setEditingLabelIndex(questionIndex);
+    },
+    [labelEditEnabled]
+  );
+
+  const handleCancelLabelEdit = useCallback(() => {
+    setEditingLabelIndex(null);
+  }, []);
+
+  const handleCommitLabel = useCallback(
+    (placementIndex, raw) => {
+      setEditingLabelIndex(null);
+      if (!labelEditEnabled || placementIndex == null) return;
+      const next = normalizeQuestionLabelInput(raw);
+      if (!next) return;
+      onQuestionLabelChange({ placementIndex, questionNumber: next });
+    },
+    [labelEditEnabled, onQuestionLabelChange]
+  );
+
   useEffect(() => {
     zoomRef.current = zoomLevel;
   }, [zoomLevel]);
@@ -383,6 +492,7 @@ export default function AnnotatedPdfPreview({
     setLocalPlacement({});
     setZoomLevel(DEFAULT_ZOOM);
     setRenderZoom(DEFAULT_ZOOM);
+    setEditingLabelIndex(null);
   }, [url]);
 
   useEffect(() => {
@@ -551,6 +661,7 @@ export default function AnnotatedPdfPreview({
         grabOffsetY,
       };
       setDragKey(`${key}:${column}`);
+      setEditingLabelIndex(null);
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     [placementEnabled]
@@ -1087,7 +1198,11 @@ export default function AnnotatedPdfPreview({
                   labelGuidance={labelGuidance}
                   duplicateQuestionNumbers={duplicateQuestionNumbers}
                   dragKey={dragKey}
+                  editingLabelIndex={labelEditEnabled ? editingLabelIndex : null}
                   onHandlePointerDown={handlePointerDown}
+                  onStartLabelEdit={labelEditEnabled ? handleStartLabelEdit : null}
+                  onCommitLabel={handleCommitLabel}
+                  onCancelLabelEdit={handleCancelLabelEdit}
                   onQuestionRemove={handleQuestionRemove}
                   showRemove={removeEnabled}
                 />

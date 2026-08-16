@@ -1031,6 +1031,12 @@
   cursor: move;
 }
 
+.pdf-preview-root--placeable .pdf-place-handle__label-input,
+.pdf-preview-root--placeable .pdf-place-handle--editing,
+.pdf-preview-root--placeable .pdf-place-handle--editing * {
+  cursor: text;
+}
+
 /* Wrap PDF chrome on tablet+phone — iPad portrait (~820px) is too narrow for
    pages + zoom + actions on one row beside the drawer topbar. */
 @media (max-width: 1024px) {
@@ -1128,6 +1134,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pdf-place-handle__label-input {
+  flex: 1;
+  min-width: 36px;
+  max-width: 78px;
+  margin: 0;
+  padding: 1px 4px;
+  border: 1px solid #399cf2;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  outline: none;
+  user-select: text;
+  touch-action: manipulation;
 }
 
 .pdf-place-handle__remove {

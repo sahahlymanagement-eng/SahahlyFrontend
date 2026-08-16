@@ -31,6 +31,8 @@ export function questionRowHasEdits(current, confirmed) {
   if (!current || !confirmed) return true;
   return (
     String(current.questionNumber ?? "") !== String(confirmed.questionNumber ?? "") ||
+    String(current.printedQuestionNumber ?? "") !==
+      String(confirmed.printedQuestionNumber ?? "") ||
     numChanged(current.marksAwarded, confirmed.marksAwarded) ||
     numChanged(current.maxMarks, confirmed.maxMarks) ||
     String(current.reason ?? "") !== String(confirmed.reason ?? "") ||

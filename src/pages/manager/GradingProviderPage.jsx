@@ -18,6 +18,7 @@ import {
   filterQuestionsPendingRemoval,
   buildPlacementQuestions,
   applyPlacementChange,
+  applyQuestionLabelChange,
   questionsForConfirmEdits,
   gradeScorePercent,
   getApiErrorMessage,
@@ -546,6 +547,10 @@ export default function GradingProviderPage({ slug, label }) {
 
   const handleAnnotationPlacementChange = useCallback((change) => {
     setEditingQuestions((prev) => applyPlacementChange(prev, change));
+  }, []);
+
+  const handleQuestionLabelChange = useCallback((change) => {
+    setEditingQuestions((prev) => applyQuestionLabelChange(prev, change));
   }, []);
 
   const handleQuestionRemove = useCallback((questionIndex) => {
@@ -3959,6 +3964,7 @@ export default function GradingProviderPage({ slug, label }) {
                       reportPageCount={reportPageCount}
                       onPlacementChange={canEdit ? handleAnnotationPlacementChange : null}
                       onQuestionRemove={canEdit ? handleQuestionRemove : null}
+                      onQuestionLabelChange={canEdit ? handleQuestionLabelChange : null}
                       labelGuidance={assignmentPrompt.content}
                     />
                   </div>

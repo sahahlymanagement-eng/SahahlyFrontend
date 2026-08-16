@@ -773,6 +773,37 @@ export function applyPlacementChange(questions, { placementIndex, pageNumber, yP
   );
 }
 
+/** Normalize a typed preview label ("Q1a", "1 a") into a question id ("1a"). */
+export function normalizeQuestionLabelInput(raw) {
+  return String(raw ?? "")
+    .trim()
+    .replace(/^Q+/i, "")
+    .replace(/\s+/g, "");
+}
+
+/**
+ * Rename a question from the annotated PDF preview overlay.
+ * Updates the visible id and printed label so the overlay matches immediately.
+ */
+export function applyQuestionLabelChange(questions, { placementIndex, questionNumber }) {
+  const idx = Number(placementIndex);
+  const next = normalizeQuestionLabelInput(questionNumber);
+  if (!Number.isFinite(idx) || idx < 0 || !next) return questions;
+  return (questions || []).map((q, i) => {
+    if (i !== idx) return q;
+    const prev = String(q.questionNumber ?? "").trim();
+    const patch = {
+      ...q,
+      questionNumber: next,
+      printedQuestionNumber: next,
+    };
+    if (!q.msQuestionNumber && prev && prev !== next) {
+      patch.msQuestionNumber = prev;
+    }
+    return patch;
+  });
+}
+
 /**
  * Preview overlay list — keeps original indices for remove handlers.
  *

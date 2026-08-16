@@ -37,6 +37,7 @@ import {
   filterQuestionsPendingRemoval,
   buildPlacementQuestions,
   applyPlacementChange,
+  applyQuestionLabelChange,
   questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
@@ -648,6 +649,10 @@ const resolvePdfSummary = (submissionId, result) =>
 
   const handleAnnotationPlacementChange = useCallback((change) => {
     setEditingQuestions((prev) => applyPlacementChange(prev, change));
+  }, []);
+
+  const handleQuestionLabelChange = useCallback((change) => {
+    setEditingQuestions((prev) => applyQuestionLabelChange(prev, change));
   }, []);
 
   const handleQuestionRemove = useCallback((questionIndex) => {
@@ -5518,6 +5523,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             reportPageCount={reportPageCount}
                             onPlacementChange={handleAnnotationPlacementChange}
                             onQuestionRemove={handleQuestionRemove}
+                            onQuestionLabelChange={handleQuestionLabelChange}
                             labelGuidance={assignmentPrompt.content}
                             openExternalLabel="Open in Kami"
                           />

@@ -18,6 +18,7 @@ import {
   filterQuestionsPendingRemoval,
   buildPlacementQuestions,
   applyPlacementChange,
+  applyQuestionLabelChange,
   questionsForConfirmEdits,
   gradeScorePercent,
   getApiErrorMessage,
@@ -508,6 +509,10 @@ export default function ManagerLoginCss() {
 
   const handleAnnotationPlacementChange = useCallback((change) => {
     setEditingQuestions((prev) => applyPlacementChange(prev, change));
+  }, []);
+
+  const handleQuestionLabelChange = useCallback((change) => {
+    setEditingQuestions((prev) => applyQuestionLabelChange(prev, change));
   }, []);
 
   const handleQuestionRemove = useCallback((questionIndex) => {
@@ -3886,6 +3891,7 @@ export default function ManagerLoginCss() {
                       reportPageCount={reportPageCount}
                       onPlacementChange={handleAnnotationPlacementChange}
                       onQuestionRemove={handleQuestionRemove}
+                      onQuestionLabelChange={handleQuestionLabelChange}
                       labelGuidance={assignmentPrompt.content}
                     />
                   </div>
