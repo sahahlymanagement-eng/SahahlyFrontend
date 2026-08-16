@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FiCheckCircle, FiEdit3, FiFileText, FiTrash2, FiUpload } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../../api/api";
 import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
-import { appendMarkingContext, getOutOfScopeNotes } from "../../utils/markingFormData";
+import { getOutOfScopeNotes, guidanceForForm } from "../../utils/markingFormData";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import "./DirectorManualCorrection.css";
 
@@ -12,6 +12,19 @@ const MANUAL_MODELS = [
   { id: "gemini-3-flash-preview", label: "Sahahly 3" },
   { id: "gemini-3.5-flash", label: "Sahahly 3.5" },
 ];
+
+const JOB_STORAGE_KEY = "sahahly.manualCorrection.jobId";
+const TOAST_STORAGE_KEY = "sahahly.manualCorrection.toastedJobId";
+
+let retainedStudentFiles = [];
+
+function retainStudentFiles(files) {
+  retainedStudentFiles = Array.isArray(files) ? [...files] : [];
+}
+
+function fileForName(name) {
+  return retainedStudentFiles.find((f) => f.name === name) || null;
+}
 
 function scoreColor(awarded, max) {
   const pct = max > 0 ? awarded / max : 0;
@@ -24,6 +37,22 @@ function asPdfFiles(fileList) {
   return [...(fileList || [])].filter((f) => /\.pdf$/i.test(f.name || ""));
 }
 
+function jobIsRunning(job) {
+  return job?.status === "running" || job?.status === "queued";
+}
+
+function toastJobOutcome(job) {
+  if (!job?.id || jobIsRunning(job)) return;
+  if (sessionStorage.getItem(TOAST_STORAGE_KEY) === job.id) return;
+  sessionStorage.setItem(TOAST_STORAGE_KEY, job.id);
+  const papers = job.papers || [];
+  const ok = papers.filter((p) => p.status === "done" && p.result).length;
+  const failed = papers.length - ok;
+  if (failed && ok) toast.warn(`Marked ${ok} paper(s); ${failed} failed`);
+  else if (failed) toast.error(papers[0]?.error || "Marking failed");
+  else if (ok) toast.success(ok === 1 ? "Paper marked" : `Marked ${ok} papers`);
+}
+
 export default function DirectorManualCorrection() {
   const studentRef = useRef();
   const schemeRef = useRef();
@@ -31,10 +60,74 @@ export default function DirectorManualCorrection() {
   const [studentFiles, setStudentFiles] = useState([]);
   const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [geminiModel, setGeminiModel] = useState(MANUAL_MODELS[0].id);
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(null);
-  const [rows, setRows] = useState([]);
+  const [guidance, setGuidance] = useState("");
+  const [job, setJob] = useState(null);
+  const [starting, setStarting] = useState(false);
   const [downloadingName, setDownloadingName] = useState(null);
+
+  const loading = starting || jobIsRunning(job);
+
+  const applyJob = (next) => {
+    if (!next) return;
+    setJob(next);
+    if (next.id) sessionStorage.setItem(JOB_STORAGE_KEY, next.id);
+    toastJobOutcome(next);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const boot = async () => {
+      try {
+        const { data } = await api.get("/marking/manual-job/active", { timeout: 15000 });
+        if (cancelled) return;
+        if (data?.job) {
+          applyJob(data.job);
+          return;
+        }
+      } catch {
+        // Fall through to the stored id.
+      }
+      const stored = sessionStorage.getItem(JOB_STORAGE_KEY);
+      if (!stored || cancelled) return;
+      try {
+        const { data } = await api.get(`/marking/manual-job/${stored}`, { timeout: 30000 });
+        if (!cancelled && data) applyJob(data);
+      } catch (err) {
+        if (err.response?.status === 404) sessionStorage.removeItem(JOB_STORAGE_KEY);
+      }
+    };
+
+    boot();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!job?.id || !jobIsRunning(job)) return undefined;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const { data } = await api.get(`/marking/manual-job/${job.id}`, { timeout: 30000 });
+        if (cancelled || !data) return;
+        applyJob(data);
+      } catch (err) {
+        if (cancelled) return;
+        if (err.response?.status === 404) {
+          sessionStorage.removeItem(JOB_STORAGE_KEY);
+          setJob(null);
+        }
+      }
+    };
+
+    const timer = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [job?.id, job?.status]);
 
   const onStudentFiles = (list) => {
     const pdfs = asPdfFiles(list);
@@ -43,43 +136,15 @@ export default function DirectorManualCorrection() {
       return;
     }
     setStudentFiles(pdfs);
-    setRows([]);
+    retainStudentFiles(pdfs);
   };
 
   const removeStudentFile = (index) => {
-    setStudentFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const markOne = async (studentFile, markSchemeCacheName) => {
-    const formData = new FormData();
-    formData.append("studentPdf", studentFile);
-    if (markSchemeCacheName) {
-      formData.append("markSchemeCacheName", markSchemeCacheName);
-    } else {
-      formData.append("markSchemePdf", markSchemeFile);
-    }
-    formData.append("markingMode", "normal");
-    formData.append("geminiModel", geminiModel);
-    appendMarkingContext(formData);
-
-    const res = await api.post("/marking/mark", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 600000,
+    setStudentFiles((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      retainStudentFiles(next);
+      return next;
     });
-    return res.data;
-  };
-
-  const cacheMarkScheme = async () => {
-    const formData = new FormData();
-    formData.append("markSchemePdf", markSchemeFile);
-    formData.append("markingMode", "normal");
-    formData.append("geminiModel", geminiModel);
-    appendMarkingContext(formData);
-    const res = await api.post("/marking/mark-scheme-cache", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 120000,
-    });
-    return res.data?.cacheName || null;
   };
 
   const handleMark = async () => {
@@ -92,57 +157,43 @@ export default function DirectorManualCorrection() {
       return;
     }
 
-    setLoading(true);
-    setRows([]);
-    setProgress({ current: 0, total: studentFiles.length });
-
-    let cacheName = null;
-    if (studentFiles.length > 1) {
-      try {
-        cacheName = await cacheMarkScheme();
-      } catch (err) {
-        console.warn("Mark scheme cache skipped:", err.message);
-      }
-    }
-
-    const nextRows = [];
+    retainStudentFiles(studentFiles);
+    setStarting(true);
     try {
-      for (let i = 0; i < studentFiles.length; i += 1) {
-        const file = studentFiles[i];
-        setProgress({ current: i + 1, total: studentFiles.length, name: file.name });
-        try {
-          const result = await markOne(file, cacheName);
-          nextRows.push({ file, result, error: null });
-        } catch (err) {
-          nextRows.push({
-            file,
-            result: null,
-            error: err.response?.data?.message || err.message || "Marking failed",
-          });
-        }
-        setRows([...nextRows]);
-      }
+      const formData = new FormData();
+      studentFiles.forEach((file) => formData.append("studentPdfs", file));
+      formData.append("markSchemePdf", markSchemeFile);
+      formData.append("markingMode", "normal");
+      formData.append("geminiModel", geminiModel);
+      const extra = guidanceForForm(guidance);
+      if (extra) formData.append("guidance", extra);
 
-      const ok = nextRows.filter((r) => r.result).length;
-      const failed = nextRows.length - ok;
-      if (failed && ok) toast.warn(`Marked ${ok} paper(s); ${failed} failed`);
-      else if (failed) toast.error("Marking failed");
-      else toast.success(ok === 1 ? "Paper marked" : `Marked ${ok} papers`);
-    } finally {
-      if (cacheName) {
-        api.delete("/marking/mark-scheme-cache", { data: { cacheName } }).catch(() => {});
+      const res = await api.post("/marking/manual-job", formData, {
+        timeout: 120000,
+      });
+      applyJob(res.data);
+    } catch (err) {
+      if (err.response?.status === 409 && err.response?.data?.job) {
+        applyJob(err.response.data.job);
+        toast.warn(err.response.data.message || "A job is already running");
+      } else {
+        toast.error(err.response?.data?.message || err.message || "Marking failed");
       }
-      setLoading(false);
-      setProgress(null);
+    } finally {
+      setStarting(false);
     }
   };
 
   const downloadGraded = async (row) => {
-    if (!row?.result || !row?.file) return;
-    setDownloadingName(row.file.name);
+    const file = row.file;
+    if (!row?.result || !file) {
+      toast.error("Re-upload this PDF to download the marked copy (the file is only kept in this browser session).");
+      return;
+    }
+    setDownloadingName(file.name);
     try {
       const pdfBytes = await annotatePdf({
-        studentFile: row.file,
+        studentFile: file,
         questions: row.result.questions,
         totalMarks: row.result.totalMarks,
         maxTotalMarks: row.result.maxTotalMarks,
@@ -151,7 +202,7 @@ export default function DirectorManualCorrection() {
       });
       downloadBlob(
         new Blob([pdfBytes], { type: "application/pdf" }),
-        row.file.name.replace(/\.pdf$/i, "") + "_graded.pdf"
+        file.name.replace(/\.pdf$/i, "") + "_graded.pdf"
       );
     } catch (err) {
       toast.error(err.message || "Failed to generate marked paper");
@@ -159,6 +210,9 @@ export default function DirectorManualCorrection() {
       setDownloadingName(null);
     }
   };
+
+  const papers = job?.papers || [];
+  const progress = job?.progress;
 
   return (
     <div className="dmc-page">
@@ -170,7 +224,8 @@ export default function DirectorManualCorrection() {
           <h1>Manual Correction</h1>
           <p>
             Upload student PDFs and a mark scheme. Papers are marked with the same
-            built-in grading prompt used in classroom marking.
+            built-in grading prompt used in classroom marking, submitted as a
+            Gemini Batch job (same engine as Mark All). You can leave this tab.
           </p>
         </div>
       </header>
@@ -195,10 +250,26 @@ export default function DirectorManualCorrection() {
         </div>
       </section>
 
+      <section className="dmc-card">
+        <h2>Prompt addition</h2>
+        <p className="dmc-hint">
+          Optional extra instructions added on top of the built-in grading prompt
+          (for example: award method marks, ignore cover pages, use these aliases).
+        </p>
+        <textarea
+          className="dmc-guidance"
+          rows={5}
+          value={guidance}
+          onChange={(e) => setGuidance(e.target.value)}
+          disabled={loading}
+          placeholder="Add extra marking instructions…"
+        />
+      </section>
+
       <section className="dmc-uploads">
         <div
           className={`dmc-drop${markSchemeFile ? " dmc-drop--done" : ""}`}
-          onClick={() => schemeRef.current?.click()}
+          onClick={() => !loading && schemeRef.current?.click()}
         >
           <input
             ref={schemeRef}
@@ -222,7 +293,7 @@ export default function DirectorManualCorrection() {
 
         <div
           className={`dmc-drop${studentFiles.length ? " dmc-drop--done" : ""}`}
-          onClick={() => studentRef.current?.click()}
+          onClick={() => !loading && studentRef.current?.click()}
         >
           <input
             ref={studentRef}
@@ -274,40 +345,50 @@ export default function DirectorManualCorrection() {
         disabled={loading || !studentFiles.length || !markSchemeFile}
       >
         {loading
-          ? `Marking ${progress?.current || 0} of ${progress?.total || studentFiles.length}…`
+          ? progress?.phase === "submitted"
+            ? "Waiting on Gemini Batch…"
+            : progress?.phase === "uploading"
+              ? `Uploading ${progress?.current || 0} of ${progress?.total || studentFiles.length}…`
+              : `Marking ${progress?.current || 0} of ${progress?.total || studentFiles.length}…`
           : studentFiles.length > 1
             ? `Mark ${studentFiles.length} papers`
             : "Mark paper"}
       </button>
 
-      {loading && progress?.name && (
-        <p className="dmc-progress">{progress.name}</p>
+      {loading && (
+        <p className="dmc-progress">
+          {progress?.name || "Starting Gemini Batch…"} You can leave this tab.
+        </p>
       )}
 
-      {rows.map((row, index) => {
-        const result = row.result;
+      {papers.map((paper, index) => {
+        const result = paper.result;
+        const file = fileForName(paper.name);
         const max = result?.maxTotalMarks || 0;
         const awarded = result?.totalMarks || 0;
         const pct = max > 0 ? Math.round((awarded / max) * 100) : 0;
         const color = scoreColor(awarded, max);
 
         return (
-          <article key={`${row.file.name}-${index}`} className="dmc-result">
+          <article key={`${paper.name}-${index}`} className="dmc-result">
             <div className="dmc-result-top">
-              <h3>{row.file.name}</h3>
+              <h3>{paper.name}</h3>
               {result && (
                 <button
                   type="button"
                   className="dmc-download"
-                  onClick={() => downloadGraded(row)}
-                  disabled={downloadingName === row.file.name}
+                  onClick={() => downloadGraded({ file, result })}
+                  disabled={downloadingName === paper.name}
                 >
-                  {downloadingName === row.file.name ? "Generating…" : "Download marked PDF"}
+                  {downloadingName === paper.name ? "Generating…" : "Download marked PDF"}
                 </button>
               )}
             </div>
 
-            {row.error && <p className="dmc-error">{row.error}</p>}
+            {paper.status === "running" && (
+              <p className="dmc-progress">In the Gemini Batch queue…</p>
+            )}
+            {paper.error && <p className="dmc-error">{paper.error}</p>}
 
             {result && (
               <>

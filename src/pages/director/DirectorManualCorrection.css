@@ -49,6 +49,32 @@
   font-size: 0.95rem;
 }
 
+.dmc-hint {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.dmc-guidance {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--surface-2, var(--surface));
+  resize: vertical;
+  min-height: 96px;
+}
+
+.dmc-guidance:disabled {
+  opacity: 0.65;
+}
+
 .dmc-model-row {
   display: flex;
   gap: 10px;
