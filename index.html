@@ -9,6 +9,16 @@
     <!-- Responsive -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!-- Home is the marketing landing page (public/marketing/index.html). -->
+    <script>
+      (function () {
+        var p = location.pathname;
+        if (p === "/" || p === "") {
+          location.replace("/marketing/index.html" + location.search + location.hash);
+        }
+      })();
+    </script>
+
     <!-- Apply the saved/OS theme before first paint (no flash of wrong theme) -->
     <script>
       (function () {

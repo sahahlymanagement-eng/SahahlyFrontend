@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import SessionRefresher from "./components/SessionRefresher";
 import { ToastContainer } from "react-toastify";
@@ -127,6 +128,15 @@ function ThemedToaster() {
   );
 }
 
+function HomeToLanding() {
+  useEffect(() => {
+    window.location.replace(
+      "/marketing/index.html" + window.location.search + window.location.hash
+    );
+  }, []);
+  return null;
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -137,7 +147,7 @@ function App() {
       <SessionRefresher />
       <Routes>
         
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<HomeToLanding />} />
         <Route path="/privacy-security" element={<PrivacySecurityPolicy />} />
         <Route path="/privacy" element={<Navigate to="/privacy-security" replace />} />
         <Route path="/zoom-documentation" element={<ZoomDocumentation />} />
