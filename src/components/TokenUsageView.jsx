@@ -54,13 +54,16 @@ const REPORT_BREAKDOWN_OPTIONS = [
 ];
 
 const UNASSIGNED_CLASSROOM_KEY = "unassigned";
+const UNKNOWN_CLASSROOM_KEY = "unknown-classroom";
 
 function classroomRowKey(classroom) {
-  return classroom?.classroomId ? String(classroom.classroomId) : UNASSIGNED_CLASSROOM_KEY;
+  if (classroom?.classroomId) return String(classroom.classroomId);
+  if (classroom?.classroomName === "Unknown classroom") return UNKNOWN_CLASSROOM_KEY;
+  return UNASSIGNED_CLASSROOM_KEY;
 }
 
 function isUnassignedClassroomRow(classroom) {
-  return !classroom?.classroomId;
+  return !classroom?.classroomId && classroom?.classroomName !== "Unknown classroom";
 }
 
 function formatNum(n) {
