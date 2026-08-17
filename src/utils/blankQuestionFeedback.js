@@ -16,7 +16,10 @@ export function isBlankQuestion(q) {
     student === "blank" ||
     student === "unanswered" ||
     student === "no answer" ||
-    student === "n/a"
+    student === "n/a" ||
+    student.includes("question left blank") ||
+    student.includes("no formula was provided") ||
+    student.includes("no answer provided")
   ) {
     return true;
   }
@@ -112,9 +115,26 @@ export function enrichBlankQuestionFeedback(q) {
   return next;
 }
 
+function enrichZeroMarkFeedback(q) {
+  const awarded = Number(q.marksAwarded) || 0;
+  const max = Number(q.maxMarks) || 0;
+  if (awarded > 0 || max <= 0) return q;
+  if (isBlankQuestion(q)) return enrichBlankQuestionFeedback(q);
+  if (!reasonIsTerse(q.reason, max)) return q;
+
+  const qNum = q.questionNumber != null ? String(q.questionNumber) : "?";
+  const correct = q.correctAnswer ? String(q.correctAnswer).trim() : "";
+  return {
+    ...q,
+    reason: correct
+      ? `Awarded 0/${max} marks for Q${qNum}. The mark scheme expects: ${correct}.`
+      : `Awarded 0/${max} marks for Q${qNum}. See the mark scheme for the expected response.`,
+  };
+}
+
 export function enrichMarkingQuestions(questions) {
   if (!Array.isArray(questions)) return questions;
-  return questions.map(enrichBlankQuestionFeedback);
+  return questions.map(enrichZeroMarkFeedback);
 }
 
 /**

@@ -152,6 +152,7 @@ import {
 import {
   remainingRunLabel,
   remainingRunInProgress,
+  remainingRunIsStale,
   watchRemainingRun,
   retryRemainingRun,
 } from "../../utils/firstBatchRemaining";
@@ -1246,14 +1247,13 @@ window.open(url);
     const base = engineBasePath(engine);
     const result = await watchRemainingRun({
       statusUrl: `${base}/first-batch/status/${assignId}`,
-      onStatus: (run) => {
-        if (!run) return;
+      onStatus: (run, firstBatch) => {
         patchBatchJob(assignId, (prev) => ({
           ...prev,
           firstBatch: {
-            ...(prev?.firstBatch || {}),
-            status: run.status === "failed" ? "remaining_failed" : "confirming",
-            remainingRun: run,
+            ...(prev?.firstBatch || firstBatch || {}),
+            status: run?.status === "failed" ? "remaining_failed" : "confirming",
+            remainingRun: run || prev?.firstBatch?.remainingRun || firstBatch?.remainingRun,
           },
         }));
       },
@@ -1281,18 +1281,14 @@ window.open(url);
         firstBatch: {
           ...(prev?.firstBatch || {}),
           status: "remaining_failed",
-          remainingRun: result.run,
+          remainingRun: {
+            ...(result.run || prev?.firstBatch?.remainingRun || {}),
+            status: "failed",
+            error: result.error || result.run?.error || "Marking the rest failed",
+          },
         },
       }));
       toast.error(result.error || "Marking the rest failed");
-      return;
-    }
-    if (result.state === "timeout") {
-      patchBatchJob(assignId, (prev) =>
-        prev?.firstBatch?.status === "confirming"
-          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
-          : prev
-      );
     }
   };
 
@@ -2012,7 +2008,17 @@ window.open(url);
         const { data } = await api.get(`/marking/first-batch/status/${assignmentId}`);
         const run = data?.firstBatch?.remainingRun;
         const engine = data?.firstBatch?.engine === "v2" ? "v2" : "v1";
-        if (remainingRunInProgress(run) && !getBatchJob(assignmentId)?.jobId) {
+        if (run?.status === "failed" || remainingRunIsStale(run)) {
+          patchBatchJob(assignmentId, (prev) => ({
+            ...prev,
+            engine: prev?.engine || engine,
+            firstBatch: {
+              ...(prev?.firstBatch || data.firstBatch || {}),
+              status: "remaining_failed",
+              remainingRun: run,
+            },
+          }));
+        } else if (remainingRunInProgress(run) && !getBatchJob(assignmentId)?.jobId) {
           patchBatchJob(assignmentId, (prev) => ({
             ...prev,
             engine: prev?.engine || engine,
@@ -2023,16 +2029,6 @@ window.open(url);
             },
           }));
           await followRemainingRun(assignmentId, engine);
-        } else if (run?.status === "failed") {
-          patchBatchJob(assignmentId, (prev) => ({
-            ...prev,
-            engine: prev?.engine || engine,
-            firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
-              status: "remaining_failed",
-              remainingRun: run,
-            },
-          }));
         }
       } catch {
         // Status endpoint is best-effort; active-job check above still runs.
@@ -2744,6 +2740,9 @@ window.open(url);
       fd.append("totalMarks", total);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
+      if (resultModal.student.studentId) {
+        fd.append("googleUserId", resultModal.student.studentId);
+      }
       appendClassroomGradeToFormData(fd, {
         submissionId: resultModal.student.submissionId || submissionId,
         student: resultModal.student,
@@ -2764,7 +2763,7 @@ window.open(url);
 
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000
+        timeout: 600000
       });
 
       const returnedAt = new Date().toISOString();
@@ -2787,7 +2786,7 @@ window.open(url);
       toast.success(resultModal.summary)
       setResultModal(null);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to return paper");
+      toast.error((await getApiErrorMessage(err)) || "Failed to return paper");
     } finally { setReturning(false); }
   };
 

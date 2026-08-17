@@ -144,6 +144,7 @@ import {
 import {
   remainingRunLabel,
   remainingRunInProgress,
+  remainingRunIsStale,
   watchRemainingRun,
   retryRemainingRun,
 } from "../../utils/firstBatchRemaining";
@@ -1521,14 +1522,13 @@ useEffect(() => {
     const base = engineBasePath(engine);
     const result = await watchRemainingRun({
       statusUrl: `${base}/first-batch/status/${assignId}`,
-      onStatus: (run) => {
-        if (!run) return;
+      onStatus: (run, firstBatch) => {
         patchBatchJob(assignId, (prev) => ({
           ...prev,
           firstBatch: {
-            ...(prev?.firstBatch || {}),
-            status: run.status === "failed" ? "remaining_failed" : "confirming",
-            remainingRun: run,
+            ...(prev?.firstBatch || firstBatch || {}),
+            status: run?.status === "failed" ? "remaining_failed" : "confirming",
+            remainingRun: run || prev?.firstBatch?.remainingRun || firstBatch?.remainingRun,
           },
         }));
       },
@@ -1557,18 +1557,14 @@ useEffect(() => {
         firstBatch: {
           ...(prev?.firstBatch || {}),
           status: "remaining_failed",
-          remainingRun: result.run,
+          remainingRun: {
+            ...(result.run || prev?.firstBatch?.remainingRun || {}),
+            status: "failed",
+            error: result.error || result.run?.error || "Marking the rest failed",
+          },
         },
       }));
       toast.error(result.error || "Marking the rest failed");
-      return;
-    }
-    if (result.state === "timeout") {
-      patchBatchJob(assignId, (prev) =>
-        prev?.firstBatch?.status === "confirming"
-          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
-          : prev
-      );
     }
   };
 
@@ -2651,7 +2647,17 @@ useEffect(() => {
         const { data } = await api.get(`/marking/first-batch/status/${assignId}`);
         const run = data?.firstBatch?.remainingRun;
         const engine = data?.firstBatch?.engine === "v2" ? "v2" : "v1";
-        if (remainingRunInProgress(run) && !getBatchJob(assignId)?.jobId) {
+        if (run?.status === "failed" || remainingRunIsStale(run)) {
+          patchBatchJob(assignId, (prev) => ({
+            ...prev,
+            engine: prev?.engine || engine,
+            firstBatch: {
+              ...(prev?.firstBatch || data.firstBatch || {}),
+              status: "remaining_failed",
+              remainingRun: run,
+            },
+          }));
+        } else if (remainingRunInProgress(run) && !getBatchJob(assignId)?.jobId) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             engine: prev?.engine || engine,
@@ -2662,16 +2668,6 @@ useEffect(() => {
             },
           }));
           await followRemainingRun(assignId, engine);
-        } else if (run?.status === "failed") {
-          patchBatchJob(assignId, (prev) => ({
-            ...prev,
-            engine: prev?.engine || engine,
-            firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
-              status: "remaining_failed",
-              remainingRun: run,
-            },
-          }));
         }
       } catch {
         // Status endpoint is best-effort; active-job check above still runs.
@@ -3632,6 +3628,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       fd.append("totalMarks", totalMarks);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName", resultModal.student.name || "Student");
+      if (resultModal.student.studentId) {
+        fd.append("googleUserId", resultModal.student.studentId);
+      }
       appendClassroomGradeToFormData(fd, {
         submissionId: resultModal.student.submissionId || submissionId,
         student: resultModal.student,
@@ -3652,7 +3651,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000,
+        timeout: 600000,
       });
 
       const submissionKey = resultModal.student.submissionId || submissionId;
@@ -3675,7 +3674,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       toast.success("Marked paper returned to student");
       setResultModal(null);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to return paper");
+      toast.error((await getApiErrorMessage(err)) || "Failed to return paper");
     } finally {
       setReturning(false);
     }

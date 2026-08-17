@@ -3,6 +3,7 @@
  */
 
 import { buildReturnAllQueue } from "./returnAllQueue";
+import { getApiErrorMessage } from "./markingFormData";
 
 export function mapSavedResultsFromApi(rows = []) {
   const map = {};
@@ -158,7 +159,7 @@ export async function runReturnAllQueue({
 
       await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000,
+        timeout: 600000,
       });
 
       successCount += 1;
@@ -175,10 +176,7 @@ export async function runReturnAllQueue({
       failures.push({
         submissionId,
         label,
-        reason:
-          err?.response?.data?.message ||
-          err?.message ||
-          "Return failed",
+        reason: (await getApiErrorMessage(err)) || err?.message || "Return failed",
       });
       return null;
     }

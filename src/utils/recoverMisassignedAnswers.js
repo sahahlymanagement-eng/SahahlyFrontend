@@ -1,4 +1,9 @@
 import { normalizeQuestionPlacement } from "./normalizeQuestionPlacement";
+import {
+  canonicalQuestionKey,
+  dropGhostDuplicateQuestions,
+} from "./markingQuestionDedupe";
+import { enrichMarkingQuestions } from "./blankQuestionFeedback";
 
 function normalizePrintedLabel(raw) {
   return String(raw ?? "")
@@ -11,11 +16,12 @@ function normalizePrintedLabel(raw) {
 }
 
 function questionKey(q) {
-  return String(q?.questionNumber ?? "")
-    .trim()
-    .replace(/^question\s*/i, "")
-    .replace(/^q/i, "")
-    .toLowerCase();
+  return canonicalQuestionKey(q) ||
+    String(q?.questionNumber ?? "")
+      .trim()
+      .replace(/^question\s*/i, "")
+      .replace(/^q/i, "")
+      .toLowerCase();
 }
 
 function isBlankRow(q) {
@@ -84,10 +90,12 @@ export function recoverMisassignedAnswers(questions) {
     const printed = normalizePrintedLabel(q.printedQuestionNumber);
     if (!printed) continue;
 
+    const printedId =
+      canonicalQuestionKey({ questionNumber: printed }) || printed.toLowerCase();
     const msCurrent = questionKey(q);
-    if (printed.toLowerCase() === msCurrent.toLowerCase()) continue;
+    if (printedId === msCurrent) continue;
 
-    const blankIdx = blankIndexByMs.get(printed.toLowerCase());
+    const blankIdx = blankIndexByMs.get(printedId);
     if (blankIdx == null || blankIdx === i) continue;
 
     const blank = result[blankIdx];
@@ -114,7 +122,7 @@ export function recoverMisassignedAnswers(questions) {
       _placeholderAfterRecovery: true,
     };
 
-    blankIndexByMs.delete(printed.toLowerCase());
+    blankIndexByMs.delete(printedId);
   }
 
   return result.filter((q) => !q._placeholderAfterRecovery);
@@ -123,5 +131,8 @@ export function recoverMisassignedAnswers(questions) {
 /** Normalize placement + recover common mislabel patterns for the editor. */
 export function prepareEditingQuestions(questions) {
   const recovered = recoverMisassignedAnswers(questions || []);
-  return normalizeQuestionPlacement(recovered.map((q) => ({ ...q })));
+  const collapsed = dropGhostDuplicateQuestions(recovered);
+  return normalizeQuestionPlacement(
+    enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))
+  );
 }

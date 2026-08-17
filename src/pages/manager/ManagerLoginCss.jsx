@@ -74,6 +74,7 @@ import {
 import {
   remainingRunLabel,
   remainingRunInProgress,
+  remainingRunIsStale,
   watchRemainingRun,
   retryRemainingRun,
 } from "../../utils/firstBatchRemaining";
@@ -1447,14 +1448,13 @@ export default function ManagerLoginCss() {
   const followRemainingRun = async (assignId, assignmentNumericId) => {
     const result = await watchRemainingRun({
       statusUrl: `/external-grading/first-batch/status/${assignmentNumericId}`,
-      onStatus: (run) => {
-        if (!run) return;
+      onStatus: (run, firstBatch) => {
         patchBatchJob(assignId, (prev) => ({
           ...prev,
           firstBatch: {
-            ...(prev?.firstBatch || {}),
-            status: run.status === "failed" ? "remaining_failed" : "confirming",
-            remainingRun: run,
+            ...(prev?.firstBatch || firstBatch || {}),
+            status: run?.status === "failed" ? "remaining_failed" : "confirming",
+            remainingRun: run || prev?.firstBatch?.remainingRun || firstBatch?.remainingRun,
           },
         }));
       },
@@ -1475,17 +1475,17 @@ export default function ManagerLoginCss() {
     if (result.state === "failed") {
       patchBatchJob(assignId, (prev) => ({
         ...prev,
-        firstBatch: { ...(prev?.firstBatch || {}), status: "remaining_failed", remainingRun: result.run },
+        firstBatch: {
+          ...(prev?.firstBatch || {}),
+          status: "remaining_failed",
+          remainingRun: {
+            ...(result.run || prev?.firstBatch?.remainingRun || {}),
+            status: "failed",
+            error: result.error || result.run?.error || "Marking the rest failed",
+          },
+        },
       }));
       toast.error(result.error || "Marking the rest failed");
-      return;
-    }
-    if (result.state === "timeout") {
-      patchBatchJob(assignId, (prev) =>
-        prev?.firstBatch?.status === "confirming"
-          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
-          : prev
-      );
     }
   };
 
@@ -1595,7 +1595,16 @@ export default function ManagerLoginCss() {
       try {
         const { data } = await api.get(`/external-grading/first-batch/status/${numericId}`);
         const run = data?.firstBatch?.remainingRun;
-        if (remainingRunInProgress(run) && !getBatchJob(assignId)?.jobId) {
+        if (run?.status === "failed" || remainingRunIsStale(run)) {
+          patchBatchJob(assignId, (prev) => ({
+            ...prev,
+            firstBatch: {
+              ...(prev?.firstBatch || data.firstBatch || {}),
+              status: "remaining_failed",
+              remainingRun: run,
+            },
+          }));
+        } else if (remainingRunInProgress(run) && !getBatchJob(assignId)?.jobId) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
@@ -1605,15 +1614,6 @@ export default function ManagerLoginCss() {
             },
           }));
           await followRemainingRun(assignId, numericId);
-        } else if (run?.status === "failed") {
-          patchBatchJob(assignId, (prev) => ({
-            ...prev,
-            firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
-              status: "remaining_failed",
-              remainingRun: run,
-            },
-          }));
         }
       } catch {
         // Status endpoint is best-effort.
