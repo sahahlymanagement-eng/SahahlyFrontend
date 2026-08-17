@@ -94,6 +94,8 @@ import {
   runReturnAllQueue,
   saveReturnSummaries,
   formatReturnFailuresMessage,
+  studentGoogleUserId,
+  isNoAttachmentError,
 } from "../../utils/returnAllExecution";
 import { confirmReturnAll, confirmReturnSingle } from "../../utils/returnConfirmation";
 import { sortQuestionsByPlacement } from "../../utils/normalizeQuestionPlacement";
@@ -3590,20 +3592,32 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         resultModal?.student?.submissionId ||
         db?.submissionId;
 
+      const googleUserId = studentGoogleUserId(resultModal.student);
+
+      // A paper auto-marked 0 for a missing submission has nothing to annotate.
+      // It still has to go back — the grade IS the result.
+      let gradeOnly = Boolean(resultModal.result?.noSubmission);
       let studentFile = resultModal.studentFile;
-      if (!studentFile && submissionId) {
-        const pdfRes = await api.get("/submission-files/pdf", {
-          params: {
-            assignmentId: selectedAssignment._id,
-            submissionId,
-          },
-          responseType: "blob",
-        });
-        studentFile = new File(
-          [pdfRes.data],
-          `${resultModal.student?.name || "student"}.pdf`,
-          { type: "application/pdf" }
-        );
+
+      if (!gradeOnly && !studentFile && submissionId) {
+        try {
+          const pdfRes = await api.get("/submission-files/pdf", {
+            params: {
+              assignmentId: selectedAssignment._id,
+              submissionId,
+              googleUserId: googleUserId || undefined,
+            },
+            responseType: "blob",
+          });
+          studentFile = new File(
+            [pdfRes.data],
+            `${resultModal.student?.name || "student"}.pdf`,
+            { type: "application/pdf" }
+          );
+        } catch (err) {
+          if (await isNoAttachmentError(err)) gradeOnly = true;
+          else throw err;
+        }
       }
 
       const totalMarks = resolveAnnotatePdfTotalMarks({
@@ -3611,25 +3625,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
-      const pdfBytes = await annotatePdf({
-        studentFile,
-        questions: editingQuestions,
-        maxTotalMarks: effectiveMaxTotal,
-        summary: resolvePdfSummary(submissionId, resultModal.result),
-        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
-        teacherAnnotations: getTeacherAnnotations(resultModal.result),
-        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
-        markingMode: resultModal.result?.markingMode || "normal",
-      });
+      const pdfBytes = gradeOnly
+        ? null
+        : await annotatePdf({
+            studentFile,
+            questions: editingQuestions,
+            maxTotalMarks: effectiveMaxTotal,
+            summary: resolvePdfSummary(submissionId, resultModal.result),
+            outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+            teacherAnnotations: getTeacherAnnotations(resultModal.result),
+            criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+            markingMode: resultModal.result?.markingMode || "normal",
+          });
       const fd = new FormData();
-      fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+      if (pdfBytes) {
+        fd.append("annotatedPdf", new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+      } else {
+        fd.append("gradeOnly", "1");
+      }
       fd.append("assignmentId", selectedAssignment._id);
       fd.append("submissionId", resultModal.student.submissionId || submissionId);
       fd.append("totalMarks", totalMarks);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName", resultModal.student.name || "Student");
-      if (resultModal.student.studentId) {
-        fd.append("googleUserId", resultModal.student.studentId);
+      if (googleUserId) {
+        fd.append("googleUserId", String(googleUserId));
       }
       appendClassroomGradeToFormData(fd, {
         submissionId: resultModal.student.submissionId || submissionId,

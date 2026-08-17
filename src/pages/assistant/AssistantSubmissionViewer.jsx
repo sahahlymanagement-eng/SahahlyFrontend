@@ -121,6 +121,8 @@ import {
   runReturnAllQueue,
   saveReturnSummaries,
   formatReturnFailuresMessage,
+  studentGoogleUserId,
+  isNoAttachmentError,
 } from "../../utils/returnAllExecution";
 import { sortQuestionsByPlacement } from "../../utils/normalizeQuestionPlacement";
 import { confirmReturnAll, confirmReturnSingle } from "../../utils/returnConfirmation";
@@ -2709,39 +2711,60 @@ window.open(url);
         db?.submissionId;
 
 
-      const pdfRes = await api.get("/submission-files/pdf", {
-        params: {
-          assignmentId,
-          submissionId: submissionId
-        },
-        responseType: "blob"
-      });
-      const studentFile = new File(
-        [pdfRes.data],
-        "student.pdf",
-        { type: "application/pdf" }
-      );
+      const googleUserId = studentGoogleUserId(resultModal.student);
 
-      const pdfBytes = await annotatePdf({
-        studentFile,
-        questions: editingQuestions,
-        maxTotalMarks: effectiveMaxTotal,
-        summary: resolvePdfSummary(submissionId, resultModal.result),
-        outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
-        teacherAnnotations: getTeacherAnnotations(resultModal.result),
-        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
-        markingMode: resultModal.result?.markingMode || "normal",
-      });
+      // A paper auto-marked 0 for a missing submission has nothing to annotate.
+      // It still has to go back — the grade IS the result.
+      let gradeOnly = Boolean(resultModal.result?.noSubmission);
+      let studentFile = null;
+
+      if (!gradeOnly) {
+        try {
+          const pdfRes = await api.get("/submission-files/pdf", {
+            params: {
+              assignmentId,
+              submissionId: submissionId,
+              googleUserId: googleUserId || undefined,
+            },
+            responseType: "blob"
+          });
+          studentFile = new File(
+            [pdfRes.data],
+            "student.pdf",
+            { type: "application/pdf" }
+          );
+        } catch (err) {
+          if (await isNoAttachmentError(err)) gradeOnly = true;
+          else throw err;
+        }
+      }
+
+      const pdfBytes = gradeOnly
+        ? null
+        : await annotatePdf({
+            studentFile,
+            questions: editingQuestions,
+            maxTotalMarks: effectiveMaxTotal,
+            summary: resolvePdfSummary(submissionId, resultModal.result),
+            outOfScopeNotes: getOutOfScopeNotes(resultModal.result),
+            teacherAnnotations: getTeacherAnnotations(resultModal.result),
+            criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+            markingMode: resultModal.result?.markingMode || "normal",
+          });
 
       const fd = new FormData();
-      fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+      if (pdfBytes) {
+        fd.append("annotatedPdf",  new Blob([pdfBytes], { type: "application/pdf" }), "graded.pdf");
+      } else {
+        fd.append("gradeOnly", "1");
+      }
       fd.append("assignmentId",  assignmentId);
       fd.append("submissionId",  resultModal.student.submissionId || submissionId);
       fd.append("totalMarks", total);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
-      if (resultModal.student.studentId) {
-        fd.append("googleUserId", resultModal.student.studentId);
+      if (googleUserId) {
+        fd.append("googleUserId", String(googleUserId));
       }
       appendClassroomGradeToFormData(fd, {
         submissionId: resultModal.student.submissionId || submissionId,
