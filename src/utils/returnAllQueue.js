@@ -41,8 +41,17 @@ function buildStudentLookupMaps(allStudents = [], batchJob = null) {
     if (student.submissionId) {
       bySubmissionId.set(String(student.submissionId), student);
     }
+    // MarkingResult.studentId holds the GOOGLE user id, and the students
+    // endpoint exposes it as `studentId` (there is no `_id` on those rows) —
+    // key on both so the saved-result fallback can actually match.
     if (student._id != null) {
       byStudentId.set(String(student._id), student);
+    }
+    if (student.studentId != null) {
+      byStudentId.set(String(student.studentId), student);
+    }
+    if (student.googleUserId != null) {
+      byStudentId.set(String(student.googleUserId), student);
     }
     if (student.name) {
       byName.set(normalizeStudentName(student.name), student);

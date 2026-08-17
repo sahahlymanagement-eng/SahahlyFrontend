@@ -42,17 +42,49 @@ function isPdfFileLike(file) {
   );
 }
 
+/** The Google user id, however the caller's student row spells it. */
+export function studentGoogleUserId(student) {
+  return student?.googleUserId || student?.studentId || null;
+}
+
+/**
+ * A paper marked 0 because nothing was turned in has no student PDF to
+ * annotate. Returning it is still meaningful — the grade and the Classroom
+ * return are the whole point — so it goes back without an attachment.
+ */
+function isGradeOnlyReturn(result) {
+  return Boolean(result?.noSubmission);
+}
+
+/** True when /submission-files/pdf says the submission carries nothing to download. */
+export async function isNoAttachmentError(err) {
+  if (err?.response?.status !== 404) return false;
+
+  const data = err.response.data;
+  try {
+    const parsed =
+      data instanceof Blob ? JSON.parse(await data.text()) : data;
+    if (parsed?.noAttachment) return true;
+    return /no attachments found|no downloadable file/i.test(
+      String(parsed?.message || "")
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function resolveStudentPdfFile({
   api,
   assignmentId,
   submissionId,
   studentName,
+  googleUserId,
   existingFile,
 }) {
   if (isPdfFileLike(existingFile)) return existingFile;
 
   const pdfRes = await api.get("/submission-files/pdf", {
-    params: { assignmentId, submissionId },
+    params: { assignmentId, submissionId, googleUserId: googleUserId || undefined },
     responseType: "blob",
   });
 
@@ -96,6 +128,7 @@ export async function runReturnAllQueue({
 
   const returnOne = async ({
     submissionId,
+    storedSubmissionId,
     student,
     result,
     studentFile: existingFile,
@@ -104,6 +137,8 @@ export async function runReturnAllQueue({
     batch,
   }) => {
     const label = student?.name || submissionId || "Student";
+    const liveSubmissionId = student?.submissionId || submissionId;
+    const googleUserId = studentGoogleUserId(student);
 
     if (!result) {
       failures.push({ submissionId, label, reason: "Missing marking data" });
@@ -111,47 +146,66 @@ export async function runReturnAllQueue({
     }
 
     try {
-      const studentFile = await resolveStudentPdfFile({
-        api,
-        assignmentId,
-        submissionId: student?.submissionId || submissionId,
-        studentName: student?.name,
-        existingFile,
-      });
-
       const editingQs = result.questions || [];
       const { total, max } = computeReturnMarks(result, editingQs);
 
-      const pdfBytes = await annotatePdf({
-        studentFile,
-        questions: editingQs,
-        maxTotalMarks: max,
-        summary: resolvePdfSummary(submissionId, result),
-        outOfScopeNotes: getOutOfScopeNotes(result),
-        teacherAnnotations: getTeacherAnnotations(result),
-        criteriaGrade: result.criteriaGrade,
-        markingMode: result.markingMode || "normal",
-      });
+      let gradeOnly = isGradeOnlyReturn(result);
+      let studentFile = null;
+
+      if (!gradeOnly) {
+        try {
+          studentFile = await resolveStudentPdfFile({
+            api,
+            assignmentId,
+            submissionId: liveSubmissionId,
+            studentName: student?.name,
+            googleUserId,
+            existingFile,
+          });
+        } catch (err) {
+          // Nothing was attached to annotate. That is not a return failure —
+          // the grade and the Classroom return still have to reach the student.
+          if (await isNoAttachmentError(err)) gradeOnly = true;
+          else throw err;
+        }
+      }
+
+      const pdfBytes = gradeOnly
+        ? null
+        : await annotatePdf({
+            studentFile,
+            questions: editingQs,
+            maxTotalMarks: max,
+            summary: resolvePdfSummary(submissionId, result),
+            outOfScopeNotes: getOutOfScopeNotes(result),
+            teacherAnnotations: getTeacherAnnotations(result),
+            criteriaGrade: result.criteriaGrade,
+            markingMode: result.markingMode || "normal",
+          });
 
       const fd = new FormData();
-      fd.append(
-        "annotatedPdf",
-        new Blob([pdfBytes], { type: "application/pdf" }),
-        "graded.pdf"
-      );
+      if (pdfBytes) {
+        fd.append(
+          "annotatedPdf",
+          new Blob([pdfBytes], { type: "application/pdf" }),
+          "graded.pdf"
+        );
+      } else {
+        fd.append("gradeOnly", "1");
+      }
       fd.append("assignmentId", assignmentId);
-      fd.append("submissionId", student?.submissionId || submissionId);
+      fd.append("submissionId", liveSubmissionId);
       fd.append("totalMarks", total);
       fd.append("maxTotalMarks", max);
       fd.append("studentName", student?.name || "Student");
-      if (student?.googleUserId) {
-        fd.append("googleUserId", student.googleUserId);
+      if (googleUserId) {
+        fd.append("googleUserId", String(googleUserId));
       }
       if (student?._id) {
         fd.append("studentDbId", String(student._id));
       }
       appendClassroomGradeToFormData(fd, {
-        submissionId: student?.submissionId || submissionId,
+        submissionId: liveSubmissionId,
         student,
         ...gradeContext,
         fallbackTotal: total,
@@ -164,8 +218,10 @@ export async function runReturnAllQueue({
 
       successCount += 1;
       return {
-        submissionId: student?.submissionId || submissionId,
-        storedSubmissionId: submissionId,
+        submissionId: liveSubmissionId,
+        // The key the caller's local state is under — NOT the live id, or a
+        // paper whose submission moved never clears its "not returned" flag.
+        storedSubmissionId: storedSubmissionId || submissionId,
         source,
         bulk,
         batch,
@@ -184,9 +240,10 @@ export async function runReturnAllQueue({
 
   const outcomes = [];
 
-  for (const { submissionId, student, bulk } of bulkQueue) {
+  for (const { submissionId, storedSubmissionId, student, bulk } of bulkQueue) {
     const outcome = await returnOne({
       submissionId,
+      storedSubmissionId,
       student,
       result: bulk?.result,
       studentFile: bulk?.studentFile,
@@ -196,9 +253,10 @@ export async function runReturnAllQueue({
     if (outcome) outcomes.push(outcome);
   }
 
-  for (const { submissionId, student, batch } of batchQueue) {
+  for (const { submissionId, storedSubmissionId, student, batch } of batchQueue) {
     const outcome = await returnOne({
       submissionId,
+      storedSubmissionId,
       student,
       result: batch?.result,
       source: "batch",
