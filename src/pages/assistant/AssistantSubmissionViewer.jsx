@@ -94,6 +94,7 @@ import {
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
 import {
   cloneCriteriaGrade,
@@ -101,6 +102,7 @@ import {
 } from "../../utils/markingQuestionEdits";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import MarkingCorrectionChat from "../../components/MarkingCorrectionChat";
+import BulkQuestionEditChat from "../../components/BulkQuestionEditChat";
 import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
@@ -2914,6 +2916,32 @@ const isCriteria = resultModal?.result?.markingMode === "criteria";
     isCriteria && editingCriteriaGrade
       ? Number(editingCriteriaGrade.totalMarks) || 0
       : sumQuestionMarks(questionsForDisplay);
+  // The cover page prints the result's own total; the body prints the sum of the
+  // question rows. Editing, adding or removing a row can pull them apart, and the
+  // paper then contradicts itself — so say so before it goes back to the student.
+  const coverTotal =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : Number(
+          resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks
+        );
+  const paperTotal =
+    isCriteria && editingCriteriaGrade
+      ? Number(editingCriteriaGrade.totalMarks) || 0
+      : sumQuestionMarks(questionsForDisplay);
+  const totalMismatch =
+    !hasPendingEdits &&
+    !previewLoading &&
+    questionsForDisplay.length > 0 &&
+    Number.isFinite(coverTotal) &&
+    Number.isFinite(paperTotal) &&
+    coverTotal !== paperTotal
+      ? {
+          coverTotal,
+          paperTotal,
+          message: `Cover page total ${coverTotal} does not match paper total ${paperTotal}`,
+        }
+      : null;
 const max   = effectiveMaxTotal;
   const pct   = gradeScorePercent(total, max);
 const color = getScoreColor(total, max);
@@ -4062,6 +4090,22 @@ return (
                             </div>
                       </div>
                     </div>
+                    {totalMismatch && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)",
+                          background: "color-mix(in srgb, var(--warning) 12%, transparent)",
+                          color: "var(--warning)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {totalMismatch.message}
+                      </div>
+                    )}
                     </div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                           <button
@@ -4184,7 +4228,23 @@ return (
                             onApplyPatch={handleCorrectionPatch}
                           />
                     )}
-      
+
+                        {/* Edits every paper in this assignment. Applying
+                            rewrites the paper on screen too, so close the modal
+                            rather than leave stale marks that Confirm Edits
+                            would write back over it. */}
+                        {assignmentId && (
+                          <BulkQuestionEditChat
+                            source="classroom"
+                            assignmentId={assignmentId}
+                            assignmentName={assignmentTitle}
+                            onApplied={async () => {
+                              setResultModal(null);
+                              await fetchSavedResults();
+                            }}
+                          />
+                        )}
+
                     {isCriteria && editingCriteriaGrade && (
                       <div style={{ marginBottom: 20 }}>
                         <CriteriaGradeEditor
@@ -4225,63 +4285,10 @@ return (
                     />
                     <MarkingPageShiftNotice result={resultModal?.result} />
 
-                    {Array.isArray(editingOutOfScopeNotes) && editingOutOfScopeNotes.length > 0 && (
-                      <div
-                        style={{
-                          border: "1px solid var(--border)",
-                          borderRadius: 12,
-                          padding: 12,
-                          background: "var(--surface)",
-                          marginBottom: 12,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: "var(--text-secondary)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.08em",
-                            marginBottom: 8,
-                          }}
-                        >
-                          Out-of-scope notes (Not included in your assignment)
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {editingOutOfScopeNotes.map((note, idx) => (
-                            <div
-                              key={`${idx}-${String(note?.label || "")}`}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 10,
-                              }}
-                            >
-                              <div style={{ fontSize: 13, color: "var(--text-primary)" }}>
-                                {note?.label || "Not included in your assignment"}
-                              </div>
-                              <button
-                                type="button"
-                                className="msv-icon-btn"
-                                onClick={() => handleOutOfScopeNoteRemove(idx)}
-                                title="Remove note on confirm edits"
-                                style={{
-                                  border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
-                                  background: "transparent",
-                                  color: "var(--danger)",
-                                  borderRadius: 10,
-                                  padding: "6px 10px",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <OutOfScopeNotesPanel
+                      notes={editingOutOfScopeNotes}
+                      onRemove={handleOutOfScopeNoteRemove}
+                    />
                     <AddMarkingQuestionBar
                       onAdd={(q) => {
                         setEditingQuestions((prev) => [...prev, q]);
