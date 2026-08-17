@@ -53,7 +53,15 @@ const REPORT_BREAKDOWN_OPTIONS = [
   { id: "person", label: "By person" },
 ];
 
-const now = new Date();
+const UNASSIGNED_CLASSROOM_KEY = "unassigned";
+
+function classroomRowKey(classroom) {
+  return classroom?.classroomId ? String(classroom.classroomId) : UNASSIGNED_CLASSROOM_KEY;
+}
+
+function isUnassignedClassroomRow(classroom) {
+  return !classroom?.classroomId;
+}
 
 function formatNum(n) {
   return Number(n || 0).toLocaleString();
@@ -262,12 +270,19 @@ function formatRole(role) {
   return role || "—";
 }
 
-function staffColumns(showRole, showCosts) {
+function staffColumns(showRole, showCosts, showSources = false) {
   const cols = [
     { key: "name", label: "Name", render: (r) => r.personName },
   ];
   if (showRole) {
     cols.push({ key: "role", label: "Role", render: (r) => formatRole(r.personRole) });
+  }
+  if (showSources) {
+    cols.push({
+      key: "sources",
+      label: "Tools",
+      render: (r) => r.sourceLabels || "—",
+    });
   }
   cols.push(DATE_COLUMN, ...tokenColumns(showCosts));
   return cols;
@@ -337,8 +352,11 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const rangeLabel = describeRange({ period, year, month, day });
 
   const selectedClassroom = byClassroom?.classrooms?.find(
-    (c) => String(c.classroomId) === selectedClassroomId
+    (c) => classroomRowKey(c) === selectedClassroomId
   );
+  const isUnassignedClassroom =
+    selectedClassroomId === UNASSIGNED_CLASSROOM_KEY ||
+    (selectedClassroom != null && isUnassignedClassroomRow(selectedClassroom));
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -806,7 +824,8 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           ) : (
             <div className="tu-click-list">
               {byClassroom.classrooms.map((c) => {
-                const key = String(c.classroomId);
+                const key = classroomRowKey(c);
+                const unassigned = isUnassignedClassroomRow(c);
                 return (
                   <button
                     key={key}
@@ -817,6 +836,10 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                     <div className="tu-click-row-main">
                       <h3>{c.classroomName}</h3>
                       <span>
+                        {unassigned
+                          ? "Paper Marking, Manual Correction, and other marks with no classroom"
+                          : null}
+                        {unassigned ? " · " : null}
                         {c.requestCount} marking requests
                         {" · "}
                         <span
@@ -853,7 +876,11 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         <div className="tu-detail">
           <div className="tu-detail-header">
             <h2>{selectedClassroom.classroomName}</h2>
-            <p>How would you like to break down token usage? · {rangeLabel}</p>
+            <p>
+              {isUnassignedClassroom
+                ? `AI marking that was not tied to a classroom or assignment · ${rangeLabel}`
+                : `How would you like to break down token usage? · ${rangeLabel}`}
+            </p>
           </div>
           <div className="tu-breakdown-picker">
             <button
@@ -865,9 +892,13 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                 {isDirector ? "Per staff member" : "Per assistant"}
               </span>
               <span className="tu-breakdown-btn-desc">
-                {isDirector
-                  ? "See which managers and assistants used tokens in this classroom"
-                  : "See which assistants used tokens in this classroom"}
+                {isUnassignedClassroom
+                  ? isDirector
+                    ? "See who used Paper Marking, Manual Correction, or other unassigned marking"
+                    : "See which assistants used Paper Marking or other unassigned marking"
+                  : isDirector
+                    ? "See which managers and assistants used tokens in this classroom"
+                    : "See which assistants used tokens in this classroom"}
               </span>
             </button>
             <button
@@ -877,7 +908,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             >
               <span className="tu-breakdown-btn-title">Per Assignment</span>
               <span className="tu-breakdown-btn-desc">
-                See token usage broken down by assignment
+                {isUnassignedClassroom
+                  ? "These marks usually have no assignment — shown as “No assignment”"
+                  : "See token usage broken down by assignment"}
               </span>
             </button>
           </div>
@@ -889,23 +922,32 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
           <div className="tu-detail-header">
             <h2>{classroomDetail?.classroomName || selectedClassroom?.classroomName}</h2>
             <p>
-              Token usage per{" "}
-              {classroomBreakdown === "assistant"
-                ? (isDirector ? "staff member" : "assistant")
-                : "assignment"}{" "}
-              ·{" "}
-              {rangeLabel}
+              {isUnassignedClassroom
+                ? classroomBreakdown === "assistant"
+                  ? `Who used Single marking (no classroom) · ${rangeLabel}`
+                  : `Single marking by assignment · ${rangeLabel}`
+                : <>
+                    Token usage per{" "}
+                    {classroomBreakdown === "assistant"
+                      ? (isDirector ? "staff member" : "assistant")
+                      : "assignment"}{" "}
+                    · {rangeLabel}
+                  </>}
             </p>
           </div>
           {detailLoading && <div className="tu-loading">Loading breakdown…</div>}
           {!detailLoading && !classroomDetail?.rows?.length && (
-            <div className="tu-empty">No usage in this classroom for this period.</div>
+            <div className="tu-empty">
+              {isUnassignedClassroom
+                ? "No Single marking usage for this period."
+                : "No usage in this classroom for this period."}
+            </div>
           )}
           {!detailLoading && classroomDetail?.rows?.length > 0 && (
             <UsageTable
               columns={
                 classroomBreakdown === "assistant"
-                  ? personColumns
+                  ? staffColumns(isDirector, showCosts, isUnassignedClassroom)
                   : classroomAssignmentCols
               }
               rows={classroomDetail.rows}
