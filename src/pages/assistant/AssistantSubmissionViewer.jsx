@@ -149,6 +149,12 @@ import {
   isBatchStopped,
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
+import {
+  remainingRunLabel,
+  remainingRunInProgress,
+  watchRemainingRun,
+  retryRemainingRun,
+} from "../../utils/firstBatchRemaining";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
 import PendingEditsBanner, {
@@ -1236,10 +1242,60 @@ window.open(url);
     }
   };
 
-  // Confirms a capped first batch (see backend firstBatchGate.js) and waits
-  // for the server's auto-triggered "mark the rest" run to create its batch
-  // job, then hands off to the normal poll — reuses the same active-job
-  // discovery this page already runs on mount.
+  const followRemainingRun = async (assignId, engine = "v1") => {
+    const base = engineBasePath(engine);
+    const result = await watchRemainingRun({
+      statusUrl: `${base}/first-batch/status/${assignId}`,
+      onStatus: (run) => {
+        if (!run) return;
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            status: run.status === "failed" ? "remaining_failed" : "confirming",
+            remainingRun: run,
+          },
+        }));
+      },
+    });
+
+    if (result.state === "processing") {
+      await checkForActiveJob();
+      return;
+    }
+    if (result.state === "done") {
+      patchBatchJob(assignId, (prev) => ({
+        ...prev,
+        firstBatch: {
+          ...(prev?.firstBatch || {}),
+          status: "confirmed",
+          remainingRun: result.run,
+        },
+      }));
+      toast.success("Remaining submissions marked");
+      return;
+    }
+    if (result.state === "failed") {
+      patchBatchJob(assignId, (prev) => ({
+        ...prev,
+        firstBatch: {
+          ...(prev?.firstBatch || {}),
+          status: "remaining_failed",
+          remainingRun: result.run,
+        },
+      }));
+      toast.error(result.error || "Marking the rest failed");
+      return;
+    }
+    if (result.state === "timeout") {
+      patchBatchJob(assignId, (prev) =>
+        prev?.firstBatch?.status === "confirming"
+          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
+          : prev
+      );
+    }
+  };
+
   const confirmFirstBatch = async () => {
     if (!assignmentId || !batchJob?.firstBatch) return;
     const ok = await confirmToast(
@@ -1261,28 +1317,24 @@ window.open(url);
       ...prev,
       firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
     }));
+    await followRemainingRun(assignmentId, engine);
+  };
 
-    let attempts = 0;
-    const maxAttempts = 60; // ~5 minutes — roster sync + PDF upload/fetch can be slow
-    const tryDiscover = async () => {
-      attempts += 1;
-      await checkForActiveJob();
-      const current = getBatchJob(assignmentId);
-      if (current?.jobId && current.phase === "processing") return;
-      if (attempts < maxAttempts) {
-        setTimeout(tryDiscover, 5000);
-        return;
-      }
-      // Gave up looking for the job — the server-side run is fire-and-forget
-      // and may still be working (roster sync + uploads can outlast this
-      // window). Stop polling rather than leaving a spinner stuck forever.
-      patchBatchJob(assignmentId, (prev) =>
-        prev?.firstBatch?.status === "confirming"
-          ? { ...prev, firstBatch: { ...prev.firstBatch, status: "confirmed_pending" } }
-          : prev
-      );
-    };
-    setTimeout(tryDiscover, 5000);
+  const retryFirstBatchRemaining = async () => {
+    if (!assignmentId) return;
+    const engine = batchJob?.engine || "v1";
+    try {
+      await retryRemainingRun(`${engineBasePath(engine)}/first-batch/retry-remaining/${assignmentId}`);
+    } catch (err) {
+      toast.error(extractHumanError(err) || "Could not retry remaining marking");
+      return;
+    }
+    patchBatchJob(assignmentId, (prev) => ({
+      ...prev,
+      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
+    }));
+    toast.info("Retrying remaining submissions…");
+    await followRemainingRun(assignmentId, engine);
   };
 
   const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
@@ -1955,6 +2007,37 @@ window.open(url);
   useEffect(() => {
     if (!assignmentId) return;
     checkForActiveJob();
+    (async () => {
+      try {
+        const { data } = await api.get(`/marking/first-batch/status/${assignmentId}`);
+        const run = data?.firstBatch?.remainingRun;
+        const engine = data?.firstBatch?.engine === "v2" ? "v2" : "v1";
+        if (remainingRunInProgress(run) && !getBatchJob(assignmentId)?.jobId) {
+          patchBatchJob(assignmentId, (prev) => ({
+            ...prev,
+            engine: prev?.engine || engine,
+            firstBatch: {
+              ...(prev?.firstBatch || data.firstBatch || {}),
+              status: "confirming",
+              remainingRun: run,
+            },
+          }));
+          await followRemainingRun(assignmentId, engine);
+        } else if (run?.status === "failed") {
+          patchBatchJob(assignmentId, (prev) => ({
+            ...prev,
+            engine: prev?.engine || engine,
+            firstBatch: {
+              ...(prev?.firstBatch || data.firstBatch || {}),
+              status: "remaining_failed",
+              remainingRun: run,
+            },
+          }));
+        }
+      } catch {
+        // Status endpoint is best-effort; active-job check above still runs.
+      }
+    })();
   }, [assignmentId]);
 
   const pollBatchJob = async (jobId, jobMeta = {}) => {
@@ -3196,6 +3279,10 @@ return (
                   fontSize: 12, color: "var(--text-secondary)",
                   display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap"
                 }}>
+                  {batchJob.firstBatch.status === "confirming" ? (
+                    <span>{remainingRunLabel(batchJob.firstBatch.remainingRun, "confirming")}</span>
+                  ) : (
+                    <>
                   <span>
                     ✅ {batchJob.firstBatch.limit ?? 3} paper{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked as a safety
                     check on this new assignment. Review them, then confirm to mark the remaining{" "}
@@ -3211,19 +3298,38 @@ return (
                       opacity: batchJob.firstBatch.status === "confirming" ? 0.6 : 1,
                     }}
                   >
-                    {batchJob.firstBatch.status === "confirming" ? "Confirming…" : "Confirm & Mark Rest"}
+                    Confirm & Mark Rest
                   </button>
+                    </>
+                  )}
                 </div>
               )}
-              {batchJob?.firstBatch?.status === "confirmed_pending" && (
+              {(batchJob?.firstBatch?.status === "confirmed_pending" ||
+                batchJob?.firstBatch?.status === "remaining_failed") && (
                 <div style={{
                   marginTop: 8, padding: "10px 14px", borderRadius: 10,
                   background: "color-mix(in srgb, var(--primary) 8%, transparent)",
                   border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
                   fontSize: 12, color: "var(--text-secondary)",
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
                 }}>
-                  Confirmed — marking the remaining submissions is still running in the background
-                  (roster sync and uploads can take a few minutes). Refresh this page shortly to check progress.
+                  <span>
+                    {remainingRunLabel(
+                      batchJob.firstBatch.remainingRun,
+                      batchJob.firstBatch.status
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={retryFirstBatchRemaining}
+                    style={{
+                      marginLeft: "auto", fontSize: 11, fontWeight: 600,
+                      color: "#fff", background: "var(--primary)",
+                      border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
+                    }}
+                  >
+                    Retry remaining
+                  </button>
                 </div>
               )}
 
