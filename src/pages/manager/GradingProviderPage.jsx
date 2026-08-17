@@ -1338,7 +1338,7 @@ export default function GradingProviderPage({ slug, label }) {
             if (ok === 0) {
               toast.error(
                 results.length === 0
-                  ? "Batch finished with 0 results — Gemini returned nothing. Retry or check API/quota."
+                  ? "Batch finished with 0 results — Sahahly returned nothing. Retry or check API/quota."
                   : `Batch finished — 0 marked${failed ? ` (${failed} failed)` : ""}`
               );
             } else {
@@ -2513,8 +2513,8 @@ export default function GradingProviderPage({ slug, label }) {
                         selectedAssignment.id == null
                           ? `Batch marking needs an assignment with a ${label} id`
                           : markingSelection.selectedCount
-                            ? "Submit one Gemini batch job for the selected submissions"
-                            : "Submit one Gemini batch job for all unmarked submissions"
+                            ? "Submit one Sahahly batch job for the selected submissions"
+                            : "Submit one Sahahly batch job for all unmarked submissions"
                       }
                       style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                     >
@@ -2638,7 +2638,7 @@ export default function GradingProviderPage({ slug, label }) {
                   >
                     <span className="pm-spinner" style={{ width: 12, height: 12 }} />
                     <span>
-                      {batchJob.phase === "uploading" && `Uploading ${batchJob.total} submission PDF(s) to Gemini…`}
+                      {batchJob.phase === "uploading" && `Uploading ${batchJob.total} submission PDF(s) to Sahahly…`}
                       {batchJob.phase === "submitting" && "Submitting batch job…"}
                       {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
                     </span>
@@ -2959,7 +2959,7 @@ export default function GradingProviderPage({ slug, label }) {
 
                                         <button
                                           className="msv-action-btn msv-action-btn--ai"
-                                          title="Mark on Gemini priority tier (fastest)"
+                                          title="Mark on Sahahly priority tier (fastest)"
                                           onClick={() => openGuidanceModal(s, { priority: true })}
                                           disabled={isMarking}
                                           style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
@@ -3062,7 +3062,7 @@ export default function GradingProviderPage({ slug, label }) {
             <div className="msv-guidance-header">
               <div style={{ fontSize: 15, fontWeight: 700 }}>
                 {guidanceModal.batch
-                  ? markingActionLabel("📦 Mark Batch (Gemini)", "📦 Mark Batch — Selected", markingSelection.selectedCount)
+                  ? markingActionLabel("📦 Mark Batch (Sahahly)", "📦 Mark Batch — Selected", markingSelection.selectedCount)
                   : guidanceModal.priorityBulk
                   ? markingActionLabel("🚀 Mark All (Priority)", "🚀 Mark Selected (Priority)", markingSelection.selectedCount)
                   : guidanceModal.bulk
@@ -3333,7 +3333,7 @@ export default function GradingProviderPage({ slug, label }) {
                       }}
                     >
                       <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                      {guidanceModal.bulk ? "Start Marking All with Sahahly" : "Start Marking with Sahahly"}
                     </button>
                     <button className="ma-send-btn" onClick={() => handleGuidanceConfirm("claude")}>
                       <FiCpu size={14} />

@@ -246,8 +246,8 @@ export default function PaperMarking() {
       <div className="pm-shell">
         <header className="pm-header">
           <div>
-            <h1>Gemini AI Marking</h1>
-            <p>Mark student answer sheets against a mark scheme using Gemini.</p>
+            <h1>Sahahly AI Marking</h1>
+            <p>Mark student answer sheets against a mark scheme using Sahahly.</p>
           </div>
 
           <div className="pm-header-actions">
@@ -599,7 +599,7 @@ export default function PaperMarking() {
 
             <PdfCompressionStats pdfCompression={result.pdfCompression} />
 
-            <TokenUsageStats result={result} title="Gemini Token Usage" />
+            <TokenUsageStats result={result} title="Sahahly Token Usage" />
 
             {/* QUESTION BREAKDOWN */}
             <h3 className="pm-breakdown-title">Question Breakdown</h3>

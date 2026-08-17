@@ -1629,7 +1629,7 @@ useEffect(() => {
 
   const providerDisplayLabel = (provider) => {
     if (provider === "claude") return "Claude";
-    return "Gemini";
+    return "Sahahly";
   };
 
   const resolveStudentMarkingContext = (student, rowCtx = {}) => {
@@ -2785,7 +2785,7 @@ useEffect(() => {
         if (okCount === 0) {
           toast.error(
             data.results.length === 0
-              ? "Batch finished with 0 results — Gemini returned nothing. Retry or check API/quota."
+              ? "Batch finished with 0 results — Sahahly returned nothing. Retry or check API/quota."
               : `Batch finished — 0 marked${failCount ? ` (${failCount} failed)` : ""}${
                   failReason ? `: ${failReason}` : ""
                 }`
@@ -4256,7 +4256,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         className="msv-btn-ai"
                         onClick={() => openGuidanceModal(null, false,"priorityBulk")}
                         disabled={bulkMarking || priorityBulkRunning}
-                        title="Mark whole class on Gemini priority tier (fastest, premium)"
+                        title="Mark whole class on Sahahly priority tier (fastest, premium)"
                         style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
                       >
                         {priorityBulkRunning
@@ -4288,7 +4288,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       }}>
                         <span className="pm-spinner" style={{ width: 12, height: 12 }} />
                         <span>
-                          {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Gemini…`}
+                          {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Sahahly…`}
                           {batchJob.phase === "submitting" && "Submitting batch job…"}
                           {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
                         </span>
@@ -4756,7 +4756,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                         {PRIORITY_ALLOWED_IDS.includes(currentUserId()) && (
                                           <button
                                             className="msv-action-btn msv-action-btn--ai"
-                                            title="Mark on Gemini priority tier (fastest, premium)"
+                                            title="Mark on Sahahly priority tier (fastest, premium)"
                                             onClick={() => openGuidanceModal(s,false, "priority")}
                                             disabled={markingLoading || priorityBulkRunning}
                                             style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
@@ -4946,7 +4946,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           </div>
                           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
                             {guidanceModal.priorityBulk
-                              ? `Marks all ${students.filter(s => s.submissionId).length} students on Gemini priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
+                              ? `Marks all ${students.filter(s => s.submissionId).length} students on Sahahly priority tier — fastest, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
                               : guidanceModal.priority
                               ? `Priority tier — fastest/most reliable, premium (~+${Math.round((PRIORITY_RATE_FACTOR - 1) * 100)}%)`
                               : guidanceModal.v2
@@ -4954,7 +4954,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               : guidanceModal.engine === "v2"
                               ? `Experimental engine — overlapping 2-page windows, paired mark-scheme pages, on the batch API (~50% cheaper). Preparation takes longer than v1: ${studentTotal} students in class`
                               : guidanceModal.batch
-                              ? `Submits all eligible students in this assignment to Gemini batch API (~50% cheaper) — ${studentTotal} students in class`
+                              ? `Submits all eligible students in this assignment to Sahahly batch (~50% cheaper) — ${studentTotal} students in class`
                               : guidanceModal.bulk
                               ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                               : "AI will mark against the uploaded mark scheme"}
@@ -5164,7 +5164,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1 }}
                     >
                       <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                      {guidanceModal.bulk ? "Start Marking All with Sahahly" : "Start Marking with Sahahly"}
                     </button>
 
                     <button

@@ -280,6 +280,7 @@ function App() {
           <Route path="delegations" element={<ManagerDelegations />} />
           <Route path="operation-metrics" element={<OperationMetrics defaultTab="metrics" />} />
           <Route path="token-usage" element={<ManagerTokenUsage />} />
+          <Route path="token_usage" element={<Navigate to="/manager/token-usage" replace />} />
           <Route path="feedback" element={<ManagerFeedback />} />
           <Route path="assignments" element={<ManagerAssignments />} />
           <Route path="students" element={<ManagerStudents />} />
@@ -349,6 +350,7 @@ function App() {
           <Route path="accuracy-metrics" element={<DirectorAccuracyMetrics />} />
           <Route path="teachers" element={<DirectorTeachers />} />
           <Route path="token-usage" element={<DirectorTokenUsage />} />
+          <Route path="token_usage" element={<Navigate to="/director/token-usage" replace />} />
           <Route path="feedback" element={<DirectorFeedback />} />
           <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler scope="director" />} />
           <Route path="whatsapp-broadcast" element={<WhatsAppBroadcast />} />

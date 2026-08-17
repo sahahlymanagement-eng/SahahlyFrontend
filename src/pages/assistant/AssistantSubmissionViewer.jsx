@@ -2144,7 +2144,7 @@ window.open(url);
         if (okCount === 0) {
           toast.error(
             data.results.length === 0
-              ? "Batch finished with 0 results — Gemini returned nothing. Retry or check API/quota."
+              ? "Batch finished with 0 results — Sahahly returned nothing. Retry or check API/quota."
               : `Batch finished — 0 marked${failCount ? ` (${failCount} failed)` : ""}${
                   failReason ? `: ${failReason}` : ""
                 }`
@@ -3223,7 +3223,7 @@ return (
                 }}>
                   <span className="pm-spinner" style={{ width: 12, height: 12 }} />
                   <span>
-                    {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Gemini…`}
+                    {batchJob.phase === "uploading"  && `Uploading ${batchJob.total} student PDFs to Sahahly…`}
                     {batchJob.phase === "submitting" && "Submitting batch job…"}
                     {batchJob.phase === "processing" && `Batch job processing (job: ${batchJob.jobId}) — checking every 15s…`}
                   </span>
@@ -3835,7 +3835,7 @@ return (
                               : guidanceModal.engine === "v2"
                               ? `Experimental engine — overlapping 2-page windows, paired mark-scheme pages, on the batch API. Preparation takes longer than v1: ${studentTotal} students in class`
                               : guidanceModal.batch
-                              ? `Submits all eligible students in this assignment via Gemini batch API — ${studentTotal} students in class`
+                              ? `Submits all eligible students in this assignment via Sahahly batch — ${studentTotal} students in class`
                               : guidanceModal.bulk
                     ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                     : "AI will mark against the uploaded mark scheme"}
@@ -4041,7 +4041,7 @@ return (
                                   disabled={markingModeModal === "criteria" && !guidance.trim()}
                                   style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !guidance.trim() ? 0.4 : 1 }}>
                   <FiCpu size={14} />
-                                  {guidanceModal.bulk ? "Start Marking All with Gemini" : "Start Marking with Gemini"}
+                                  {guidanceModal.bulk ? "Start Marking All with Sahahly" : "Start Marking with Sahahly"}
                 </button>
                                 <button className="ma-send-btn" onClick={() => handleGuidanceConfirm("claude")}>
                                   <FiCpu size={14} />

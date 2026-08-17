@@ -1,4 +1,4 @@
-import { formatBatchPricingNote, formatPriorityPricingNote, formatCostEgp, formatCostUsd, resolveMarkingCost } from "../utils/markingCost";
+import { formatBatchPricingNote, formatPriorityPricingNote, formatCostEgp, formatCostUsd, resolveMarkingCost, sahahlyModelLabel } from "../utils/markingCost";
 import { canViewMoneyCostsFromStorage } from "../utils/moneyVisibility";
 
 function tokenLines(tokenUsage) {
@@ -38,6 +38,19 @@ export default function TokenUsageStats({
   const cost = resolveMarkingCost(result);
   const batchNote = formatBatchPricingNote(cost);
   const priorityNote = formatPriorityPricingNote(cost);
+  const liveNote =
+    cost && !cost.batchPricing && !cost.priorityPricing
+      ? "Live (standard) pricing — not Batch API"
+      : null;
+  const callCount = Number(result?.geminiCallCount) || 0;
+  const pageCount = Number(result?.scriptPageCount) || 0;
+  const pageNote =
+    callCount > 1
+      ? `${callCount} Sahahly page requests` +
+        (pageCount ? ` (${pageCount}-page script)` : "")
+      : pageCount > 1
+        ? `${pageCount}-page script`
+        : null;
   const downgraded =
     result?.requestedServiceTier === "priority" &&
     result?.servedServiceTier === "standard";
@@ -62,6 +75,12 @@ export default function TokenUsageStats({
             ) : null}
             {priorityNote ? (
               <span style={{ marginLeft: 6, color: "var(--warning)" }}>({priorityNote})</span>
+            ) : null}
+            {liveNote ? (
+              <span style={{ marginLeft: 6, color: "var(--warning)" }}>({liveNote})</span>
+            ) : null}
+            {pageNote ? (
+              <span style={{ marginLeft: 6, color: "var(--muted)" }}>({pageNote})</span>
             ) : null}
           </div>
         )}
@@ -89,7 +108,7 @@ export default function TokenUsageStats({
         {title}
         {result?.geminiModel ? (
           <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, marginLeft: 8 }}>
-            ({result.geminiModel})
+            ({sahahlyModelLabel(result.geminiModel)})
           </span>
         ) : null}
       </div>
@@ -115,6 +134,12 @@ export default function TokenUsageStats({
           ) : null}
           {priorityNote ? (
             <div style={{ color: "var(--warning)" }}>{priorityNote}</div>
+          ) : null}
+          {liveNote ? (
+            <div style={{ color: "var(--warning)" }}>{liveNote}</div>
+          ) : null}
+          {pageNote ? (
+            <div style={{ color: "var(--muted)" }}>{pageNote}</div>
           ) : null}
         </div>
       )}

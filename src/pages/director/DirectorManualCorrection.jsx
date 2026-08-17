@@ -225,7 +225,7 @@ export default function DirectorManualCorrection() {
           <p>
             Upload student PDFs and a mark scheme. Papers are marked with the same
             built-in grading prompt used in classroom marking, submitted as a
-            Gemini Batch job (same engine as Mark All). You can leave this tab.
+            Sahahly Batch job (same engine as Mark All). You can leave this tab.
           </p>
         </div>
       </header>
@@ -346,7 +346,7 @@ export default function DirectorManualCorrection() {
       >
         {loading
           ? progress?.phase === "submitted"
-            ? "Waiting on Gemini Batch…"
+            ? "Waiting on Sahahly Batch…"
             : progress?.phase === "uploading"
               ? `Uploading ${progress?.current || 0} of ${progress?.total || studentFiles.length}…`
               : `Marking ${progress?.current || 0} of ${progress?.total || studentFiles.length}…`
@@ -357,7 +357,7 @@ export default function DirectorManualCorrection() {
 
       {loading && (
         <p className="dmc-progress">
-          {progress?.name || "Starting Gemini Batch…"} You can leave this tab.
+          {progress?.name || "Starting Sahahly Batch…"} You can leave this tab.
         </p>
       )}
 
@@ -386,7 +386,7 @@ export default function DirectorManualCorrection() {
             </div>
 
             {paper.status === "running" && (
-              <p className="dmc-progress">In the Gemini Batch queue…</p>
+              <p className="dmc-progress">In the Sahahly Batch queue…</p>
             )}
             {paper.error && <p className="dmc-error">{paper.error}</p>}
 

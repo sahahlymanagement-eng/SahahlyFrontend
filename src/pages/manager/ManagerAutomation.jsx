@@ -381,7 +381,7 @@ export default function ManagerAutomation({ scope = "manager" }) {
     // is guarding.
     if (!dry) {
       const ok = await confirmToast(
-        `Mark ${scopeLabel} with Gemini. This also sets the assignment's expected page count and WhatsApps the manager when it finishes.${
+        `Mark ${scopeLabel} with Sahahly. This also sets the assignment's expected page count and WhatsApps the manager when it finishes.${
           forceRun
             ? " Force starts the run even if the due date hasn't passed or one already finished."
             : ""

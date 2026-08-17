@@ -5,7 +5,10 @@ import api from "../api/api";
 import { toast } from "react-toastify";
 import { formatCostEgp, formatCostUsd } from "../utils/markingCost";
 import usePersistedState from "../hooks/usePersistedState";
+import { getRoleName } from "../utils/authRoutes";
 import "../pages/manager/ManagerTokenUsage.css";
+
+const now = new Date();
 
 const MONTHS = [
   { value: "", label: "All months" },
@@ -313,7 +316,6 @@ function classroomAssignmentColumns(showCosts) {
  */
 export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const navigate = useNavigate();
-  const requiredRole = scope === "manager" ? "manager" : "admin";
   const isDirector = scope === "director";
   const showCosts = isDirector;
   const tabs = isDirector ? TABS : MANAGER_TABS;
@@ -369,12 +371,17 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       return;
     }
     const parsed = JSON.parse(storedUser);
-    if (parsed.roleId?.name?.toLowerCase() !== requiredRole) {
+    const role = getRoleName(parsed);
+    const allowed =
+      scope === "manager"
+        ? role === "manager"
+        : role === "admin" || role === "director";
+    if (!allowed) {
       navigate("/login");
       return;
     }
     setUser(parsed);
-  }, [navigate, requiredRole]);
+  }, [navigate, scope]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -677,8 +684,8 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
 
   const subtitle =
     scope === "director"
-      ? "Organization-wide Gemini and Claude token usage across all classrooms."
-      : "Track Gemini and Claude tokens used in your classrooms.";
+      ? "Organization-wide Sahahly and Claude token usage across all classrooms."
+      : "Track Sahahly and Claude tokens used in your classrooms.";
 
   return (
     <main className={`tu-main ${embedded ? "tu-main--embedded" : ""}`}>

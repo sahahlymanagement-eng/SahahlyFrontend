@@ -358,7 +358,7 @@ export default function QBClassify() {
                     style={{ fontSize: 13, padding: "6px 14px" }}
                     onClick={() => setAiProvider(p)}
                   >
-                    {p === "claude" ? "🤖 Claude" : "✨ Gemini"}
+                    {p === "claude" ? "🤖 Claude" : "✨ Sahahly"}
                   </button>
                 ))}
               </div>
@@ -373,15 +373,15 @@ export default function QBClassify() {
                 style={{ fontSize: 14, padding: "12px 28px" }}
               >
                 {classifying
-                  ? <><span className="qb-spinner" /> {aiProvider === "claude" ? "Claude" : "Gemini"} is classifying…</>
-                  : `🤖 Classify with ${aiProvider === "claude" ? "Claude" : "Gemini"}`
+                  ? <><span className="qb-spinner" /> {aiProvider === "claude" ? "Claude" : "Sahahly"} is classifying…</>
+                  : `🤖 Classify with ${aiProvider === "claude" ? "Claude" : "Sahahly"}`
                 }
               </button>
             </div>
 
             {classifying && (
               <div style={{ marginTop: 16, padding: "14px 18px", background: "color-mix(in srgb, var(--primary) 8%, transparent)", borderRadius: 10, border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)", fontSize: 13, color: "var(--text-secondary)" }}>
-                ⏳ {aiProvider === "claude" ? "Claude" : "Gemini"} is reading the exam, identifying question boundaries, and classifying each question. This may take 30–90 seconds depending on the exam length.
+                ⏳ {aiProvider === "claude" ? "Claude" : "Sahahly"} is reading the exam, identifying question boundaries, and classifying each question. This may take 30–90 seconds depending on the exam length.
               </div>
             )}
           </div>

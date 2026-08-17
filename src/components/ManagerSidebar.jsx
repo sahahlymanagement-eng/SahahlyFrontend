@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   { icon: <FiRadio />,     label: "WhatsApp Broadcast", path: "/manager/whatsapp-broadcast" },
   { icon: <FiCpu />,       label: "AI Agent",           path: "/manager/ai-agent"           },
   { icon: <FiMessageCircle />, label: "Chatbot",        path: "/manager/chatbot"            },
-  { icon: <FiFileText />,  label: "Gemini AI Marking",  path: "/manager/marking"        },
+  { icon: <FiFileText />,  label: "Sahahly AI Marking",  path: "/manager/marking"        },
   { icon: <FiFileText />,  label: "Claude AI Marking",  path: "/manager/markingclaude"  },
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },
   { icon: <FiUploadCloud />, label: "Mariam Gabalawy",  path: "/manager/mariamgabalawy" },

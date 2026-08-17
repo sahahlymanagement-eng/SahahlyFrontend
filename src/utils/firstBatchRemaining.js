@@ -30,10 +30,10 @@ export function remainingRunLabel(run, fallbackStatus) {
   if (status === "uploading") {
     const n = run?.remainingCount;
     return n
-      ? `Uploading ${n} remaining paper${n === 1 ? "" : "s"} to Gemini. Long scripts are sent page by page and can take 20+ minutes.`
-      : "Uploading remaining papers to Gemini. Long scripts can take 20+ minutes.";
+      ? `Uploading ${n} remaining paper${n === 1 ? "" : "s"} to Sahahly. Long scripts are sent page by page and can take 20+ minutes.`
+      : "Uploading remaining papers to Sahahly. Long scripts can take 20+ minutes.";
   }
-  if (status === "processing") return "Gemini is marking the remaining submissions…";
+  if (status === "processing") return "Sahahly is marking the remaining submissions…";
   if (status === "fetching" || status === "queued" || status === "confirming") {
     return "Loading the remaining submissions…";
   }

@@ -58,7 +58,7 @@ export default function AssignmentPromptGeneration({
             <h3>Prompt Generation</h3>
             <p className="apg-subtitle">
               {assignmentTitle
-                ? `${assignmentTitle} — personalized marking instructions for Gemini`
+                ? `${assignmentTitle} — personalized marking instructions for Sahahly`
                 : "Generate assignment-specific marking instructions"}
             </p>
           </div>
@@ -134,7 +134,7 @@ export default function AssignmentPromptGeneration({
         </div>
 
         <label className="apg-extra-label" htmlFor="apg-generated-draft">
-          Generated marking guidance (saved for Gemini)
+          Generated marking guidance (saved for Sahahly)
         </label>
         {loading ? (
           <p className="apg-loading">Loading saved prompt…</p>
