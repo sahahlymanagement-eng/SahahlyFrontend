@@ -363,7 +363,7 @@ export function useAnnotatedResultPreview({
           finalResult.summary || resolvePdfSummaryRef.current(submissionId, finalResult);
         const snapshot = {
           submissionId,
-          questions,
+          questions: (finalResult.questions || questions).map((q) => ({ ...q })),
           maxTotal,
           summary,
           outOfScopeNotes: getOutOfScopeNotes(finalResult),

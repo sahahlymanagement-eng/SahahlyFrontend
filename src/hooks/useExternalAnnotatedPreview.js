@@ -333,7 +333,7 @@ export function useExternalAnnotatedPreview({
         const studentFile = resultModalRef.current?.studentFile || null;
         const snapshot = {
           submissionId,
-          questions,
+          questions: (finalResult.questions || questions).map((q) => ({ ...q })),
           maxTotal,
           summary,
           outOfScopeNotes: getOutOfScopeNotes(finalResult),

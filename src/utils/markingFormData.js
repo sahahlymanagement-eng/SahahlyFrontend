@@ -6,6 +6,10 @@ import {
   isReportOnlyBlankQuestion,
   summarizeUnansweredQuestions,
 } from "./blankQuestionFeedback";
+import {
+  alignExaminerFeedbackToMarks,
+  syncQuestionsExaminerFeedback,
+} from "./syncExaminerFeedback";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
 
@@ -347,7 +351,7 @@ export function sanitizeQuestionForStudentPdf(q) {
     next.checklist = { ...next.checklist, answerIsBlank: false };
   }
 
-  return next;
+  return alignExaminerFeedbackToMarks(next, "prefix");
 }
 
 export function sanitizeQuestionsForStudentPdf(questions) {
@@ -636,6 +640,17 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
       next.marksAwarded = Math.min(max, Math.max(0, Number(next.marksAwarded) || 0));
     }
 
+    const marksChanged =
+      Number(next.marksAwarded) !== Number(q.marksAwarded) ||
+      Number(next.maxMarks) !== Number(q.maxMarks);
+    if (marksChanged) {
+      const patchedReason = patch.reason;
+      Object.assign(next, alignExaminerFeedbackToMarks(next, "full"));
+      if (patchedReason !== undefined && patchedReason !== null) {
+        next.reason = patchedReason;
+      }
+    }
+
     // A correction that fills in a backfilled stub turns it into reviewed work
     // in the editor (_stubEdited) but it stays in the report breakdown only.
     if (isBackfilledStub(q) && questionRowHasEdits(next, q)) {
@@ -857,11 +872,15 @@ export function applyTeacherEditsToResult(
   summaryOverride = null,
   editingCriteriaGrade = null
 ) {
-  const totalMarks = sumQuestionMarks(editingQuestions);
+  const questions = syncQuestionsExaminerFeedback(
+    editingQuestions,
+    baseResult?.questions || []
+  );
+  const totalMarks = sumQuestionMarks(questions);
 
   const finalResult = {
     ...baseResult,
-    questions: editingQuestions,
+    questions,
     totalMarks,
   };
 
@@ -878,6 +897,12 @@ export function applyTeacherEditsToResult(
           })),
         }
       : { ...finalResult.criteriaGrade };
+    if (Array.isArray(criteria.breakdown) && criteria.breakdown.length) {
+      criteria.breakdown = syncQuestionsExaminerFeedback(
+        criteria.breakdown,
+        baseResult?.criteriaGrade?.breakdown || []
+      );
+    }
     const breakdownSum = Array.isArray(criteria.breakdown) && criteria.breakdown.length
       ? sumQuestionMarks(criteria.breakdown)
       : totalMarks;
@@ -899,36 +924,36 @@ export function applyTeacherEditsToResult(
     finalResult.summary = normalizeMarkingSummaryBullets(summaryOverride);
   } else {
     finalResult.summary = rebuildMarkingSummary({
-      questions: editingQuestions,
+      questions,
       maxTotalMarks: max,
       previousSummary: baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
     });
   }
 
-  finalResult.unansweredQuestions = summarizeUnansweredQuestions(editingQuestions, {
+  finalResult.unansweredQuestions = summarizeUnansweredQuestions(questions, {
     isBackfilledStub,
   });
 
   // Canonical final fields — same shape the backend persists on Save.
   // Preview / download / return must prefer these over ad-hoc recalculation.
-  finalResult.finalQuestions = editingQuestions;
+  finalResult.finalQuestions = questions;
   finalResult.finalObtainedMarks = finalResult.totalMarks;
   finalResult.finalMaximumMarks = max;
   finalResult.finalPercentage = gradeScorePercent(finalResult.totalMarks, max);
   finalResult.backfilledQuestions = {
-    questionNumbers: editingQuestions
+    questionNumbers: questions
       .filter(isBackfilledStub)
       .map((q) => String(q.questionNumber ?? "").trim())
       .filter(Boolean),
-    count: editingQuestions.filter(isBackfilledStub).length,
+    count: questions.filter(isBackfilledStub).length,
   };
   finalResult.studentFeedback = {
     summary: finalResult.summary || "",
-    questions: sanitizeQuestionsForStudentPdf(editingQuestions),
+    questions: sanitizeQuestionsForStudentPdf(questions),
     unansweredMessage: finalResult.unansweredQuestions?.message || null,
   };
   finalResult.staffOnlyMetadata = {
-    notes: editingQuestions
+    notes: questions
       .filter((q) => q?._staffNote || isBackfilledStub(q))
       .map((q) => ({
         questionNumber: String(q.questionNumber ?? "").trim() || "?",

@@ -1,3 +1,5 @@
+import { alignExaminerFeedbackToMarks } from "../utils/syncExaminerFeedback";
+
 const rowInput = {
   width: "100%",
   padding: "6px 8px",
@@ -111,13 +113,18 @@ export default function CriteriaGradeEditor({ criteriaGrade, maxTotal, onChange,
                 min={0}
                 max={Number(row.maxMarks) || 999}
                 value={Number(row.marksAwarded) || 0}
-                onChange={(e) =>
-                  updateRow(i, {
-                    marksAwarded: Math.min(
-                      Number(row.maxMarks) || 999,
-                      Math.max(0, Number(e.target.value) || 0)
-                    ),
-                  })
+                onChange={(e) => {
+                  const marksAwarded = Math.min(
+                    Number(row.maxMarks) || 999,
+                    Math.max(0, Number(e.target.value) || 0)
+                  );
+                  updateRow(
+                    i,
+                    alignExaminerFeedbackToMarks({ ...row, marksAwarded }, "prefix")
+                  );
+                }}
+                onBlur={() =>
+                  updateRow(i, alignExaminerFeedbackToMarks(row, "full"))
                 }
                 style={{ ...rowInput, borderColor: rowColor, fontWeight: 700 }}
               />
@@ -127,10 +134,14 @@ export default function CriteriaGradeEditor({ criteriaGrade, maxTotal, onChange,
                 value={Number(row.maxMarks) || 1}
                 onChange={(e) => {
                   const nextMax = Math.max(1, Number(e.target.value) || 1);
-                  updateRow(i, {
-                    maxMarks: nextMax,
-                    marksAwarded: Math.min(nextMax, Number(row.marksAwarded) || 0),
-                  });
+                  const marksAwarded = Math.min(nextMax, Number(row.marksAwarded) || 0);
+                  updateRow(
+                    i,
+                    alignExaminerFeedbackToMarks(
+                      { ...row, maxMarks: nextMax, marksAwarded },
+                      "full"
+                    )
+                  );
                 }}
                 style={rowInput}
               />

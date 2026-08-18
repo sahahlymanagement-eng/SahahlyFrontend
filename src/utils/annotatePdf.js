@@ -382,9 +382,13 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
   const marked = (safeQ.markedKeywords || [])
     .map((s) => String(s).trim())
     .filter(Boolean);
-  const missing = (safeQ.missingKeywords || [])
-    .map((s) => String(s).trim())
-    .filter(Boolean);
+  const fullMarks =
+    Number(safeQ.maxMarks) > 0 && Number(safeQ.marksAwarded) >= Number(safeQ.maxMarks);
+  const missing = fullMarks
+    ? []
+    : (safeQ.missingKeywords || [])
+        .map((s) => String(s).trim())
+        .filter(Boolean);
   const mcq = mcqChoiceSummary(safeQ);
   const blank = isBlankQuestion(safeQ);
   const noteLines = safeQ.reason ? wrap(safeQ.reason, font, noteSize, colWidth) : [];

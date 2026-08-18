@@ -2,6 +2,7 @@ import QuestionNumberBadge from "./QuestionNumberBadge";
 import QuestionKeywordFields from "./QuestionKeywordFields";
 import { MARKING_CHECKLIST_CONFIG } from "../constants/markingChecklist";
 import { isBlankQuestion } from "../utils/blankQuestionFeedback";
+import { alignExaminerFeedbackToMarks } from "../utils/syncExaminerFeedback";
 
 const fieldLabel = {
   fontSize: 11,
@@ -43,19 +44,22 @@ export default function MarkingQuestionCard({
 
   const update = (patch) => onChange(index, { ...q, ...patch });
 
-  const setMarks = (nextAwarded) => {
+  const setMarks = (nextAwarded, { mode = "prefix" } = {}) => {
     const max = Math.max(0, Number(q.maxMarks) || 0);
-    update({
-      marksAwarded: Math.min(max, Math.max(0, Number(nextAwarded) || 0)),
-    });
+    const marksAwarded = Math.min(max, Math.max(0, Number(nextAwarded) || 0));
+    onChange(
+      index,
+      alignExaminerFeedbackToMarks({ ...q, marksAwarded }, mode)
+    );
   };
 
-  const setMaxMarks = (nextMax) => {
+  const setMaxMarks = (nextMax, { mode = "prefix" } = {}) => {
     const max = Math.max(1, Number(nextMax) || 1);
-    update({
-      maxMarks: max,
-      marksAwarded: Math.min(max, Number(q.marksAwarded) || 0),
-    });
+    const marksAwarded = Math.min(max, Number(q.marksAwarded) || 0);
+    onChange(
+      index,
+      alignExaminerFeedbackToMarks({ ...q, maxMarks: max, marksAwarded }, mode)
+    );
   };
 
   const toggleChecklist = (key) => {
@@ -102,6 +106,7 @@ export default function MarkingQuestionCard({
             max={qMax || 999}
             value={awarded}
             onChange={(e) => setMarks(e.target.value)}
+            onBlur={() => setMarks(awarded, { mode: "full" })}
             style={{
               width: 52,
               padding: "4px 8px",
@@ -122,6 +127,7 @@ export default function MarkingQuestionCard({
             max={999}
             value={qMax || 1}
             onChange={(e) => setMaxMarks(e.target.value)}
+            onBlur={() => setMaxMarks(qMax || 1, { mode: "full" })}
             style={{
               width: 44,
               padding: "4px 6px",
@@ -138,7 +144,7 @@ export default function MarkingQuestionCard({
 
         <button
           type="button"
-          onClick={() => setMarks(qMax)}
+          onClick={() => setMarks(qMax, { mode: "full" })}
           title="Award full marks"
           style={{
             fontSize: 11,
@@ -154,7 +160,7 @@ export default function MarkingQuestionCard({
         </button>
         <button
           type="button"
-          onClick={() => setMarks(0)}
+          onClick={() => setMarks(0, { mode: "full" })}
           title="Award zero marks"
           style={{
             fontSize: 11,

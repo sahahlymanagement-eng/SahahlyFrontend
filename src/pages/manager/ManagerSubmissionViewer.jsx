@@ -4750,6 +4750,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           </button>
                                         )}
 
+                                        {showMarkingTools && db?.result && (
+                                          <button
+                                            className="msv-action-btn msv-action-btn--delete"
+                                            title="Delete Correction"
+                                            onClick={() => deleteCorrection(s)}
+                                            disabled={deletingCorrection[s.submissionId] || markingLoading}
+                                          >
+                                            {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
+                                          </button>
+                                        )}
+
                                         {showMarkingTools && msInfo && (
                                          <>
                                         {/* Mark button — always shown when MS ready */}
@@ -4812,17 +4823,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                             }}
                                           >
                                             {aiReviewing ? "Reviewing…" : "AI Review"}
-                                          </button>
-                                        )}
-
-                                        {db?.result && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--delete"
-                                            title="Delete Correction"
-                                            onClick={() => deleteCorrection(s)}
-                                            disabled={deletingCorrection[s.submissionId] || markingLoading}
-                                          >
-                                            {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
                                           </button>
                                         )}
 

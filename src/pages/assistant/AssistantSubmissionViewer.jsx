@@ -897,18 +897,25 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
       });
   }, []);
 
-  // to upload mark scheme if it exists for the assignment
+  // Mark scheme + assignment meta for this assignment
   useEffect(() => {
-    api.get(`/manager-assignments/${assignmentId}/full`, { params: { page: 1, limit: 1 } })
-      .then(res => {
-        setMsInfo({
-          fileId: res.data.assignment.markSchemeFileId,
-          webLink: res.data.assignment.markSchemeWebLink
-        });
+    if (!assignmentId) return;
+    api
+      .get(`/manager-assignments/${assignmentId}/markscheme`)
+      .then((res) => setMsInfo(res.data?.fileId ? res.data : null))
+      .catch(() => setMsInfo(null));
+    api
+      .get(`/manager-assignments/${assignmentId}/full`, { params: { page: 1, limit: 1 } })
+      .then((res) => {
         setSubjectId(res.data.assignment.subjectId || null);
         setExpectedPages(res.data.assignment.expectedPages ?? null);
-        setExpectedPagesInput(res.data.assignment.expectedPages != null ? String(res.data.assignment.expectedPages) : "");
-      });
+        setExpectedPagesInput(
+          res.data.assignment.expectedPages != null
+            ? String(res.data.assignment.expectedPages)
+            : ""
+        );
+      })
+      .catch(() => {});
   }, [assignmentId]);
 
   const fetchSavedResults = useCallback(async () => {
@@ -3634,44 +3641,53 @@ return (
                                       </button>
                                     )}
 
+                    {(bulkDone || batchDone || single?.status === "done" || db?.result) && (
+                      <button
+                        className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
+                        title="View Results"
+                        onClick={() => {
+                          const result =
+                            batchDone ? batch.result :
+                            bulkDone ? bulk.result :
+                            single?.status === "done" ? single.result :
+                            db?.result;
+                          const studentFile =
+                            bulkDone ? bulk.studentFile :
+                            single?.status === "done" ? single.studentFile :
+                            null;
+                          const originalAiResult =
+                            (batchDone ? batch?.originalAiResult : null) ??
+                            (bulkDone ? bulk?.originalAiResult : null) ??
+                            (single?.status === "done" ? single?.originalAiResult : null) ??
+                            db?.aiOriginalResult ??
+                            result;
+                          openResultsModal({
+                            student: s,
+                            result,
+                            studentFile,
+                            originalAiResult,
+                            submissionId: s.submissionId,
+                          });
+                        }}
+                      >
+                        ✅ Results
+                      </button>
+                    )}
+
+                    {db?.result && (
+                      <button
+                        className="msv-action-btn msv-action-btn--delete"
+                        title="Delete Correction"
+                        onClick={() => deleteCorrection(s)}
+                        disabled={deletingCorrection[s.submissionId] || markingLoading}
+                      >
+                        {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
+                      </button>
+                    )}
+
                     {msInfo && (
                                       <>
-                                        
-                                        {/* Results button — show if any source has results */}
-                                        {(bulkDone || batchDone || single?.status === "done" || db?.result) && (
-                      <button
-                                            className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
-                                            title="View Results"
-                        onClick={() => {
-                                              const result =
-                                                batchDone ? batch.result :
-                                                bulkDone ? bulk.result :
-                                                single?.status === "done" ? single.result :
-                                                db?.result;
-                                              const studentFile =
-                                                bulkDone ? bulk.studentFile :
-                                                single?.status === "done" ? single.studentFile :
-                                                null;
-                                              const originalAiResult =
-                                                (batchDone ? batch?.originalAiResult : null) ??
-                                                (bulkDone ? bulk?.originalAiResult : null) ??
-                                                (single?.status === "done" ? single?.originalAiResult : null) ??
-                                                db?.aiOriginalResult ??
-                                                result;
-                                              openResultsModal({
-                                                student: s,
-                                                result,
-                                                studentFile,
-                                                originalAiResult,
-                                                submissionId: s.submissionId,
-                                              });
-                                            }}
-                                          >
-                                            ✅ Results
-                                          </button>
-                                        )}
-
-                                        {/* Mark button — always shown */}
+                                        {/* Mark button — always shown when MS ready */}
                                         <button
                                           className={`msv-action-btn msv-action-btn--ai ${markingError ? "msv-action-btn--error" : ""}`}
                                           title="Mark with AI"
@@ -3709,18 +3725,6 @@ return (
                                           {/* {bulkRetrying && (
                                             <button onClick={stopBulkMark}>Stop</button>
                                           )} */}
-
-                                        {db?.result && (
-                                          <button
-                                            className="msv-action-btn msv-action-btn--delete"
-                                            title="Delete Correction"
-                                            onClick={() => deleteCorrection(s)}
-                                            disabled={deletingCorrection[s.submissionId] || markingLoading}
-                                          >
-                                            {deletingCorrection[s.submissionId] ? <span className="pm-spinner" /> : "🗑 Delete"}
-                      </button>
-                                        )}
-
 
                                         {inlineMarkResult?.pdfCompression && (
                                           <div style={{
@@ -4289,6 +4293,20 @@ return (
                           <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                         <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
                       </button>
+                          {resultModalSubmissionId && savedResults[resultModalSubmissionId]?.result && (
+                            <button
+                              className="msv-action-btn msv-action-btn--delete"
+                              title="Delete Correction"
+                              onClick={async () => {
+                                await deleteCorrection(resultModal.student);
+                                setResultModal(null);
+                              }}
+                              disabled={deletingCorrection[resultModalSubmissionId] || hasPendingEdits}
+                              style={{ fontSize: 12 }}
+                            >
+                              {deletingCorrection[resultModalSubmissionId] ? "Deleting…" : "🗑 Delete Correction"}
+                            </button>
+                          )}
                       <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
                     </div>
                   </div>
