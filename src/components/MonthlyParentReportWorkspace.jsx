@@ -1480,9 +1480,17 @@ export default function MonthlyParentReportWorkspace({
                       : "mpr-multi-pdf-single"
                   }
                 >
-                  {multiPdfPreviewStudents.map((student) => {
+                  {multiPdfPreviewStudents.map((student, index) => {
                     const isFocused =
                       String(previewStudent?._id) === String(student._id);
+                    // Only one card builds its PDF up front. Each one costs the
+                    // server a full read of the classroom's month, so opening
+                    // eight at once made every one of them slower than opening
+                    // the one the user actually wants to look at. The rest load
+                    // on click, and the server's class-wide cache makes those
+                    // near-instant once the first has warmed it.
+                    const openByDefault =
+                      multiPdfPreviewStudents.length === 1 || isFocused || index === 0;
                     return (
                       <div
                         key={student._id}
@@ -1516,7 +1524,7 @@ export default function MonthlyParentReportWorkspace({
                               ? "mpr-pdf-preview-frame--multi"
                               : "mpr-pdf-preview-frame--tall"
                           }
-                          defaultExpanded
+                          defaultExpanded={openByDefault}
                         />
                       </div>
                     );
