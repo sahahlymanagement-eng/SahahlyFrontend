@@ -429,6 +429,27 @@ export function totalMarksMismatchInfo(result) {
   };
 }
 
+/**
+ * Structural equality for two marking results.
+ *
+ * Used to decide whether a save is worth making at all. Deliberately
+ * conservative: reporting "different" when they match only costs a save that
+ * would have happened anyway, while reporting "same" when they differ would
+ * silently drop somebody's marking — so this compares serialised form, which
+ * can say "different" over key order but can never say "same" wrongly.
+ */
+export function markingResultsAreIdentical(a, b) {
+  // Nullish first: "nothing on either side" is not something to skip a save
+  // over, and an identity check would call two absent results a match.
+  if (!a || !b) return false;
+  if (a === b) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 /** Grade for a saved MarkingResult row (DB totalMarks + nested result). */
 export function resolveSavedMarkingGrade(savedRow) {
   if (!savedRow) return null;

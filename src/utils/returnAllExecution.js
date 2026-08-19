@@ -4,6 +4,7 @@
 
 import { buildReturnAllQueue } from "./returnAllQueue";
 import { getApiErrorMessage } from "./markingFormData";
+import { invalidateStudentPdf } from "./studentPdfCache";
 
 export function mapSavedResultsFromApi(rows = []) {
   const map = {};
@@ -12,7 +13,6 @@ export function mapSavedResultsFromApi(rows = []) {
     map[r.submissionId] = {
       status: "done",
       result: r.result,
-      aiOriginalResult: r.aiOriginalResult || r.result,
       studentFile: r.studentFileMeta,
       totalMarks: r.totalMarks,
       classroomAssignedGrade: r.classroomAssignedGrade ?? null,
@@ -215,6 +215,10 @@ export async function runReturnAllQueue({
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000,
       });
+
+      // Returning attaches (or rewrites) a marked PDF on the submission, so the
+      // cached download is no longer necessarily what /pdf would hand back.
+      invalidateStudentPdf(assignmentId, storedSubmissionId || submissionId);
 
       successCount += 1;
       return {
