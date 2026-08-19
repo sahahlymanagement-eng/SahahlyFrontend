@@ -10,6 +10,7 @@ import {
   FiBookOpen,
   FiFileText,
   FiEdit3,
+  FiMove,
   FiSend,
   FiClock,
   FiAlertTriangle,
@@ -41,6 +42,15 @@ const PAGE_SIZE = 20;
 
 function formatNum(n) {
   return (Number(n) || 0).toLocaleString();
+}
+
+/**
+ * Every edit of either kind. Correction and mapping edits are separate axes
+ * (a question can be re-graded AND moved), so this is a workload headline, not
+ * a total the two columns divide up.
+ */
+function allEdits(row) {
+  return (Number(row?.totalEdits) || 0) + (Number(row?.placementChanges) || 0);
 }
 
 function formatDate(value) {
@@ -282,7 +292,9 @@ export default function DirectorManagerAnalytics() {
         <SummaryPill icon={<FiBookOpen />} label="Classrooms" value={formatNum(overall?.classroomCount)} />
         <SummaryPill icon={<FiUser />} label="Teachers managed" value={formatNum(overall?.teacherCount)} />
         <SummaryPill icon={<FiFileText />} label="Assignments" value={formatNum(overall?.assignmentCount)} />
-        <SummaryPill icon={<FiEdit3 />} label="Total edits" value={formatNum(overall?.totalEdits)} />
+        <SummaryPill icon={<FiEdit3 />} label="Total edits" value={formatNum(allEdits(overall))} />
+        <SummaryPill icon={<FiEdit3 />} label="Correction edits" value={formatNum(overall?.totalEdits)} />
+        <SummaryPill icon={<FiMove />} label="Mapping edits" value={formatNum(overall?.placementChanges)} />
         <SummaryPill icon={<FiSend />} label="Reports sent" value={formatNum(overall?.reportsSent)} tone="good" />
         <SummaryPill icon={<FiClock />} label="Reports late" value={formatNum(overall?.reportsLate)} tone="warn" />
         <SummaryPill icon={<FiAlertTriangle />} label="Reports unsent" value={formatNum(overall?.reportsUnsent)} tone="warn" />
@@ -310,7 +322,12 @@ export default function DirectorManagerAnalytics() {
                     <th>Classes</th>
                     <th>Teachers</th>
                     <th>Assignments</th>
-                    <th title="Every correction made to AI marking, including repeats">Edits</th>
+                    <th title="Edits this manager made themselves: a question's mark or feedback changed. Their assistants' corrections are not counted here.">
+                      Correction Edits
+                    </th>
+                    <th title="Edits this manager made themselves: an annotated question dragged to a new place and confirmed.">
+                      Mapping Edits
+                    </th>
                     <th>Sent</th>
                     <th>Late</th>
                     <th>Unsent</th>
@@ -328,7 +345,8 @@ export default function DirectorManagerAnalytics() {
                       <td data-label="Classes">{formatNum(row.classroomCount)}</td>
                       <td data-label="Teachers">{formatNum(row.teacherCount)}</td>
                       <td data-label="Assignments">{formatNum(row.assignmentCount)}</td>
-                      <td data-label="Edits">{formatNum(row.totalEdits)}</td>
+                      <td data-label="Correction Edits">{formatNum(row.totalEdits)}</td>
+                      <td data-label="Mapping Edits">{formatNum(row.placementChanges)}</td>
                       <td data-label="Sent" className="dma-good">{formatNum(row.reportsSent)}</td>
                       <td data-label="Late" className={row.reportsLate > 0 ? "dma-warn" : undefined}>
                         {formatNum(row.reportsLate)}
@@ -443,7 +461,9 @@ function ManagerDetailModal({ detail, loading, from, to, onClose }) {
                   <HealthBar score={summary.healthScore} band={summary.healthBand} />
                 </div>
               </div>
-              <SummaryPill icon={<FiEdit3 />} label="Total edits" value={formatNum(summary.totalEdits)} />
+              <SummaryPill icon={<FiEdit3 />} label="Total edits" value={formatNum(allEdits(summary))} />
+              <SummaryPill icon={<FiEdit3 />} label="Correction edits" value={formatNum(summary.totalEdits)} />
+              <SummaryPill icon={<FiMove />} label="Mapping edits" value={formatNum(summary.placementChanges)} />
               <StatFilterTile
                 icon={<FiSend />}
                 label="Sent"
@@ -471,6 +491,12 @@ function ManagerDetailModal({ detail, loading, from, to, onClose }) {
             </div>
 
             <h4 className="dma-modal-section">Edits</h4>
+            <p className="dma-muted" style={{ marginTop: -4, marginBottom: 10 }}>
+              What this manager changed themselves, measured per save — not their
+              assistants' work. Correction edits and mapping edits are counted
+              separately, and a question that was both re-graded and moved appears
+              in both.
+            </p>
             <div className="dma-tabs">
               {EDIT_TABS.map((t) => (
                 <button
@@ -491,14 +517,19 @@ function ManagerDetailModal({ detail, loading, from, to, onClose }) {
                     <th>{tab === "assignments" ? "Assignment" : tab === "classrooms" ? "Class" : "Teacher"}</th>
                     {tab === "assignments" && <th>Due</th>}
                     {tab !== "assignments" && <th>Assignments</th>}
-                    <th title="Every correction made to AI marking, including repeats">Edits</th>
-                    <th title="Mark-mass swing from the AI's original marking">Marks Δ</th>
+                    <th title="Corrections this manager made themselves - a mark or feedback changed">
+                      Correction Edits
+                    </th>
+                    <th title="Annotations this manager dragged to a new place and confirmed">
+                      Mapping Edits
+                    </th>
+                    <th title="Mark-mass this manager moved from the AI's original marking">Marks Δ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="dma-loading">
+                      <td colSpan={5} className="dma-loading">
                         No data in this range.
                       </td>
                     </tr>
@@ -514,7 +545,7 @@ function ManagerDetailModal({ detail, loading, from, to, onClose }) {
                           </td>
                           {tab === "assignments" && <td data-label="Due">{formatDate(r.dueDate)}</td>}
                           {tab !== "assignments" && <td data-label="Assignments">{formatNum(r.assignmentCount)}</td>}
-                          <td data-label="Edits">
+                          <td data-label="Correction Edits">
                             {tab === "assignments" && r.source !== "external" ? (
                               <button type="button" className="dma-link-btn" onClick={() => openAssignment(r.assignmentId)}>
                                 {formatNum(r.totalEdits)}
@@ -523,6 +554,7 @@ function ManagerDetailModal({ detail, loading, from, to, onClose }) {
                               formatNum(r.totalEdits)
                             )}
                           </td>
+                          <td data-label="Mapping Edits">{formatNum(r.placementChanges)}</td>
                           <td data-label="Marks Δ">{formatNum(r.marksDelta)}</td>
                         </tr>
                       );
@@ -621,7 +653,12 @@ function AssignmentDrillModal({ detail, loading, onClose }) {
                 <tr>
                   <th>Student</th>
                   <th>Edited by</th>
-                  <th>Edits</th>
+                  <th title="Marks or feedback changed on this paper, by everyone who touched it">
+                    Correction Edits
+                  </th>
+                  <th title="Annotations dragged to a new place on this paper, by everyone who touched it">
+                    Mapping Edits
+                  </th>
                   <th>Marks Δ</th>
                   <th>Edited at</th>
                 </tr>
@@ -629,7 +666,7 @@ function AssignmentDrillModal({ detail, loading, onClose }) {
               <tbody>
                 {(detail.submissions || []).length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="dma-loading">
+                    <td colSpan={6} className="dma-loading">
                       No submissions in this range.
                     </td>
                   </tr>
@@ -638,7 +675,8 @@ function AssignmentDrillModal({ detail, loading, onClose }) {
                     <tr key={s.submissionId}>
                       <td data-label="Student">{s.studentName}</td>
                       <td data-label="Edited by">{s.editedByName || "—"}</td>
-                      <td data-label="Edits">{formatNum(s.totalEdits)}</td>
+                      <td data-label="Correction Edits">{formatNum(s.totalEdits)}</td>
+                      <td data-label="Mapping Edits">{formatNum(s.placementChanges)}</td>
                       <td data-label="Marks Δ">{formatNum(s.marksDelta)}</td>
                       <td data-label="Edited at">{formatDateTime(s.editedAt)}</td>
                     </tr>

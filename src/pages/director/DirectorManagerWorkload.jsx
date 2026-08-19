@@ -233,7 +233,17 @@ export default function DirectorManagerWorkload() {
               </div>
               <div className="metricBox">
                 <div className="metricIcon"><FiFileText /></div>
-                <div><span>{m.monthlyEdits ?? 0}</span><p>Edits (mo)</p></div>
+                <div>
+                  <span>{(m.monthlyEdits ?? 0) + (m.monthlyMappingEdits ?? 0)}</span>
+                  <p>Edits (mo)</p>
+                </div>
+              </div>
+              <div className="metricBox">
+                <div className="metricIcon"><FiFileText /></div>
+                <div>
+                  <span>{m.monthlyEdits ?? 0} / {m.monthlyMappingEdits ?? 0}</span>
+                  <p>Correction / mapping</p>
+                </div>
               </div>
             </div>
 
@@ -298,7 +308,8 @@ export default function DirectorManagerWorkload() {
                       <span>Reports sent: {detail.metrics.reportsSent ?? 0}</span>
                       <span>Unsent: {detail.metrics.unsentReports ?? 0}</span>
                       <span>Late: {detail.metrics.lateReports ?? 0}</span>
-                      <span>Edits (mo): {detail.metrics.monthlyEdits ?? 0}</span>
+                      <span>Correction edits (mo): {detail.metrics.monthlyEdits ?? 0}</span>
+                      <span>Mapping edits (mo): {detail.metrics.monthlyMappingEdits ?? 0}</span>
                     </div>
                   </div>
                 )}
@@ -312,7 +323,8 @@ export default function DirectorManagerWorkload() {
                             <th>Teacher</th>
                             <th>Classrooms</th>
                             <th>Students</th>
-                            <th>Edits</th>
+                            <th>Correction edits</th>
+                            <th>Mapping edits</th>
                             <th>Reports sent</th>
                             <th>Unsent</th>
                           </tr>
@@ -324,6 +336,7 @@ export default function DirectorManagerWorkload() {
                               <td>{t.classroomCount}</td>
                               <td>{t.studentCount}</td>
                               <td>{t.monthlyEdits}</td>
+                              <td>{t.monthlyMappingEdits ?? 0}</td>
                               <td>{t.reportsSent}</td>
                               <td>{t.unsentReports}</td>
                             </tr>
@@ -343,7 +356,8 @@ export default function DirectorManagerWorkload() {
                             <th>Classroom</th>
                             <th>Teacher</th>
                             <th>Students</th>
-                            <th>Edits</th>
+                            <th>Correction edits</th>
+                            <th>Mapping edits</th>
                             <th>Reports sent</th>
                             <th>Unsent</th>
                           </tr>
@@ -355,6 +369,7 @@ export default function DirectorManagerWorkload() {
                               <td>{c.teacher?.name || "—"}</td>
                               <td>{c.studentCount ?? 0}</td>
                               <td>{c.monthlyEdits ?? 0}</td>
+                              <td>{c.monthlyMappingEdits ?? 0}</td>
                               <td>{c.reportsSent ?? 0}</td>
                               <td>{c.unsentReports ?? 0}</td>
                             </tr>
@@ -374,7 +389,8 @@ export default function DirectorManagerWorkload() {
                             <th>Assignment</th>
                             <th>Class</th>
                             <th>Teacher</th>
-                            <th>Edits</th>
+                            <th>Correction edits</th>
+                            <th>Mapping edits</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -384,6 +400,7 @@ export default function DirectorManagerWorkload() {
                               <td>{row.className}</td>
                               <td>{row.teacherName}</td>
                               <td>{row.edits}</td>
+                              <td>{row.mappingEdits ?? 0}</td>
                             </tr>
                           ))}
                         </tbody>

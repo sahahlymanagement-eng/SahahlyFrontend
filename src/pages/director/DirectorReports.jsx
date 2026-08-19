@@ -431,8 +431,21 @@ export default function DirectorReports() {
                 />
                 <StatCard
                   icon={<FiActivity />}
-                  label="Teacher edits"
+                  label="Total edits"
+                  value={formatNum(
+                    (insights?.summary?.totalEdits || 0) +
+                      (insights?.summary?.totalMappingEdits || 0)
+                  )}
+                />
+                <StatCard
+                  icon={<FiActivity />}
+                  label="Correction edits"
                   value={formatNum(insights?.summary?.totalEdits)}
+                />
+                <StatCard
+                  icon={<FiActivity />}
+                  label="Mapping edits"
+                  value={formatNum(insights?.summary?.totalMappingEdits)}
                 />
               </div>
               <div className="dr-split" style={{ marginTop: 16 }}>
@@ -494,8 +507,13 @@ export default function DirectorReports() {
                   { key: "name", label: "Teacher" },
                   {
                     key: "edits",
-                    label: "Edits",
+                    label: "Correction Edits",
                     render: (r) => formatNum(r.edits),
+                  },
+                  {
+                    key: "mappingEdits",
+                    label: "Mapping Edits",
+                    render: (r) => formatNum(r.mappingEdits),
                   },
                 ]}
                 rows={insights?.editsByTeacher}
@@ -508,8 +526,13 @@ export default function DirectorReports() {
                   { key: "classroomName", label: "Classroom" },
                   {
                     key: "edits",
-                    label: "Edits",
+                    label: "Correction Edits",
                     render: (r) => formatNum(r.edits),
+                  },
+                  {
+                    key: "mappingEdits",
+                    label: "Mapping Edits",
+                    render: (r) => formatNum(r.mappingEdits),
                   },
                 ]}
                 rows={insights?.editsByAssignment}
@@ -522,8 +545,13 @@ export default function DirectorReports() {
                   { key: "teacherName", label: "Teacher" },
                   {
                     key: "edits",
-                    label: "Edits",
+                    label: "Correction Edits",
                     render: (r) => formatNum(r.edits),
+                  },
+                  {
+                    key: "mappingEdits",
+                    label: "Mapping Edits",
+                    render: (r) => formatNum(r.mappingEdits),
                   },
                 ]}
                 rows={insights?.editsByClassroom}

@@ -86,6 +86,7 @@ import {
   questionsForConfirmEdits,
   gradeScorePercent,
   resolveTotalMarksFromResult,
+  markingResultsAreIdentical,
   resolveAnnotatePdfTotalMarks,
   resolveSavedMarkingGrade,
   getOutOfScopeNotes,
@@ -160,6 +161,7 @@ import {
 } from "../../utils/firstBatchRemaining";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
+import { invalidateStudentPdf } from "../../utils/studentPdfCache";
 import PendingEditsBanner, {
   PendingEditsSavingHint,
 } from "../../components/PendingEditsBanner";
@@ -927,7 +929,6 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
         map[r.submissionId] = {
           status: "done",
           result: r.result,
-          aiOriginalResult: r.aiOriginalResult || r.result,
           studentFile: r.studentFileMeta,
           totalMarks: resolveSavedMarkingGrade(r),
           classroomAssignedGrade: r.classroomAssignedGrade ?? null,
@@ -953,6 +954,40 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   useEffect(() => {
     fetchSavedResults();
   }, [fetchSavedResults]);
+
+  /**
+   * Update one paper's row after a save.
+   *
+   * The alternative - refetching `/save-results/:assignmentId` - pulls a full
+   * marking blob for every marked student in the class (several MB on a real
+   * assignment) to change the one row that just moved. `saved` is the row the
+   * API echoed back; `canonical` is the marking blob it stored.
+   */
+  const patchSavedResult = useCallback((submissionId, canonical, saved) => {
+    if (!submissionId) return;
+    const patch = (prev) => {
+      const before = prev[submissionId] || {};
+      const row = {
+        ...before,
+        status: "done",
+        result: canonical,
+        summary: canonical?.summary || before.summary || "",
+        totalMarks: resolveTotalMarksFromResult(canonical),
+      };
+      if (saved) {
+        row.classroomAssignedGrade =
+          saved.classroomAssignedGrade ?? before.classroomAssignedGrade ?? null;
+        row.returnedAt = saved.returnedAt ?? before.returnedAt ?? null;
+        row.updatedAt = saved.updatedAt ?? before.updatedAt ?? null;
+        row.teacherEditedAt = saved.teacherEditedAt ?? before.teacherEditedAt ?? null;
+        if (saved.provider) row.provider = saved.provider;
+        if (saved.mode) row.mode = saved.mode;
+      }
+      return { ...prev, [submissionId]: row };
+    };
+    setSavedResults(patch);
+    setSingleProgress(patch);
+  }, []);
 
 useEffect(() => {
   if (!students.length || !Object.keys(savedResults).length) return;
@@ -2481,7 +2516,11 @@ window.open(url);
     setResultModal({
       student,
       result,
-      originalAiResult: JSON.parse(JSON.stringify(originalAiResult ?? result)),
+      // Cloned only when it is genuinely a different blob - these run to
+      // hundreds of KB, and readers already fall back to `result`.
+      originalAiResult: originalAiResult
+        ? JSON.parse(JSON.stringify(originalAiResult))
+        : null,
       studentFile,
       submissionId: sid,
     });
@@ -2566,14 +2605,17 @@ window.open(url);
       ...(origin ? { origin } : {}),
     });
     const canonical = data?.finalResult || data?.data?.result || finalResult;
-    if (canonical.summary?.trim()) {
+    const summary = canonical.summary?.trim();
+    // MarkedMeta only caches this string; re-posting the one already stored is
+    // a round trip that changes nothing.
+    if (summary && summary !== savedResults[submissionId]?.summary?.trim()) {
       await api.post("/submission-files/save-summary", {
         assignmentId,
         submissionId,
         summary: canonical.summary,
       });
     }
-    return canonical;
+    return { canonical, saved: data?.data || null };
   };
 
   const handleConfirmEdits = async () => {
@@ -2584,12 +2626,10 @@ window.open(url);
     ).map((q) => ({ ...q }));
     const startedFor = resultModalSubmissionId;
     try {
-      const finalResult = await confirmEdits(async ({ finalResult, submissionId, studentId, studentName }) => {
-        const canonical = await persistMarkingResult(finalResult, submissionId, {
-          studentId,
-          studentName,
-        });
-        setSavedResults((prev) => ({
+      const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
+        const sid = resultModal.student.submissionId || submissionId;
+        const { canonical, saved } = await persistMarkingResult(finalResult, sid);
+        setResultModal((prev) => ({
           ...prev,
           [submissionId]: {
             ...(prev[submissionId] || { status: "done" }),
@@ -2598,16 +2638,12 @@ window.open(url);
             totalMarks: resolveTotalMarksFromResult(canonical),
           },
         }));
-        syncSessionMarkingCaches(submissionId, canonical);
-        setResultModal((prev) =>
-          isSameSubmissionModal(prev, submissionId) ? { ...prev, result: canonical } : prev
-        );
-        if (openSubmissionIdRef.current === submissionId) {
-          setEditingSummary(canonical.summary || "");
-          setSummaryTouched(false);
-          setEditingMaxTotal(null);
-          setEditingTotal(null);
-        }
+        setEditingSummary(canonical.summary || "");
+        setSummaryTouched(false);
+        setEditingMaxTotal(null);
+        setEditingTotal(null);
+        patchSavedResult(sid, canonical, saved);
+        syncSessionMarkingCaches(sid, canonical);
         return canonical;
       });
       if (finalResult?.switchedAway) {
@@ -2642,33 +2678,39 @@ window.open(url);
   const autoSaveOpenedResultRef = useRef(null);
 
   autoSaveOpenedResultRef.current = async () => {
-    await confirmEdits(async ({ finalResult, submissionId, studentId, studentName }) => {
-      const stored = savedResults[submissionId];
-      await persistMarkingResult(finalResult, submissionId, {
-        origin: "auto",
-        mode: stored?.mode,
-        provider: stored?.provider,
-        studentId,
-        studentName,
-      });
-      setSavedResults((prev) => ({
-        ...prev,
-        [submissionId]: {
-          ...(prev[submissionId] || { status: "done" }),
-          result: finalResult,
-          summary: finalResult.summary || "",
-          totalMarks: resolveTotalMarksFromResult(finalResult),
-        },
-      }));
-      syncSessionMarkingCaches(submissionId, finalResult);
-      setResultModal((prev) =>
-        isSameSubmissionModal(prev, submissionId) ? { ...prev, result: finalResult } : prev
-      );
-      if (openSubmissionIdRef.current === submissionId) {
+    await confirmEdits(
+      async ({ finalResult, submissionId }) => {
+        const sid = resultModal.student.submissionId || submissionId;
+        const stored = savedResults[sid];
+        // Most papers come back from the normalisers identical to what is
+        // already stored, and then there is nothing to save. Skipping matters:
+        // the save path re-reads the paper, recomputes its edit stats and
+        // rewrites a document that can reach 2MB - all to store what is
+        // already there, every single time a paper is opened.
+        if (markingResultsAreIdentical(finalResult, stored?.result)) return;
+        await persistMarkingResult(finalResult, sid, {
+          origin: "auto",
+          mode: stored?.mode,
+          provider: stored?.provider,
+        });
+        setResultModal((prev) => ({ ...prev, result: finalResult }));
         setEditingSummary(finalResult.summary || "");
         setSummaryTouched(false);
-      }
-    }, { skipPreview: true });
+        setSavedResults((prev) => ({
+          ...prev,
+          [sid]: {
+            ...(prev[sid] || { status: "done" }),
+            result: finalResult,
+            summary: finalResult.summary || "",
+            totalMarks: resolveTotalMarksFromResult(finalResult),
+          },
+        }));
+        syncSessionMarkingCaches(sid, finalResult);
+      },
+      // Nothing moved on screen either, so the preview built when the modal
+      // opened is already the right one.
+      { skipPreviewIfUnchanged: true }
+    );
   };
 
   useEffect(() => {
@@ -2811,6 +2853,10 @@ window.open(url);
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000
       });
+
+      // Returning attaches (or rewrites) a marked PDF on the submission, so the
+      // cached download is no longer necessarily what /pdf would hand back.
+      invalidateStudentPdf(assignmentId, submissionId);
 
       const returnedAt = new Date().toISOString();
       setSavedResults((prev) => ({
@@ -3654,12 +3700,16 @@ return (
                             bulkDone ? bulk.studentFile :
                             single?.status === "done" ? single.studentFile :
                             null;
+                          // Only a marking run made this session holds a
+                          // distinct AI baseline. A paper loaded from the DB has
+                          // none: the list response no longer ships one, because
+                          // a second full copy of every paper was the single
+                          // biggest thing on it.
                           const originalAiResult =
                             (batchDone ? batch?.originalAiResult : null) ??
                             (bulkDone ? bulk?.originalAiResult : null) ??
                             (single?.status === "done" ? single?.originalAiResult : null) ??
-                            db?.aiOriginalResult ??
-                            result;
+                            null;
                           openResultsModal({
                             student: s,
                             result,

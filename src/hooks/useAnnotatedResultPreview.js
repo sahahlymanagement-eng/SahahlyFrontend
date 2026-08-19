@@ -12,6 +12,7 @@ import {
 } from "../utils/markingFormData";
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
+import { fetchStudentPdf } from "../utils/studentPdfCache";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -64,6 +65,10 @@ export function useAnnotatedResultPreview({
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
+  // Which submission the preview currently on screen was built from. Needed to
+  // tell "a preview for this paper is already up" from "that is the previous
+  // student's PDF still showing while this one loads".
+  const previewSubmissionIdRef = useRef(null);
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
   resolvePdfSummaryRef.current = resolvePdfSummary;
   const resultModalRef = useRef(resultModal);
@@ -98,6 +103,7 @@ export function useAnnotatedResultPreview({
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
+    previewSubmissionIdRef.current = null;
     setAnnotatedPreviewUrl(null);
   }, []);
 
@@ -143,25 +149,19 @@ export function useAnnotatedResultPreview({
       setPreviewError(null);
 
       try {
-        const pdfRes = await withTimeout(
-          api.get("/submission-files/pdf", {
-            params: {
-              assignmentId,
-              submissionId: snapshot.submissionId,
-            },
-            responseType: "blob",
-            timeout: 90_000,
+        // Cached per paper for the session: a preview is rebuilt several times
+        // while one modal is open, and the student's file cannot change under
+        // it. See utils/studentPdfCache.js.
+        const studentFile = await withTimeout(
+          fetchStudentPdf(api, {
+            assignmentId,
+            submissionId: snapshot.submissionId,
           }),
           90_000,
           "Loading student PDF"
         );
         if (requestId !== previewRequestRef.current) return;
 
-        const studentFile = new File(
-          [pdfRes.data],
-          `${snapshot.submissionId}.pdf`,
-          { type: "application/pdf" }
-        );
         const markingMode = resultModalRef.current?.result?.markingMode || "normal";
         const pdfBytes = await withTimeout(
           annotatePdf({
@@ -189,6 +189,7 @@ export function useAnnotatedResultPreview({
           new Blob([pdfBytes], { type: "application/pdf" })
         );
         previewUrlRef.current = url;
+        previewSubmissionIdRef.current = snapshot.submissionId;
         setAnnotatedPreviewUrl(url);
         setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
       } catch (err) {
@@ -330,7 +331,7 @@ export function useAnnotatedResultPreview({
   ]);
 
   const confirmEdits = useCallback(
-    async (onPersist, { skipPreview = false } = {}) => {
+    async (onPersist, { skipPreview = false, skipPreviewIfUnchanged = false } = {}) => {
       if (!resultModal || !assignmentId) return null;
       const submissionId = getSubmissionId(resultModal);
       if (!submissionId) return null;
@@ -415,7 +416,24 @@ export function useAnnotatedResultPreview({
         if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
         if (!skipPreview) {
-          await generatePreview(snapshot, { lockPlacement: true });
+          // The auto-save on open confirms a paper nobody has touched. When the
+          // normalisers moved nothing either, the preview already on screen is
+          // this exact snapshot — re-annotating the whole PDF would redraw it
+          // unchanged. Only safe once a preview for THIS paper has finished:
+          // superseding an in-flight one above and then not replacing it would
+          // leave the modal blank.
+          const previewAlreadyCurrent =
+            previewUrlRef.current &&
+            previewSubmissionIdRef.current === snapshot.submissionId;
+          if (
+            skipPreviewIfUnchanged &&
+            !hasPendingEdits &&
+            previewAlreadyCurrent
+          ) {
+            setPreviewLoading(false);
+          } else {
+            await generatePreview(snapshot, { lockPlacement: true });
+          }
         }
         return finalResult;
       } finally {
@@ -433,6 +451,7 @@ export function useAnnotatedResultPreview({
       editingCriteriaGrade,
       outOfScopeNotesOverride,
       confirmedSnapshot,
+      hasPendingEdits,
     ]
   );
 

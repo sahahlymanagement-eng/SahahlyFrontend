@@ -329,7 +329,9 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  min-width: 90px;
+  /* Wide enough for the "15 of 100 marks edited" line under the bar to sit on
+     one row — at 90px it wrapped to three. */
+  min-width: 140px;
 }
 
 .dam-progress-label {
@@ -453,4 +455,79 @@
 
 .dam-chip--muted {
   opacity: 0.85;
+}
+
+/* ── Assignments Metrics ─────────────────────────────────────────────────────
+ *
+ * The metrics tables carry counts and averages rather than accuracy bars, and
+ * several cells pair a headline number with a quieter figure in brackets ("9
+ * (14.5m)", "2.4 (1.8 correction · 0.6 mapping)"). Those brackets are the
+ * reason for the wider padding and the nowrap: wrapped mid-bracket they read as
+ * two unrelated numbers.
+ */
+
+.dam-table--metrics th,
+.dam-table--metrics td {
+  white-space: nowrap;
+}
+
+/* The assignment / question name is the one column allowed to wrap — titles are
+   long and truncating them makes two assignments indistinguishable. */
+.dam-table--metrics td:first-child {
+  white-space: normal;
+  min-width: 220px;
+}
+
+/* Nine columns of counts do not fit a 900px dialog, and a horizontally
+   scrolling table hides exactly the attribution column people opened it for. */
+.dam-modal--wide {
+  width: min(1240px, 100%);
+}
+
+/* One chip per person who corrected the question — a hot question can have
+   several, and inline chips would push the row height around. */
+.dam-editors {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 260px;
+  white-space: normal;
+}
+
+.dam-editors .dam-chip {
+  margin-left: 0;
+}
+
+/* A caveat that changes how a number should be read, rather than a footnote. */
+.dam-note--warn {
+  border-left-color: var(--warning);
+  color: var(--text-primary);
+}
+
+.dam-chip--warn {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* Card mode stacks each cell against its data-label, so the nowrap above would
+   force a horizontal scrollbar on the whole page. */
+@media (max-width: 640px) {
+  .dam-table--metrics th,
+  .dam-table--metrics td {
+    white-space: normal;
+  }
+
+  .dam-editors {
+    max-width: none;
+  }
+}
+
+/* The bounded companion to a headline average — a second line rather than more
+   brackets, because "4.0 (3.1 correction · 0.9 mapping) 2.0 distinct" on one
+   line reads as four unrelated numbers. */
+.dam-subline {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
 }

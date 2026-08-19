@@ -182,13 +182,15 @@ export default function ManagerAutomation({ scope = "manager" }) {
       const [students, saved] = await Promise.all([
         fetchAllPaginated(api, cfg.studentsUrl(id), {}, "students"),
         api
-          .get(`/submission-files/save-results/${id}`)
+          // light=1: this table only needs to know WHICH papers are marked, and
+          // the full response carries one marking blob per student.
+          .get(`/submission-files/save-results/${id}?light=1`)
           .then((r) => r.data?.data || [])
           .catch(() => []),
       ]);
       if (currentAssignmentRef.current !== id) return;
       setRoster(students);
-      setMarkedIds(new Set(saved.filter((r) => r.result).map((r) => r.submissionId)));
+      setMarkedIds(new Set(saved.filter((r) => r.hasResult ?? r.result).map((r) => r.submissionId)));
       setRosterError(null);
     } catch (err) {
       if (currentAssignmentRef.current !== id) return;

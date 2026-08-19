@@ -506,7 +506,12 @@ export default function DirectorDashboard() {
                 <tr>
                   <th>Teacher</th>
                   <th>Classrooms</th>
-                  <th>Edits on assistant work</th>
+                  <th title="Marks or feedback changed on this teacher's marked papers">
+                    Correction edits
+                  </th>
+                  <th title="Annotations dragged to a new place on this teacher's marked papers">
+                    Mapping edits
+                  </th>
                   <th>Late returns</th>
                   <th>Unreturned papers</th>
                 </tr>
@@ -519,7 +524,8 @@ export default function DirectorDashboard() {
                       {t.email ? <div className="ddx-muted">{t.email}</div> : null}
                     </td>
                     <td data-label="Classrooms">{t.classroomCount}</td>
-                    <td data-label="Edits">{t.editCount}</td>
+                    <td data-label="Correction edits">{t.editCount}</td>
+                    <td data-label="Mapping edits">{t.mappingEditCount ?? 0}</td>
                     <td data-label="Late returns">{t.lateReturns}</td>
                     <td data-label="Unreturned">{t.unsentReports}</td>
                   </tr>
@@ -957,7 +963,13 @@ function AssistantDetail({ detail, onLateRowClick }) {
         <Chip tone="late" label="Missed" value={summary?.missedDeadline ?? 0} />
         <Chip tone="progress" label="Pending" value={summary?.pending ?? 0} />
         <Chip tone="unassigned" label="Papers corrected" value={papersCorrected ?? 0} />
-        <Chip tone="muted" label="Total edits" value={editStats?.totalEdits ?? 0} />
+        <Chip
+          tone="muted"
+          label="Total edits"
+          value={(editStats?.totalEdits ?? 0) + (editStats?.totalMappingEdits ?? 0)}
+        />
+        <Chip tone="muted" label="Correction edits" value={editStats?.totalEdits ?? 0} />
+        <Chip tone="muted" label="Mapping edits" value={editStats?.totalMappingEdits ?? 0} />
         <Chip
           tone="muted"
           label="AI requests"
@@ -981,7 +993,8 @@ function AssistantDetail({ detail, onLateRowClick }) {
                   <th>Assignment</th>
                   <th>Classroom</th>
                   <th>Papers</th>
-                  <th>Edits</th>
+                  <th>Correction edits</th>
+                  <th>Mapping edits</th>
                 </tr>
               </thead>
               <tbody>
@@ -991,6 +1004,7 @@ function AssistantDetail({ detail, onLateRowClick }) {
                     <td>{row.classroomName}</td>
                     <td>{row.papers}</td>
                     <td>{row.edits}</td>
+                    <td>{row.mappingEdits ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1001,7 +1015,9 @@ function AssistantDetail({ detail, onLateRowClick }) {
           <div className="ddx-chip-row" style={{ marginBottom: 16 }}>
             {(editStats.byClassroom || []).map((row) => (
               <span key={row.classroomId} className="ddx-chip ddx-chip--muted">
-                {row.classroomName}: <strong>{row.edits}</strong> edits
+                {row.classroomName}: <strong>{row.edits}</strong> correction
+                {" · "}
+                <strong>{row.mappingEdits ?? 0}</strong> mapping
               </span>
             ))}
           </div>
@@ -1014,7 +1030,8 @@ function AssistantDetail({ detail, onLateRowClick }) {
                   <th>Student</th>
                   <th>Assignment</th>
                   <th>Classroom</th>
-                  <th>Edits</th>
+                  <th>Correction edits</th>
+                  <th>Mapping edits</th>
                 </tr>
               </thead>
               <tbody>
@@ -1024,6 +1041,7 @@ function AssistantDetail({ detail, onLateRowClick }) {
                     <td>{row.assignmentTitle}</td>
                     <td>{row.classroomName}</td>
                     <td>{row.edits}</td>
+                    <td>{row.mappingEdits ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1058,7 +1076,8 @@ function AssistantDetail({ detail, onLateRowClick }) {
               <th>Missed</th>
               <th>Pending</th>
               <th>Papers</th>
-              <th>Edits</th>
+              <th>Correction edits</th>
+              <th>Mapping edits</th>
             </tr>
           </thead>
           <tbody>
@@ -1075,11 +1094,12 @@ function AssistantDetail({ detail, onLateRowClick }) {
                 <td>{c.pending}</td>
                 <td>{c.papersCorrected}</td>
                 <td>{c.editCount ?? 0}</td>
+                <td>{c.mappingEditCount ?? 0}</td>
               </tr>
             ))}
             {!classrooms?.length && (
               <tr>
-                <td colSpan={8}>No classroom activity yet.</td>
+                <td colSpan={9}>No classroom activity yet.</td>
               </tr>
             )}
           </tbody>
