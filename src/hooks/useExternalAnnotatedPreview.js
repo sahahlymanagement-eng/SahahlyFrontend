@@ -166,6 +166,7 @@ export function useExternalAnnotatedPreview({
         "Building annotated preview"
       );
       if (requestId !== previewRequestRef.current) return;
+      if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
 
       revokePreviewUrl();
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
@@ -194,6 +195,7 @@ export function useExternalAnnotatedPreview({
       setConfirmedSnapshot(null);
       setPreviewError(null);
       setPreviewLoading(false);
+      setConfirmingEdits(false);
       setReportPageCount(0);
       return;
     }
@@ -299,16 +301,14 @@ export function useExternalAnnotatedPreview({
   ]);
 
   const confirmEdits = useCallback(
-    async (onPersist) => {
+    async (onPersist, { skipPreview = false } = {}) => {
       if (!resultModal) return null;
       const submissionId = getSubmissionId(resultModal);
       if (!submissionId) return null;
+      const stillThisPaper = () => getSubmissionId(resultModalRef.current) === submissionId;
 
-      setConfirmingEdits(true);
-      // Supersede any preview still being built (the open-time one, when the
-      // viewer auto-confirms a freshly marked paper) so it drops out at its next
-      // checkpoint instead of spending an annotate pass on a stale snapshot.
-      previewRequestRef.current += 1;
+      if (!skipPreview) setConfirmingEdits(true);
+      if (!skipPreview) previewRequestRef.current += 1;
       try {
         const questions = questionsForConfirmEdits(
           editingQuestions,
@@ -347,6 +347,8 @@ export function useExternalAnnotatedPreview({
             const persisted = await onPersist({
               finalResult,
               submissionId,
+              studentId: resultModal.student?.studentId,
+              studentName: resultModal.student?.name,
               questions,
               maxTotal,
               teacherAnnotations,
@@ -366,20 +368,25 @@ export function useExternalAnnotatedPreview({
               snapshot.outOfScopeNotes = getOutOfScopeNotes(persisted);
             }
           } catch (err) {
-            // This confirm dropped whatever preview was in flight, so put the
-            // last confirmed one back — a failed save must not leave the modal
-            // stuck on a spinner.
-            if (confirmedSnapshot) generatePreview(confirmedSnapshot, { lockPlacement: true });
-            else setPreviewLoading(false);
+            if (!skipPreview && stillThisPaper()) {
+              if (confirmedSnapshot?.submissionId === submissionId) {
+                generatePreview(confirmedSnapshot, { lockPlacement: true });
+              } else {
+                setPreviewLoading(false);
+              }
+            }
             throw err;
           }
         }
 
+        if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
-        await generatePreview(snapshot, { lockPlacement: true });
+        if (!skipPreview) {
+          await generatePreview(snapshot, { lockPlacement: true });
+        }
         return finalResult;
       } finally {
-        setConfirmingEdits(false);
+        if (stillThisPaper()) setConfirmingEdits(false);
       }
     },
     [

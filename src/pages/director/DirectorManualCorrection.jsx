@@ -13,6 +13,8 @@ const MANUAL_MODELS = [
   { id: "gemini-3.5-flash", label: "Sahahly 3.5" },
 ];
 
+const CHUNK_SIZE_OPTIONS = [0, 1, 2, 3, 5, 8, 10];
+
 const JOB_STORAGE_KEY = "sahahly.manualCorrection.jobId";
 const TOAST_STORAGE_KEY = "sahahly.manualCorrection.toastedJobId";
 
@@ -60,6 +62,7 @@ export default function DirectorManualCorrection() {
   const [studentFiles, setStudentFiles] = useState([]);
   const [markSchemeFile, setMarkSchemeFile] = useState(null);
   const [geminiModel, setGeminiModel] = useState(MANUAL_MODELS[0].id);
+  const [chunkSize, setChunkSize] = useState(5);
   const [guidance, setGuidance] = useState("");
   const [job, setJob] = useState(null);
   const [starting, setStarting] = useState(false);
@@ -165,6 +168,7 @@ export default function DirectorManualCorrection() {
       formData.append("markSchemePdf", markSchemeFile);
       formData.append("markingMode", "normal");
       formData.append("geminiModel", geminiModel);
+      formData.append("chunkSize", String(chunkSize));
       const extra = guidanceForForm(guidance);
       if (extra) formData.append("guidance", extra);
 
@@ -247,6 +251,22 @@ export default function DirectorManualCorrection() {
               </button>
             );
           })}
+        </div>
+        <div className="dmc-chunk-row">
+          <span className="dmc-chunk-label">Pages per request</span>
+          <div className="dmc-model-row">
+            {CHUNK_SIZE_OPTIONS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`dmc-model-btn${chunkSize === n ? " dmc-model-btn--on" : ""}`}
+                onClick={() => setChunkSize(n)}
+                disabled={loading}
+              >
+                {n === 0 ? "Full PDF" : n}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 

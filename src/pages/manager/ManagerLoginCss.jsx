@@ -34,6 +34,7 @@ import {
   buildPriorityMarkingResult,
   appendMarkingContext,
   prepareEditingQuestions,
+  isSameSubmissionModal,
 } from "../../utils/markingFormData";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
@@ -54,7 +55,6 @@ import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
-import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
 import MarkSchemeVerificationModal, {
   runMarkSchemeVerification,
 } from "../../components/MarkSchemeVerificationModal";
@@ -181,8 +181,6 @@ export default function ManagerLoginCss() {
   );
   const [listTotal, setListTotal] = useState(0);
   const [sessionError, setSessionError] = useState(null);
-  const [promptGenOpen, setPromptGenOpen] = useState(false);
-  const [promptDraft, setPromptDraft] = useState("");
   const [msVerifyOpen, setMsVerifyOpen] = useState(false);
   const [msVerifying, setMsVerifying] = useState(false);
   const [msVerifyResult, setMsVerifyResult] = useState(null);
@@ -544,6 +542,8 @@ export default function ManagerLoginCss() {
 
   const resultModalSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
+  const openSubmissionIdRef = useRef(resultModalSubmissionId);
+  openSubmissionIdRef.current = resultModalSubmissionId;
 
   useEffect(() => {
     setPendingRemovedIndices(new Set());
@@ -1693,6 +1693,7 @@ export default function ManagerLoginCss() {
       editingQuestions,
       pendingRemovedIndices
     ).map((q) => ({ ...q }));
+    const startedFor = resultModalSubmissionId;
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         const canonical = await saveDraft(
@@ -1704,11 +1705,15 @@ export default function ManagerLoginCss() {
           ...prev,
           [submissionId]: { ...(prev[submissionId] || {}), result: canonical },
         }));
-        setResultModal((prev) => ({ ...prev, result: canonical }));
-        setEditingSummary(canonical.summary || "");
-        setSummaryTouched(false);
-        setEditingMaxTotal(null);
-        setEditingTotal(null);
+        setResultModal((prev) =>
+          isSameSubmissionModal(prev, submissionId) ? { ...prev, result: canonical } : prev
+        );
+        if (openSubmissionIdRef.current === submissionId) {
+          setEditingSummary(canonical.summary || "");
+          setSummaryTouched(false);
+          setEditingMaxTotal(null);
+          setEditingTotal(null);
+        }
         setSubmissions((prev) =>
           prev.map((s) =>
             s.submissionId === submissionId
@@ -1718,7 +1723,11 @@ export default function ManagerLoginCss() {
         );
         return canonical;
       });
-      if (finalResult) {
+      if (finalResult?.switchedAway) {
+        toast.success("Edits saved — stayed on the previous paper");
+        return;
+      }
+      if (finalResult && openSubmissionIdRef.current === startedFor) {
         setEditingQuestions(
           prepareEditingQuestions(
             finalResult.finalQuestions || finalResult.questions || appliedQuestions
@@ -1760,9 +1769,13 @@ export default function ManagerLoginCss() {
         finalResult,
         results[submissionId]?.originalAiResult || resultModal?.originalAiResult
       );
-      setResultModal((prev) => ({ ...prev, result: finalResult }));
-      setEditingSummary(finalResult.summary || "");
-      setSummaryTouched(false);
+      setResultModal((prev) =>
+        isSameSubmissionModal(prev, submissionId) ? { ...prev, result: finalResult } : prev
+      );
+      if (openSubmissionIdRef.current === submissionId) {
+        setEditingSummary(finalResult.summary || "");
+        setSummaryTouched(false);
+      }
       setSubmissions((prev) =>
         prev.map((s) =>
           s.submissionId === submissionId
@@ -1770,7 +1783,7 @@ export default function ManagerLoginCss() {
             : s
         )
       );
-    });
+    }, { skipPreview: true });
   };
 
   useEffect(() => {
@@ -2406,21 +2419,6 @@ export default function ManagerLoginCss() {
                         </option>
                       ))}
                     </select>
-                    {selectedAssignment?.id != null && (
-                      <button
-                        type="button"
-                        className="msv-btn-ai msv-btn-prompt-gen"
-                        onClick={() => {
-                          setPromptDraft(assignmentPrompt.content || "");
-                          setPromptGenOpen(true);
-                        }}
-                        title="Generate or edit assignment-specific marking prompt"
-                      >
-                        <FiEdit3 size={13} />
-                        Prompt Generation
-                        {assignmentPrompt.hasPrompt ? " ✓" : ""}
-                      </button>
-                    )}
                     {selectedAssignment?.id != null && (
                       <button
                         type="button"
@@ -3293,31 +3291,6 @@ export default function ManagerLoginCss() {
             </div>
           </div>
         </div>
-      )}
-
-      {canMark && (
-      <AssignmentPromptGeneration
-        open={promptGenOpen}
-        onClose={() => setPromptGenOpen(false)}
-        assignmentTitle={selectedAssignment?.name}
-        content={assignmentPrompt.content}
-        draft={promptDraft}
-        onDraftChange={setPromptDraft}
-        maxPoints={assignmentPrompt.maxPoints}
-        maxPointsLabel="Total marks:"
-        generatedAt={assignmentPrompt.generatedAt}
-        loading={assignmentPrompt.loading}
-        generating={assignmentPrompt.generating}
-        saving={assignmentPrompt.saving}
-        hasPrompt={assignmentPrompt.hasPrompt}
-        onGenerate={async (extraInstructions) => {
-          const res = await assignmentPrompt.generate(extraInstructions);
-          if (res?.content) setPromptDraft(res.content);
-        }}
-        onSave={async () => {
-          await assignmentPrompt.save(promptDraft);
-        }}
-      />
       )}
 
       {canMark && (

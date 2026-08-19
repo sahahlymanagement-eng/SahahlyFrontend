@@ -5,6 +5,7 @@ import { isBackfilledStub } from "./backfilledStub";
 import {
   isReportOnlyBlankQuestion,
   summarizeUnansweredQuestions,
+  isPlaceableScriptQuestion,
 } from "./blankQuestionFeedback";
 import {
   alignExaminerFeedbackToMarks,
@@ -12,6 +13,15 @@ import {
 } from "./syncExaminerFeedback";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
+
+export function modalSubmissionId(modal) {
+  return modal?.submissionId || modal?.student?.submissionId || null;
+}
+
+export function isSameSubmissionModal(modal, submissionId) {
+  const openId = modalSubmissionId(modal);
+  return openId != null && submissionId != null && String(openId) === String(submissionId);
+}
 
 function attachEstimatedCost(result, geminiModel, tokenUsage, options) {
   if (!canViewMoneyCostsFromStorage()) return;
@@ -347,6 +357,10 @@ export function sanitizeQuestionForStudentPdf(q) {
     next.reason = studentFacingReasonForQuestion(next);
   }
 
+  if (next.reason) {
+    next.reason = String(next.reason).replace(/\(ticked\)/gi, "(marked)");
+  }
+
   if (next._manual && next.checklist) {
     next.checklist = { ...next.checklist, answerIsBlank: false };
   }
@@ -463,11 +477,6 @@ export function rebuildMarkingSummary({
 
   const bullets = [`• Score: ${total}/${max} (${pct}%) — ${performance} performance`];
 
-  // This summary is written to the PDF cover and posted as the Google Classroom
-  // / grading-partner comment, so a stub named here tells a student they got
-  // something wrong that was never actually read. Count them, don't name them.
-  const undetectedCount = (questions || []).filter(isBackfilledStub).length;
-
   const lost = (questions || []).filter((q) => {
     if (isBackfilledStub(q)) return false;
     if (isReportOnlyBlankQuestion(q, { isBackfilledStub })) return false;
@@ -494,12 +503,6 @@ export function rebuildMarkingSummary({
     if (lost.length > 4) {
       bullets.push(`• ${lost.length - 4} more question(s) with lost marks`);
     }
-  }
-
-  if (undetectedCount > 0) {
-    bullets.push(
-      `• ${undetectedCount} question(s) could not be detected automatically — your teacher will review them`
-    );
   }
 
   const unanswered = summarizeUnansweredQuestions(questions, { isBackfilledStub });
@@ -822,15 +825,14 @@ export function applyQuestionLabelChange(questions, { placementIndex, questionNu
 /**
  * Preview overlay list — keeps original indices for remove handlers.
  *
- * Backfilled stubs and unanswered blanks are excluded: they belong on the
- * grading report only, not as drag handles on the student script pages.
+ * Backfilled stubs are excluded. Genuine blanks with a page stay as drag
+ * handles so unanswered items can be moved on the script.
  */
 export function buildPlacementQuestions(questions, pendingRemovedIndices) {
   return (questions || [])
     .map((q, i) => ({ ...q, _placementIndex: i }))
     .filter((q) => !pendingRemovedIndices?.has(q._placementIndex))
-    .filter((q) => !isBackfilledStub(q))
-    .filter((q) => !isReportOnlyBlankQuestion(q, { isBackfilledStub }));
+    .filter((q) => isPlaceableScriptQuestion(q, { isBackfilledStub }));
 }
 
 export function stripQuestionPlacementMeta(question) {
@@ -933,6 +935,15 @@ export function applyTeacherEditsToResult(
   finalResult.unansweredQuestions = summarizeUnansweredQuestions(questions, {
     isBackfilledStub,
   });
+
+  // Hard cap: obtained can never exceed the maximum (e.g. 85/82 → 82/82).
+  finalResult.totalMarks = Math.min(finalResult.totalMarks, max);
+  if (finalResult.criteriaGrade) {
+    finalResult.criteriaGrade = {
+      ...finalResult.criteriaGrade,
+      totalMarks: Math.min(finalResult.criteriaGrade.totalMarks ?? finalResult.totalMarks, max),
+    };
+  }
 
   // Canonical final fields — same shape the backend persists on Save.
   // Preview / download / return must prefer these over ad-hoc recalculation.

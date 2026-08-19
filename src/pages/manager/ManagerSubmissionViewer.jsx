@@ -58,6 +58,7 @@ import {
   getTeacherAnnotations,
   prepareEditingQuestions,
   totalMarksMismatchInfo,
+  isSameSubmissionModal,
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
@@ -107,7 +108,6 @@ import {
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
 import { buildReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
-import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
 import MarkSchemeVerificationModal, {
   runMarkSchemeVerification,
 } from "../../components/MarkSchemeVerificationModal";
@@ -307,8 +307,6 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // Guidance modal
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
-  const [promptGenOpen,      setPromptGenOpen]      = useState(false);
-  const [promptDraft,        setPromptDraft]        = useState("");
   const [msVerifyOpen,       setMsVerifyOpen]       = useState(false);
   const [msVerifying,        setMsVerifying]        = useState(false);
   const [msVerifyResult,     setMsVerifyResult]     = useState(null);
@@ -579,6 +577,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [markingProvider, setMarkingProvider] = useState("gemini");
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
+  const [directorChunkSize, setDirectorChunkSize] = useState(5);
   const [refreshing, setRefreshing] = useState(false);
   const [exportingGrades, setExportingGrades] = useState(false);
   const [deletingCorrection, setDeletingCorrection] = useState({});
@@ -691,6 +690,8 @@ const resolvePdfSummary = (submissionId, result) =>
 
   const resultModalSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
+  const openSubmissionIdRef = useRef(resultModalSubmissionId);
+  openSubmissionIdRef.current = resultModalSubmissionId;
 
   useEffect(() => {
     setPendingRemovedIndices(new Set());
@@ -2887,6 +2888,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     const res = await api.post(`${base}/mark-batch/upload`, {
       assignmentId: selectedAssignment._id,
       markingMode: mode,          // HEAD: included for zeroed detection
+      ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
@@ -3441,13 +3443,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   const persistMarkingResult = async (
     finalResult,
     submissionId,
-    { origin, mode, provider } = {}
+    { origin, mode, provider, studentId, studentName } = {}
   ) => {
     const { data } = await api.post("/submission-files/save-results", {
       assignmentId: selectedAssignment._id,
       submissionId,
-      studentId: resultModal.student.studentId,
-      studentName: resultModal.student.name,
+      studentId: studentId ?? resultModal?.student?.studentId,
+      studentName: studentName ?? resultModal?.student?.name,
       mode: mode || finalResult.markingMode || markingModeModal,
       provider: provider || markingProvider,
       result: finalResult,
@@ -3471,28 +3473,39 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       editingQuestions,
       pendingRemovedIndices
     ).map((q) => ({ ...q }));
+    const startedFor = resultModalSubmissionId;
     try {
-      const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
-        const canonical = await persistMarkingResult(
-          finalResult,
-          resultModal.student.submissionId || submissionId
-        );
-        setResultModal((prev) => ({
+      const finalResult = await confirmEdits(async ({ finalResult, submissionId, studentId, studentName }) => {
+        const canonical = await persistMarkingResult(finalResult, submissionId, {
+          studentId,
+          studentName,
+        });
+        setSavedResults((prev) => ({
           ...prev,
-          result: canonical,
+          [submissionId]: {
+            ...(prev[submissionId] || { status: "done" }),
+            result: canonical,
+            summary: canonical.summary || "",
+            totalMarks: resolveTotalMarksFromResult(canonical),
+          },
         }));
-        setEditingSummary(canonical.summary || "");
-        setSummaryTouched(false);
-        setEditingMaxTotal(null);
-        setEditingTotal(null);
-        await fetchSavedResults();
-        syncSessionMarkingCaches(
-          resultModal.student.submissionId || submissionId,
-          canonical
+        syncSessionMarkingCaches(submissionId, canonical);
+        setResultModal((prev) =>
+          isSameSubmissionModal(prev, submissionId) ? { ...prev, result: canonical } : prev
         );
+        if (openSubmissionIdRef.current === submissionId) {
+          setEditingSummary(canonical.summary || "");
+          setSummaryTouched(false);
+          setEditingMaxTotal(null);
+          setEditingTotal(null);
+        }
         return canonical;
       });
-      if (finalResult) {
+      if (finalResult?.switchedAway) {
+        toast.success("Edits saved — stayed on the previous paper");
+        return;
+      }
+      if (finalResult && openSubmissionIdRef.current === startedFor) {
         setEditingQuestions(
           (finalResult.finalQuestions || finalResult.questions || appliedQuestions).map(
             (q) => ({ ...q })
@@ -3520,28 +3533,33 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   const autoSaveOpenedResultRef = useRef(null);
 
   autoSaveOpenedResultRef.current = async () => {
-    await confirmEdits(async ({ finalResult, submissionId }) => {
-      const sid = resultModal.student.submissionId || submissionId;
-      const stored = savedResults[sid];
-      await persistMarkingResult(finalResult, sid, {
+    await confirmEdits(async ({ finalResult, submissionId, studentId, studentName }) => {
+      const stored = savedResults[submissionId];
+      await persistMarkingResult(finalResult, submissionId, {
         origin: "auto",
         mode: stored?.mode,
         provider: stored?.provider,
+        studentId,
+        studentName,
       });
-      setResultModal((prev) => ({ ...prev, result: finalResult }));
-      setEditingSummary(finalResult.summary || "");
-      setSummaryTouched(false);
       setSavedResults((prev) => ({
         ...prev,
-        [sid]: {
-          ...(prev[sid] || { status: "done" }),
+        [submissionId]: {
+          ...(prev[submissionId] || { status: "done" }),
           result: finalResult,
           summary: finalResult.summary || "",
           totalMarks: resolveTotalMarksFromResult(finalResult),
         },
       }));
-      syncSessionMarkingCaches(sid, finalResult);
-    });
+      syncSessionMarkingCaches(submissionId, finalResult);
+      setResultModal((prev) =>
+        isSameSubmissionModal(prev, submissionId) ? { ...prev, result: finalResult } : prev
+      );
+      if (openSubmissionIdRef.current === submissionId) {
+        setEditingSummary(finalResult.summary || "");
+        setSummaryTouched(false);
+      }
+    }, { skipPreview: true });
   };
 
   useEffect(() => {
@@ -4162,23 +4180,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     {msInfo && selectedAssignment?._id && (
                       <button
                         type="button"
-                        className="msv-btn-ai msv-btn-prompt-gen"
-                        onClick={() => {
-                          setPromptDraft(assignmentPrompt.content || "");
-                          setPromptGenOpen(true);
-                        }}
-                        style={{ marginLeft: 10 }}
-                        title="Generate or edit assignment-specific marking prompt"
-                      >
-                        <FiEdit3 size={13} />
-                        Prompt Generation
-                        {assignmentPrompt.hasPrompt ? " ✓" : ""}
-                      </button>
-                    )}
-
-                    {msInfo && selectedAssignment?._id && (
-                      <button
-                        type="button"
                         className="msv-btn-ai msv-btn-verify"
                         onClick={() => {
                           setMsVerifyResult(null);
@@ -4209,6 +4210,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {/* BATCH MARKING */}
                   {msInfo && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
+                      {isDirectorScope && (
+                        <select
+                          className="msv-gemini-select"
+                          value={directorChunkSize}
+                          onChange={(e) => setDirectorChunkSize(Number(e.target.value))}
+                          disabled={bulkMarking || batchStarting}
+                          title="Pages per chunk sent to AI per request"
+                          style={{ minWidth: 120 }}
+                        >
+                          {[0, 1, 2, 3, 5, 8, 10].map((n) => (
+                            <option key={n} value={n}>
+                              {n === 0 ? "Full PDF (1 request)" : `${n} page${n !== 1 ? "s" : ""} / request`}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <select
                         className="msv-gemini-select"
                         value={pickValidGeminiModel(geminiModels, geminiModel)}
@@ -5245,28 +5262,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           </div>
         </div>
       )}
-
-      <AssignmentPromptGeneration
-        open={promptGenOpen}
-        onClose={() => setPromptGenOpen(false)}
-        assignmentTitle={selectedAssignment?.title}
-        content={assignmentPrompt.content}
-        draft={promptDraft}
-        onDraftChange={setPromptDraft}
-        maxPoints={assignmentPrompt.maxPoints ?? selectedAssignment?.maxPoints}
-        generatedAt={assignmentPrompt.generatedAt}
-        loading={assignmentPrompt.loading}
-        generating={assignmentPrompt.generating}
-        saving={assignmentPrompt.saving}
-        hasPrompt={assignmentPrompt.hasPrompt}
-        onGenerate={async (extraInstructions) => {
-          const res = await assignmentPrompt.generate(extraInstructions);
-          if (res?.content) setPromptDraft(res.content);
-        }}
-        onSave={async () => {
-          await assignmentPrompt.save(promptDraft);
-        }}
-      />
 
       <MarkSchemeVerificationModal
         open={msVerifyOpen}

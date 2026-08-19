@@ -1,6 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
-import { enrichMarkingQuestions, isBlankQuestion, summarizeUnansweredQuestions, isReportOnlyBlankQuestion } from "./blankQuestionFeedback";
+import { enrichMarkingQuestions, isBlankQuestion, summarizeUnansweredQuestions, overlayQuestionLabel, isPlaceableScriptQuestion, looksLikePageSplitDeferral } from "./blankQuestionFeedback";
 import {
   compareQuestionNumbers,
   normalizeQuestionPlacement,
@@ -47,6 +47,23 @@ function scoreBg(awarded, max) {
       : rgb(0.99, 0.90, 0.90);
 }
 
+function overlayQText(q) {
+  return `Q${overlayQuestionLabel(q)}`;
+}
+
+function markPointSummaries(q) {
+  const pts = Array.isArray(q?.markPoints) ? q.markPoints : [];
+  return pts
+    .filter((p) => p && (String(p.code || "").trim() || String(p.evidence || "").trim()))
+    .map((p) => ({
+      awarded: p.awarded === true,
+      text: [String(p.code || "").trim(), String(p.evidence || "").trim()]
+        .filter(Boolean)
+        .join(" — "),
+    }))
+    .filter((p) => p.text);
+}
+
 function extractOptionLetter(text) {
   if (!text || text === "Not attempted") return null;
   const s = String(text).trim();
@@ -63,6 +80,7 @@ function looksLikeMcq(q) {
   if (max > 2) return false;
   const blob = [
     q?.studentAnswer,
+    q?.studentFinalAnswer,
     q?.correctAnswer,
     q?.reason,
     ...(q?.markedKeywords || []),
@@ -72,7 +90,7 @@ function looksLikeMcq(q) {
     .join(" ");
   if (/\b(mcq|multiple choice|tick|circle one)\b/i.test(blob)) return true;
   if (/\b[A-E]\s*[-–—:]/i.test(blob)) return true;
-  if (max === 1 && (extractOptionLetter(q?.studentAnswer) || extractOptionLetter(q?.correctAnswer))) {
+  if (max === 1 && (extractOptionLetter(q?.studentFinalAnswer) || extractOptionLetter(q?.studentAnswer) || extractOptionLetter(q?.correctAnswer))) {
     return true;
   }
   return false;
@@ -80,13 +98,18 @@ function looksLikeMcq(q) {
 
 function mcqChoiceSummary(q) {
   const isMcq = looksLikeMcq(q);
-  const student =
+  const finalAns = String(q?.studentFinalAnswer || "").trim();
+  const fromFinal = finalAns && finalAns !== "Not attempted" ? finalAns : null;
+  const fromAnswer =
     q?.studentAnswer && q.studentAnswer !== "Not attempted" ? q.studentAnswer : null;
+  const student = fromFinal || fromAnswer;
   const correct = q?.correctAnswer || null;
   const awarded = Number(q?.marksAwarded ?? 0);
   const max = Number(q?.maxMarks ?? 0);
   const full = max > 0 && awarded >= max;
-  return { isMcq, student, correct, full, notAttempted: q?.studentAnswer === "Not attempted" };
+  const notAttempted =
+    q?.studentAnswer === "Not attempted" && !fromFinal;
+  return { isMcq, student, correct, full, notAttempted };
 }
 
 function san(s) {
@@ -287,7 +310,7 @@ function buildTopicsMap(questions) {
         };
       }
 
-      topicsMap[topic].questions.push(`Q${q.questionNumber} (-${lost})`);
+      topicsMap[topic].questions.push(`${overlayQText(q)} (-${lost})`);
       topicsMap[topic].totalLost += lost;
 
       if (q.mistakeAdvice) {
@@ -391,7 +414,11 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
         .filter(Boolean);
   const mcq = mcqChoiceSummary(safeQ);
   const blank = isBlankQuestion(safeQ);
-  const noteLines = safeQ.reason ? wrap(safeQ.reason, font, noteSize, colWidth) : [];
+  const pointRows = markPointSummaries(safeQ);
+  const usePoints = pointRows.length > 0;
+  const noteLines = safeQ.reason
+    ? wrap(String(safeQ.reason).replace(/\(ticked\)/gi, "(marked)"), font, noteSize, colWidth)
+    : [];
   const studentLines =
     mcq.isMcq && (mcq.student || mcq.notAttempted)
       ? wrap(mcq.student || "Question left blank — no answer provided.", font, noteSize - 0.5, colWidth)
@@ -417,11 +444,18 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     if (noteLines.length) h += sectionGap + labelH + noteLines.length * noteLineH;
       } else {
     if (blankAnswerLines.length) h += labelH + blankAnswerLines.length * kwLineH;
-    if (marked.length) {
-      h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
-    }
-    if (missing.length) {
-      h += 9 + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+    if (usePoints) {
+      h += 9 + pointRows.reduce(
+        (s, p) => s + wrap(p.text, font, noteSize - 0.5, colWidth).length * kwLineH,
+        0
+      );
+    } else {
+      if (marked.length) {
+        h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+      }
+      if (missing.length) {
+        h += 9 + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+      }
     }
     if (noteLines.length) h += sectionGap + noteLines.length * noteLineH;
   }
@@ -438,6 +472,8 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     correctLines,
     mcq,
     blank,
+    pointRows,
+    usePoints,
         kwLineH,
         noteLineH,
     sectionGap,
@@ -515,6 +551,8 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       correctLines,
       mcq,
       blank,
+      pointRows,
+      usePoints,
       kwLineH,
       noteLineH,
       sectionGap,
@@ -537,7 +575,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       borderWidth: 0.6,
     });
 
-    drawBoldText(page, `Q${san(q.questionNumber)} · ${q.marksAwarded}/${q.maxMarks}`, {
+    drawBoldText(page, `${overlayQText(q)} · ${q.marksAwarded}/${q.maxMarks}`, {
       x: layout.colX,
       y: blockTop - 11,
       size: noteSize + 0.5,
@@ -637,38 +675,63 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
         cy -= 2;
       }
 
-      if (marked.length > 0) {
-        drawBoldText(page, "Earned:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: GREEN });
+      if (usePoints) {
+        drawBoldText(page, "Marks:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: NAVY });
         cy -= 8;
-        for (const kw of marked) {
-          const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
+        for (const point of pointRows) {
+          const lines = wrap(point.text, reg, noteSize - 0.5, layout.colWidth - 8);
+          const col = point.awarded ? GREEN : RED;
+          page.drawText(point.awarded ? "+" : "x", {
+            x: layout.colX,
+            y: cy,
+            size: noteSize - 0.5,
+            font: bold,
+            color: col,
+          });
           cy = drawWrappedLines(page, lines, {
-            x: layout.colX + 2,
+            x: layout.colX + 8,
             y: cy,
             size: noteSize - 0.5,
             font: reg,
-            color: GREEN,
+            color: col,
             lineH: kwLineH,
           });
         }
         cy -= 2;
-      }
+      } else {
+        if (marked.length > 0) {
+          drawBoldText(page, "Earned:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: GREEN });
+          cy -= 8;
+          for (const kw of marked) {
+            const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
+            cy = drawWrappedLines(page, lines, {
+              x: layout.colX + 2,
+              y: cy,
+              size: noteSize - 0.5,
+              font: reg,
+              color: GREEN,
+              lineH: kwLineH,
+            });
+          }
+          cy -= 2;
+        }
 
-      if (showMissing && missing.length > 0) {
-        drawBoldText(page, "Missing:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: RED });
-        cy -= 8;
-        for (const kw of missing) {
-          const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
-          cy = drawWrappedLines(page, lines, {
-            x: layout.colX + 2,
-            y: cy,
-            size: noteSize - 0.5,
-            font: reg,
-            color: RED,
-            lineH: kwLineH,
-          });
+        if (showMissing && missing.length > 0) {
+          drawBoldText(page, "Missing:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: RED });
+          cy -= 8;
+          for (const kw of missing) {
+            const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
+            cy = drawWrappedLines(page, lines, {
+              x: layout.colX + 2,
+              y: cy,
+              size: noteSize - 0.5,
+              font: reg,
+              color: RED,
+              lineH: kwLineH,
+            });
+          }
+          cy -= 2;
         }
-        cy -= 2;
       }
 
       if (noteLines.length > 0) {
@@ -704,10 +767,18 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
 function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary, studentFacing = true }) {
-  const breakdownQuestions = questions || [];
+  const breakdownQuestions = studentFacing
+    ? (questions || []).filter((q) => !isBackfilledStub(q))
+    : questions || [];
   const unanswered = summarizeUnansweredQuestions(breakdownQuestions, {
     isBackfilledStub,
   });
+  const displaySummary = studentFacing
+    ? String(summary || "")
+        .split(/\n/)
+        .filter((line) => !/could not be detected automatically/i.test(line))
+        .join("\n")
+    : summary;
 
   const summaryPage = pdfDoc.insertPage(0, [595, 842]);
   const { width: sw, height: sh } = summaryPage.getSize();
@@ -830,7 +901,7 @@ const isUngraded =
 
   yPos -= 12;
 
-  const summaryLines = wrap(summary || "No overall summary provided.", reg, 8, CW).slice(0, 8);
+  const summaryLines = wrap(displaySummary || "No overall summary provided.", reg, 8, CW).slice(0, 8);
   summaryLines.forEach((line) => {
     summaryPage.drawText(san(line), {
       x: M,
@@ -1132,7 +1203,7 @@ const isUngraded =
     });
 
     const textY = yPos - 10;
-    reportPage.drawText(san(`Q${q.questionNumber}`).substring(0, 11), {
+    reportPage.drawText(san(overlayQText(q)).substring(0, 11), {
       x: M + 5,
       y: textY,
       size: 6.3,
@@ -1319,14 +1390,10 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
-  // Stubs and unanswered blanks never get placed on the script. Blank rows
-  // belong in the report "questions left unanswered" box (and still deduct
-  // marks via marksAwarded 0). Dropping them here stops them clustering as
-  // annotation badges on page 1 of the student submission.
-  const placeableQuestions = renderQuestions.filter(
-    (q) =>
-      !isBackfilledStub(q) &&
-      !isReportOnlyBlankQuestion(q, { isBackfilledStub })
+  // Stubs never get placed on the script. Genuine blanks with a real page
+  // get a 0/N badge so unanswered items are visible next to the printed item.
+  const placeableQuestions = renderQuestions.filter((q) =>
+    isPlaceableScriptQuestion(q, { isBackfilledStub })
   );
   const enrichedBase = enrichMarkingQuestions(placeableQuestions);
   const enrichedQuestions = lockPlacement
@@ -1396,16 +1463,17 @@ export async function annotatePdf({
       {
         minCenter: PAGE_BOTTOM + badgeBlockH / 2,
         maxCenter: PAGE_TOP - badgeBlockH / 2,
-        gap: 6,
+        gap: 12,
       }
     );
 
     for (const { q, center: anchorY } of badgePlacements) {
-      const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
-      const bg = scoreBg(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
+      const isSplitQ = q.continuesOnNextPage === true || looksLikePageSplitDeferral(q);
+      const col = isSplitQ ? AMBER : scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
+      const bg = isSplitQ ? rgb(1, 0.97, 0.88) : scoreBg(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
       const full = Number(q.marksAwarded || 0) >= Number(q.maxMarks || 0);
       const none = Number(q.marksAwarded || 0) === 0;
-      const notAttempted = q.studentAnswer === "Not attempted";
+      const notAttempted = q.studentAnswer === "Not attempted" || isBlankQuestion(q);
 
       const scoreTxt = `${q.marksAwarded}/${q.maxMarks}`;
       const badgeW = Math.max(34, bold.widthOfTextAtSize(scoreTxt, 10) + 10);
@@ -1430,7 +1498,7 @@ export async function annotatePdf({
         color: col,
       });
 
-      page.drawText(san(`Q${q.questionNumber}`).substring(0, 16), {
+      page.drawText(san(overlayQText(q)).substring(0, 16), {
         x: badgeX,
         y: badgeY + badgeH + 3,
         size: 9,
@@ -1441,7 +1509,11 @@ export async function annotatePdf({
       const mcq = mcqChoiceSummary(q);
       const symbolY = badgeY - 18;
 
-      if (notAttempted) {
+      const isSplit = q.continuesOnNextPage === true || looksLikePageSplitDeferral(q);
+
+      if (isSplit) {
+        page.drawText("...", { x: badgeX + 5, y: symbolY + 2, size: 12, font: bold, color: AMBER });
+      } else if (notAttempted) {
         page.drawText("?", { x: badgeX + 9, y: symbolY + 2, size: 14, font: bold, color: AMBER });
       } else if (mcq.isMcq && mcq.student) {
         const letter = extractOptionLetter(mcq.student) || san(mcq.student).substring(0, 6);
@@ -1458,10 +1530,8 @@ export async function annotatePdf({
         drawTick(page, badgeX + 3, symbolY, 14, GREEN);
       } else if (none) {
         drawCross(page, badgeX + 3, symbolY, 13, RED);
-      } else {
-        drawTick(page, badgeX + 1, symbolY, 12, GREEN);
-        drawCross(page, badgeX + 16, symbolY, 12, RED);
       }
+      // Partial marks: amber score badge only — never a tick and a cross together.
 
       page.drawLine({
         start: { x: badgeX + badgeW, y: anchorY },

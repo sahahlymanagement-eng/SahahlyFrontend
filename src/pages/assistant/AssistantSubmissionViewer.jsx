@@ -91,6 +91,7 @@ import {
   getOutOfScopeNotes,
   getTeacherAnnotations,
   prepareEditingQuestions,
+  isSameSubmissionModal,
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
@@ -132,7 +133,6 @@ import {
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
-import AssignmentPromptGeneration from "../../components/AssignmentPromptGeneration";
 import MarkSchemeVerificationModal, {
   runMarkSchemeVerification,
 } from "../../components/MarkSchemeVerificationModal";
@@ -228,8 +228,6 @@ export default function AssignmentSubmissionViewer() {
  
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
-  const [promptGenOpen,      setPromptGenOpen]      = useState(false);
-  const [promptDraft,        setPromptDraft]        = useState("");
   const [msVerifyOpen,       setMsVerifyOpen]       = useState(false);
   const [msVerifying,        setMsVerifying]        = useState(false);
   const [msVerifyResult,     setMsVerifyResult]     = useState(null);
@@ -760,6 +758,8 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
 
   const resultModalSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
+  const openSubmissionIdRef = useRef(resultModalSubmissionId);
+  openSubmissionIdRef.current = resultModalSubmissionId;
 
   useEffect(() => {
     setPendingRemovedIndices(new Set());
@@ -2553,13 +2553,13 @@ window.open(url);
   const persistMarkingResult = async (
     finalResult,
     submissionId,
-    { origin, mode, provider } = {}
+    { origin, mode, provider, studentId, studentName } = {}
   ) => {
     const { data } = await api.post("/submission-files/save-results", {
       assignmentId,
       submissionId,
-      studentId: resultModal.student.studentId,
-      studentName: resultModal.student.name,
+      studentId: studentId ?? resultModal?.student?.studentId,
+      studentName: studentName ?? resultModal?.student?.name,
       mode: mode || finalResult.markingMode || markingModeModal,
       provider: provider || markingProvider,
       result: finalResult,
@@ -2582,28 +2582,39 @@ window.open(url);
       editingQuestions,
       pendingRemovedIndices
     ).map((q) => ({ ...q }));
+    const startedFor = resultModalSubmissionId;
     try {
-      const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
-        const canonical = await persistMarkingResult(
-          finalResult,
-          resultModal.student.submissionId || submissionId
-        );
-        setResultModal((prev) => ({
+      const finalResult = await confirmEdits(async ({ finalResult, submissionId, studentId, studentName }) => {
+        const canonical = await persistMarkingResult(finalResult, submissionId, {
+          studentId,
+          studentName,
+        });
+        setSavedResults((prev) => ({
           ...prev,
-          result: canonical,
+          [submissionId]: {
+            ...(prev[submissionId] || { status: "done" }),
+            result: canonical,
+            summary: canonical.summary || "",
+            totalMarks: resolveTotalMarksFromResult(canonical),
+          },
         }));
-        setEditingSummary(canonical.summary || "");
-        setSummaryTouched(false);
-        setEditingMaxTotal(null);
-        setEditingTotal(null);
-        await fetchSavedResults();
-        syncSessionMarkingCaches(
-          resultModal.student.submissionId || submissionId,
-          canonical
+        syncSessionMarkingCaches(submissionId, canonical);
+        setResultModal((prev) =>
+          isSameSubmissionModal(prev, submissionId) ? { ...prev, result: canonical } : prev
         );
+        if (openSubmissionIdRef.current === submissionId) {
+          setEditingSummary(canonical.summary || "");
+          setSummaryTouched(false);
+          setEditingMaxTotal(null);
+          setEditingTotal(null);
+        }
         return canonical;
       });
-      if (finalResult) {
+      if (finalResult?.switchedAway) {
+        toast.success("Edits saved — stayed on the previous paper");
+        return;
+      }
+      if (finalResult && openSubmissionIdRef.current === startedFor) {
         setEditingQuestions(
           (finalResult.finalQuestions || finalResult.questions || appliedQuestions).map(
             (q) => ({ ...q })
@@ -2631,28 +2642,33 @@ window.open(url);
   const autoSaveOpenedResultRef = useRef(null);
 
   autoSaveOpenedResultRef.current = async () => {
-    await confirmEdits(async ({ finalResult, submissionId }) => {
-      const sid = resultModal.student.submissionId || submissionId;
-      const stored = savedResults[sid];
-      await persistMarkingResult(finalResult, sid, {
+    await confirmEdits(async ({ finalResult, submissionId, studentId, studentName }) => {
+      const stored = savedResults[submissionId];
+      await persistMarkingResult(finalResult, submissionId, {
         origin: "auto",
         mode: stored?.mode,
         provider: stored?.provider,
+        studentId,
+        studentName,
       });
-      setResultModal((prev) => ({ ...prev, result: finalResult }));
-      setEditingSummary(finalResult.summary || "");
-      setSummaryTouched(false);
       setSavedResults((prev) => ({
         ...prev,
-        [sid]: {
-          ...(prev[sid] || { status: "done" }),
+        [submissionId]: {
+          ...(prev[submissionId] || { status: "done" }),
           result: finalResult,
           summary: finalResult.summary || "",
           totalMarks: resolveTotalMarksFromResult(finalResult),
         },
       }));
-      syncSessionMarkingCaches(sid, finalResult);
-    });
+      syncSessionMarkingCaches(submissionId, finalResult);
+      setResultModal((prev) =>
+        isSameSubmissionModal(prev, submissionId) ? { ...prev, result: finalResult } : prev
+      );
+      if (openSubmissionIdRef.current === submissionId) {
+        setEditingSummary(finalResult.summary || "");
+        setSummaryTouched(false);
+      }
+    }, { skipPreview: true });
   };
 
   useEffect(() => {
@@ -3131,23 +3147,6 @@ return (
                   }}
                 >
                   View Mark Scheme
-    </button>
-  )}
-
-  {msInfo && assignmentId && (
-    <button
-      type="button"
-      className="msv-btn-ai msv-btn-prompt-gen"
-      onClick={() => {
-        setPromptDraft(assignmentPrompt.content || "");
-        setPromptGenOpen(true);
-      }}
-      style={{ marginLeft: 10 }}
-      title="Generate or edit assignment-specific marking prompt"
-    >
-      <FiEdit3 size={13} />
-      Prompt Generation
-      {assignmentPrompt.hasPrompt ? " ✓" : ""}
     </button>
   )}
 
@@ -4095,28 +4094,6 @@ return (
           </div>
         </div>
       )}
-
-      <AssignmentPromptGeneration
-        open={promptGenOpen}
-        onClose={() => setPromptGenOpen(false)}
-        assignmentTitle={assignmentTitle}
-        content={assignmentPrompt.content}
-        draft={promptDraft}
-        onDraftChange={setPromptDraft}
-        maxPoints={assignmentPrompt.maxPoints ?? maxGrade}
-        generatedAt={assignmentPrompt.generatedAt}
-        loading={assignmentPrompt.loading}
-        generating={assignmentPrompt.generating}
-        saving={assignmentPrompt.saving}
-        hasPrompt={assignmentPrompt.hasPrompt}
-        onGenerate={async (extraInstructions) => {
-          const res = await assignmentPrompt.generate(extraInstructions);
-          if (res?.content) setPromptDraft(res.content);
-        }}
-        onSave={async () => {
-          await assignmentPrompt.save(promptDraft);
-        }}
-      />
 
       <MarkSchemeVerificationModal
         open={msVerifyOpen}

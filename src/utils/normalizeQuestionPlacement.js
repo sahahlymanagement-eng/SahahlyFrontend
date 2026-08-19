@@ -90,10 +90,30 @@ export function normalizeQuestionPlacement(questions, studentPageCount = null) {
   for (const group of byPage.values()) {
     if (placementLooksUnreliable(group)) {
       assignVerticalSlotsBesideQuestions(group);
+    } else {
+      spreadStackedMarkers(group);
     }
   }
 
   return questions;
+}
+
+/** Keep stacked badges (MCQ subparts on one stem) from sitting on the same line. */
+function spreadStackedMarkers(group) {
+  if (!Array.isArray(group) || group.length < 2) return;
+  const MIN_GAP = 8;
+  const sorted = [...group].sort(
+    (a, b) =>
+      yPercentOf(a) - yPercentOf(b) ||
+      compareQuestionNumbers(a.questionNumber, b.questionNumber)
+  );
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = yPercentOf(sorted[i - 1]);
+    const cur = yPercentOf(sorted[i]);
+    if (cur - prev < MIN_GAP) {
+      sorted[i].yPercent = Math.min(92, prev + MIN_GAP);
+    }
+  }
 }
 
 /** Resolve vertical overlaps while staying close to anchor Y (PDF coords: high Y = top). */
@@ -163,7 +183,7 @@ export function resolveBadgeYPercentsForPage(questionsOnPage, pageHeight = 842) 
     {
       minCenter: PAGE_BOTTOM + badgeBlockH / 2,
       maxCenter: PAGE_TOP - badgeBlockH / 2,
-      gap: 6,
+      gap: 12,
     }
   );
 

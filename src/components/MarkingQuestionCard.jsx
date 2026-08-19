@@ -47,9 +47,17 @@ export default function MarkingQuestionCard({
   const setMarks = (nextAwarded, { mode = "prefix" } = {}) => {
     const max = Math.max(0, Number(q.maxMarks) || 0);
     const marksAwarded = Math.min(max, Math.max(0, Number(nextAwarded) || 0));
+    let markPoints = q.markPoints;
+    if (Array.isArray(markPoints) && markPoints.length) {
+      if (marksAwarded >= max && max > 0) {
+        markPoints = markPoints.map((p) => ({ ...p, awarded: true }));
+      } else if (marksAwarded === 0) {
+        markPoints = markPoints.map((p) => ({ ...p, awarded: false }));
+      }
+    }
     onChange(
       index,
-      alignExaminerFeedbackToMarks({ ...q, marksAwarded }, mode)
+      alignExaminerFeedbackToMarks({ ...q, marksAwarded, markPoints }, mode)
     );
   };
 
@@ -245,6 +253,80 @@ export default function MarkingQuestionCard({
             </button>
           );
         })}
+      </div>
+
+      {q.needsReview === true && (
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--warning)",
+            marginBottom: 8,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
+            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+          }}
+        >
+          Flagged for review — a critical digit, sign, or choice could not be read reliably
+        </div>
+      )}
+
+      {Array.isArray(q.markPoints) && q.markPoints.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={fieldLabel}>Mark points (score follows these ticks)</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {q.markPoints.map((point, pointIndex) => (
+              <label
+                key={`${point.code || "P"}-${pointIndex}`}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={point.awarded === true}
+                  onChange={() => {
+                    const markPoints = q.markPoints.map((p, i) =>
+                      i === pointIndex ? { ...p, awarded: !p.awarded } : p
+                    );
+                    const fromPoints = markPoints.reduce(
+                      (sum, p) => sum + (p.awarded ? Number(p.marks) || 1 : 0),
+                      0
+                    );
+                    const marksAwarded = Math.min(qMax, Math.max(0, fromPoints));
+                    onChange(
+                      index,
+                      alignExaminerFeedbackToMarks(
+                        { ...q, markPoints, marksAwarded },
+                        "full"
+                      )
+                    );
+                  }}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  <strong>{point.code || `P${pointIndex + 1}`}</strong>
+                  {point.evidence ? ` — ${point.evidence}` : ""}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 8 }}>
+        <div style={fieldLabel}>Final answer (last written value / MCQ)</div>
+        <input
+          type="text"
+          value={q.studentFinalAnswer ?? ""}
+          onChange={(e) => update({ studentFinalAnswer: e.target.value })}
+          placeholder="e.g. x = 4, or C"
+          style={{ ...textAreaStyle, resize: "none" }}
+        />
       </div>
 
       <div style={{ marginBottom: 8 }}>

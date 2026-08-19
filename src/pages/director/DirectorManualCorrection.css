@@ -97,6 +97,21 @@
   color: var(--primary);
 }
 
+.dmc-chunk-row {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.dmc-chunk-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary, #888);
+  white-space: nowrap;
+}
+
 .dmc-uploads {
   display: grid;
   grid-template-columns: 1fr 1fr;

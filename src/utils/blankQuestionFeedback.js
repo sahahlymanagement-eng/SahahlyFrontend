@@ -2,8 +2,34 @@
  * Human examiner-style feedback for blank / unanswered mark-scheme questions.
  */
 
+export function looksLikePageSplitDeferral(q) {
+  if (!q) return false;
+  if (q.continuesOnNextPage === true) return true;
+  const blob = `${q.reason || ""} ${q.studentAnswer || ""} ${q.mistakeAdvice || ""}`;
+  return /on the subsequent page|on the (next|following) page|answer options.{0,60}(next|following) page|stem.{0,80}(next|following) page|cannot be awarded.{0,50}this page|options (are|is) on the next|selection (is|are) on the subsequent/i.test(
+    blob
+  );
+}
+
+function stripLeadingQ(label) {
+  const s = String(label || "").trim();
+  const m = s.match(/^[Qq](\d.*)$/);
+  return m ? m[1] : s;
+}
+
+export function overlayQuestionLabel(q) {
+  const printed = stripLeadingQ(q?.printedQuestionNumber);
+  const ms = stripLeadingQ(q?.questionNumber);
+  if (printed && printed.toLowerCase().replace(/\s+/g, "") !== ms.toLowerCase().replace(/\s+/g, "")) {
+    return printed;
+  }
+  return ms || "?";
+}
+
 export function isBlankQuestion(q) {
   if (!q) return false;
+  if (q.continuesOnNextPage === true) return false;
+  if (looksLikePageSplitDeferral(q)) return false;
   const awarded = Number(q.marksAwarded) || 0;
   const max = Number(q.maxMarks) || 0;
   if (max <= 0) return false;
@@ -138,14 +164,23 @@ export function enrichMarkingQuestions(questions) {
 }
 
 /**
- * Blank / unanswered rows that still cost marks (0 awarded) — listed on the
- * grading report only, never annotated onto the student script pages.
- * Backfilled "not detected" stubs are handled separately.
+ * Blank / unanswered rows that still cost marks (0 awarded) — listed in the
+ * grading report "left unanswered" box. Rows with a real pageNumber are still
+ * stamped on the script; backfilled stubs stay off the pages.
  */
 export function isReportOnlyBlankQuestion(q, { isBackfilledStub } = {}) {
   if (!q || !isBlankQuestion(q)) return false;
   if (Number(q.marksAwarded) > 0) return false;
   if (typeof isBackfilledStub === "function" && isBackfilledStub(q)) return false;
+  return true;
+}
+
+/** Badge / overlay rows: real blanks with a page stay; undetected stubs never do. */
+export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
+  if (!q) return false;
+  if (q._backfilled === true) return false;
+  if (typeof isBackfilledStub === "function" && isBackfilledStub(q)) return false;
+  if (isBlankQuestion(q) && !(Number(q.pageNumber) >= 1)) return false;
   return true;
 }
 
