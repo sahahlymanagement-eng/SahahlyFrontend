@@ -12,6 +12,8 @@ import {
   FiClock,
   FiFileText,
   FiCpu,
+  FiEdit3,
+  FiMove,
   FiX,
   FiUsers,
 } from "react-icons/fi";
@@ -211,7 +213,7 @@ export default function DirectorAssistantPerformance() {
                   <th>In progress</th>
                   <th>Tokens</th>
                   <th title="Distinct students across classrooms currently open or finished this calendar month, vs. the 125/month ceiling">Students</th>
-                  <th title="Papers needing correction this calendar month, vs. the 600/month ceiling">Edited PDFs</th>
+                  <th title="PDFs still on this assistant's plate (assignments they have not finished), out of every PDF submitted to their assignments this calendar month">PDFs in progress</th>
                   <th>Capacity</th>
                   <th />
                 </tr>
@@ -247,8 +249,8 @@ export default function DirectorAssistantPerformance() {
                     <td data-label="Students">
                       <CapacityBar usage={a.capacity?.studentsAssigned} ceiling={a.capacity?.studentsCeiling} />
                     </td>
-                    <td data-label="Edited PDFs">
-                      <CapacityBar usage={a.capacity?.editedPdfsThisMonth} ceiling={a.capacity?.editedPdfsCeiling} />
+                    <td data-label="PDFs in progress">
+                      <CapacityBar usage={a.capacity?.pdfsInProgress} ceiling={a.capacity?.pdfsSubmitted} />
                     </td>
                     <td data-label="Capacity">
                       <CapacityBadge status={a.capacity?.status} />
@@ -398,6 +400,24 @@ function AssistantDetailModal({ detail, loading, onClose }) {
                   value={formatNum(detail.assistant.papersCorrected)}
                 />
                 <MetricCard
+                  icon={<FiEdit3 />}
+                  label="Total edits"
+                  value={formatNum(
+                    (detail.assistant.editStats?.totalEdits || 0) +
+                      (detail.assistant.editStats?.totalMappingEdits || 0)
+                  )}
+                />
+                <MetricCard
+                  icon={<FiEdit3 />}
+                  label="Correction edits"
+                  value={formatNum(detail.assistant.editStats?.totalEdits)}
+                />
+                <MetricCard
+                  icon={<FiMove />}
+                  label="Mapping edits"
+                  value={formatNum(detail.assistant.editStats?.totalMappingEdits)}
+                />
+                <MetricCard
                   icon={<FiCpu />}
                   label="Tokens used"
                   value={formatNum(detail.assistant.tokenUsage?.totalTokens)}
@@ -439,9 +459,9 @@ function AssistantDetailModal({ detail, loading, onClose }) {
                     ceiling={detail.assistant.capacity?.studentsCeiling}
                   />
                   <CapacityRow
-                    label="Edited PDFs this month"
-                    usage={detail.assistant.capacity?.editedPdfsThisMonth}
-                    ceiling={detail.assistant.capacity?.editedPdfsCeiling}
+                    label="PDFs in progress / submitted this month"
+                    usage={detail.assistant.capacity?.pdfsInProgress}
+                    ceiling={detail.assistant.capacity?.pdfsSubmitted}
                   />
                 </div>
               </section>

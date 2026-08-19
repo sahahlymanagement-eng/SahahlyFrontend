@@ -11,6 +11,7 @@ import {
   FiFileText,
   FiCheckCircle,
   FiEdit3,
+  FiMove,
   FiCpu,
   FiDollarSign,
   FiSearch,
@@ -115,15 +116,34 @@ function SummaryPill({ icon, label, value, sub, tone }) {
   );
 }
 
-/** Edits are asked for three ways at once, so one cell carries all of them. */
+/**
+ * Every edit of either kind. Correction and mapping edits are separate axes
+ * (a question can be re-graded AND moved), so this is a workload headline, not
+ * a total the two columns divide up.
+ */
+function allEdits(row) {
+  return (Number(row?.totalEdits) || 0) + (Number(row?.placementChanges) || 0);
+}
+
+/** Correction edits are asked for three ways at once, so one cell carries all of them. */
 function EditsCell({ row, perClass }) {
   return (
     <div className="dt-stack">
       <strong>{formatNum(row.totalEdits)}</strong>
       <span className="dt-muted">
         {formatAvg(row.editsPerAssignment)} / assignment
-        {perClass ? ` · ${formatAvg(row.editsPerClassroom)} / class` : ""}
+        {perClass ? ` \u00b7 ${formatAvg(row.editsPerClassroom)} / class` : ""}
       </span>
+    </div>
+  );
+}
+
+/** Mapping edits: annotated questions dragged to a new place and confirmed. */
+function MappingEditsCell({ row }) {
+  return (
+    <div className="dt-stack">
+      <strong>{formatNum(row.placementChanges)}</strong>
+      <span className="dt-muted">{formatAvg(row.mappingEditsPerPaper)} / paper</span>
     </div>
   );
 }
@@ -361,9 +381,21 @@ export default function DirectorTeachers() {
         />
         <SummaryPill
           icon={<FiEdit3 />}
-          label="Edits"
+          label="Total edits"
+          value={formatNum(allEdits(totals))}
+          sub="Correction + mapping edits"
+        />
+        <SummaryPill
+          icon={<FiEdit3 />}
+          label="Correction edits"
           value={formatNum(totals?.totalEdits)}
           sub={`${formatAvg(totals?.editsPerAssignment)} per assignment`}
+        />
+        <SummaryPill
+          icon={<FiMove />}
+          label="Mapping edits"
+          value={formatNum(totals?.placementChanges)}
+          sub={`${formatAvg(totals?.mappingEditsPerPaper)} per paper`}
         />
         <SummaryPill
           icon={<FiCpu />}
@@ -442,8 +474,11 @@ export default function DirectorTeachers() {
                     <th title="Annotated PDFs returned through Google Classroom">
                       Corrected PDFs
                     </th>
-                    <th title="Every correction made to AI marking, including repeats">
-                      Edits
+                    <th title="Every change to a question's mark or feedback, including repeats and reverts">
+                      Correction Edits
+                    </th>
+                    <th title="Every annotated question dragged to a new place and confirmed">
+                      Mapping Edits
                     </th>
                     <th>Tokens</th>
                     <th>Expenses</th>
@@ -504,8 +539,11 @@ export default function DirectorTeachers() {
                             </span>
                           </div>
                         </td>
-                        <td data-label="Edits">
+                        <td data-label="Correction Edits">
                           <EditsCell row={row} perClass={isTeacher} />
+                        </td>
+                        <td data-label="Mapping Edits">
+                          <MappingEditsCell row={row} />
                         </td>
                         <td data-label="Tokens">
                           <div className="dt-stack">
@@ -655,9 +693,21 @@ function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
               />
               <SummaryPill
                 icon={<FiEdit3 />}
-                label="Edits"
+                label="Total edits"
+                value={formatNum(allEdits(subject))}
+                sub="Correction + mapping edits"
+              />
+              <SummaryPill
+                icon={<FiEdit3 />}
+                label="Correction edits"
                 value={formatNum(subject.totalEdits)}
                 sub={`${formatAvg(subject.editsPerAssignment)} per assignment`}
+              />
+              <SummaryPill
+                icon={<FiMove />}
+                label="Mapping edits"
+                value={formatNum(subject.placementChanges)}
+                sub={`${formatAvg(subject.mappingEditsPerPaper)} per paper`}
               />
               <SummaryPill
                 icon={<FiCpu />}
@@ -694,7 +744,8 @@ function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
                         <th>Assignments</th>
                         <th>Submission</th>
                         <th>Corrected PDFs</th>
-                        <th>Edits</th>
+                        <th title="Marks or feedback changed">Correction Edits</th>
+                        <th title="Annotations dragged to a new place">Mapping Edits</th>
                         <th>Expenses</th>
                         <th />
                       </tr>
@@ -716,7 +767,8 @@ function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
                             </span>
                           </td>
                           <td data-label="Corrected PDFs">{formatNum(c.correctedPdfs)}</td>
-                          <td data-label="Edits">{formatNum(c.totalEdits)}</td>
+                          <td data-label="Correction Edits">{formatNum(c.totalEdits)}</td>
+                          <td data-label="Mapping Edits">{formatNum(c.placementChanges)}</td>
                           <td data-label="Expenses">{formatEgp(c.costEgp)}</td>
                           <td>
                             <button
@@ -748,7 +800,8 @@ function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
                       <th>Submission</th>
                       <th>Marked</th>
                       <th>Corrected PDFs</th>
-                      <th>Edits</th>
+                      <th title="Marks or feedback changed">Correction Edits</th>
+                      <th title="Annotations dragged to a new place">Mapping Edits</th>
                       <th>Tokens</th>
                       <th>Expenses</th>
                     </tr>
@@ -773,7 +826,8 @@ function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
                         </td>
                         <td data-label="Marked">{formatNum(a.papersMarked)}</td>
                         <td data-label="Corrected PDFs">{formatNum(a.correctedPdfs)}</td>
-                        <td data-label="Edits">{formatNum(a.totalEdits)}</td>
+                        <td data-label="Correction Edits">{formatNum(a.totalEdits)}</td>
+                        <td data-label="Mapping Edits">{formatNum(a.placementChanges)}</td>
                         <td data-label="Tokens">{formatCompact(a.totalTokens)}</td>
                         <td data-label="Expenses">{formatEgp(a.costEgp)}</td>
                       </tr>
