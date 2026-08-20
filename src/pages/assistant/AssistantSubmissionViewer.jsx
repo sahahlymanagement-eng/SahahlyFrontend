@@ -96,6 +96,7 @@ import {
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import ClassroomPaperMetadataBar from "../../components/ClassroomPaperMetadataBar";
 import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
 import {
@@ -332,6 +333,9 @@ export default function AssignmentSubmissionViewer() {
 
   const [expectedPages, setExpectedPages] = useState(null);
   const [expectedPagesInput, setExpectedPagesInput] = useState("");
+  // The assignment's board / paper code / paper, for ClassroomPaperMetadataBar.
+  // Held separately because this page never keeps the whole assignment document.
+  const [paperMeta, setPaperMeta] = useState(null);
   const [settingExpectedPages, setSettingExpectedPages] = useState(false);
   const [showExpectedPagesEdit, setShowExpectedPagesEdit] = useState(false);
 
@@ -910,6 +914,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
       .get(`/manager-assignments/${assignmentId}/full`, { params: { page: 1, limit: 1 } })
       .then((res) => {
         setSubjectId(res.data.assignment.subjectId || null);
+        setPaperMeta(res.data.assignment);
         setExpectedPages(res.data.assignment.expectedPages ?? null);
         setExpectedPagesInput(
           res.data.assignment.expectedPages != null
@@ -3453,6 +3458,17 @@ return (
                   </>
                 )}
               </div>
+
+              {/* Board / paper code / paper — recorded on every corrected
+                  question for this assignment. Same component the manager
+                  viewer renders, so the two cannot drift apart. */}
+              <ClassroomPaperMetadataBar
+                assignmentId={assignmentId}
+                assignment={paperMeta}
+                onSaved={(values) =>
+                  setPaperMeta((prev) => (prev ? { ...prev, ...values } : values))
+                }
+              />
 
               {/* SEARCH + REFRESH */}
               <div className="msv-panel-controls" style={{ marginBottom: 10 }}>

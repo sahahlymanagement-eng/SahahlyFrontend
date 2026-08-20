@@ -1,5 +1,6 @@
 import QuestionNumberBadge from "./QuestionNumberBadge";
 import QuestionKeywordFields from "./QuestionKeywordFields";
+import QuestionErrorTypePicker from "./QuestionErrorTypePicker";
 import { MARKING_CHECKLIST_CONFIG } from "../constants/markingChecklist";
 import { isBlankQuestion } from "../utils/blankQuestionFeedback";
 import { alignExaminerFeedbackToMarks } from "../utils/syncExaminerFeedback";
@@ -386,6 +387,24 @@ export default function MarkingQuestionCard({
             style={{ ...textAreaStyle, resize: "none" }}
           />
         </div>
+      </div>
+
+      {/*
+        Why the AI got this question wrong, in the reviewer's own words. Rendered
+        for every question rather than only for ones whose mark moved: this card
+        is not given the AI baseline, and adding a prop for it would mean editing
+        all four Results pages — where controls reliably reach three of the four
+        and the column comes back half-populated with nothing to show it.
+
+        Left unset it stores null, which is the honest reading of "nobody
+        classified this". Reporting keys off editedByAssistant, so a type set on
+        a question nobody changed never counts as a correction.
+      */}
+      <div style={{ marginTop: 8 }}>
+        <QuestionErrorTypePicker
+          value={q.errorType ?? null}
+          onChange={(errorType) => update({ errorType })}
+        />
       </div>
     </div>
   );

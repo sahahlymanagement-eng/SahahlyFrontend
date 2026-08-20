@@ -63,6 +63,7 @@ import {
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import ClassroomPaperMetadataBar from "../../components/ClassroomPaperMetadataBar";
 import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
 import {
@@ -4535,6 +4536,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       </>
                     )}
                   </div>
+                  )}
+
+                  {/* Board / paper code / paper — recorded on every corrected
+                      question for this assignment. Self-contained component so
+                      this page and the assistant viewer cannot drift apart. */}
+                  {showMarkingTools && (
+                    <ClassroomPaperMetadataBar
+                      assignmentId={selectedAssignment._id}
+                      assignment={selectedAssignment}
+                      onSaved={(values) =>
+                        setSelectedAssignment((prev) => (prev ? { ...prev, ...values } : prev))
+                      }
+                    />
                   )}
 
                   <div className="ma-panel-header">

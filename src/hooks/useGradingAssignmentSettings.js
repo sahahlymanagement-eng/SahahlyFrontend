@@ -11,8 +11,13 @@ import { toast } from "react-toastify";
 //   expectedPages — drives the pre-grading page-count review modal
 //   maxGrade      — hard cap; the backend clamps every result and the published
 //                   grade to it, overriding whatever total the AI invented
+//   board /       — the paper's exam identity. Nothing detects these; they are
+//   paperCode /     typed once per assignment and snapshotted onto every
+//   paperNumber     SavedCorrectionData row, which is what lets the correction
+//                   corpus be sliced by board and paper. Saving them re-stamps
+//                   rows already written for the assignment.
 //
-// Both are opt-in: null means the feature is off for that assignment.
+// All are opt-in: null means the feature is off / unset for that assignment.
 
 // `provider` null/undefined = LoginCSS (its own /external-grading routes);
 // any slug goes through the shared /grading/:provider registry.
@@ -22,7 +27,21 @@ export function gradingSettingsPath(provider, assignmentId) {
     : `/external-grading/assignments/${assignmentId}/settings`;
 }
 
-const EMPTY = { expectedPages: null, maxGrade: null };
+const EMPTY = {
+  expectedPages: null,
+  maxGrade: null,
+  board: null,
+  paperCode: null,
+  paperNumber: null,
+};
+
+/** Every field the endpoint round-trips, so read and save stay in step. */
+const FIELDS = Object.keys(EMPTY);
+
+/** Pick the known fields out of a response, defaulting each to null. */
+function readSettings(data) {
+  return Object.fromEntries(FIELDS.map((f) => [f, data?.[f] ?? null]));
+}
 
 /**
  * @param {string|null} provider  slug, or null for LoginCSS
@@ -36,15 +55,14 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
   const [byAssignment, setByAssignment] = useState({});
   const [saving, setSaving] = useState(false);
 
-  const initialPages = initial?.expectedPages ?? null;
-  const initialGrade = initial?.maxGrade ?? null;
+  // Flattened to primitives so the memo below is not invalidated by a fresh
+  // object identity on every render of the parent.
+  const initialJson = JSON.stringify(readSettings(initial));
 
   const settings = useMemo(() => {
     if (assignmentId == null) return EMPTY;
-    return (
-      byAssignment[assignmentId] ?? { expectedPages: initialPages, maxGrade: initialGrade }
-    );
-  }, [assignmentId, byAssignment, initialPages, initialGrade]);
+    return byAssignment[assignmentId] ?? JSON.parse(initialJson);
+  }, [assignmentId, byAssignment, initialJson]);
 
   useEffect(() => {
     if (assignmentId == null) return undefined;
@@ -54,13 +72,7 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
       .get(gradingSettingsPath(provider, assignmentId))
       .then(({ data }) => {
         if (cancelled) return;
-        setByAssignment((prev) => ({
-          ...prev,
-          [assignmentId]: {
-            expectedPages: data?.expectedPages ?? null,
-            maxGrade:      data?.maxGrade ?? null,
-          },
-        }));
+        setByAssignment((prev) => ({ ...prev, [assignmentId]: readSettings(data) }));
       })
       // Never surface this: the whole feature is opt-in, and a failed read just
       // means the page behaves as it did before these settings existed.
@@ -72,7 +84,9 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
   /**
    * Save only the keys passed in — the backend leaves the others untouched, so
    * setting one knob never clobbers the other.
-   * @param {{expectedPages?: number|null, maxGrade?: number|null}} patch
+   * @param {{expectedPages?: number|null, maxGrade?: number|null,
+   *          board?: string|null, paperCode?: string|null,
+   *          paperNumber?: string|null}} patch
    */
   const save = useCallback(
     async (patch) => {
@@ -80,13 +94,7 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
       setSaving(true);
       try {
         const { data } = await api.put(gradingSettingsPath(provider, assignmentId), patch);
-        setByAssignment((prev) => ({
-          ...prev,
-          [assignmentId]: {
-            expectedPages: data?.expectedPages ?? null,
-            maxGrade:      data?.maxGrade ?? null,
-          },
-        }));
+        setByAssignment((prev) => ({ ...prev, [assignmentId]: readSettings(data) }));
         toast.success("Assignment settings saved");
         return true;
       } catch (err) {

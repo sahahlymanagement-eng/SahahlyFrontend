@@ -1,25 +1,43 @@
 import { useState } from "react";
+import {
+  PAPER_METADATA_FIELDS,
+  paperMetadataDraft,
+  paperMetadataPatch,
+  hasPaperMetadata,
+} from "../constants/paperMetadataFields";
 
 // Inline editor for a grading partner's per-assignment settings.
 //
 // Mirrors the "Expected Pages" bar in the classroom submission viewer, with a
-// second field for the grade cap. Both are optional — an unset value means the
-// feature is off for this assignment, which is how every existing assignment
-// behaves until someone sets a number here.
+// field for the grade cap and three for the paper's exam identity. All are
+// optional — an unset value means the feature is off for this assignment, which
+// is how every existing assignment behaves until someone fills something in.
+//
+// Board / paper code / paper are typed, not detected. They exist nowhere else in
+// the marking flow, and every SavedCorrectionData row for this assignment
+// snapshots them, so filling them in is what makes the correction corpus
+// sliceable by board and paper. The backend re-stamps rows already written when
+// they are saved, so doing it after the papers are marked still works.
 //
 // Controlled by useGradingAssignmentSettings:
 //   state = { settings, loading, saving, save }
+/** True when anything has been set, so the button reads "Edit" and not "Set". */
+const hasAnySetting = (s) =>
+  s.expectedPages != null || s.maxGrade != null || hasPaperMetadata(s);
+
 export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
   const { settings, saving, save } = state;
   const [editing, setEditing] = useState(false);
   const [pagesInput, setPagesInput] = useState("");
   const [gradeInput, setGradeInput] = useState("");
+  const [paperInputs, setPaperInputs] = useState(() => paperMetadataDraft(null));
 
   // Seed the drafts from the saved values on open, so the editor never shows a
   // stale draft from a previous edit or a different assignment.
   const openEditor = () => {
     setPagesInput(settings.expectedPages != null ? String(settings.expectedPages) : "");
     setGradeInput(settings.maxGrade != null ? String(settings.maxGrade) : "");
+    setPaperInputs(paperMetadataDraft(settings));
     setEditing(true);
   };
 
@@ -28,7 +46,11 @@ export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
       const trimmed = raw.trim();
       return trimmed === "" ? null : Number(trimmed);
     };
-    const ok = await save({ expectedPages: parse(pagesInput), maxGrade: parse(gradeInput) });
+    const ok = await save({
+      expectedPages: parse(pagesInput),
+      maxGrade: parse(gradeInput),
+      ...paperMetadataPatch(paperInputs),
+    });
     if (ok) setEditing(false);
   };
 
@@ -56,12 +78,15 @@ export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
         <>
           {chip("📄 Expected pages:", settings.expectedPages, "")}
           {chip("🎯 Max grade:", settings.maxGrade, "")}
+          {chip("🏛 Board:", settings.board, "")}
+          {chip("🔖 Paper code:", settings.paperCode, "")}
+          {chip("📘 Paper:", settings.paperNumber, "")}
           <button
             className="ma-send-btn"
             style={{ fontSize: 11, padding: "4px 10px" }}
             onClick={openEditor}
           >
-            {settings.expectedPages != null || settings.maxGrade != null ? "Edit" : "Set"}
+            {hasAnySetting(settings) ? "Edit" : "Set"}
           </button>
           {settings.maxGrade == null && partnerGrade != null && (
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -100,6 +125,26 @@ export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
               }}
             />
           </label>
+          {PAPER_METADATA_FIELDS.map(({ key, label, placeholder, width }) => (
+            <label
+              key={key}
+              style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}
+            >
+              {label}
+              <input
+                type="text"
+                placeholder={placeholder}
+                value={paperInputs[key]}
+                onChange={(e) =>
+                  setPaperInputs((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                style={{
+                  width, fontSize: 12, padding: "4px 8px", borderRadius: 6,
+                  border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)",
+                }}
+              />
+            </label>
+          ))}
           <button
             className="ma-send-btn"
             style={{ fontSize: 11, padding: "4px 10px" }}
@@ -118,7 +163,9 @@ export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
           </button>
           <span style={{ fontSize: 11, color: "var(--muted)", flexBasis: "100%" }}>
             Leave a field empty to turn it off. Max grade caps every submission in this
-            assignment, even when the AI marks it out of a different total.
+            assignment, even when the AI marks it out of a different total. Board, paper
+            code and paper are recorded on every corrected question so the marking
+            corpus can be reported on by paper — nothing fills them in automatically.
           </span>
         </>
       )}
