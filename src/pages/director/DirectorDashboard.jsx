@@ -285,7 +285,7 @@ export default function DirectorDashboard() {
   const selectedExternalRows = selectedExternalBucket
     ? externalRows.filter((r) => r.bucket === selectedExternalBucket)
     : [];
-
+  
   return (
     <div className="tch-page md-dashboard-page directorDashboardPage">
       <section className="tch-hero">
@@ -490,10 +490,10 @@ export default function DirectorDashboard() {
 
       {/* ── Teachers at risk ─────────────────────────────────────────── */}
       {!loading && data?.teachersAtRisk?.length > 0 && (
-        <section className="directorDashSection">
-          <div className="directorDashSectionHeader">
-            <div className="directorDashTitleWrap">
-              <span className="directorDashDot" />
+      <section className="directorDashSection">
+        <div className="directorDashSectionHeader">
+          <div className="directorDashTitleWrap">
+            <span className="directorDashDot" />
               <h2 className="directorDashTitle">Teachers at risk</h2>
             </div>
             <div className="directorDashCount">
@@ -598,22 +598,22 @@ export default function DirectorDashboard() {
                       · {m.overdueUnassigned} overdue &amp; unassigned
                     </span>
                   )}
-                </div>
+            </div>
               </button>
             ))}
             {!data.managers.length && (
               <p className="ddx-loading">No managers found.</p>
             )}
-          </div>
-        </section>
+        </div>
+      </section>
       )}
 
       {/* ── Assistants ───────────────────────────────────────────────── */}
       {!loading && data && (
-        <section className="directorDashSection">
-          <div className="directorDashSectionHeader">
-            <div className="directorDashTitleWrap">
-              <span className="directorDashDot" />
+      <section className="directorDashSection">
+        <div className="directorDashSectionHeader">
+          <div className="directorDashTitleWrap">
+            <span className="directorDashDot" />
               <h2 className="directorDashTitle">Assistants</h2>
             </div>
             <div className="directorDashCount">
@@ -669,7 +669,7 @@ export default function DirectorDashboard() {
                     label="Papers"
                     value={a.papersCorrected ?? 0}
                   />
-                </div>
+        </div>
               </button>
             ))}
             {!data.assistants.length && (
@@ -954,7 +954,7 @@ function AssistantDetail({ detail, onLateRowClick }) {
         {subjects?.length > 0 && (
           <span>
             <FiFileText /> {subjects.map((s) => s.name || s).join(", ")}
-          </span>
+            </span>
         )}
       </div>
 
@@ -1145,7 +1145,7 @@ function DetailAssignmentList({
             <div className="ddx-list-main">
               <span className="ddx-list-assignment">{r.title}</span>
               <span className="ddx-list-class">{r.className || r.classroomName || "—"}</span>
-            </div>
+        </div>
             <div className="ddx-list-side">
               <span className={`ddx-status ddx-status--${statusTone(r.status)}`}>
                 {statusLabel(r.status)}
@@ -1171,7 +1171,7 @@ function DetailAssignmentList({
                   {alertingId === r.assignmentId ? "Sending…" : alertLabel}
                 </button>
               )}
-            </div>
+    </div>
           </li>
         ))}
       </ul>
