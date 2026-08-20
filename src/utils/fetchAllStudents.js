@@ -1,5 +1,9 @@
+import { sortStudentsBySubmittedAt } from "./sortStudentsBySubmittedAt";
+
 /**
  * Fetch every page from a paginated list endpoint and return the combined items.
+ * When items look like submission-viewer rows, re-sort by submittedAt so order
+ * stays correct across page boundaries even if a page was locally mutated.
  */
 export async function fetchAllPaginated(
   apiClient,
@@ -22,5 +26,12 @@ export async function fetchAllPaginated(
     page += 1;
   }
 
-  return all;
+  const looksLikeSubmissionRows = all.some(
+    (row) =>
+      row &&
+      (row.submittedAt != null ||
+        row.submission_date != null ||
+        row.submissionId != null)
+  );
+  return looksLikeSubmissionRows ? sortStudentsBySubmittedAt(all) : all;
 }

@@ -87,6 +87,7 @@ import {
   canRunGradingMarking,
   canEditGradingResults,
 } from "../../utils/gradingAccess";
+import { sortStudentsBySubmittedAt } from "../../utils/sortStudentsBySubmittedAt";
 import { useGradingDelegations } from "../../context/GradingNotificationContext";
 import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
 import GradingTeamAlert from "../../components/GradingTeamAlert";
@@ -806,7 +807,7 @@ export default function GradingProviderPage({ slug, label }) {
         }
       }
 
-      setSubmissions(collected);
+      setSubmissions(sortStudentsBySubmittedAt(collected));
       setListMeta({
         total: data?.total ?? collected.length,
         lastPage: data?.last_page ?? 1,
@@ -1116,6 +1117,7 @@ export default function GradingProviderPage({ slug, label }) {
     fd.append("markingMode", mode);
     const guidanceValue = guidanceForForm(guidanceText);
     if (guidanceValue) fd.append("guidance", guidanceValue);
+    examBoardGuidance.appendExamBoardFields(fd);
     if (selectedAssignment?.id != null) {
       appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
@@ -1461,6 +1463,7 @@ export default function GradingProviderPage({ slug, label }) {
         succeeded,
         markingMode: mode,
         guidance: guidanceForForm(guidanceText),
+        ...examBoardGuidance.getExamBoardFields(),
         // A configured maxGrade wins over the partner's own assignment total.
         ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
           ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }

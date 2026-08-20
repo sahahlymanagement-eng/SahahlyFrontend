@@ -113,6 +113,7 @@ import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
 import { buildReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
 import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
+import { sortStudentsBySubmittedAt } from "../../utils/sortStudentsBySubmittedAt";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import {
   computeGradePercent,
@@ -263,7 +264,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   }), [studentSearch]);
 
   const {
-    data: students,
+    data: studentsPage,
     page: studentPage,
     totalPages: studentTotalPages,
     total: studentTotal,
@@ -278,6 +279,12 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     10,
     "students",
     !!selectedAssignment?._id
+  );
+
+  // Earliest submission first — matches backend; re-apply if a local update reorders.
+  const students = useMemo(
+    () => sortStudentsBySubmittedAt(studentsPage),
+    [studentsPage]
   );
 
   const summaryMap = studentExtra?.summaryMap || {};
@@ -1947,6 +1954,7 @@ useEffect(() => {
       fd.append("markingMode",   mode);
       const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
+      examBoardGuidance.appendExamBoardFields(fd);
       if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
       appendMarkingContext(fd, {
         assignmentId: selectedAssignment._id,
@@ -2084,6 +2092,7 @@ useEffect(() => {
       fd.append("markingMode",   mode);
       const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
+      examBoardGuidance.appendExamBoardFields(fd);
       if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
       appendMarkingContext(fd, {
         assignmentId: selectedAssignment._id,
@@ -2225,6 +2234,7 @@ useEffect(() => {
           submissionId: student.submissionId,
           markingMode: mode,
           guidance: guidanceForForm(guidanceText),
+          ...examBoardGuidance.getExamBoardFields(),
           geminiModel: selectedModel,
           subjectId: selectedAssignment.subjectId,
           ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
@@ -2457,6 +2467,7 @@ useEffect(() => {
         fd.append("markingMode",   mode);
 
         if (guidanceValue) fd.append("guidance", guidanceValue);
+        examBoardGuidance.appendExamBoardFields(fd);
 
         if (selectedAssignment.maxPoints) fd.append("totalGrade", selectedAssignment.maxPoints);
     
@@ -3012,6 +3023,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     succeeded,
     markingMode:   mode,
     guidance:      guidanceValue,
+    ...examBoardGuidance.getExamBoardFields(),
     geminiModel:   selectedModel,
     subjectId:     selectedAssignment.subjectId,
     ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
@@ -3140,6 +3152,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       })),
       markingMode: mode,
       guidance:    guidanceValue,
+      ...examBoardGuidance.getExamBoardFields(),
       geminiModel: selectedModel,
       subjectId:   selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),

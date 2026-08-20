@@ -175,12 +175,17 @@ export function isReportOnlyBlankQuestion(q, { isBackfilledStub } = {}) {
   return true;
 }
 
-/** Badge / overlay rows: real blanks with a page stay; undetected stubs never do. */
+/** Badge / overlay rows: real blanks with a page stay; inventory stubs with a
+ * known script page are also stamped so classified misses are visible on the
+ * page instead of leaving it unmarked. Stubs without a page stay report-only. */
 export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
   if (!q) return false;
-  if (q._backfilled === true) return false;
-  if (typeof isBackfilledStub === "function" && isBackfilledStub(q)) return false;
-  if (isBlankQuestion(q) && !(Number(q.pageNumber) >= 1)) return false;
+  const pageOk = Number(q.pageNumber) >= 1;
+  const isStub =
+    q._backfilled === true ||
+    (typeof isBackfilledStub === "function" && isBackfilledStub(q));
+  if (isStub) return pageOk;
+  if (isBlankQuestion(q) && !pageOk) return false;
   return true;
 }
 

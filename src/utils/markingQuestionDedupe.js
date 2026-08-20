@@ -69,6 +69,23 @@ function looksLikeRealAttempt(q) {
   return keywords.length >= 1 || ans.length >= 24;
 }
 
+function pageOf(q) {
+  const p = Number(q?.pageNumber);
+  return Number.isFinite(p) && p >= 1 ? p : null;
+}
+
+function maxMarksOf(q) {
+  return Math.max(0, Math.round(Number(q?.maxMarks) || 0));
+}
+
+function isOnDistinctPageFromReals(q, reals) {
+  const p = pageOf(q);
+  if (p == null) return false;
+  const realPages = reals.map(pageOf).filter((x) => x != null);
+  if (!realPages.length) return false;
+  return !realPages.includes(p);
+}
+
 function preferQuestionEntry(a, b) {
   const rank = (q) => {
     if (Number(q?.marksAwarded) > 0) return 3;
@@ -87,9 +104,20 @@ function preferQuestionEntry(a, b) {
 }
 
 function shouldKeepBesideReals(q, reals) {
-  if (reals.length > 0 && (looksLikeGhostZero(q) || q?._backfilled === true)) {
-    return false;
+  if (!reals.length) return true;
+
+  const distinctPage = isOnDistinctPageFromReals(q, reals);
+
+  if (q?._backfilled === true) {
+    return distinctPage;
   }
+
+  if (looksLikeGhostZero(q)) {
+    if (!distinctPage) return false;
+    const qm = maxMarksOf(q);
+    return qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+  }
+
   const stem = stemFingerprint(q);
   if (stem.length < 12) return false;
   const realStems = reals.map(stemFingerprint).filter((s) => s.length >= 12);
@@ -129,12 +157,22 @@ function collapseGhostGroup(rows) {
   for (const list of byStem.values()) {
     out.push(list.reduce((a, b) => preferQuestionEntry(a, b)));
   }
-  if (generic.length) {
-    const preferredBackfill = generic.find((q) => q?._backfilled === true);
-    out.push(
-      preferredBackfill || generic.reduce((a, b) => preferQuestionEntry(a, b))
-    );
+
+  const backfills = generic.filter((q) => q?._backfilled === true);
+  const others = generic.filter((q) => q?._backfilled !== true);
+  if (others.length) {
+    out.push(others.reduce((a, b) => preferQuestionEntry(a, b)));
   }
+  const usedPages = new Set(out.map(pageOf).filter((p) => p != null));
+  const backfillByPage = new Map();
+  for (const b of backfills) {
+    const p = pageOf(b);
+    if (p != null && usedPages.has(p)) continue;
+    const key = p == null ? "__nopage__" : p;
+    if (!backfillByPage.has(key)) backfillByPage.set(key, b);
+  }
+  out.push(...backfillByPage.values());
+
   return out;
 }
 

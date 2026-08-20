@@ -92,10 +92,17 @@ export default function ExamBoardGuidanceFields({
         </div>
       </div>
 
+      {board === "cambridge" && subjectKey ? (
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+          Prompt uses hardcoded Cambridge {selectedSubject?.label || "subject"} marking rules (no
+          guidance PDF).
+        </div>
+      ) : null}
+
       {board === "edexcel" && subjectKey ? (
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
-          Edexcel uses the Cambridge {selectedSubject?.label || "subject"} guidance plus the shared
-          Edexcel marking rules.
+          Prompt uses hardcoded Cambridge {selectedSubject?.label || "subject"} rules + overall
+          Edexcel rules (no guidance PDF).
         </div>
       ) : null}
 

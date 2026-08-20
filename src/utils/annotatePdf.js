@@ -1390,8 +1390,9 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
-  // Stubs never get placed on the script. Genuine blanks with a real page
-  // get a 0/N badge so unanswered items are visible next to the printed item.
+  // Stubs with a known script page get a 0/N badge (classified misses);
+  // stubs without a page stay report-only. Genuine blanks with a real page
+  // are stamped the same way.
   const placeableQuestions = renderQuestions.filter((q) =>
     isPlaceableScriptQuestion(q, { isBackfilledStub })
   );

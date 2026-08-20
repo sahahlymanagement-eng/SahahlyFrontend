@@ -83,6 +83,7 @@ import PendingEditsBanner, {
   PendingEditsSavingHint,
 } from "../../components/PendingEditsBanner";
 import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
+import { sortStudentsBySubmittedAt } from "../../utils/sortStudentsBySubmittedAt";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
 import { useGradingDelegations } from "../../context/GradingNotificationContext";
 import GradingDeadlineBadge from "../../components/GradingDeadlineBadge";
@@ -744,7 +745,7 @@ export default function ManagerLoginCss() {
         }
       }
 
-      setSubmissions(collected);
+      setSubmissions(sortStudentsBySubmittedAt(collected));
       setListMeta({
         total: data?.total ?? collected.length,
         lastPage: data?.last_page ?? 1,
@@ -1054,6 +1055,7 @@ export default function ManagerLoginCss() {
     fd.append("markingMode", mode);
     const guidanceValue = guidanceForForm(guidanceText);
     if (guidanceValue) fd.append("guidance", guidanceValue);
+    examBoardGuidance.appendExamBoardFields(fd);
     if (selectedAssignment?.id != null) {
       appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
@@ -1399,6 +1401,7 @@ export default function ManagerLoginCss() {
         succeeded,
         markingMode: mode,
         guidance: guidanceForForm(guidanceText),
+        ...examBoardGuidance.getExamBoardFields(),
         // A configured maxGrade wins over the partner's own assignment total.
         ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
           ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }

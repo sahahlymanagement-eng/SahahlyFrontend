@@ -135,8 +135,9 @@ import {
   loadEligibleStudentsForMarking,
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
-import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
+import { sortStudentsBySubmittedAt } from "../../utils/sortStudentsBySubmittedAt";
+import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import {
   MARKING_MAX_ATTEMPTS,
@@ -480,13 +481,27 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     search: studentSearch,
   }), [studentSearch]);
 
-    const { data: students, page, totalPages, total: studentTotal, loading, fetchPage, extra, setData: setStudents, error: studentFetchError } =
-  usePagination(
+  const {
+    data: studentsPage,
+    page,
+    totalPages,
+    total: studentTotal,
+    loading,
+    fetchPage,
+    extra,
+    setData: setStudents,
+    error: studentFetchError,
+  } = usePagination(
     `/assignment-submissions/${assignmentId}/students`,
     studentParams,
     10,
     "students",
     !!assignmentId
+  );
+
+  const students = useMemo(
+    () => sortStudentsBySubmittedAt(studentsPage),
+    [studentsPage]
   );
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable, pdfCount } = extra;
@@ -1474,6 +1489,7 @@ window.open(url);
       fd.append("markingMode", mode);
       const guidanceValue = guidanceForForm(guidanceText);
       if (guidanceValue) fd.append("guidance", guidanceValue);
+      examBoardGuidance.appendExamBoardFields(fd);
       appendMarkingContext(fd, { assignmentId, classroomId });
 
       if (markingProvider !== "claude") {
@@ -1608,6 +1624,7 @@ window.open(url);
           submissionId: student.submissionId,
           markingMode: mode,
           guidance: guidanceForForm(guidanceText),
+          ...examBoardGuidance.getExamBoardFields(),
           geminiModel: selectedModel,
           subjectId,
           ...(maxGrade && { totalGrade: maxGrade }),
@@ -1833,6 +1850,7 @@ window.open(url);
       fd.append("markingMode", mode);
 
       if (guidanceValue) fd.append("guidance", guidanceValue);
+      examBoardGuidance.appendExamBoardFields(fd);
       if (maxGrade) fd.append("totalGrade", maxGrade);
 
       appendMarkingContext(fd, {
@@ -2335,6 +2353,7 @@ window.open(url);
       succeeded,
       markingMode: mode,
       guidance: guidanceValue,
+      ...examBoardGuidance.getExamBoardFields(),
       geminiModel: selectedModel,
       subjectId,
       ...(maxGrade && { totalGrade: maxGrade }),

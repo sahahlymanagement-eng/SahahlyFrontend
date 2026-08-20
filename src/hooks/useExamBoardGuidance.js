@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../api/api";
-import { mergeExamBoardGuidance } from "../utils/examBoardGuidance";
+import {
+  appendExamBoardToFormData,
+  examBoardBodyFields,
+  resolveSessionGuidance,
+} from "../utils/examBoardGuidance";
 
 /**
  * Exam board + subject selectors for the marking guidance modal.
  *
  * Subject comes from the classroom when `classroomId` or `assignmentId` is set;
  * partner grading tabs with no classroom leave the subject dropdown editable.
+ *
+ * Board/subject keys are sent with the mark request so the backend can inject
+ * hardcoded board/subject prompt fragments into the general marking prompt.
+ * Guidance PDFs are never fetched or attached.
  */
 export function useExamBoardGuidance({
   classroomId = null,
@@ -22,9 +30,7 @@ export function useExamBoardGuidance({
   const [subjectKey, setSubjectKey] = useState("");
   const [subjectLabel, setSubjectLabel] = useState("");
   const [subjectLocked, setSubjectLocked] = useState(false);
-  const [boardGuidanceText, setBoardGuidanceText] = useState("");
   const [loadingSubject, setLoadingSubject] = useState(false);
-  const [loadingGuidance, setLoadingGuidance] = useState(false);
   const [guidanceError, setGuidanceError] = useState(null);
 
   useEffect(() => {
@@ -38,18 +44,21 @@ export function useExamBoardGuidance({
       .catch(() => {});
   }, [enabled]);
 
-  const applyResolvedSubject = useCallback((name, key, matched) => {
-    if (key) {
-      setSubjectKey(key);
-      const label = subjects.find((s) => s.key === key)?.label;
-      setSubjectLabel(label || name || "");
-      setSubjectLocked(Boolean(matched && (classroomId || assignmentId)));
-    } else if (name) {
-      setSubjectLabel(name);
-      setSubjectKey("");
-      setSubjectLocked(false);
-    }
-  }, [assignmentId, classroomId, subjects]);
+  const applyResolvedSubject = useCallback(
+    (name, key, matched) => {
+      if (key) {
+        setSubjectKey(key);
+        const label = subjects.find((s) => s.key === key)?.label;
+        setSubjectLabel(label || name || "");
+        setSubjectLocked(Boolean(matched && (classroomId || assignmentId)));
+      } else if (name) {
+        setSubjectLabel(name);
+        setSubjectKey("");
+        setSubjectLocked(false);
+      }
+    },
+    [assignmentId, classroomId, subjects]
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -68,7 +77,9 @@ export function useExamBoardGuidance({
       : null;
 
     const mongoAssignmentId =
-      assignmentId && /^[a-f0-9]{24}$/i.test(String(assignmentId)) ? assignmentId : null;
+      assignmentId && /^[a-f0-9]{24}$/i.test(String(assignmentId))
+        ? assignmentId
+        : null;
 
     const resolveFromAssignment =
       !classroomId && mongoAssignmentId
@@ -103,40 +114,31 @@ export function useExamBoardGuidance({
   }, [enabled, classroomId, assignmentId, applyResolvedSubject]);
 
   useEffect(() => {
-    if (!enabled || !subjectKey) {
-      setBoardGuidanceText("");
+    if (!enabled) {
       setGuidanceError(null);
       return;
     }
-
-    let cancelled = false;
-    setLoadingGuidance(true);
+    if (!subjectKey) {
+      setGuidanceError(null);
+      return;
+    }
     setGuidanceError(null);
-
-    api
-      .get("/marking/exam-board-guidance", { params: { board, subjectKey } })
-      .then(({ data }) => {
-        if (cancelled) return;
-        setBoardGuidanceText(data?.text || "");
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setBoardGuidanceText("");
-        setGuidanceError(err.response?.data?.message || "Could not load exam board guidance");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingGuidance(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [enabled, board, subjectKey]);
 
   const buildResolvedGuidance = useCallback(
     (userGuidance, assignmentPrompt) =>
-      mergeExamBoardGuidance(boardGuidanceText, userGuidance, assignmentPrompt),
-    [boardGuidanceText]
+      resolveSessionGuidance(userGuidance, assignmentPrompt),
+    []
+  );
+
+  const getExamBoardFields = useCallback(
+    () => examBoardBodyFields({ board, subjectKey }),
+    [board, subjectKey]
+  );
+
+  const appendExamBoardFields = useCallback(
+    (fd) => appendExamBoardToFormData(fd, { board, subjectKey }),
+    [board, subjectKey]
   );
 
   return {
@@ -149,9 +151,11 @@ export function useExamBoardGuidance({
     subjectLabel,
     subjectLocked,
     loadingSubject,
-    loadingGuidance,
+    loadingGuidance: false,
     guidanceError,
-    boardGuidanceText,
+    boardGuidanceText: "",
     buildResolvedGuidance,
+    getExamBoardFields,
+    appendExamBoardFields,
   };
 }

@@ -17,7 +17,7 @@ import { getApiErrorMessage } from "./markingFormData";
 export async function confirmBatchMarkScheme(assignmentId, options = {}) {
   if (assignmentId == null || assignmentId === "") return true;
 
-  const checking = toast.info("Checking mark scheme against sample papers…", {
+  const checking = toast.info("Checking mark scheme with Gemini against sample papers…", {
     autoClose: false,
   });
 

@@ -4,19 +4,18 @@
  * not "the student got this wrong". They exist so a teacher can award the marks
  * manually before returning the paper.
  *
- * These rows never receive annotation badges on the student's answer pages — only
- * the grading report / cover breakdown. Staff review them in the editor and in
- * that report section.
+ * When the inventory knows a script page, stubs ARE stamped on that page (0/N
+ * badge) so classified misses are not silent. Stubs without a page stay
+ * report-only.
  *
  * Mirrors isBackfilledStub in SahahlyBackend/src/utils/markSchemeBackfill.js.
  */
 
-/** True when this row was not detected on the script and must stay off answer pages. */
+/** True when this row was not detected on the script by the marking model. */
 export function isBackfilledStub(q) {
   if (!q) return false;
 
-  // Authoritative — injected by mark-scheme backfill; stays report-only even
-  // after a marker awards marks or edits feedback.
+  // Authoritative — injected by mark-scheme backfill.
   if (q._backfilled === true) return true;
 
   if (Number(q.marksAwarded) !== 0) return false;
@@ -31,7 +30,7 @@ export function isBackfilledStub(q) {
 /** Alias used in PDF placement code — same rule as isBackfilledStub. */
 export const isUndetectedQuestion = isBackfilledStub;
 
-/** Split a question list into detected rows (script placement) and report-only stubs. */
+/** Split a question list into detected rows and inventory stubs. */
 export function splitBackfilledStubs(questions) {
   const graded = [];
   const undetected = [];
