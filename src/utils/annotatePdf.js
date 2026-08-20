@@ -59,7 +59,7 @@ function markPointSummaries(q) {
       awarded: p.awarded === true,
       text: [String(p.code || "").trim(), String(p.evidence || "").trim()]
         .filter(Boolean)
-        .join(" — "),
+        .join(": "),
     }))
     .filter((p) => p.text);
 }

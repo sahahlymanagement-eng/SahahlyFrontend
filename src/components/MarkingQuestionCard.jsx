@@ -310,7 +310,7 @@ export default function MarkingQuestionCard({
                 />
                 <span>
                   <strong>{point.code || `P${pointIndex + 1}`}</strong>
-                  {point.evidence ? ` — ${point.evidence}` : ""}
+                  {point.evidence ? `: ${point.evidence}` : ""}
                 </span>
               </label>
             ))}

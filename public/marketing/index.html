@@ -999,7 +999,7 @@ document.getElementById('formSubmit').addEventListener('click', async ()=>{
       body: JSON.stringify({ ...formState, consent: !!formState.consent }),
     });
     if (!res.ok) throw new Error('submit failed');
-    document.getElementById('formActive').style.display='none';
+  document.getElementById('formActive').style.display='none';
     document.getElementById('resultSuccess').classList.add('show');
   } catch {
     document.getElementById('formActive').style.display='none';

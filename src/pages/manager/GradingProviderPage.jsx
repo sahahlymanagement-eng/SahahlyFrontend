@@ -235,10 +235,6 @@ export default function GradingProviderPage({ slug, label }) {
   const [singleProgress, setSingleProgress] = useState({});
   const [studentErrors, setStudentErrors] = useState({});
   const [results, setResults] = useState({}); // submissionId -> { result, originalAiResult, studentFile }
-  const correctedCount = useMemo(
-    () => Object.values(results).filter((entry) => entry?.result).length,
-    [results]
-  );
 
   // Bulk ("Mark All") + priority bulk
   const [bulkMarking, setBulkMarking] = useState(false);
@@ -708,10 +704,18 @@ export default function GradingProviderPage({ slug, label }) {
         raw.createdAt ||
         raw.submittedAt ||
         null,
-      localStatus: raw.localStatus ?? (draftResult ? "grading" : null),
+      localStatus: (() => {
+        if (isPublishedStatus(raw.localStatus)) return raw.localStatus;
+        if (raw.hasDraft || raw.draftResult) return "grading";
+        return raw.localStatus ?? null;
+      })(),
       localGrade:
-        raw.localGrade ?? (draftResult ? resolveTotalMarksFromResult(draftResult) : null),
+        raw.localGrade ??
+        raw.draftTotalMarks ??
+        (draftResult ? resolveTotalMarksFromResult(draftResult) : null),
       hasFeedbackPdf: !!raw.hasFeedbackPdf,
+      hasDraft: !!(raw.hasDraft || raw.draftResult),
+      hasMarkingResult: !!(raw.hasMarkingResult || raw.markingResult),
       assignment: raw.assignment ?? null,
     };
   };
@@ -738,6 +742,7 @@ export default function GradingProviderPage({ slug, label }) {
           dueDate: a.due_date || null,
           count: a.count ?? 0,
           graded: a.graded ?? 0,
+          marked: a.marked ?? 0,
           // Present only when the director delegated this assignment to the
           // signed-in account: { role, deadline, status }.
           myDelegation: a.myDelegation || null,
@@ -1189,6 +1194,7 @@ export default function GradingProviderPage({ slug, label }) {
         s.submissionId === submissionId
           ? {
               ...s,
+              hasDraft: true,
               localGrade: resolveTotalMarksFromResult(result),
               localStatus: isPublished(s) ? s.localStatus : "grading",
             }
@@ -1679,7 +1685,7 @@ export default function GradingProviderPage({ slug, label }) {
       openResultModal(student, saved.result, saved.originalAiResult || saved.result, saved.studentFile);
       return;
     }
-    if (!student.hasDraft) return;
+    if (!student.hasDraft && !student.hasMarkingResult && !isPublished(student)) return;
 
     try {
       const { data } = await api.get(`${BASE}/submissions/${student.submissionId}/draft`);
@@ -2191,6 +2197,14 @@ export default function GradingProviderPage({ slug, label }) {
   // Grouped by the server — see loadAssignments.
   const assignments = assignmentIndex;
 
+  const selectedAssignmentStats = useMemo(() => {
+    if (!selectedAssignment?.key) return selectedAssignment;
+    return (
+      assignmentIndex.find((a) => a.key === selectedAssignment.key) ||
+      selectedAssignment
+    );
+  }, [assignmentIndex, selectedAssignment]);
+
   const aq = assignmentSearch.trim().toLowerCase();
   const filteredAssignments = aq
     ? assignments.filter((a) => (a.name || "").toLowerCase().includes(aq))
@@ -2238,6 +2252,19 @@ export default function GradingProviderPage({ slug, label }) {
   const visibleSubmissions = isSearching
     ? filteredSubmissions.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)
     : filteredSubmissions;
+
+  // Server-side counts (marked drafts + published) so reviewers see the real
+  // progress — the old in-memory-only counter stayed at 0 until someone opened
+  // a paper on the current page.
+  const correctedCount = useMemo(() => {
+    if (!selectedAssignmentStats) return 0;
+    const fromSummary =
+      (selectedAssignmentStats.marked ?? 0) + (selectedAssignmentStats.graded ?? 0);
+    if (fromSummary > 0) return fromSummary;
+    return visibleSubmissions.filter(
+      (s) => s.hasDraft || s.hasMarkingResult || isPublished(s)
+    ).length;
+  }, [selectedAssignmentStats, visibleSubmissions]);
 
   // "Select page" only ever covers the rows on screen; "Select all" (above)
   // reaches the rest of the assignment.
@@ -2790,7 +2817,10 @@ export default function GradingProviderPage({ slug, label }) {
                             // the draft itself, so the button shows immediately
                             // on load; openSavedResult fetches content on click.
                             const hasResult =
-                              !!results[s.submissionId]?.result || !!s.hasDraft;
+                              !!results[s.submissionId]?.result ||
+                              !!s.hasDraft ||
+                              !!s.hasMarkingResult ||
+                              isPublished(s);
                             const hasError = single?.status === "error" || bulk?.status === "error" || studentErrors[s.submissionId];
                             return (
                               <tr
