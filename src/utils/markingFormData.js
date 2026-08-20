@@ -112,6 +112,20 @@ export function formatGoogleOAuthError(raw) {
   return text;
 }
 
+/** Strip vendor names from messages shown in toasts/modals. */
+function scrubProviderNames(text) {
+  if (text == null || text === "") return text;
+  let out = String(text);
+  out = out.replace(/\bOpenAI\b/gi, "AI");
+  out = out.replace(/\bChatGPT\b/gi, "AI");
+  out = out.replace(/\bGemini\b/gi, "AI");
+  out = out.replace(/\bClaude\b/gi, "AI");
+  out = out.replace(/https?:\/\/platform\.openai\.com\/[^\s)]+/gi, "your AI billing settings");
+  out = out.replace(/\bGEMINI_API_KEY\b/g, "API key");
+  out = out.replace(/\bOPENAI_API_KEY\b/g, "API key");
+  return out;
+}
+
 export async function getApiErrorMessage(err) {
 
   const data = err?.response?.data;
@@ -140,17 +154,19 @@ export async function getApiErrorMessage(err) {
 
         const parsed = JSON.parse(text);
 
-        return formatGoogleOAuthError(parsed.message || parsed.error || text) || text || err.message;
+        return scrubProviderNames(
+          formatGoogleOAuthError(parsed.message || parsed.error || text) || text || err.message
+        );
 
       } catch {
 
-        return formatGoogleOAuthError(text) || text || err.message;
+        return scrubProviderNames(formatGoogleOAuthError(text) || text || err.message);
 
       }
 
     } catch {
 
-      return formatGoogleOAuthError(err.message) || err.message || "Request failed";
+      return scrubProviderNames(formatGoogleOAuthError(err.message) || err.message || "Request failed");
 
     }
 
@@ -162,7 +178,7 @@ export async function getApiErrorMessage(err) {
       if (/total file size exceeds the limit of\s*50\s*mb/i.test(String(msg))) {
         return "Selected files are too large for AI marking (max 50MB total). Please upload fewer submissions or smaller PDFs.";
       }
-      return formatGoogleOAuthError(msg);
+      return scrubProviderNames(formatGoogleOAuthError(msg));
     }
   }
 
@@ -173,7 +189,7 @@ export async function getApiErrorMessage(err) {
     return "Request timed out. The server may still be working — wait a moment and refresh, or try again with fewer submissions.";
   }
 
-  return formatGoogleOAuthError(err?.message) || err?.message || "Request failed";
+  return scrubProviderNames(formatGoogleOAuthError(err?.message) || err?.message || "Request failed");
 
 }
 

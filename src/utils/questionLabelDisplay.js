@@ -2,6 +2,8 @@
  * Display helpers when page-local labels differ from mark-scheme question ids.
  */
 
+import { looksLikePlausibleQuestionNumber } from "./markingQuestionDedupe";
+
 function normalizeLabel(value) {
   return String(value ?? "")
     .trim()
@@ -126,9 +128,10 @@ export function formatQuestionLabelWithPage(question, guidance, duplicateNumbers
 }
 
 export function getDisplayQuestionNumber(question, guidance) {
-  const printed =
+  const printedRaw =
     resolvePrintedQuestionNumber(question, guidance) ||
     String(question?.printedQuestionNumber ?? "").trim();
+  const printed = looksLikePlausibleQuestionNumber(printedRaw) ? printedRaw : "";
   const ms = String(question?.questionNumber ?? "").trim();
 
   if (printed && ms && normalizeLabel(printed) !== normalizeLabel(ms)) {
@@ -139,9 +142,10 @@ export function getDisplayQuestionNumber(question, guidance) {
 
 export function hasPrintedLabelMismatch(question, guidance) {
   const ms = normalizeLabel(question?.questionNumber);
-  const printed = normalizeLabel(
-    resolvePrintedQuestionNumber(question, guidance) || question?.printedQuestionNumber
-  );
+  const printedRaw =
+    resolvePrintedQuestionNumber(question, guidance) || question?.printedQuestionNumber;
+  if (!looksLikePlausibleQuestionNumber(printedRaw)) return false;
+  const printed = normalizeLabel(printedRaw);
   return Boolean(printed && ms && printed !== ms);
 }
 

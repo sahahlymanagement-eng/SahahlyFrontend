@@ -3,18 +3,145 @@
  * Keep in sync with backend/src/utils/markingGrades.js dropGhostDuplicateQuestions.
  */
 
+export function sanitizeQuestionNumber(raw) {
+  let s = String(raw ?? "").trim();
+  if (!s) return s;
+  s = s.replace(/^(upper|lower|top|bottom)\s+/i, "");
+  s = s.replace(/^questions?\s+/i, "");
+  s = s.replace(/^q(?=[\d(])/i, "");
+  s = s.replace(/^part\s+/i, "");
+  s = s.replace(/\s+/g, "");
+  s = s.replace(/[-–—_.,;:]+$/g, "");
+  if (!s) return String(raw).trim().replace(/\s+/g, " ");
+  return s;
+}
+
 export function canonicalQuestionKey(q) {
-  let s = String(q?.questionNumber ?? "")
-    .trim()
-    .replace(/^(upper|lower|top|bottom)\s+/i, "")
-    .replace(/^questions?\s+/i, "")
-    .replace(/^q(?=[\d(])/i, "")
-    .replace(/^part\s+/i, "")
-    .replace(/\s+/g, "")
+  let s = sanitizeQuestionNumber(q?.questionNumber)
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
   if (s.startsWith("q") && s.length > 1) s = s.slice(1);
   return s;
+}
+
+const PROMPT_LEAK_RE =
+  /authority|expectedanswers?|keywords?|tolerances?|totalmark|markaudit|targetsubmission|forevaluation|evaluation\/grading|markscheme|submissionfor|soleauthority|preparedby|additionalguidance|mark\s*scheme/i;
+
+/** Real MS ids only — drop prompt-leak / prose "questions" from analysis UI + report. */
+export function looksLikePlausibleQuestionNumber(raw) {
+  const original = String(raw ?? "").trim();
+  if (!original) return false;
+  if (PROMPT_LEAK_RE.test(original.replace(/\s+/g, ""))) return false;
+  if (/[\\/]/.test(original)) return false;
+  if (/[*#@$%^=]+/.test(original)) return false;
+  if (/\d+\s*pages?\b/i.test(original) || /^\d+pages?$/i.test(original.replace(/\s+/g, ""))) {
+    return false;
+  }
+
+  const cleaned = sanitizeQuestionNumber(original);
+  if (!cleaned) return false;
+  const lower = cleaned.toLowerCase();
+  if (/^(upper|lower|question|questions|part)$/i.test(lower)) return false;
+  if (/upperquestion|lowerquestion/i.test(lower) && !/\d/.test(lower)) return false;
+
+  const shape = cleaned
+    .replace(/[()[\]{}]/g, "")
+    .replace(/upper|lower|top|bottom/gi, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+  if (!shape) return false;
+
+  if (!/\d/.test(shape)) {
+    return /^[a-z]{1,4}$/i.test(shape) || /^(i{1,3}|iv|v|vi{0,3}|ix|x)$/i.test(shape);
+  }
+  if (!/^\d{1,3}[a-z]{0,8}\d{0,2}[a-z]{0,4}$/i.test(shape)) return false;
+  if (shape.length > 14) return false;
+  const letterRun = shape.replace(/\d+/g, "");
+  if (letterRun.length > 8) return false;
+  return true;
+}
+
+export function dropUnusableInventedQuestions(questions) {
+  if (!Array.isArray(questions)) return questions;
+  return questions.filter((q) =>
+    looksLikePlausibleQuestionNumber(q?.questionNumber)
+  );
+}
+
+/** Clear prompt-leak / prose pasted into printedQuestionNumber (badge prefers it). */
+export function clearImplausiblePrintedQuestionNumbers(questions) {
+  if (!Array.isArray(questions)) return questions;
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const printed = String(q.printedQuestionNumber ?? "").trim();
+    if (!printed) return q;
+    if (looksLikePlausibleQuestionNumber(printed)) return q;
+    const next = { ...q };
+    delete next.printedQuestionNumber;
+    return next;
+  });
+}
+
+/** Strip trailing punctuation on ids so "4a-" and "4a" share one row. */
+export function normalizeQuestionNumberLabels(questions) {
+  if (!Array.isArray(questions)) return questions;
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const next = sanitizeQuestionNumber(q.questionNumber);
+    if (!next || next === q.questionNumber) return q;
+    return { ...q, questionNumber: next };
+  });
+}
+
+/**
+ * Promote orphan part ids ("a", "b", "(ii)") to full MS ids when the reason /
+ * feedback already names them (e.g. "Full marks awarded for Q19b").
+ * Fixes classified-workbook badges/report rows showing "Qa" / "Qb".
+ */
+export function repairOrphanPartQuestionNumbers(questions) {
+  if (!Array.isArray(questions)) return questions;
+
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const raw = String(q.questionNumber ?? "").trim();
+    const part = raw.replace(/[()[\]\s]/g, "").toLowerCase();
+    if (!part || !/^[a-zivx]{1,4}$/i.test(part)) return q;
+
+    const blob = [
+      q.msQuestionNumber,
+      q.reason,
+      q.correctAnswer,
+      q.mistakeAdvice,
+      q.studyTopic,
+      ...(Array.isArray(q.missingKeywords) ? q.missingKeywords : []),
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const esc = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const withParen = new RegExp(
+      String.raw`\bQ?\s*(\d{1,3})\s*[\(\.\-–—]?\s*(${esc})\b`,
+      "i"
+    );
+    const compact = new RegExp(String.raw`\bQ\s*(\d{1,3}${esc})\b`, "i");
+
+    let full = null;
+    const m1 = blob.match(withParen);
+    if (m1) full = `${m1[1]}${m1[2].toLowerCase()}`;
+    if (!full) {
+      const m2 = blob.match(compact);
+      if (m2) full = m2[1].toLowerCase().replace(/^q/i, "");
+    }
+    if (!full) return q;
+
+    const printed = String(q.printedQuestionNumber ?? "").trim();
+    const next = { ...q, questionNumber: full };
+    if (!printed || printed.toLowerCase().replace(/[()[\]\s]/g, "") === part) {
+      next.printedQuestionNumber = full;
+    }
+    if (!q.msQuestionNumber) next.msQuestionNumber = full;
+    return next;
+  });
 }
 
 const OFF_CHUNK_FILLER_RE =
@@ -116,6 +243,19 @@ function shouldKeepBesideReals(q, reals) {
     if (!distinctPage) return false;
     const qm = maxMarksOf(q);
     return qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+  }
+
+  // Scored row already present for this MS id: drop trailing-punctuation /
+  // chunk twins that claim a different answer on another page without a
+  // distinct stem + distinct maxMarks (the "4a-" vs blank "4a" case).
+  if (reals.some((r) => Number(r?.marksAwarded) > 0) && Number(q?.marksAwarded) === 0) {
+    if (!distinctPage) return false;
+    const stem = stemFingerprint(q);
+    const qm = maxMarksOf(q);
+    const realStems = reals.map(stemFingerprint).filter((s) => s.length >= 12);
+    const distinctStem = stem.length >= 12 && !realStems.includes(stem);
+    const distinctMax = qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+    return distinctStem && distinctMax;
   }
 
   const stem = stemFingerprint(q);

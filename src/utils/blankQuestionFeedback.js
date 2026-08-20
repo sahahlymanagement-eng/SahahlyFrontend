@@ -2,6 +2,8 @@
  * Human examiner-style feedback for blank / unanswered mark-scheme questions.
  */
 
+import { looksLikePlausibleQuestionNumber } from "./markingQuestionDedupe";
+
 export function looksLikePageSplitDeferral(q) {
   if (!q) return false;
   if (q.continuesOnNextPage === true) return true;
@@ -17,10 +19,33 @@ function stripLeadingQ(label) {
   return m ? m[1] : s;
 }
 
+function isOrphanPartLabel(label) {
+  const s = String(label || "")
+    .trim()
+    .replace(/[()[\]\s]/g, "")
+    .toLowerCase();
+  return /^[a-zivx]{1,4}$/i.test(s);
+}
+
+/**
+ * Prefer the fuller mark-scheme id over a bare page-local part.
+ * Classified sheets often print "(a)" under Q19 — models set printedQuestionNumber
+ * to "a" while questionNumber is "19a"; overlays must show "19a", not "a".
+ */
 export function overlayQuestionLabel(q) {
-  const printed = stripLeadingQ(q?.printedQuestionNumber);
+  const printedRaw = stripLeadingQ(q?.printedQuestionNumber);
+  const printed = looksLikePlausibleQuestionNumber(printedRaw) ? printedRaw : "";
   const ms = stripLeadingQ(q?.questionNumber);
-  if (printed && printed.toLowerCase().replace(/\s+/g, "") !== ms.toLowerCase().replace(/\s+/g, "")) {
+  const printedKey = printed.toLowerCase().replace(/[()[\]\s]/g, "");
+  const msKey = ms.toLowerCase().replace(/[()[\]\s]/g, "");
+
+  if (printed && printedKey && printedKey !== msKey) {
+    const printedOrphan = isOrphanPartLabel(printedKey);
+    const msHasDigit = /\d/.test(msKey);
+    if (printedOrphan && msHasDigit) return ms || printed;
+    if (printedOrphan && msKey.endsWith(printedKey) && msKey.length > printedKey.length) {
+      return ms;
+    }
     return printed;
   }
   return ms || "?";

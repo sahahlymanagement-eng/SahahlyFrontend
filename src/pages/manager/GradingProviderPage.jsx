@@ -113,6 +113,7 @@ import {
   usePageCountCheck,
   buildPageCountFlagMap,
   pageCountWarningText,
+  applyPageCountDecision,
 } from "../../hooks/usePageCountCheck";
 import {
   useOrientationCheck,
@@ -325,36 +326,44 @@ export default function GradingProviderPage({ slug, label }) {
   );
 
   // Runs both advisory checks and returns WHICH submissions to grade, or null
-  // to stop. The orientation review has three outcomes — cancel, grade all
-  // anyway, or grade without the flagged papers — so a bare boolean can no
-  // longer carry the answer. The submissions are passed whole rather than as
-  // bare ids so the review modal can name every flagged paper: the partner
-  // payload is stored once, on insert, so older rows never gained a student
-  // block and the list on screen is the only place their name exists.
+  // to stop. Page-count and orientation each have three outcomes — cancel,
+  // grade all anyway, or grade without the flagged papers. The submissions are
+  // passed whole rather than as bare ids so the review modal can name every
+  // flagged paper: the partner payload is stored once, on insert, so older rows
+  // never gained a student block and the list on screen is the only place their
+  // name exists.
   const confirmPreGradingChecks = async (eligible) => {
-    const proceedPageCount = await confirmGradingPageCounts({
+    const pageDecision = await confirmGradingPageCounts({
       provider: PROVIDER,
       assignmentId: selectedAssignment.id,
       submissionIds: eligible.map((s) => s.submissionId),
       onReport: applyPageCountReport,
     });
-    if (!proceedPageCount) return null;
+    const afterPage = applyPageCountDecision(eligible, pageDecision);
+    if (!afterPage) return null;
+
+    const pageDropped = eligible.length - afterPage.length;
+    if (pageDropped > 0) {
+      toast.info(
+        `Skipping ${pageDropped} submission${pageDropped === 1 ? "" : "s"} with unexpected page count`
+      );
+    }
 
     const decision = await confirmGradingOrientations({
       provider: PROVIDER,
       assignmentId: selectedAssignment.id,
       // `nameIsFallback` rows carry the "Submission #id" placeholder, not a
       // person — send nothing and let the modal print its own placeholder.
-      submissions: eligible.map((s) => ({
+      submissions: afterPage.map((s) => ({
         submissionId: s.submissionId,
         name: s.nameIsFallback ? null : s.name,
       })),
       onReport: applyOrientationReport,
     });
-    const toGrade = applyOrientationDecision(eligible, decision);
+    const toGrade = applyOrientationDecision(afterPage, decision);
     if (!toGrade) return null;
 
-    const dropped = eligible.length - toGrade.length;
+    const dropped = afterPage.length - toGrade.length;
     if (dropped > 0) {
       toast.info(`Skipping ${dropped} submission${dropped === 1 ? "" : "s"} with mixed page orientation`);
     }

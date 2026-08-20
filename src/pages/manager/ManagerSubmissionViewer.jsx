@@ -14,7 +14,7 @@ import { usePagination } from "../../hooks/usePagination";
 import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
-import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText } from "../../hooks/usePageCountCheck";
+import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText, applyPageCountDecision } from "../../hooks/usePageCountCheck";
 import {
   useOrientationCheck,
   buildOrientationFlagMap,
@@ -485,18 +485,25 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   });
 
   // Runs both advisory checks and returns WHICH submissions to grade, or null
-  // to stop. The orientation review has three outcomes — cancel, grade all
-  // anyway, or grade without the flagged papers — so a bare boolean can no
-  // longer carry the answer.
+  // to stop. Page-count and orientation each have three outcomes — cancel,
+  // grade all anyway, or grade without the flagged papers.
   const confirmPreGradingChecks = async (students) => {
-    const proceedPageCount = await confirmPageCounts(pageCheckArgs(students));
-    if (!proceedPageCount) return null;
+    const pageDecision = await confirmPageCounts(pageCheckArgs(students));
+    const afterPage = applyPageCountDecision(students, pageDecision);
+    if (!afterPage) return null;
 
-    const decision = await confirmOrientations(orientationCheckArgs(students));
-    const toGrade = applyOrientationDecision(students, decision);
+    const pageDropped = students.length - afterPage.length;
+    if (pageDropped > 0) {
+      toast.info(
+        `Skipping ${pageDropped} submission${pageDropped === 1 ? "" : "s"} with unexpected page count`
+      );
+    }
+
+    const decision = await confirmOrientations(orientationCheckArgs(afterPage));
+    const toGrade = applyOrientationDecision(afterPage, decision);
     if (!toGrade) return null;
 
-    const dropped = students.length - toGrade.length;
+    const dropped = afterPage.length - toGrade.length;
     if (dropped > 0) {
       toast.info(`Skipping ${dropped} submission${dropped === 1 ? "" : "s"} with mixed page orientation`);
     }

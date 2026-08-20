@@ -85,13 +85,13 @@ export default function MarkSchemeVerificationModal({
         </div>
 
         <p className="apg-help">
-          Edit the OpenAI verification prompt, then run. Compares the uploaded mark scheme with three
+          Edit the verification prompt, then run. Compares the uploaded mark scheme with three
           sample student submissions. Verdicts: safe to use, required corrections, or rejected.
         </p>
 
         <div className="apg-master-row">
           <label className="apg-extra-label" htmlFor="msv-master-prompt">
-            OpenAI prompt (editable)
+            Verification prompt (editable)
           </label>
           <button
             type="button"
@@ -103,14 +103,14 @@ export default function MarkSchemeVerificationModal({
           </button>
         </div>
         {loadingMaster ? (
-          <p className="apg-loading">Loading OpenAI prompt…</p>
+          <p className="apg-loading">Loading verification prompt…</p>
         ) : (
           <textarea
             id="msv-master-prompt"
             className="apg-textarea apg-textarea--master"
             value={masterPrompt}
             onChange={(e) => setMasterPrompt(e.target.value)}
-            placeholder="OpenAI prompt used for mark scheme verification…"
+            placeholder="Prompt used for mark scheme verification…"
             rows={18}
             disabled={verifying}
           />

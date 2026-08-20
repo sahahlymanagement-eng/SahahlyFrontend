@@ -2,6 +2,10 @@ import { normalizeQuestionPlacement } from "./normalizeQuestionPlacement";
 import {
   canonicalQuestionKey,
   dropGhostDuplicateQuestions,
+  dropUnusableInventedQuestions,
+  clearImplausiblePrintedQuestionNumbers,
+  normalizeQuestionNumberLabels,
+  repairOrphanPartQuestionNumbers,
 } from "./markingQuestionDedupe";
 import { enrichMarkingQuestions } from "./blankQuestionFeedback";
 
@@ -130,7 +134,11 @@ export function recoverMisassignedAnswers(questions) {
 
 /** Normalize placement + recover common mislabel patterns for the editor. */
 export function prepareEditingQuestions(questions) {
-  const recovered = recoverMisassignedAnswers(questions || []);
+  const labeled = normalizeQuestionNumberLabels(questions || []);
+  const repaired = repairOrphanPartQuestionNumbers(labeled);
+  const cleaned = dropUnusableInventedQuestions(repaired);
+  const printedClean = clearImplausiblePrintedQuestionNumbers(cleaned);
+  const recovered = recoverMisassignedAnswers(printedClean);
   const collapsed = dropGhostDuplicateQuestions(recovered);
   return normalizeQuestionPlacement(
     enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))

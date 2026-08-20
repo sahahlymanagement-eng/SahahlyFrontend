@@ -2,6 +2,13 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
 import { enrichMarkingQuestions, isBlankQuestion, summarizeUnansweredQuestions, overlayQuestionLabel, isPlaceableScriptQuestion, looksLikePageSplitDeferral } from "./blankQuestionFeedback";
 import {
+  dropUnusableInventedQuestions,
+  clearImplausiblePrintedQuestionNumbers,
+  normalizeQuestionNumberLabels,
+  dropGhostDuplicateQuestions,
+  repairOrphanPartQuestionNumbers,
+} from "./markingQuestionDedupe";
+import {
   compareQuestionNumbers,
   normalizeQuestionPlacement,
   paperAnchorY,
@@ -767,6 +774,8 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
 function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary, studentFacing = true }) {
+  // Caller (annotatePdf) already drops inventeds / 4a- twins; keep stubs out of
+  // the student-facing QUESTION BREAKDOWN table.
   const breakdownQuestions = studentFacing
     ? (questions || []).filter((q) => !isBackfilledStub(q))
     : questions || [];
@@ -1368,9 +1377,16 @@ export async function annotatePdf({
   // Legacy callers may still pass totalMarks; cover totals are always recomputed.
   totalMarks: _totalMarksInput,
 }) {
+  const cleanedInput = dropGhostDuplicateQuestions(
+    clearImplausiblePrintedQuestionNumbers(
+      dropUnusableInventedQuestions(
+        repairOrphanPartQuestionNumbers(normalizeQuestionNumberLabels(questions || []))
+      )
+    )
+  );
   const renderQuestions = studentFacing
-    ? sanitizeQuestionsForStudentPdf(questions)
-    : questions || [];
+    ? sanitizeQuestionsForStudentPdf(cleanedInput)
+    : cleanedInput;
   const totalMarks =
     finalObtainedMarks != null && Number.isFinite(Number(finalObtainedMarks))
       ? Number(finalObtainedMarks)

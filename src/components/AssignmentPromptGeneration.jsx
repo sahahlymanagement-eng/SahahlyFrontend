@@ -83,13 +83,13 @@ export default function AssignmentPromptGeneration({
         </div>
 
         <p className="apg-help">
-          Edit the OpenAI prompt below, then generate. Uses the mark scheme (if uploaded) and up to 3
+          Edit the prompt below, then generate. Uses the mark scheme (if uploaded) and up to 3
           turned-in student PDFs. Once saved, marking on this assignment uses the generated guidance.
         </p>
 
         <div className="apg-master-row">
           <label className="apg-extra-label" htmlFor="apg-master-prompt">
-            OpenAI prompt (editable)
+            Prompt (editable)
           </label>
           <button
             type="button"
@@ -101,14 +101,14 @@ export default function AssignmentPromptGeneration({
           </button>
         </div>
         {loadingMaster ? (
-          <p className="apg-loading">Loading OpenAI prompt…</p>
+          <p className="apg-loading">Loading prompt…</p>
         ) : (
           <textarea
             id="apg-master-prompt"
             className="apg-textarea apg-textarea--master"
             value={masterPrompt}
             onChange={(e) => setMasterPrompt(e.target.value)}
-            placeholder="OpenAI prompt used to generate marking guidance…"
+            placeholder="Prompt used to generate marking guidance…"
             rows={16}
             disabled={generating}
           />

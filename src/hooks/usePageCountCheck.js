@@ -37,24 +37,43 @@ export function gradingPageCountPath(provider) {
   return provider ? `/grading/${provider}/page-count-check` : "/external-grading/page-count-check";
 }
 
+// ── The three ways the review modal can end ──────────────────────────────────
+// Same shape as useOrientationCheck so callers can chain both checks the same way:
+//
+//   { proceed: false }                       → Cancel grading
+//   { proceed: true, excludedIds: [] }       → Grade all anyway
+//   { proceed: true, excludedIds: [1, 2] }   → Grade remaining without the flagged ones
+const PROCEED_ALL = { proceed: true, excludedIds: [] };
+const CANCELLED = { proceed: false, excludedIds: [] };
+
+/**
+ * Apply a page-count decision to the list about to be graded.
+ * @returns {Array|null} submissions to grade, or null when cancelled / nothing left
+ */
+export function applyPageCountDecision(students, decision) {
+  if (!decision?.proceed) return null;
+  if (!decision.excludedIds?.length) return students;
+
+  const dropped = new Set(decision.excludedIds.map((id) => String(id)));
+  const kept = (students || []).filter((s) => !dropped.has(String(s.submissionId)));
+  return kept.length ? kept : null;
+}
+
 // Advisory pre-grading page-count check.
 //
 // Fetches each submission's PDF page count server-side and compares it to the
 // assignment's expectedPages BEFORE any AI grading runs. Purely advisory: if the
 // endpoint fails or nothing is flagged, grading proceeds silently. When
-// mismatches are found, a modal lists them and the confirm call resolves to the
-// user's choice (true = grade anyway, false = cancel grading).
-//
-// Two entry points, one report shape — the classroom flow and the grading
-// partners hit different endpoints with different payloads, but the response
-// envelope (and therefore the modal) is identical.
+// mismatches are found, a modal lists them and the confirm call resolves to a
+// decision object (see above).
 //
 // Usage — Google Classroom:
-//   const proceed = await confirmPageCounts({ assignmentId, classroomId, students });
+//   const decision = await confirmPageCounts({ assignmentId, classroomId, students });
+//   const toGrade = applyPageCountDecision(students, decision);
 // Usage — LoginCSS / mariamgabalawy:
-//   const proceed = await confirmGradingPageCounts({ provider, assignmentId, submissionIds });
+//   const decision = await confirmGradingPageCounts({ provider, assignmentId, submissionIds });
 //
-//   if (!proceed) return;
+//   if (!toGrade) return;
 //   ...render <PageCountCheckModal state={pageCheckModal} onResolve={resolvePageCheck} />
 export function usePageCountCheck() {
   const [pageCheckModal, setPageCheckModal] = useState(null); // { loading, report } | null
@@ -72,7 +91,7 @@ export function usePageCountCheck() {
       // Advisory only — never block grading if the check itself fails.
       setPageCheckModal(null);
       toast.warn("Page-count check unavailable — proceeding without it");
-      return true;
+      return PROCEED_ALL;
     }
 
     // Surface per-submission flags in the UI right away — the caller updates its
@@ -81,7 +100,7 @@ export function usePageCountCheck() {
 
     if (!report || !(report.flaggedCount > 0)) {
       setPageCheckModal(null);
-      return true;
+      return PROCEED_ALL;
     }
 
     // Mismatches found — hand control to the user via the modal.
@@ -92,7 +111,7 @@ export function usePageCountCheck() {
   };
 
   const confirmPageCounts = async ({ assignmentId, classroomId, students, onReport }) => {
-    if (!assignmentId || !students?.length) return true;
+    if (!assignmentId || !students?.length) return PROCEED_ALL;
 
     return runCheck(
       "/marking/page-count-check",
@@ -114,7 +133,7 @@ export function usePageCountCheck() {
   // ids with no student roster, so the payload is just the ids — omit them to
   // let the server check every not-yet-published submission in the group.
   const confirmGradingPageCounts = async ({ provider, assignmentId, submissionIds, onReport }) => {
-    if (assignmentId == null) return true;
+    if (assignmentId == null) return PROCEED_ALL;
 
     return runCheck(
       gradingPageCountPath(provider),
@@ -128,11 +147,22 @@ export function usePageCountCheck() {
     );
   };
 
-  const resolvePageCheck = (proceed) => {
+  const resolvePageCheck = (decision) => {
     setPageCheckModal(null);
     const resolve = resolveRef.current;
     resolveRef.current = null;
-    if (resolve) resolve(proceed);
+    // Legacy callers may still pass a bare boolean — normalize.
+    if (typeof decision === "boolean") {
+      if (resolve) resolve(decision ? PROCEED_ALL : CANCELLED);
+      return;
+    }
+    if (resolve) {
+      resolve(
+        decision?.proceed
+          ? { proceed: true, excludedIds: decision.excludedIds || [] }
+          : CANCELLED
+      );
+    }
   };
 
   return { pageCheckModal, confirmPageCounts, confirmGradingPageCounts, resolvePageCheck };
