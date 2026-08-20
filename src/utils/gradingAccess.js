@@ -53,6 +53,26 @@ import { isDirectorLikeRole } from "./directorLikeAccess";
 // still holds the placeholder it matches no signed-in user, so the tier is inert.
 const MARIAMGABALAWY_REVIEWER_PERSON_ID = "6a7b0d6841b2c3cf6b6e9360";
 
+// Mariam Gabalawy and Dr Peter are two teachers on the same partner platform.
+// A static allow-list grant for either one also opens the other tab (and the
+// reverse). Director delegations are NOT paired — those stay assignment-scoped
+// per provider so unlocking the sibling tab cannot accidentally unscope the
+// whole other queue (see gradingDelegationScope.js).
+const PAIRED_PROVIDERS = {
+  mariamgabalawy: ["drpeter"],
+  drpeter: ["mariamgabalawy"],
+};
+
+/** Expand a static provider list with its paired siblings. `null` stays "all". */
+function withPairedProviders(providers) {
+  if (providers == null) return null;
+  const set = new Set(providers);
+  for (const slug of providers) {
+    for (const other of PAIRED_PROVIDERS[slug] || []) set.add(other);
+  }
+  return [...set];
+}
+
 // `providers: null` means every provider.
 // `canEdit` defaults to true when omitted, so leaving it off keeps an account's
 // existing rights (see canEditGradingResults).
@@ -69,10 +89,10 @@ const GRADING_ACCOUNTS = [
     canMark: false,
   },
   {
-    // Review-only reviewer for every Mariam Gabalawy assignment: reads the
-    // corrected PDFs and publishes them back to the partner, and does nothing
-    // else. `gradingOnly` also strips the rest of the assistant portal down to
-    // this one tab (AssistantSidebar / AssistantLayout / authRoutes).
+    // Review-only reviewer for Mariam Gabalawy + Dr Peter: reads the corrected
+    // PDFs and publishes them back to the partner, and does nothing else.
+    // `gradingOnly` also strips the rest of the assistant portal down to these
+    // tabs (AssistantSidebar / AssistantLayout / authRoutes).
     //
     // Deliberately holds NO GradingAssignmentDelegation rows: an account with no
     // delegations for a partner is unscoped by the backend and therefore sees
@@ -80,7 +100,7 @@ const GRADING_ACCOUNTS = [
     // it would narrow it to that assignment — see the backend's
     // services/gradingDelegationScope.js.
     personId: MARIAMGABALAWY_REVIEWER_PERSON_ID,
-    providers: ["mariamgabalawy"],
+    providers: ["mariamgabalawy", "drpeter"],
     canMark: false,
     canEdit: false,
     gradingOnly: true,
@@ -179,7 +199,8 @@ export function canGradeProvider(slug, grant = delegatedProviders) {
   if (grant?.[slug]) return true;
   const account = currentGradingAccount();
   if (!account) return false;
-  return account.providers === null || account.providers.includes(slug);
+  const providers = withPairedProviders(account.providers);
+  return providers === null || providers.includes(slug);
 }
 
 /** The signed-in role name, lowercased ("admin", "director", "manager", …). */
@@ -294,5 +315,5 @@ export function isGradingOnlyAccount(forUser = null) {
 export function gradingOnlyProviders(forUser = null) {
   const account = currentGradingAccount(forUser);
   if (account?.gradingOnly !== true) return [];
-  return account.providers || [];
+  return withPairedProviders(account.providers) || [];
 }

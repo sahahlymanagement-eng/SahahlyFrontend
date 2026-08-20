@@ -7,7 +7,7 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
-  FiEdit3, FiShield, FiDownloadCloud, FiRotateCcw, FiRotateCw,
+  FiEdit3, FiDownloadCloud, FiRotateCcw, FiRotateCw,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
 import usePersistedState from "../../hooks/usePersistedState";
@@ -55,9 +55,7 @@ import AddMarkingQuestionBar, {
   MarkingCompletenessNotice,
 } from "../../components/AddMarkingQuestionBar";
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
-import MarkSchemeVerificationModal, {
-  runMarkSchemeVerification,
-} from "../../components/MarkSchemeVerificationModal";
+import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
 import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
@@ -104,6 +102,8 @@ import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSe
 import GradingAssignmentSettingsBar from "../../components/GradingAssignmentSettingsBar";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
 import OrientationCheckModal from "../../components/OrientationCheckModal";
+import ExamBoardGuidanceFields from "../../components/ExamBoardGuidanceFields";
+import { useExamBoardGuidance } from "../../hooks/useExamBoardGuidance";
 import {
   usePageCountCheck,
   buildPageCountFlagMap,
@@ -143,6 +143,7 @@ export default function ManagerLoginCss() {
   // produced: open the results modal, edit it, publish it. Every control that
   // would start or undo a marking run hangs off this flag.
   const canMark = canRunGradingMarking("logincss", delegations);
+  const examBoardGuidance = useExamBoardGuidance({ enabled: canMark });
 
   const [user, setUser] = useState(null);
 
@@ -181,9 +182,6 @@ export default function ManagerLoginCss() {
   );
   const [listTotal, setListTotal] = useState(0);
   const [sessionError, setSessionError] = useState(null);
-  const [msVerifyOpen, setMsVerifyOpen] = useState(false);
-  const [msVerifying, setMsVerifying] = useState(false);
-  const [msVerifyResult, setMsVerifyResult] = useState(null);
 
   // ── Guidance modal / marking config ──
   const [guidanceModal, setGuidanceModal] = useState(null);
@@ -1026,31 +1024,12 @@ export default function ManagerLoginCss() {
     setGuidanceModal({ student, ...opts });
   };
 
-  const handleRunMsVerification = async (extraInstructions = "") => {
-    if (selectedAssignment?.id == null) return;
-    setMsVerifying(true);
-    setMsVerifyResult(null);
-    try {
-      // `grading: true` is required — see the note on assignmentPrompt above.
-      const result = await runMarkSchemeVerification(
-        String(selectedAssignment.id),
-        extraInstructions,
-        { grading: true, provider: PROVIDER }
-      );
-      setMsVerifyResult(result);
-      if (result.status === "pass") toast.success("Mark scheme verification passed");
-      else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
-      else toast.warn("Mark scheme verification completed with warnings");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Mark scheme verification failed");
-    } finally {
-      setMsVerifying(false);
-    }
-  };
-
   const handleGuidanceConfirm = (provider = "gemini") => {
     const gm = guidanceModal;
-    const resolvedGuidance = resolveMarkingGuidanceText(guidance, assignmentPrompt.content);
+    const resolvedGuidance = examBoardGuidance.buildResolvedGuidance(
+      guidance,
+      assignmentPrompt.content
+    );
     setGuidanceModal(null);
     if (!gm) return;
     if (gm.batch) runBatchMark(resolvedGuidance, markingModeModal);
@@ -1119,8 +1098,14 @@ export default function ManagerLoginCss() {
   const deleteDraft = (submissionId) =>
     api.delete(`/external-grading/submissions/${submissionId}/draft`).catch(() => {});
 
-  const recordMarkResult = (submissionId, result, studentFile, { persist = true } = {}) => {
+  const recordMarkResult = async (submissionId, result, studentFile, { persist = true } = {}) => {
     const originalAiResult = JSON.parse(JSON.stringify(result));
+    // Wait for the server write before painting the row as graded — otherwise
+    // another account (or a refresh) still sees Pending while this browser
+    // looks finished.
+    if (persist) {
+      await saveDraft(submissionId, result, originalAiResult);
+    }
     setResults((prev) => ({
       ...prev,
       [submissionId]: {
@@ -1129,8 +1114,6 @@ export default function ManagerLoginCss() {
         studentFile,
       },
     }));
-    // Batch marking already persists drafts server-side — skip the redundant PUT.
-    if (persist) saveDraft(submissionId, result, originalAiResult);
     setStudentErrors((prev) => {
       const n = { ...prev };
       delete n[submissionId];
@@ -1141,6 +1124,7 @@ export default function ManagerLoginCss() {
         s.submissionId === submissionId
           ? {
               ...s,
+              hasDraft: true,
               localGrade: resolveTotalMarksFromResult(result),
               localStatus: isPublished(s) ? s.localStatus : "grading",
             }
@@ -1156,7 +1140,7 @@ export default function ManagerLoginCss() {
     setSingleProgress((prev) => ({ ...prev, [submissionId]: { status: "marking" } }));
     try {
       const { result, studentFile } = await performMark(student, { guidanceText, mode, provider });
-      recordMarkResult(submissionId, result, studentFile);
+      await recordMarkResult(submissionId, result, studentFile);
       setSingleProgress((prev) => ({ ...prev, [submissionId]: { status: "done", result, studentFile } }));
       openResultModal(student, result, result, studentFile);
     } catch (err) {
@@ -1208,7 +1192,7 @@ export default function ManagerLoginCss() {
         setBulkProgress((p) => ({ ...p, [student.submissionId]: { status: "marking" } }));
         try {
           const { result, studentFile } = await performMark(student, { guidanceText, mode, provider });
-          recordMarkResult(student.submissionId, result, studentFile);
+          await recordMarkResult(student.submissionId, result, studentFile);
           setBulkProgress((p) => ({ ...p, [student.submissionId]: { status: "done", result } }));
           done += 1;
         } catch (err) {
@@ -1276,7 +1260,7 @@ export default function ManagerLoginCss() {
               if (submissionId == null) continue;
               if (r.success && r.result) {
                 // Backend already persisted the draft — skip the redundant PUT.
-                recordMarkResult(submissionId, r.result, undefined, { persist: false });
+                await recordMarkResult(submissionId, r.result, undefined, { persist: false });
                 ok += 1;
               } else {
                 const message =
@@ -1342,6 +1326,15 @@ export default function ManagerLoginCss() {
     // flagged papers, those are already dropped from `eligible` here.
     const eligible = await confirmPreGradingChecks(candidates);
     if (!eligible) return;
+
+    const msOk = await confirmBatchMarkScheme(String(selectedAssignment.id), {
+      grading: true,
+      provider: PROVIDER,
+    });
+    if (!msOk) {
+      toast.info("Batch marking stopped — mark scheme was not accepted");
+      return;
+    }
 
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
@@ -1764,7 +1757,7 @@ export default function ManagerLoginCss() {
         ...prev,
         [submissionId]: { ...(prev[submissionId] || {}), result: finalResult },
       }));
-      saveDraft(
+      await saveDraft(
         submissionId,
         finalResult,
         results[submissionId]?.originalAiResult || resultModal?.originalAiResult
@@ -2419,20 +2412,6 @@ export default function ManagerLoginCss() {
                         </option>
                       ))}
                     </select>
-                    {selectedAssignment?.id != null && (
-                      <button
-                        type="button"
-                        className="msv-btn-ai msv-btn-verify"
-                        onClick={() => {
-                          setMsVerifyResult(null);
-                          setMsVerifyOpen(true);
-                        }}
-                        title="Verify mark scheme against Classroom totals and sample submissions"
-                      >
-                        <FiShield size={13} />
-                        Mark Scheme Verification
-                      </button>
-                    )}
                     {/* Non-batch "Mark All" buttons removed — keep only the Gemini batch button */}
                     <button
                       className="msv-btn-ai"
@@ -3052,6 +3031,8 @@ export default function ManagerLoginCss() {
                 </div>
               </div>
 
+              <ExamBoardGuidanceFields {...examBoardGuidance} />
+
               {/* Sahahly model */}
               <div style={{ marginBottom: 16 }}>
                 <label
@@ -3291,18 +3272,6 @@ export default function ManagerLoginCss() {
             </div>
           </div>
         </div>
-      )}
-
-      {canMark && (
-      <MarkSchemeVerificationModal
-        open={msVerifyOpen}
-        onClose={() => setMsVerifyOpen(false)}
-        assignmentId={selectedAssignment?.id != null ? String(selectedAssignment.id) : null}
-        assignmentTitle={selectedAssignment?.name}
-        verifying={msVerifying}
-        result={msVerifyResult}
-        onRun={handleRunMsVerification}
-      />
       )}
 
       {/* ── PRE-GRADING PAGE-COUNT REVIEW ── */}

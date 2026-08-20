@@ -7,7 +7,7 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
-  FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3, FiShield,
+  FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3,
   FiRotateCcw, FiRotateCw
 } from "react-icons/fi";
 import { usePagination } from "../../hooks/usePagination";
@@ -24,6 +24,8 @@ import {
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
 import OrientationCheckModal from "../../components/OrientationCheckModal";
+import ExamBoardGuidanceFields from "../../components/ExamBoardGuidanceFields";
+import { useExamBoardGuidance } from "../../hooks/useExamBoardGuidance";
 import {
   appendMarkingContext,
   assertPdfBlob,
@@ -109,9 +111,7 @@ import {
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
 import { buildReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
-import MarkSchemeVerificationModal, {
-  runMarkSchemeVerification,
-} from "../../components/MarkSchemeVerificationModal";
+import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import {
   computeGradePercent,
@@ -184,7 +184,16 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
 
   const isDirectorScope = scope === "director" || scope === "backup";
   const isTeacherScope = scope === "teacher";
+  const [directorChunkSize, setDirectorChunkSize] = useState(5);
   const showMarkingTools = !isTeacherScope;
+  const appendDirectorChunkSize = (fd) => {
+    if (isDirectorScope) fd.append("chunkSize", String(directorChunkSize));
+  };
+  const examBoardGuidance = useExamBoardGuidance({
+    classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId ?? null,
+    assignmentId: selectedAssignment?._id ?? null,
+    enabled: showMarkingTools,
+  });
   const dashboardPath = isDirectorScope
     ? scope === "backup"
       ? "/backup/submissions"
@@ -309,9 +318,6 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // Guidance modal
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
-  const [msVerifyOpen,       setMsVerifyOpen]       = useState(false);
-  const [msVerifying,        setMsVerifying]        = useState(false);
-  const [msVerifyResult,     setMsVerifyResult]     = useState(null);
   const [savedPrompts,       setSavedPrompts]       = useState([]);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
 
@@ -579,7 +585,6 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [markingProvider, setMarkingProvider] = useState("gemini");
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
-  const [directorChunkSize, setDirectorChunkSize] = useState(5);
   const [refreshing, setRefreshing] = useState(false);
   const [exportingGrades, setExportingGrades] = useState(false);
   const [deletingCorrection, setDeletingCorrection] = useState({});
@@ -1470,26 +1475,6 @@ useEffect(() => {
     setPromptDropdownOpen(false);
   };
 
-  const handleRunMsVerification = async (extraInstructions = "") => {
-    if (!selectedAssignment?._id) return;
-    setMsVerifying(true);
-    setMsVerifyResult(null);
-    try {
-      const result = await runMarkSchemeVerification(
-        selectedAssignment._id,
-        extraInstructions
-      );
-      setMsVerifyResult(result);
-      if (result.status === "pass") toast.success("Mark scheme verification passed");
-      else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
-      else toast.warn("Mark scheme verification completed with warnings");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Mark scheme verification failed");
-    } finally {
-      setMsVerifying(false);
-    }
-  };
-
   const handleSetExpectedPages = async () => {
     if (!selectedAssignment?._id) return;
     const val = expectedPagesInput.trim();
@@ -1966,6 +1951,7 @@ useEffect(() => {
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
+      appendDirectorChunkSize(fd);
 
       if (provider !== "claude") {
         fd.append("geminiModel", selectedModel);
@@ -2102,6 +2088,7 @@ useEffect(() => {
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
+      appendDirectorChunkSize(fd);
       fd.append("geminiModel", selectedModel);
       fd.append("markSchemePdf", msFile);
 
@@ -2241,6 +2228,7 @@ useEffect(() => {
           subjectId: selectedAssignment.subjectId,
           ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+          ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
         },
         { timeout: 600_000 }
       );
@@ -2475,6 +2463,7 @@ useEffect(() => {
           assignmentId: selectedAssignment._id,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
+        appendDirectorChunkSize(fd);
         if (provider !== "claude") {
           fd.append("geminiModel", selectedModel);
         }
@@ -2893,6 +2882,14 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
   if (!toGrade) return;
   eligible = toGrade;
 
+  // Same gate as the old toolbar button: compare mark scheme to sample papers
+  // before uploading the batch. User can continue anyway if it fails.
+  const msOk = await confirmBatchMarkScheme(selectedAssignment._id);
+  if (!msOk) {
+    toast.info("Batch marking stopped — mark scheme was not accepted");
+    return;
+  }
+
   const guidanceValue = guidanceForForm(guidanceText);
   const assignId = selectedAssignment._id;
 
@@ -3018,6 +3015,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     subjectId:     selectedAssignment.subjectId,
     ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
     classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
+    ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
     // v2 only: per-page mark-scheme URIs, so each window references just the
     // scheme pages it needs instead of the whole document.
     ...(msPageUris ? { msPageUris } : {}),
@@ -3145,6 +3143,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       subjectId:   selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
       classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
+      ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
     });
 
     if (priorityStopRef.current) {
@@ -3308,7 +3307,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
-    const resolvedGuidance = resolveMarkingGuidanceText(guidance, assignmentPrompt.content);
+    const resolvedGuidance = examBoardGuidance.buildResolvedGuidance(
+      guidance,
+      assignmentPrompt.content
+    );
     if (markingModeModal === "criteria" && !resolvedGuidance) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
@@ -4221,22 +4223,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       </button>
                     )}
 
-                    {msInfo && selectedAssignment?._id && (
-                      <button
-                        type="button"
-                        className="msv-btn-ai msv-btn-verify"
-                        onClick={() => {
-                          setMsVerifyResult(null);
-                          setMsVerifyOpen(true);
-                        }}
-                        style={{ marginLeft: 10 }}
-                        title="Verify mark scheme against Classroom totals and sample submissions"
-                      >
-                        <FiShield size={13} />
-                        Mark Scheme Verification
-                      </button>
-                    )}
-
                     {/* Non-batch "Mark All Students" removed — keep only batch marking */}
                  {/* Return All */}
                   {!bulkMarking && (isTeacherScope || msInfo || hasGradedWork) && (
@@ -4260,7 +4246,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           value={directorChunkSize}
                           onChange={(e) => setDirectorChunkSize(Number(e.target.value))}
                           disabled={bulkMarking || batchStarting}
-                          title="Pages per chunk sent to AI per request"
+                          title="Pages per AI request (batch, single, and bulk marking)"
                           style={{ minWidth: 120 }}
                         >
                           {[0, 1, 2, 3, 5, 8, 10].map((n) => (
@@ -5076,6 +5062,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
               </div>
 
+              <ExamBoardGuidanceFields {...examBoardGuidance} />
+
               {/* Sahahly model (bulk, batch, and single mark) */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
@@ -5312,16 +5300,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           </div>
         </div>
       )}
-
-      <MarkSchemeVerificationModal
-        open={msVerifyOpen}
-        onClose={() => setMsVerifyOpen(false)}
-        assignmentId={selectedAssignment?._id}
-        assignmentTitle={selectedAssignment?.title}
-        verifying={msVerifying}
-        result={msVerifyResult}
-        onRun={handleRunMsVerification}
-      />
 
       {/* ── RESULTS MODAL ── */}
       {resultModal && (

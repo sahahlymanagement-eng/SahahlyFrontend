@@ -19,6 +19,8 @@ import {
 import Pagination from "../../components/Pagination";
 import PageCountCheckModal from "../../components/PageCountCheckModal";
 import OrientationCheckModal from "../../components/OrientationCheckModal";
+import ExamBoardGuidanceFields from "../../components/ExamBoardGuidanceFields";
+import { useExamBoardGuidance } from "../../hooks/useExamBoardGuidance";
 
 import {
   FiEye,
@@ -31,7 +33,6 @@ import {
   FiLayers,
   FiCheck,
   FiEdit3,
-  FiShield,
   FiRotateCcw,
   FiRotateCw,
 } from "react-icons/fi";
@@ -134,9 +135,7 @@ import {
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
-import MarkSchemeVerificationModal, {
-  runMarkSchemeVerification,
-} from "../../components/MarkSchemeVerificationModal";
+import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import {
   MARKING_MAX_ATTEMPTS,
@@ -230,9 +229,6 @@ export default function AssignmentSubmissionViewer() {
  
   const [guidanceModal,      setGuidanceModal]      = useState(null);
   const [guidance,           setGuidance]           = useState("");
-  const [msVerifyOpen,       setMsVerifyOpen]       = useState(false);
-  const [msVerifying,        setMsVerifying]        = useState(false);
-  const [msVerifyResult,     setMsVerifyResult]     = useState(null);
   const [savedPrompts,       setSavedPrompts]       = useState([]);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
 
@@ -490,6 +486,10 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   );
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable, pdfCount } = extra;
+  const examBoardGuidance = useExamBoardGuidance({
+    classroomId: classroomId ?? null,
+    assignmentId: assignmentId ?? null,
+  });
   const actualPdfCount = pdfCount ?? 0;
 
   // Batch polling runs on a setInterval that outlives the render it was created
@@ -1400,23 +1400,6 @@ window.open(url);
     setPromptDropdownOpen(false);
   };
 
-  const handleRunMsVerification = async (extraInstructions = "") => {
-    if (!assignmentId) return;
-    setMsVerifying(true);
-    setMsVerifyResult(null);
-    try {
-      const result = await runMarkSchemeVerification(assignmentId, extraInstructions);
-      setMsVerifyResult(result);
-      if (result.status === "pass") toast.success("Mark scheme verification passed");
-      else if (result.status === "fail") toast.error("Mark scheme verification failed — review before marking");
-      else toast.warn("Mark scheme verification completed with warnings");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Mark scheme verification failed");
-    } finally {
-      setMsVerifying(false);
-    }
-  };
-
   const handleSetExpectedPages = async () => {
     if (!assignmentId) return;
     const val = expectedPagesInput.trim();
@@ -2254,6 +2237,12 @@ window.open(url);
     if (!toGrade) return;
     eligible = toGrade;
 
+    const msOk = await confirmBatchMarkScheme(assignmentId);
+    if (!msOk) {
+      toast.info("Batch marking stopped — mark scheme was not accepted");
+      return;
+    }
+
     const guidanceValue = guidanceForForm(guidanceText);
 
     setBatchStopped(assignmentId, false);
@@ -2424,7 +2413,10 @@ window.open(url);
 
   const handleGuidanceConfirm = (provider = markingProvider) => {
     if (!guidanceModal) return;
-    const resolvedGuidance = resolveMarkingGuidanceText(guidance, assignmentPrompt.content);
+    const resolvedGuidance = examBoardGuidance.buildResolvedGuidance(
+      guidance,
+      assignmentPrompt.content
+    );
     if (markingModeModal === "criteria" && !resolvedGuidance) {
       return toast.warn("Criteria marking requires guidance to be provided");
     }
@@ -3196,22 +3188,6 @@ return (
     </button>
   )}
 
-  {msInfo && assignmentId && (
-    <button
-      type="button"
-      className="msv-btn-ai msv-btn-verify"
-      onClick={() => {
-        setMsVerifyResult(null);
-        setMsVerifyOpen(true);
-      }}
-      style={{ marginLeft: 10 }}
-      title="Verify mark scheme against Classroom totals and sample submissions"
-    >
-      <FiShield size={13} />
-      Mark Scheme Verification
-    </button>
-  )}
-
               {/* Non-batch "Mark All Students" removed — keep only batch marking */}
 
               {/* Return All */}
@@ -3946,6 +3922,8 @@ return (
                 </div>
               </div>
 
+              <ExamBoardGuidanceFields {...examBoardGuidance} />
+
                         {/* Sahahly model (bulk, batch, and single mark) */}
                         <div style={{ marginBottom: 16 }}>
                           <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
@@ -4145,18 +4123,8 @@ return (
         </div>
       )}
 
-      <MarkSchemeVerificationModal
-        open={msVerifyOpen}
-        onClose={() => setMsVerifyOpen(false)}
-        assignmentId={assignmentId}
-        assignmentTitle={assignmentTitle}
-        verifying={msVerifying}
-        result={msVerifyResult}
-        onRun={handleRunMsVerification}
-      />
-
       {/* ── RESULTS MODAL ── */}
-            {resultModal && (
+      {resultModal && (
               <div className="msv-overlay" onClick={() => setResultModal(null)}>
                 <div className="msv-results-modal" onClick={e => e.stopPropagation()}>
                   <div className="msv-modal-header">

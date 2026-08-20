@@ -101,7 +101,9 @@ export function normalizeQuestionPlacement(questions, studentPageCount = null) {
 /** Keep stacked badges (MCQ subparts on one stem) from sitting on the same line. */
 function spreadStackedMarkers(group) {
   if (!Array.isArray(group) || group.length < 2) return;
-  const MIN_GAP = 8;
+  // ~badge footprint on A4 (~52pt of ~842) plus a little air — keeps stored
+  // coords from landing two marks on the same stem before draw-time resolve.
+  const MIN_GAP = 9;
   const sorted = [...group].sort(
     (a, b) =>
       yPercentOf(a) - yPercentOf(b) ||
@@ -116,27 +118,60 @@ function spreadStackedMarkers(group) {
   }
 }
 
-/** Resolve vertical overlaps while staying close to anchor Y (PDF coords: high Y = top). */
+/**
+ * Resolve vertical overlaps while staying close to each item's anchor Y.
+ * PDF coords: higher Y = toward the top of the page.
+ *
+ * Three passes:
+ *  1. Top → bottom: push later items down when they collide with earlier ones
+ *  2. Bottom → top: push earlier items up when a lower clamp caused a pile-up
+ *  3. Top → bottom again: clear any overlaps the upward pass introduced
+ *
+ * The old single pass clamped centers back to minCenter after pushing down,
+ * which let two badges sit on the same line near the page bottom.
+ */
 export function resolveVerticalCollisions(items, { minCenter, maxCenter, gap = 4 } = {}) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
   const sorted = [...items].sort((a, b) => b.targetCenter - a.targetCenter);
-  const resolved = [];
+  const centers = sorted.map((item) => {
+    let c = Number(item.targetCenter) || 0;
+    if (maxCenter != null) c = Math.min(maxCenter, c);
+    if (minCenter != null) c = Math.max(minCenter, c);
+    return c;
+  });
 
-  for (const item of sorted) {
-    let center = item.targetCenter;
-    if (maxCenter != null) center = Math.min(maxCenter, center);
-    if (minCenter != null) center = Math.max(minCenter, center);
-
-    for (const prev of resolved) {
-      const maxAllowed =
-        prev.center - prev.height / 2 - gap - item.height / 2;
-      if (center > maxAllowed) center = maxAllowed;
+  const pushDownFrom = (startIdx) => {
+    for (let i = startIdx; i < sorted.length; i++) {
+      let c = centers[i];
+      for (let j = 0; j < i; j++) {
+        const maxAllowed =
+          centers[j] - sorted[j].height / 2 - gap - sorted[i].height / 2;
+        if (c > maxAllowed) c = maxAllowed;
+      }
+      if (minCenter != null) c = Math.max(minCenter, c);
+      centers[i] = c;
     }
+  };
 
-    if (minCenter != null) center = Math.max(minCenter, center);
-    resolved.push({ ...item, center });
-  }
+  const pushUpFrom = () => {
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      let c = centers[i];
+      for (let j = i + 1; j < sorted.length; j++) {
+        const minAllowed =
+          centers[j] + sorted[j].height / 2 + gap + sorted[i].height / 2;
+        if (c < minAllowed) c = minAllowed;
+      }
+      if (maxCenter != null) c = Math.min(maxCenter, c);
+      centers[i] = c;
+    }
+  };
 
-  return resolved;
+  pushDownFrom(0);
+  pushUpFrom();
+  pushDownFrom(0);
+
+  return sorted.map((item, i) => ({ ...item, center: centers[i] }));
 }
 
 export function paperAnchorY(q, pageHeight) {
@@ -150,8 +185,10 @@ export function columnAnchorY(q, layout) {
 }
 
 /** PDF badge layout constants (match annotatePdf.js). */
-const PREVIEW_BADGE_BLOCK_H_RATIO = 46 / 842;
+// Score box (18) + Q label above (~14) + tick/cross/MCQ letter below (~20).
+const PREVIEW_BADGE_BLOCK_H_RATIO = 52 / 842;
 const PREVIEW_PAGE_STRIP_RATIO = 28 / 842;
+const PREVIEW_BADGE_GAP = 14;
 
 /**
  * Resolve badge Y positions with the same collision logic as annotatePdf.js,
@@ -183,7 +220,7 @@ export function resolveBadgeYPercentsForPage(questionsOnPage, pageHeight = 842) 
     {
       minCenter: PAGE_BOTTOM + badgeBlockH / 2,
       maxCenter: PAGE_TOP - badgeBlockH / 2,
-      gap: 12,
+      gap: PREVIEW_BADGE_GAP,
     }
   );
 
