@@ -111,8 +111,9 @@ export default function ForgotPassword() {
 
             {sent && (
               <div className="forgot-successBox">
-                ✔ Instructions have been sent to your email.  
+                ✔ Instructions have been sent to your email.
                 Please check your inbox and follow the link.
+                Also check your spam/junk folder.
               </div>
             )}
 

@@ -1448,7 +1448,9 @@ export async function annotatePdf({
     const PAGE_BOTTOM = STRIP_H + 6;
     const PAGE_TOP = height - 8;
     const badgeH = 18;
-    const badgeBlockH = badgeH + 28;
+    // Score box + Q label above + tick/cross/MCQ letter below — keep in sync
+    // with PREVIEW_BADGE_BLOCK_H_RATIO in normalizeQuestionPlacement.js.
+    const badgeBlockH = badgeH + 34;
 
     const sortedQs = [...qs].sort(
       (a, b) => yPercentOf(a) - yPercentOf(b) || compareQuestionNumbers(a.questionNumber, b.questionNumber)
@@ -1463,7 +1465,7 @@ export async function annotatePdf({
       {
         minCenter: PAGE_BOTTOM + badgeBlockH / 2,
         maxCenter: PAGE_TOP - badgeBlockH / 2,
-        gap: 12,
+        gap: 14,
       }
     );
 
