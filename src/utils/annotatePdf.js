@@ -22,6 +22,7 @@ import {
   sanitizeQuestionsForStudentPdf,
   resolveAnnotatePdfTotalMarks,
 } from "./markingFormData";
+import { normalizeMathSymbols } from "./normalizeMathSymbols";
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const GREEN = rgb(0.04, 0.60, 0.25);
@@ -120,7 +121,7 @@ function mcqChoiceSummary(q) {
 }
 
 function san(s) {
-  return (s || "")
+  return normalizeMathSymbols(s || "")
     .replace(/[\u2019\u2018\u02BC]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
@@ -775,10 +776,12 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
 function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary, studentFacing = true }) {
   // Caller (annotatePdf) already drops inventeds / 4a- twins; keep stubs out of
-  // the student-facing QUESTION BREAKDOWN table.
+  // the student-facing QUESTION BREAKDOWN table — they get their own front box.
+  const allQuestions = questions || [];
+  const notOnPaper = allQuestions.filter((q) => isBackfilledStub(q));
   const breakdownQuestions = studentFacing
-    ? (questions || []).filter((q) => !isBackfilledStub(q))
-    : questions || [];
+    ? allQuestions.filter((q) => !isBackfilledStub(q))
+    : allQuestions;
   const unanswered = summarizeUnansweredQuestions(breakdownQuestions, {
     isBackfilledStub,
   });
@@ -923,6 +926,77 @@ const isUngraded =
   });
 
   yPos -= 14;
+
+  if (notOnPaper.length > 0) {
+    const listed = notOnPaper
+      .map((q) => String(q.questionNumber ?? "").trim())
+      .filter(Boolean)
+      .map((n) => `Q${n}`)
+      .join(", ");
+    const marksAvailable = notOnPaper.reduce(
+      (sum, q) => sum + (Number(q.maxMarks) || 0),
+      0
+    );
+    const title = studentFacing
+      ? "QUESTIONS NOT ON THIS PAPER"
+      : "QUESTIONS NOT FOUND ON THIS SCRIPT";
+    const body = studentFacing
+      ? `The following mark-scheme question${notOnPaper.length === 1 ? "" : "s"} ${notOnPaper.length === 1 ? "was" : "were"} not present on this paper and scored 0 (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}): ${listed}.`
+      : `Not present on the student script — listed here only (not stamped on the exam pages). Scored 0 / ${marksAvailable} available: ${listed}.`;
+    const bodyLines = wrap(body, reg, 7.4, CW - 28);
+    const boxH = Math.max(44, 28 + bodyLines.length * 10);
+
+    if (yPos - boxH < BD_FOOTER_Y + 20) {
+      const next = openNextReportPage(
+        pdfDoc,
+        reportPageCount,
+        reportPage,
+        sw,
+        sh,
+        M,
+        bold,
+        reg,
+        "GRADING REPORT (continued)"
+      );
+      reportPage = next.page;
+      reportPageCount = next.reportPageCount;
+      yPos = next.yPos;
+    }
+
+    reportPage.drawRectangle({
+      x: M,
+      y: yPos - boxH,
+      width: CW,
+      height: boxH,
+      color: rgb(0.94, 0.96, 1),
+      borderColor: rgb(0.35, 0.45, 0.7),
+      borderWidth: 1,
+    });
+    reportPage.drawRectangle({
+      x: M,
+      y: yPos - boxH,
+      width: 5,
+      height: boxH,
+      color: rgb(0.35, 0.45, 0.7),
+    });
+    reportPage.drawText(title, {
+      x: M + 14,
+      y: yPos - 16,
+      size: 9,
+      font: bold,
+      color: rgb(0.25, 0.35, 0.55),
+    });
+    bodyLines.forEach((line, i) => {
+      reportPage.drawText(san(line), {
+        x: M + 14,
+        y: yPos - 30 - i * 10,
+        size: 7.4,
+        font: reg,
+        color: rgb(0.25, 0.25, 0.3),
+      });
+    });
+    yPos -= boxH + 12;
+  }
 
   if (unanswered.count > 0 && unanswered.message) {
     const listed = unanswered.questionNumbers.map((n) => `Q${n}`).join(", ");
@@ -1406,9 +1480,7 @@ export async function annotatePdf({
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const studentPageCount = pdfDoc.getPageCount();
-  // Stubs with a known script page get a 0/N badge (classified misses);
-  // stubs without a page stay report-only. Genuine blanks with a real page
-  // are stamped the same way.
+  // Backfilled / not-on-script questions stay off the exam pages — report only.
   const placeableQuestions = renderQuestions.filter((q) =>
     isPlaceableScriptQuestion(q, { isBackfilledStub })
   );

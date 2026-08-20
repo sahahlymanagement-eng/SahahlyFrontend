@@ -200,16 +200,17 @@ export function isReportOnlyBlankQuestion(q, { isBackfilledStub } = {}) {
   return true;
 }
 
-/** Badge / overlay rows: real blanks with a page stay; inventory stubs with a
- * known script page are also stamped so classified misses are visible on the
- * page instead of leaving it unmarked. Stubs without a page stay report-only. */
+/** Badge / overlay rows on the student script.
+ * Inventory / backfilled stubs are NEVER stamped on the exam pages — they only
+ * appear in the grading report at the front. Genuine blanks with a real page
+ * stay placeable so unanswered work on the script can still be marked. */
 export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
   if (!q) return false;
-  const pageOk = Number(q.pageNumber) >= 1;
   const isStub =
     q._backfilled === true ||
     (typeof isBackfilledStub === "function" && isBackfilledStub(q));
-  if (isStub) return pageOk;
+  if (isStub) return false;
+  const pageOk = Number(q.pageNumber) >= 1;
   if (isBlankQuestion(q) && !pageOk) return false;
   return true;
 }

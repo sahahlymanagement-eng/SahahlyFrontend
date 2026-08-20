@@ -4,9 +4,8 @@
  * not "the student got this wrong". They exist so a teacher can award the marks
  * manually before returning the paper.
  *
- * When the inventory knows a script page, stubs ARE stamped on that page (0/N
- * badge) so classified misses are not silent. Stubs without a page stay
- * report-only.
+ * Stubs are report-only: listed at the front of the grading report, never
+ * stamped as badges on the student exam pages.
  *
  * Mirrors isBackfilledStub in SahahlyBackend/src/utils/markSchemeBackfill.js.
  */

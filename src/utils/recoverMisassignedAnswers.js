@@ -8,6 +8,7 @@ import {
   repairOrphanPartQuestionNumbers,
 } from "./markingQuestionDedupe";
 import { enrichMarkingQuestions } from "./blankQuestionFeedback";
+import { normalizeMathSymbolsInQuestions } from "./normalizeMathSymbols";
 
 function normalizePrintedLabel(raw) {
   return String(raw ?? "")
@@ -138,7 +139,8 @@ export function prepareEditingQuestions(questions) {
   const repaired = repairOrphanPartQuestionNumbers(labeled);
   const cleaned = dropUnusableInventedQuestions(repaired);
   const printedClean = clearImplausiblePrintedQuestionNumbers(cleaned);
-  const recovered = recoverMisassignedAnswers(printedClean);
+  const mathClean = normalizeMathSymbolsInQuestions(printedClean);
+  const recovered = recoverMisassignedAnswers(mathClean);
   const collapsed = dropGhostDuplicateQuestions(recovered);
   return normalizeQuestionPlacement(
     enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))

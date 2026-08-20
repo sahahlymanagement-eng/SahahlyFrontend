@@ -862,8 +862,8 @@ export function applyQuestionLabelChange(questions, { placementIndex, questionNu
 /**
  * Preview overlay list — keeps original indices for remove handlers.
  *
- * Backfilled stubs are excluded. Genuine blanks with a page stay as drag
- * handles so unanswered items can be moved on the script.
+ * Backfilled / not-on-script stubs are excluded (report-only). Genuine blanks
+ * with a page stay as drag handles so unanswered items can be moved.
  */
 export function buildPlacementQuestions(questions, pendingRemovedIndices) {
   return (questions || [])
