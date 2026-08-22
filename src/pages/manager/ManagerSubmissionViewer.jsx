@@ -91,6 +91,10 @@ import {
   resolveMarkingCost,
   sahahlyModelLabel,
 } from "../../utils/markingCost";
+import {
+  chunkSizeForGeminiModel,
+  formatChunkSizeLabel,
+} from "../../utils/markingChunkSize";
 import { canViewMoneyCostsFromStorage, maybeStripMoney } from "../../utils/moneyVisibility";
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
@@ -188,8 +192,18 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const isTeacherScope = scope === "teacher";
   const [directorChunkSize, setDirectorChunkSize] = useState(5);
   const showMarkingTools = !isTeacherScope;
-  const appendDirectorChunkSize = (fd) => {
-    if (isDirectorScope) fd.append("chunkSize", String(directorChunkSize));
+  // Only the director picks chunk size freely; backup + managers + others follow the model.
+  const canPickChunkSizeIndependently = scope === "director";
+  /** Director picks freely; everyone else locks pages/request to the model. */
+  const resolveMarkingChunkSize = useCallback(
+    (modelId) =>
+      canPickChunkSizeIndependently
+        ? directorChunkSize
+        : chunkSizeForGeminiModel(modelId),
+    [canPickChunkSizeIndependently, directorChunkSize]
+  );
+  const appendMarkingChunkSize = (fd, modelId) => {
+    fd.append("chunkSize", String(resolveMarkingChunkSize(modelId)));
   };
   const examBoardGuidance = useExamBoardGuidance({
     classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId ?? null,
@@ -1967,7 +1981,7 @@ useEffect(() => {
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
-      appendDirectorChunkSize(fd);
+      appendMarkingChunkSize(fd, selectedModel);
 
       if (provider !== "claude") {
         fd.append("geminiModel", selectedModel);
@@ -2105,7 +2119,7 @@ useEffect(() => {
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
-      appendDirectorChunkSize(fd);
+      appendMarkingChunkSize(fd, selectedModel);
       fd.append("geminiModel", selectedModel);
       fd.append("markSchemePdf", msFile);
 
@@ -2246,7 +2260,7 @@ useEffect(() => {
           subjectId: selectedAssignment.subjectId,
           ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-          ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+          chunkSize: resolveMarkingChunkSize(selectedModel),
         },
         { timeout: 600_000 }
       );
@@ -2482,7 +2496,7 @@ useEffect(() => {
           assignmentId: selectedAssignment._id,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
-        appendDirectorChunkSize(fd);
+        appendMarkingChunkSize(fd, selectedModel);
         if (provider !== "claude") {
           fd.append("geminiModel", selectedModel);
         }
@@ -2953,7 +2967,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     const res = await api.post(`${base}/mark-batch/upload`, {
       assignmentId: selectedAssignment._id,
       markingMode: mode,          // HEAD: included for zeroed detection
-      ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+      chunkSize: resolveMarkingChunkSize(selectedModel),
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
@@ -3050,7 +3064,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     subjectId:     selectedAssignment.subjectId,
     ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
     classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
-    ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+    chunkSize: resolveMarkingChunkSize(selectedModel),
     // v2 only: per-page mark-scheme URIs, so each window references just the
     // scheme pages it needs instead of the whole document.
     ...(msPageUris ? { msPageUris } : {}),
@@ -3179,7 +3193,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       subjectId:   selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
       classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-      ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+      chunkSize: resolveMarkingChunkSize(selectedModel),
     });
 
     if (priorityStopRef.current) {
@@ -4276,7 +4290,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {/* BATCH MARKING */}
                   {msInfo && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
-                      {isDirectorScope && (
+                      {canPickChunkSizeIndependently ? (
                         <select
                           className="msv-gemini-select"
                           value={directorChunkSize}
@@ -4291,6 +4305,24 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             </option>
                           ))}
                         </select>
+                      ) : (
+                        <span
+                          className="msv-gemini-select"
+                          title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
+                          style={{
+                            minWidth: 120,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            opacity: 0.85,
+                            cursor: "default",
+                          }}
+                        >
+                          {formatChunkSizeLabel(
+                            chunkSizeForGeminiModel(
+                              pickValidGeminiModel(geminiModels, geminiModel)
+                            )
+                          )}
+                        </span>
                       )}
                       <select
                         className="msv-gemini-select"

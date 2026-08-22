@@ -119,6 +119,10 @@ import {
   pickValidGeminiModel,
   sahahlyModelLabel,
 } from "../../utils/markingCost";
+import {
+  chunkSizeForGeminiModel,
+  formatChunkSizeLabel,
+} from "../../utils/markingChunkSize";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import {
   buildFreshReturnAllQueue,
@@ -1502,6 +1506,7 @@ window.open(url);
       if (markingProvider !== "claude") {
         fd.append("geminiModel", geminiModel);
       }
+      fd.append("chunkSize", String(chunkSizeForGeminiModel(geminiModel)));
       fd.append("markSchemePdf", msFile);
 
       const endpoint =
@@ -1636,6 +1641,7 @@ window.open(url);
           subjectId,
           ...(maxGrade && { totalGrade: maxGrade }),
           classroomId,
+          chunkSize: chunkSizeForGeminiModel(selectedModel),
         },
         { timeout: 600_000 }
       );
@@ -1867,6 +1873,7 @@ window.open(url);
       if (provider !== "claude") {
         fd.append("geminiModel", geminiModel);
       }
+      fd.append("chunkSize", String(chunkSizeForGeminiModel(geminiModel)));
           fd.append("markSchemePdf", msFile);
 
       const endpoint =
@@ -2315,6 +2322,7 @@ window.open(url);
       const res = await api.post(`${base}/mark-batch/upload`, {
         assignmentId,
         markingMode: mode,
+        chunkSize: chunkSizeForGeminiModel(selectedModel),
         students: eligible.map((s) => ({
           submissionId: s.submissionId,
           studentId: s.studentId,
@@ -2380,6 +2388,7 @@ window.open(url);
       subjectId,
       ...(maxGrade && { totalGrade: maxGrade }),
       classroomId,
+      chunkSize: chunkSizeForGeminiModel(selectedModel),
       // v2 only: per-page mark-scheme URIs, so each window references just the
       // scheme pages it needs instead of the whole document.
       ...(msPageUris ? { msPageUris } : {}),
@@ -3252,6 +3261,23 @@ return (
               {/* BATCH MARKING */}
               {msInfo && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
+                  <span
+                    className="msv-gemini-select"
+                    title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
+                    style={{
+                      minWidth: 120,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      opacity: 0.85,
+                      cursor: "default",
+                    }}
+                  >
+                    {formatChunkSizeLabel(
+                      chunkSizeForGeminiModel(
+                        pickValidGeminiModel(geminiModels, geminiModel)
+                      )
+                    )}
+                  </span>
                   <select
                     className="msv-gemini-select"
                     value={pickValidGeminiModel(geminiModels, geminiModel)}

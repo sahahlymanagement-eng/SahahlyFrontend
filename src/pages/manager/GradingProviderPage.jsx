@@ -37,6 +37,10 @@ import {
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
+import {
+  chunkSizeForGeminiModel,
+  formatChunkSizeLabel,
+} from "../../utils/markingChunkSize";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
@@ -1131,6 +1135,7 @@ export default function GradingProviderPage({ slug, label }) {
       appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
+    fd.append("chunkSize", String(chunkSizeForGeminiModel(selectedModel)));
 
     let endpoint = "/marking/mark";
     if (provider === "claude") endpoint = "/markingClaude/mark-claude";
@@ -1430,6 +1435,7 @@ export default function GradingProviderPage({ slug, label }) {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
+        chunkSize: chunkSizeForGeminiModel(selectedModel),
       }, { timeout: 900_000 });
       ({ msUri, succeeded, failed } = res.data || {});
     } catch (err) {
@@ -1478,6 +1484,7 @@ export default function GradingProviderPage({ slug, label }) {
           ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
           : {}),
         geminiModel: selectedModel,
+        chunkSize: chunkSizeForGeminiModel(selectedModel),
       }, { timeout: 300_000 });
       jobId = res.data?.jobId;
       firstBatch = res.data?.firstBatch;
@@ -2501,6 +2508,23 @@ export default function GradingProviderPage({ slug, label }) {
                     />
                     {canMark && (
                     <>
+                    <span
+                      className="msv-gemini-select"
+                      title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
+                      style={{
+                        minWidth: 120,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        opacity: 0.85,
+                        cursor: "default",
+                      }}
+                    >
+                      {formatChunkSizeLabel(
+                        chunkSizeForGeminiModel(
+                          pickValidGeminiModel(geminiModels, geminiModel)
+                        )
+                      )}
+                    </span>
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}

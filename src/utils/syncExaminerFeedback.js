@@ -63,19 +63,50 @@ function cleanKeywordList(list) {
 export function alignExaminerFeedbackToMarks(question, mode = "full") {
   if (!question || typeof question !== "object") return question;
 
-  const awarded = Math.max(0, Number(question.marksAwarded) || 0);
+  let awarded = Math.max(0, Number(question.marksAwarded) || 0);
   const max = Math.max(0, Number(question.maxMarks) || 0);
   const qNum = qNumOf(question);
+
+  // Blank flag + positive marks is a model contradiction. Prefer the blank
+  // flag (zero the award) — never clear answerIsBlank just to match marks.
+  let next = { ...question };
+  if (awarded > 0 && next.checklist?.answerIsBlank) {
+    awarded = 0;
+    next.marksAwarded = 0;
+    if (Array.isArray(next.markPoints)) {
+      next.markPoints = next.markPoints.map((p) => ({ ...p, awarded: false }));
+    }
+    const isMcq =
+      next.isMcq === true ||
+      String(next.questionType || "").toLowerCase() === "mcq";
+    if (isMcq) {
+      next.studentFinalAnswer = "Not attempted";
+      const student = String(next.studentAnswer || "").trim();
+      if (!student || STANDARD_BLANK_ANSWER_RE.test(student)) {
+        next.studentAnswer = "Not attempted";
+      }
+    }
+    next.checklist = {
+      ...next.checklist,
+      answerIsBlank: true,
+      studentAnswerUnderstanding: false,
+    };
+  }
+
   const lead = awardLeadForMarks(awarded, max, qNum);
   const full = max > 0 && awarded >= max;
 
-  let rest = stripAwardLead(question.reason);
+  let rest = stripAwardLead(next.reason);
   if (awarded > 0) rest = stripBlankClauses(rest);
   if (full && NEGATIVE_REST_RE.test(rest)) rest = "";
   if (mode === "full" && awarded === 0 && POSITIVE_REST_RE.test(rest)) rest = "";
+  if (awarded === 0 && next.checklist?.answerIsBlank && !rest) {
+    rest = "Answer was blank / not attempted.";
+  }
 
-  const next = {
-    ...question,
+  next = {
+    ...next,
+    marksAwarded: awarded,
     reason: joinLead(lead, rest),
   };
 
@@ -87,13 +118,6 @@ export function alignExaminerFeedbackToMarks(question, mode = "full") {
     const student = String(next.studentAnswer || "").trim();
     if (student && STANDARD_BLANK_ANSWER_RE.test(student)) {
       next.studentAnswer = "";
-    }
-    if (next.checklist?.answerIsBlank) {
-      next.checklist = {
-        ...next.checklist,
-        answerIsBlank: false,
-        studentAnswerUnderstanding: true,
-      };
     }
   }
 
