@@ -2704,14 +2704,23 @@ useEffect(() => {
     (async () => {
       try {
         const { data } = await api.get(`/marking/first-batch/status/${assignId}`);
-        const run = data?.firstBatch?.remainingRun;
-        const engine = data?.firstBatch?.engine === "v2" ? "v2" : "v1";
+        const fb = data?.firstBatch || { status: "none" };
+        const run = fb.remainingRun;
+        const engine = fb.engine === "v2" ? "v2" : "v1";
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          engine: prev?.engine || engine,
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            ...fb,
+          },
+        }));
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             engine: prev?.engine || engine,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
               remainingRun: run,
             },
@@ -2721,7 +2730,7 @@ useEffect(() => {
             ...prev,
             engine: prev?.engine || engine,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "confirming",
               remainingRun: run,
             },

@@ -1668,12 +1668,22 @@ export default function GradingProviderPage({ slug, label }) {
     (async () => {
       try {
         const { data } = await api.get(`${BASE}/first-batch/status/${numericId}`);
-        const run = data?.firstBatch?.remainingRun;
+        const fb = data?.firstBatch || { status: "none" };
+        const run = fb.remainingRun;
+        // Always hydrate firstBatch (including pending_confirmation / none after
+        // a reconcile) so the safety banner matches the server after refresh.
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            ...fb,
+          },
+        }));
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
               remainingRun: run,
             },
@@ -1682,7 +1692,7 @@ export default function GradingProviderPage({ slug, label }) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "confirming",
               remainingRun: run,
             },
@@ -1725,9 +1735,13 @@ export default function GradingProviderPage({ slug, label }) {
     }
   };
 
-  const deleteResult = (student) => {
+  const deleteResult = async (student) => {
     const id = student.submissionId;
-    deleteDraft(id);
+    try {
+      await deleteDraft(id);
+    } catch {
+      // deleteDraft already swallows; keep UI consistent either way
+    }
     setResults((prev) => {
       const n = { ...prev };
       delete n[id];
@@ -1751,10 +1765,32 @@ export default function GradingProviderPage({ slug, label }) {
     setSubmissions((prev) =>
       prev.map((s) =>
         s.submissionId === id
-          ? { ...s, localGrade: isPublished(s) ? s.localGrade : null }
+          ? {
+              ...s,
+              hasDraft: false,
+              hasMarkingResult: false,
+              localGrade: isPublished(s) ? s.localGrade : null,
+              localStatus: isPublished(s) ? s.localStatus : "pending",
+            }
           : s
       )
     );
+
+    // Refresh safety-batch gate — deleting the last safety draft unlocks re-mark.
+    if (selectedAssignment?.id != null) {
+      const assignId = batchKey(selectedAssignment.id);
+      try {
+        const { data } = await api.get(`${BASE}/first-batch/status/${selectedAssignment.id}`);
+        const fb = data?.firstBatch || { status: "none" };
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: fb,
+        }));
+      } catch {
+        // best-effort
+      }
+    }
+
     toast.success("Result cleared — you can mark again");
   };
 

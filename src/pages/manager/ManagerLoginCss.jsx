@@ -1602,12 +1602,20 @@ export default function ManagerLoginCss() {
     (async () => {
       try {
         const { data } = await api.get(`/external-grading/first-batch/status/${numericId}`);
-        const run = data?.firstBatch?.remainingRun;
+        const fb = data?.firstBatch || { status: "none" };
+        const run = fb.remainingRun;
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            ...fb,
+          },
+        }));
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
               remainingRun: run,
             },
@@ -1616,7 +1624,7 @@ export default function ManagerLoginCss() {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "confirming",
               remainingRun: run,
             },
@@ -1661,9 +1669,13 @@ export default function ManagerLoginCss() {
     }
   };
 
-  const deleteResult = (student) => {
+  const deleteResult = async (student) => {
     const id = student.submissionId;
-    deleteDraft(id);
+    try {
+      await deleteDraft(id);
+    } catch {
+      // ignore
+    }
     setResults((prev) => {
       const n = { ...prev };
       delete n[id];
@@ -1687,10 +1699,32 @@ export default function ManagerLoginCss() {
     setSubmissions((prev) =>
       prev.map((s) =>
         s.submissionId === id
-          ? { ...s, localGrade: isPublished(s) ? s.localGrade : null }
+          ? {
+              ...s,
+              hasDraft: false,
+              hasMarkingResult: false,
+              localGrade: isPublished(s) ? s.localGrade : null,
+              localStatus: isPublished(s) ? s.localStatus : "pending",
+            }
           : s
       )
     );
+
+    if (selectedAssignment?.id != null) {
+      const assignId = String(selectedAssignment.id);
+      try {
+        const { data } = await api.get(
+          `/external-grading/first-batch/status/${selectedAssignment.id}`
+        );
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: data?.firstBatch || { status: "none" },
+        }));
+      } catch {
+        // best-effort
+      }
+    }
+
     toast.success("Result cleared — you can mark again");
   };
 
