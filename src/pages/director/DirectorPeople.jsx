@@ -20,7 +20,8 @@ import {
   FiToggleRight,
   FiChevronDown,
   FiChevronRight,
-  FiX
+  FiX,
+  FiSearch,
 } from "react-icons/fi";
 
 import { PhoneInput } from "react-international-phone";
@@ -28,20 +29,44 @@ import "react-international-phone/style.css";
 
 export default function DirectorPeople() {
   const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedManagerId, setSelectedManagerId] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [managers, setManagers] = useState([]);
   const [subjectsSectionOpen, setSubjectsSectionOpen] = useState(false);
   const [classroomManagersSectionOpen, setClassroomManagersSectionOpen] = useState(false);
 
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const paginationParams = useMemo(() => {
     const params = {};
     if (roleFilter !== "all") params.role = roleFilter;
+    if (statusFilter !== "all") params.status = statusFilter;
     if (selectedManagerId) params.managerId = selectedManagerId;
+    if (search) params.search = search;
     return params;
-  }, [roleFilter, selectedManagerId]);
+  }, [roleFilter, statusFilter, selectedManagerId, search]);
 
-  const { data: people, page, totalPages, fetchPage, setData: setPeople } =
+  const { data: people, page, totalPages, total, fetchPage, setData: setPeople, loading: listLoading } =
     usePagination("/people", paginationParams, 10);
+
+  const filtersActive =
+    roleFilter !== "all" ||
+    statusFilter !== "all" ||
+    Boolean(selectedManagerId) ||
+    Boolean(searchInput.trim());
+
+  const clearFilters = () => {
+    setRoleFilter("all");
+    setStatusFilter("all");
+    setSelectedManagerId("");
+    setSearchInput("");
+    setSearch("");
+  };
   const [roles, setRoles] = useState([]);
   const [subjects, setSubjects] = useState([]);
 
@@ -79,10 +104,16 @@ export default function DirectorPeople() {
     loadManagers();
   }, []);
 
+  const peopleIdsKey = useMemo(
+    () => people.map((p) => p._id).join(","),
+    [people]
+  );
+
   useEffect(() => {
-    if (!people.length) return;
-    loadRoleSubjectsBatch(people.map((p) => p._id));
-  }, [people]);
+    if (!peopleIdsKey) return;
+    loadRoleSubjectsBatch(peopleIdsKey.split(","));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peopleIdsKey]);
 
   const loadRolesAndSubjects = async () => {
     const [rolesRes, subjectsRes] = await Promise.all([
@@ -109,7 +140,12 @@ export default function DirectorPeople() {
     setSelectedSubjects((prev) => ({
       ...prev,
       ...Object.fromEntries(
-        [...byPerson].map(([personId, list]) => [personId, list.map((a) => a.subjectId?._id)])
+        [...byPerson].map(([personId, list]) => [
+          personId,
+          list
+            .map((a) => String(a.subjectId?._id || a.subjectId || ""))
+            .filter(Boolean),
+        ])
       ),
     }));
   };
@@ -224,7 +260,7 @@ export default function DirectorPeople() {
 
       toast.success("Person updated successfully");
       closeEdit();
-      await fetchPage(1);
+      await fetchPage(page);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to update person");
     } finally {
@@ -285,7 +321,7 @@ export default function DirectorPeople() {
       setLoading(true);
       await api.patch(`/people/${person._id}/${action}`);
       toast.success(`Person ${isDisabled ? "enabled" : "disabled"} successfully`);
-      await fetchPage(1);
+      await fetchPage(page);
     } catch (err) {
       toast.error(err.response?.data?.message || `Failed to ${action} person`);
     } finally {
@@ -298,8 +334,54 @@ export default function DirectorPeople() {
   const assignRole = async (personId, roleId) => {
     try {
       setLoading(true);
-      await api.patch(`/people/${personId}/assign-role`, { roleId });
-      await fetchPage(1);
+      if (!roleId) {
+        await api.patch(`/people/${personId}/remove-role`);
+        setPeople((prev) =>
+          prev.map((p) => (p._id === personId ? { ...p, roleId: null } : p))
+        );
+        setRoleSubjectMap((prev) => {
+          const next = { ...prev };
+          delete next[personId];
+          return next;
+        });
+        setSelectedSubjects((prev) => {
+          const next = { ...prev };
+          delete next[personId];
+          return next;
+        });
+      } else {
+        await api.patch(`/people/${personId}/assign-role`, { roleId });
+        const roleObj = roles.find((r) => r._id === roleId);
+        setPeople((prev) =>
+          prev.map((p) =>
+            p._id === personId
+              ? {
+                  ...p,
+                  roleId: roleObj
+                    ? { _id: roleObj._id, name: roleObj.name, isActive: roleObj.isActive }
+                    : { _id: roleId },
+                }
+              : p
+          )
+        );
+        if (supportsSubjects(roleId)) {
+          await loadRoleSubjectsBatch([personId]);
+        } else {
+          setRoleSubjectMap((prev) => {
+            const next = { ...prev };
+            delete next[personId];
+            return next;
+          });
+          setSelectedSubjects((prev) => {
+            const next = { ...prev };
+            delete next[personId];
+            return next;
+          });
+        }
+      }
+      toast.success("Role updated");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to assign role");
     } finally {
       setLoading(false);
     }
@@ -308,12 +390,13 @@ export default function DirectorPeople() {
   // ── SUBJECTS ──────────────────────────────────────────────────────────────────
 
   const toggleSubject = (personId, subjectId) => {
+    const sid = String(subjectId);
     setSelectedSubjects((prev) => {
-      const current = prev[personId] || [];
-      if (current.includes(subjectId)) {
-        return { ...prev, [personId]: current.filter((id) => id !== subjectId) };
+      const current = (prev[personId] || []).map(String);
+      if (current.includes(sid)) {
+        return { ...prev, [personId]: current.filter((id) => id !== sid) };
       }
-      return { ...prev, [personId]: [...current, subjectId] };
+      return { ...prev, [personId]: [...current, sid] };
     });
   };
 
@@ -321,8 +404,10 @@ export default function DirectorPeople() {
     try {
       setLoading(true);
 
-      const existing = roleSubjectMap[personId]?.map((a) => a.subjectId._id) || [];
-      const selected = selectedSubjects[personId] || [];
+      const existing = (roleSubjectMap[personId] || [])
+        .map((a) => String(a.subjectId?._id || a.subjectId || ""))
+        .filter(Boolean);
+      const selected = (selectedSubjects[personId] || []).map(String);
       const toAdd = selected.filter((id) => !existing.includes(id));
       const toRemove = existing.filter((id) => !selected.includes(id));
 
@@ -335,8 +420,9 @@ export default function DirectorPeople() {
 
       toast.success("Subjects saved");
       await loadRoleSubjectsBatch([personId]);
+      // Keep the current people page — no list refetch.
     } catch (err) {
-      toast.error("Failed to save subjects");
+      toast.error(err.response?.data?.message || "Failed to save subjects");
     } finally {
       setLoading(false);
     }
@@ -358,9 +444,67 @@ export default function DirectorPeople() {
 
         {/* FILTERS */}
         <div className="peopleFilters">
+          <div className="peopleFilter peopleFilter--search">
+            <label htmlFor="people-search">Search</label>
+            <div className="peopleSearch">
+              <FiSearch aria-hidden />
+              <input
+                id="people-search"
+                type="search"
+                placeholder="Name, email, or phone…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                autoComplete="off"
+              />
+              {searchInput ? (
+                <button
+                  type="button"
+                  className="peopleSearchClear"
+                  onClick={() => {
+                    setSearchInput("");
+                    setSearch("");
+                  }}
+                  aria-label="Clear search"
+                >
+                  <FiX />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
           <div className="peopleFilter">
-            <label>Manager</label>
+            <label htmlFor="people-role-filter">Role</label>
             <select
+              id="people-role-filter"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="all">All roles</option>
+              <option value="teacher">Teacher</option>
+              <option value="manager">Manager</option>
+              <option value="assistant">Assistant</option>
+              <option value="unassigned">No role</option>
+            </select>
+          </div>
+
+          <div className="peopleFilter">
+            <label htmlFor="people-status-filter">Status</label>
+            <select
+              id="people-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="invited">Invited</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+
+          <div className="peopleFilter">
+            <label htmlFor="people-manager-filter">Manager</label>
+            <select
+              id="people-manager-filter"
               value={selectedManagerId}
               onChange={(e) => setSelectedManagerId(e.target.value)}
             >
@@ -373,15 +517,20 @@ export default function DirectorPeople() {
             </select>
           </div>
 
-          <div className="peopleFilter">
-            <label>Role</label>
-            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-              <option value="all">All</option>
-              <option value="teacher">Teacher</option>
-              <option value="manager">Manager</option>
-              <option value="assistant">Assistant</option>
-            </select>
-          </div>
+          {filtersActive && (
+            <div className="peopleFilter peopleFilter--actions">
+              <label>&nbsp;</label>
+              <button type="button" className="peopleClearFilters" onClick={clearFilters}>
+                Clear filters
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="peopleFilterMeta">
+          {listLoading
+            ? "Loading…"
+            : `${total} ${total === 1 ? "person" : "people"}${filtersActive ? " matching filters" : ""}`}
         </div>
 
         {/* ADD PERSON */}
@@ -431,6 +580,13 @@ export default function DirectorPeople() {
 
         {/* GRID */}
         <div className="peopleGrid">
+          {!listLoading && people.length === 0 && (
+            <div className="peopleEmpty">
+              {filtersActive
+                ? "No people match your search or filters."
+                : "No people yet. Add someone above."}
+            </div>
+          )}
           {people.map((p) => {
             const supports = supportsSubjects(p.roleId);
             const assignments = roleSubjectMap[p._id] || [];
@@ -529,7 +685,7 @@ export default function DirectorPeople() {
 
                     <div className="subjectsSelector">
                       {subjects.map((s) => {
-                        const checked = selected.includes(s._id);
+                        const checked = selected.map(String).includes(String(s._id));
                         return (
                           <label key={s._id} className={`subjectItem ${checked ? "active" : ""}`}>
                             <input
@@ -543,7 +699,11 @@ export default function DirectorPeople() {
                       })}
                     </div>
 
-                    <button className="saveSubjectsBtn" onClick={() => saveSubjects(p._id)}>
+                    <button
+                      type="button"
+                      className="saveSubjectsBtn"
+                      onClick={() => saveSubjects(p._id)}
+                    >
                       <FiSave /> Save Subjects
                     </button>
 
