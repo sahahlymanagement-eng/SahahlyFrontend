@@ -48,6 +48,9 @@ export function resolveTableGrade(
   }
   const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
   if (fromSaved != null) return fromSaved;
+  if (student?.aiGrade != null && student.aiGrade !== "") {
+    return Number(student.aiGrade);
+  }
   return student?.assignedGrade != null ? student.assignedGrade : null;
 }
 
@@ -80,6 +83,9 @@ export function resolveClassroomReturnGrade(
   }
   const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
   if (fromSaved != null) return fromSaved;
+  if (student?.aiGrade != null && student.aiGrade !== "") {
+    return Number(student.aiGrade);
+  }
   if (student?.assignedGrade != null) return Number(student.assignedGrade);
   if (fallbackTotal != null) return Number(fallbackTotal);
   return null;
@@ -149,5 +155,6 @@ export function studentHasEditableGrade(submissionId, student, savedResults) {
   if (resolveTableGrade(submissionId, student, {}, savedResults) != null) {
     return true;
   }
+  if (student?.aiGrade != null && student.aiGrade !== "") return true;
   return Boolean(savedResults?.[submissionId]);
 }

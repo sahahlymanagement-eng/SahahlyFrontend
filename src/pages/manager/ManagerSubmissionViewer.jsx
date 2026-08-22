@@ -2795,11 +2795,21 @@ useEffect(() => {
                   s.submissionId === student.submissionId
                     ? {
                         ...s,
-                        assignedGrade: resolveTotalMarksFromResult(result),
+                        assignedGrade: resolveTotalMarksFromResult(enrichedResult),
+                        aiGrade: resolveTotalMarksFromResult(enrichedResult),
                       }
                     : s
                 )
               );
+              setSavedResults((prev) => ({
+                ...prev,
+                [student.submissionId]: {
+                  status: "done",
+                  result: enrichedResult,
+                  aiOriginalResult: originalAiResult,
+                  totalMarks: resolveTotalMarksFromResult(enrichedResult),
+                },
+              }));
             }
 
             await api.post("/submission-files/save-results", {
@@ -2843,6 +2853,11 @@ useEffect(() => {
           );
         }
         if (isViewingThisAssignment()) {
+          try {
+            await fetchSavedResults();
+          } catch (_) {
+            /* list still has in-memory savedResults from above */
+          }
           const { fetchPage, page } = pollCtxRef.current;
           fetchPage?.(page);
         }

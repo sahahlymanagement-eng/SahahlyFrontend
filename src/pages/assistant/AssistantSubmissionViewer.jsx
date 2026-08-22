@@ -2166,11 +2166,21 @@ window.open(url);
                   s.submissionId === student.submissionId
                     ? {
                         ...s,
-                        assignedGrade: resolveTotalMarksFromResult(result),
+                        assignedGrade: resolveTotalMarksFromResult(enrichedResult),
+                        aiGrade: resolveTotalMarksFromResult(enrichedResult),
                       }
                     : s
                 )
               );
+              setSavedResults((prev) => ({
+                ...prev,
+                [student.submissionId]: {
+                  status: "done",
+                  result: enrichedResult,
+                  aiOriginalResult: originalAiResult,
+                  totalMarks: resolveTotalMarksFromResult(enrichedResult),
+                },
+              }));
             }
 
             await api.post("/submission-files/save-results", {
@@ -2214,6 +2224,11 @@ window.open(url);
           );
         }
         if (isViewingThisAssignment()) {
+          try {
+            await fetchSavedResults();
+          } catch (_) {
+            /* in-memory savedResults already updated */
+          }
           const { fetchPage: livePage, page: livePageNum } = pollCtxRef.current;
           livePage?.(livePageNum);
         }
