@@ -366,6 +366,30 @@ function buildTopicsMap(questions) {
   return Object.entries(topicsMap).sort((a, b) => b[1].totalLost - a[1].totalLost);
 }
 
+/** True only when the student actually earned full marks on graded work. */
+function shouldShowExcellentWork({ topicsLength, gradedCount, totalMarks, maxTotalMarks, notOnPaperCount }) {
+  if (topicsLength !== 0) return false;
+  if (!(gradedCount > 0) || !(totalMarks > 0)) return false;
+  if (notOnPaperCount > 0) return false;
+  if (maxTotalMarks > 0 && totalMarks < maxTotalMarks) return false;
+  return true;
+}
+
+/**
+ * Empty or heavily stubbed results must never look like a clean full-marks paper.
+ * Detected from the question list so regenerated PDFs stay honest without new fields.
+ */
+function markingIntegrityFlags(questions, notOnPaper) {
+  const graded = (questions || []).filter((q) => !isBackfilledStub(q));
+  const stubs = notOnPaper || (questions || []).filter((q) => isBackfilledStub(q));
+  const failed = graded.length === 0 && stubs.length > 0;
+  // Many stubs relative to graded rows ⇒ under-marked run (or empty match),
+  // not a clean "questions from another booklet" story for the report copy.
+  const incomplete =
+    failed || (graded.length > 0 && stubs.length >= Math.max(5, graded.length));
+  return { graded, stubs, failed, incomplete };
+}
+
 /** Widen page: student paper on the left, dedicated examiner column on the right. */
 function appendExaminerColumn(page, stripH) {
   const { width: paperW, height } = page.getSize();
@@ -839,7 +863,16 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   const pct = maxTotalMarks > 0 ? Math.round((totalMarks / maxTotalMarks) * 100) : 0;
   const sCol = scoreCol(totalMarks, maxTotalMarks);
   const sBg = scoreBg(totalMarks, maxTotalMarks);
-  const grade = pct >= 75 ? "Strong Performance" : pct >= 50 ? "Satisfactory" : "Needs Improvement";
+  const integrityEarly = markingIntegrityFlags(allQuestions, notOnPaper);
+  const grade = integrityEarly.failed
+    ? "Marking Failed — Re-mark"
+    : integrityEarly.incomplete
+      ? "Marking Incomplete"
+      : pct >= 75
+        ? "Strong Performance"
+        : pct >= 50
+          ? "Satisfactory"
+          : "Needs Improvement";
 
   summaryPage.drawRectangle({ x: 0, y: sh - 62, width: sw, height: 62, color: NAVY });
 
@@ -964,6 +997,8 @@ const isUngraded =
 
   yPos -= 14;
 
+  const integrity = integrityEarly;
+
   if (notOnPaper.length > 0) {
     const listed = notOnPaper
       .map((q) => String(q.questionNumber ?? "").trim())
@@ -974,12 +1009,21 @@ const isUngraded =
       (sum, q) => sum + (Number(q.maxMarks) || 0),
       0
     );
-    const title = studentFacing
-      ? "QUESTIONS NOT ON THIS PAPER"
-      : "QUESTIONS NOT FOUND ON THIS SCRIPT";
-    const body = studentFacing
-      ? `The following mark-scheme question${notOnPaper.length === 1 ? "" : "s"} ${notOnPaper.length === 1 ? "was" : "were"} not present on this paper and scored 0 (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}): ${listed}.`
-      : `Not present on the student script — listed here only (not stamped on the exam pages). Scored 0 / ${marksAvailable} available: ${listed}.`;
+    const incompleteList = integrity.incomplete;
+    const title = incompleteList
+      ? integrity.failed
+        ? "MARKING FAILED — QUESTIONS NOT GRADED"
+        : "MARKING INCOMPLETE — QUESTIONS NOT GRADED"
+      : studentFacing
+        ? "QUESTIONS NOT ON THIS PAPER"
+        : "QUESTIONS NOT FOUND ON THIS SCRIPT";
+    const body = incompleteList
+      ? integrity.failed
+        ? `Automated marking did not match any questions on this script. Do not treat the 0 total as a student score — re-mark required. Expected items (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}): ${listed}.`
+        : `These mark-scheme question${notOnPaper.length === 1 ? "" : "s"} ${notOnPaper.length === 1 ? "was" : "were"} not graded in this automated run (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}). Review the script or re-mark before returning: ${listed}.`
+      : studentFacing
+        ? `The following mark-scheme question${notOnPaper.length === 1 ? "" : "s"} ${notOnPaper.length === 1 ? "was" : "were"} not present on this paper and scored 0 (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}): ${listed}.`
+        : `Not present on the student script — listed here only (not stamped on the exam pages). Scored 0 / ${marksAvailable} available: ${listed}.`;
     const bodyLines = wrap(body, reg, 7.4, CW - 28);
     const boxH = Math.max(44, 28 + bodyLines.length * 10);
 
@@ -1127,8 +1171,15 @@ const isUngraded =
   yPos -= 10;
 
   const topics = buildTopicsMap(questions);
+  const showExcellent = shouldShowExcellentWork({
+    topicsLength: topics.length,
+    gradedCount: integrity.graded.length,
+    totalMarks,
+    maxTotalMarks,
+    notOnPaperCount: notOnPaper.length,
+  });
 
-  if (topics.length === 0) {
+  if (topics.length === 0 && showExcellent) {
     const boxH = 44;
     if (yPos - boxH < BD_FOOTER_Y + 20) {
       const next = openNextReportPage(
@@ -1170,7 +1221,54 @@ const isUngraded =
       color: rgb(0.25, 0.25, 0.3),
     });
     yPos -= boxH + 9;
-  } else {
+  } else if (topics.length === 0 && integrity.incomplete) {
+    const boxH = 52;
+    if (yPos - boxH < BD_FOOTER_Y + 20) {
+      const next = openNextReportPage(
+        pdfDoc,
+        reportPageCount,
+        reportPage,
+        sw,
+        sh,
+        M,
+        bold,
+        reg,
+        "GRADING REPORT (continued)"
+      );
+      reportPage = next.page;
+      reportPageCount = next.reportPageCount;
+      yPos = next.yPos;
+    }
+    reportPage.drawRectangle({
+      x: M,
+      y: yPos - boxH,
+      width: CW,
+      height: boxH,
+      color: rgb(0.99, 0.93, 0.9),
+      borderColor: rgb(0.88, 0.2, 0.2),
+      borderWidth: 0.7,
+    });
+    reportPage.drawText(integrity.failed ? "Marking failed — re-mark required" : "Marking incomplete — review required", {
+      x: M + 14,
+      y: yPos - 18,
+      size: 10,
+      font: bold,
+      color: rgb(0.75, 0.15, 0.15),
+    });
+    reportPage.drawText(
+      integrity.failed
+        ? "No questions were matched. Do not treat the score as the student's result."
+        : "Some questions were not graded in this run. Re-mark before returning.",
+      {
+        x: M + 14,
+        y: yPos - 34,
+        size: 7.4,
+        font: reg,
+        color: rgb(0.25, 0.25, 0.3),
+      }
+    );
+    yPos -= boxH + 9;
+  } else if (topics.length > 0) {
     topics.forEach(([topic, data]) => {
     const boxH = 52;
       if (yPos - boxH < BD_FOOTER_Y + 20) {

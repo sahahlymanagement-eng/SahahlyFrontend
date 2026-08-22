@@ -2075,6 +2075,7 @@ window.open(url);
         const engine = fb.engine === "v2" ? "v2" : "v1";
         patchBatchJob(assignmentId, (prev) => ({
           ...prev,
+          phase: prev?.phase || "done",
           engine: prev?.engine || engine,
           firstBatch: {
             ...(prev?.firstBatch || {}),
@@ -2084,6 +2085,7 @@ window.open(url);
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignmentId, (prev) => ({
             ...prev,
+            phase: prev?.phase || "done",
             engine: prev?.engine || engine,
             firstBatch: {
               ...(prev?.firstBatch || fb || {}),
@@ -3305,6 +3307,7 @@ return (
                     ))}
                   </select>
                   <button
+                    type="button"
                     className="msv-btn-ai"
                     onClick={() => {
                       if (batchJob?.phase === "processing") {
@@ -3326,14 +3329,17 @@ return (
                     {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                     {batchJob?.phase === "processing" && <><span className="pm-spinner" /> {isV2(batchJob.engine) ? "Batch v2 running… (tap to check)" : "Batch running… (tap to check)"}</>}
                     {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-                    {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
+                    {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
+                      <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>
+                    )}
                   </button>
 
                   {/* BATCH MARKING — gradingv2 (allow-listed while unvalidated).
                       Hidden while a job is running so the two engines cannot be
                       started against the same assignment at once. */}
-                  {canMarkV2 && (!batchJob || batchJob.phase === "done" || batchJob.phase === "error") && (
+                  {canMarkV2 && (!batchJob || !["uploading", "submitting", "processing"].includes(batchJob.phase)) && (
                     <button
+                      type="button"
                       className="msv-btn-ai"
                       onClick={() => openGuidanceModal(null, false, "batchV2")}
                       disabled={bulkMarking || batchStarting}
@@ -3345,7 +3351,7 @@ return (
                   )}
 </div>
               )}
-              {batchJob && batchJob.phase !== "done" && (
+              {batchJob && ["uploading", "submitting", "processing"].includes(batchJob.phase) && (
                 <div style={{
                   marginTop: 8, padding: "10px 14px", borderRadius: 10,
                   background: "color-mix(in srgb, var(--primary) 8%, transparent)",

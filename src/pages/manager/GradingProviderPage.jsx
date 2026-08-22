@@ -1674,6 +1674,7 @@ export default function GradingProviderPage({ slug, label }) {
         // a reconcile) so the safety banner matches the server after refresh.
         patchBatchJob(assignId, (prev) => ({
           ...prev,
+          phase: prev?.phase || "done",
           firstBatch: {
             ...(prev?.firstBatch || {}),
             ...fb,
@@ -1682,6 +1683,7 @@ export default function GradingProviderPage({ slug, label }) {
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
+            phase: prev?.phase || "done",
             firstBatch: {
               ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
@@ -2610,7 +2612,7 @@ export default function GradingProviderPage({ slug, label }) {
                       {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                       {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                       {batchJob?.phase === "error" && <>⚡ Batch failed — retry?</>}
-                      {(!batchJob || batchJob.phase === "done") && (
+                      {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
                         <>
                           <FiLayers size={13} />{" "}
                           {markingActionLabel("Mark batch", "Mark Selected (Batch)", markingSelection.selectedCount)}

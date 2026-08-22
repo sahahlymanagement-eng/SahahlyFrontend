@@ -2709,6 +2709,8 @@ useEffect(() => {
         const engine = fb.engine === "v2" ? "v2" : "v1";
         patchBatchJob(assignId, (prev) => ({
           ...prev,
+          // Don't leave phase undefined — an empty phase blanks the Mark (Batch) button.
+          phase: prev?.phase || "done",
           engine: prev?.engine || engine,
           firstBatch: {
             ...(prev?.firstBatch || {}),
@@ -2718,6 +2720,7 @@ useEffect(() => {
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
+            phase: prev?.phase || "done",
             engine: prev?.engine || engine,
             firstBatch: {
               ...(prev?.firstBatch || fb || {}),
@@ -4351,6 +4354,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         ))}
                       </select>
                         <button
+                          type="button"
                           className="msv-btn-ai"
                           onClick={() => {
                             if (batchJob?.phase === "processing") {
@@ -4373,14 +4377,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                           {batchJob?.phase === "processing" && <><span className="pm-spinner" /> {isV2(batchJob.engine) ? "Batch v2 running… (tap to check)" : "Batch running… (tap to check)"}</>}
                           {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
+                          {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
+                            <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>
+                          )}
                         </button>
 
                         {/* BATCH MARKING — gradingv2 (allow-listed while unvalidated).
                             Hidden while a job is running so the two engines cannot be
                             started against the same assignment at once. */}
-                        {canMarkV2 && (!batchJob || batchJob.phase === "done" || batchJob.phase === "error") && (
+                        {canMarkV2 && (!batchJob || !["uploading", "submitting", "processing"].includes(batchJob.phase)) && (
                           <button
+                            type="button"
                             className="msv-btn-ai"
                             onClick={() => openGuidanceModal(null, false, "batchV2")}
                             disabled={bulkMarking || batchStarting}
@@ -4422,7 +4429,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       )}
                     </div>
                     )}
-                    {batchJob && batchJob.phase !== "done" && (
+                    {batchJob && ["uploading", "submitting", "processing"].includes(batchJob.phase) && (
                       <div style={{
                         marginTop: 8, padding: "10px 14px", borderRadius: 10,
                         background: "color-mix(in srgb, var(--primary) 8%, transparent)",
