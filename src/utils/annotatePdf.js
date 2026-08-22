@@ -59,16 +59,53 @@ function overlayQText(q) {
   return `Q${overlayQuestionLabel(q)}`;
 }
 
+function markPointDetail(p) {
+  return String(
+    p?.evidence ||
+      p?.description ||
+      p?.criterion ||
+      p?.label ||
+      p?.text ||
+      ""
+  ).trim();
+}
+
+function enrichPointRowsForDisplay(q, pts) {
+  const missing = (Array.isArray(q?.missingKeywords) ? q.missingKeywords : [])
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
+  const marked = (Array.isArray(q?.markedKeywords) ? q.markedKeywords : [])
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
+  let missIdx = 0;
+  let markIdx = 0;
+  return pts.map((p) => {
+    const detail = markPointDetail(p);
+    if (detail) return { ...p, _detail: detail };
+    if (p.awarded === true) {
+      const fallback = marked[markIdx] || "";
+      markIdx += 1;
+      return { ...p, _detail: fallback };
+    }
+    const fallback = missing[missIdx] || "not met";
+    missIdx += 1;
+    return { ...p, _detail: fallback };
+  });
+}
+
 function markPointSummaries(q) {
   const pts = Array.isArray(q?.markPoints) ? q.markPoints : [];
-  return pts
-    .filter((p) => p && (String(p.code || "").trim() || String(p.evidence || "").trim()))
-    .map((p) => ({
-      awarded: p.awarded === true,
-      text: [String(p.code || "").trim(), String(p.evidence || "").trim()]
-        .filter(Boolean)
-        .join(": "),
-    }))
+  const enriched = enrichPointRowsForDisplay(q, pts.filter(Boolean));
+  return enriched
+    .map((p) => {
+      const code = String(p.code || "").trim();
+      const detail = String(p._detail || "").trim();
+      const text = [code, detail].filter(Boolean).join(": ");
+      return {
+        awarded: p.awarded === true,
+        text,
+      };
+    })
     .filter((p) => p.text);
 }
 

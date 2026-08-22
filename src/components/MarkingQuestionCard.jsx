@@ -311,7 +311,11 @@ export default function MarkingQuestionCard({
                 />
                 <span>
                   <strong>{point.code || `P${pointIndex + 1}`}</strong>
-                  {point.evidence ? `: ${point.evidence}` : ""}
+                  {point.evidence || point.description || point.criterion || point.label
+                    ? `: ${point.evidence || point.description || point.criterion || point.label}`
+                    : point.awarded
+                      ? ""
+                      : ": not met"}
                 </span>
               </label>
             ))}
