@@ -952,6 +952,13 @@
   animation: md-section-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Keep classroom-defaults selects above the briefing cards below. */
+.md-classroom-defaults {
+  position: relative;
+  z-index: 5;
+  overflow: visible;
+}
+
 /* Manual "Alert Manager"/"Alert Assistant" button — classroom assistant rows
    and external grading-partner rows both use it in the Action column. */
 .md-external-alertBtn {

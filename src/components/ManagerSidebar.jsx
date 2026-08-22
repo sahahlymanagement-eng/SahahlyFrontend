@@ -1,7 +1,7 @@
 import {
   FiHome, FiUsers, FiClipboard, FiFileText, FiBookOpen,
   FiZap, FiEye, FiBarChart2, FiUploadCloud, FiMessageSquare, FiSend, FiCpu, FiMessageCircle,
-  FiRadio
+  FiRadio, FiUser
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
 import {
@@ -21,6 +21,7 @@ const GRADING_NAV_PATHS = {
 
 const NAV_ITEMS = [
   { icon: <FiHome />,      label: "Dashboard",          path: "/manager/dashboard"      },
+  { icon: <FiUser />,      label: "Assign Assistants",  path: "/manager/assign-assistants" },
   { icon: <FiUsers />,     label: "Students Data",      path: "/manager/students"       },
   { icon: <FiClipboard />, label: "Reports",            path: "/manager/assignments"    },
   { icon: <FiEye />,       label: "Submission Viewer",  path: "/manager/submissions"    },

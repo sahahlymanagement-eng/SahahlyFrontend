@@ -61,9 +61,10 @@ const formatExportDate = (value) => {
   return date.toLocaleString();
 };
 
-export default function ManagerDashboard({ scope = "manager" }) {
+export default function ManagerDashboard({ scope = "manager", variant = "home" }) {
   const navigate = useNavigate();
   const isDirectorScope = scope === "director";
+  const isAssignAssistantsPage = variant === "assign" || isDirectorScope;
   const period = useDashboardPeriod();
 
   const [user, setUser] = useState(null);
@@ -91,6 +92,14 @@ export default function ManagerDashboard({ scope = "manager" }) {
   const [sendingExternalAlertId, setSendingExternalAlertId] = useState(null);
   const [alertingAssignmentDelegationId, setAlertingAssignmentDelegationId] = useState(null);
 
+  // Classroom-level default assistants (auto-assign on new coursework)
+  const [classroomDefaults, setClassroomDefaults] = useState({});
+  const [classroomAssistantPools, setClassroomAssistantPools] = useState({});
+  const [defaultsClassroomId, setDefaultsClassroomId] = useState("");
+  const [defaultsSelected, setDefaultsSelected] = useState([]);
+  const [defaultsSaving, setDefaultsSaving] = useState(false);
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+
   const basePath = isDirectorScope ? "/director" : "/manager";
 
   const loadBriefing = useCallback(async () => {
@@ -111,6 +120,94 @@ export default function ManagerDashboard({ scope = "manager" }) {
       setBriefingLoading(false);
     }
   }, [user?.id, isDirectorScope, period.params.from, period.params.to]);
+
+  const loadClassroomDefaults = useCallback(async () => {
+    if (!isAssignAssistantsPage || !classroomIds.length) {
+      setClassroomDefaults({});
+      return;
+    }
+    try {
+      setDefaultsLoading(true);
+      const [defaultsRes, poolsRes] = await Promise.all([
+        api.get("/classroom-assistant-defaults", {
+          params: { classroomIds: classroomIds.join(",") },
+        }),
+        api.get("/assignment-delegations/available-assistants", {
+          params: { classroomIds: classroomIds.join(",") },
+        }),
+      ]);
+      setClassroomDefaults(defaultsRes.data || {});
+      setClassroomAssistantPools(poolsRes.data || {});
+    } catch (err) {
+      console.error("Failed to load classroom assistant defaults", err);
+      toast.error(err.response?.data?.message || "Failed to load classroom defaults");
+    } finally {
+      setDefaultsLoading(false);
+    }
+  }, [isAssignAssistantsPage, classroomIds]);
+
+  useEffect(() => {
+    loadClassroomDefaults();
+  }, [loadClassroomDefaults]);
+
+  useEffect(() => {
+    if (!defaultsClassroomId) {
+      setDefaultsSelected([]);
+      return;
+    }
+    const rows = classroomDefaults[String(defaultsClassroomId)] || [];
+    setDefaultsSelected(
+      rows
+        .map((r) => ({
+          value: r.personId?._id || r.personId,
+          label: r.personId?.name || "Assistant",
+        }))
+        .filter((o) => o.value)
+    );
+  }, [defaultsClassroomId, classroomDefaults]);
+
+  const saveClassroomDefaults = async () => {
+    if (!defaultsClassroomId || !user?.id) return;
+    try {
+      setDefaultsSaving(true);
+      const res = await api.put(`/classroom-assistant-defaults/${defaultsClassroomId}`, {
+        personIds: defaultsSelected.map((o) => o.value),
+        assignedBy: user.id,
+      });
+      setClassroomDefaults((prev) => ({
+        ...prev,
+        [String(defaultsClassroomId)]: res.data?.defaults || [],
+      }));
+      toast.success(
+        defaultsSelected.length
+          ? "Classroom defaults saved — new assignments will auto-assign these assistants"
+          : "Classroom defaults cleared"
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save classroom defaults");
+    } finally {
+      setDefaultsSaving(false);
+    }
+  };
+
+  const classroomOptionsForDefaults = useMemo(
+    () =>
+      Object.entries(classroomMap)
+        .map(([id, name]) => ({ value: id, label: name || "Classroom" }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [classroomMap]
+  );
+
+  const defaultsAssistantOptions = useMemo(() => {
+    if (!defaultsClassroomId) return [];
+    const pool = classroomAssistantPools[String(defaultsClassroomId)]?.assistants || [];
+    return pool
+      .map((a) => ({
+        value: a.personId?._id || a.personId || a._id || a.id,
+        label: a.personId?.name || a.name || "Assistant",
+      }))
+      .filter((o) => o.value);
+  }, [defaultsClassroomId, classroomAssistantPools]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -602,6 +699,8 @@ const goToSubmissionViewer = (assignment) => {
         <h1>
           {isDirectorScope ? (
             <>Assign assistants, <span>org-wide</span></>
+          ) : isAssignAssistantsPage ? (
+            <>Assign assistants, <span>your classes</span></>
           ) : (
             <>Welcome back, <span>{user.name?.split(" ")[0] || "Manager"}</span></>
           )}
@@ -609,6 +708,8 @@ const goToSubmissionViewer = (assignment) => {
         <p>
           {isDirectorScope
             ? "Assign assistants to coursework across all classrooms, track deadlines, and monitor submission progress from one place."
+            : isAssignAssistantsPage
+            ? "Assign assistants to coursework in the classrooms you manage, set deadlines, and track submission progress."
             : "Assign assistants, track submission progress, and manage student reports across your classrooms — all from one place."}
         </p>
       </section>
@@ -621,6 +722,72 @@ const goToSubmissionViewer = (assignment) => {
         resetToThisMonth={period.resetToThisMonth}
         monthLabel={period.monthLabel}
       />
+
+      {isAssignAssistantsPage && (
+        <section className="md-section md-classroom-defaults" aria-label="Classroom default assistants">
+          <div className="md-section-header">
+            <div className="md-section-title-wrap">
+              <span className="md-section-dot" style={{ background: "#7A9CB3" }} />
+              <h2 className="md-section-title">Classroom defaults</h2>
+            </div>
+          </div>
+          <p className="md-cell-muted" style={{ marginBottom: 12 }}>
+            Pick one or more assistants for a classroom. Any <strong>new</strong> Google Classroom
+            assignment in that class is auto-assigned to them. You can still assign a specific
+            assignment to a specific assistant below.
+          </p>
+          <div className="md-assign-cell" style={{ flexWrap: "wrap", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ minWidth: 220, flex: 1 }}>
+              <Select
+                styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+                placeholder="Select classroom…"
+                options={classroomOptionsForDefaults}
+                value={
+                  classroomOptionsForDefaults.find((o) => o.value === defaultsClassroomId) || null
+                }
+                onChange={(opt) => setDefaultsClassroomId(opt?.value || "")}
+                isClearable
+              />
+            </div>
+            <div style={{ minWidth: 260, flex: 2 }}>
+              <Select
+                styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+                placeholder={
+                  defaultsClassroomId
+                    ? "Default assistants for this class…"
+                    : "Choose a classroom first"
+                }
+                options={defaultsAssistantOptions}
+                value={defaultsSelected}
+                onChange={(opts) => setDefaultsSelected(opts || [])}
+                isMulti
+                isDisabled={!defaultsClassroomId || defaultsLoading}
+                closeMenuOnSelect={false}
+              />
+            </div>
+            <button
+              type="button"
+              className="md-assign-btn"
+              disabled={!defaultsClassroomId || defaultsSaving || defaultsLoading}
+              onClick={saveClassroomDefaults}
+            >
+              {defaultsSaving ? "Saving…" : "Save defaults"}
+            </button>
+          </div>
+          {defaultsClassroomId && (classroomDefaults[String(defaultsClassroomId)] || []).length > 0 && (
+            <p className="md-cell-muted" style={{ marginTop: 10 }}>
+              Currently:{" "}
+              {(classroomDefaults[String(defaultsClassroomId)] || [])
+                .map((r) => r.personId?.name || "Assistant")
+                .join(", ")}
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="tch-briefing" aria-label="Monthly briefing">
         <div className="tch-briefing-head">
@@ -766,6 +933,7 @@ const goToSubmissionViewer = (assignment) => {
         })}
       </div>
 
+      {!(isAssignAssistantsPage && !isDirectorScope) && (
       <div className="tch-actions-grid">
         {!isDirectorScope && (
           <button
@@ -841,6 +1009,7 @@ const goToSubmissionViewer = (assignment) => {
           </button>
         )}
       </div>
+      )}
 
       {selectedStatus && (
         <div className="md-section">

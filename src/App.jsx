@@ -277,6 +277,10 @@ function App() {
         >
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ManagerDashboard />} />
+          <Route
+            path="assign-assistants"
+            element={<ManagerDashboard variant="assign" />}
+          />
           <Route path="delegations" element={<ManagerDelegations />} />
           <Route path="operation-metrics" element={<OperationMetrics defaultTab="metrics" />} />
           <Route path="token-usage" element={<ManagerTokenUsage />} />
