@@ -12,17 +12,20 @@ import "../utils/uint8ArrayToHexPolyfill";
 // Legacy build includes browser polyfills (e.g. Uint8Array#toHex) so PDF preview
 // works on Chromium/Edge builds that don't ship that API yet.
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
-// Bundle the worker with the app — CDN jsDelivr failures surface as a bare
-// "Network Error" in the preview pane even when the PDF bytes are local.
-import pdfWorkerSrc from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey, normalizeQuestionLabelInput } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
 
-GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+// Stable public URL (see vite-plugin-pdf-worker.js). Hashed /assets/*.mjs workers
+// fail on production ("Setting up fake worker failed: Failed to fetch…mjs").
+const base = String(import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+GlobalWorkerOptions.workerSrc = `${base}pdf.worker.min.js`;
 
 function friendlyPdfLoadError(err) {
   const raw = String(err?.message || err || "").trim();
+  if (/fake worker|pdf\.worker|dynamically imported module/i.test(raw)) {
+    return "PDF viewer failed to start. Hard-refresh the page (Ctrl+Shift+R), then Retry.";
+  }
   if (/^network error$/i.test(raw) || err?.name === "NetworkError") {
     return "Could not load this PDF preview (network blip or stale file). Click Retry.";
   }
