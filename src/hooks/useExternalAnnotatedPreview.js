@@ -168,11 +168,18 @@ export function useExternalAnnotatedPreview({
       if (requestId !== previewRequestRef.current) return;
       if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
 
-      revokePreviewUrl();
+      // Same deferred-revoke pattern as classroom preview — never kill the blob
+      // URL while pdf.js may still be reading it ("Network Error" in the pane).
+      const previousUrl = previewUrlRef.current;
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       previewUrlRef.current = url;
       setAnnotatedPreviewUrl(url);
       setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
+      if (previousUrl && previousUrl !== url) {
+        requestAnimationFrame(() => {
+          setTimeout(() => URL.revokeObjectURL(previousUrl), 0);
+        });
+      }
     } catch (err) {
       if (requestId === previewRequestRef.current) {
         const message = await getApiErrorMessage(err);
@@ -184,7 +191,7 @@ export function useExternalAnnotatedPreview({
         setPreviewLoading(false);
       }
     }
-  }, [revokePreviewUrl]);
+  }, []);
 
   const openSubmissionId = getSubmissionId(resultModal);
 
@@ -420,6 +427,15 @@ export function useExternalAnnotatedPreview({
     generatePreview(confirmedSnapshot, { lockPlacement: true });
   }, [confirmedSnapshot, generatePreview]);
 
+  const retryPreview = useCallback(() => {
+    const modal = resultModalRef.current;
+    if (!modal) return;
+    const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);
+    if (!snapshot) return;
+    if (!confirmedSnapshot) setConfirmedSnapshot(snapshot);
+    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot) });
+  }, [confirmedSnapshot, buildSnapshotFromModal, generatePreview]);
+
   const refreshPreviewFromQuestions = useCallback(
     async (questions) => {
       if (!confirmedSnapshot) return;
@@ -462,6 +478,7 @@ export function useExternalAnnotatedPreview({
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
     refreshPreviewFromQuestions,
   };

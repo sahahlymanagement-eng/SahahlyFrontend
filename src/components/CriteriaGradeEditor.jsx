@@ -120,11 +120,18 @@ export default function CriteriaGradeEditor({ criteriaGrade, maxTotal, onChange,
                   );
                   updateRow(
                     i,
-                    alignExaminerFeedbackToMarks({ ...row, marksAwarded }, "prefix")
+                    alignExaminerFeedbackToMarks({ ...row, marksAwarded }, "prefix", {
+                      preferMarksOverBlank: true,
+                    })
                   );
                 }}
                 onBlur={() =>
-                  updateRow(i, alignExaminerFeedbackToMarks(row, "full"))
+                  updateRow(
+                    i,
+                    alignExaminerFeedbackToMarks(row, "full", {
+                      preferMarksOverBlank: true,
+                    })
+                  )
                 }
                 style={{ ...rowInput, borderColor: rowColor, fontWeight: 700 }}
               />
@@ -139,7 +146,8 @@ export default function CriteriaGradeEditor({ criteriaGrade, maxTotal, onChange,
                     i,
                     alignExaminerFeedbackToMarks(
                       { ...row, maxMarks: nextMax, marksAwarded },
-                      "full"
+                      "full",
+                      { preferMarksOverBlank: true }
                     )
                   );
                 }}

@@ -553,6 +553,7 @@ export default function GradingProviderPage({ slug, label }) {
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
@@ -3930,7 +3931,28 @@ export default function GradingProviderPage({ slug, label }) {
                 {previewLoading ? (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
                 ) : previewError ? (
-                  <div style={{ color: "var(--danger)", fontSize: 13 }}>{previewError}</div>
+                  <div
+                    className="pdf-preview-status pdf-preview-status--error"
+                    style={{ flexDirection: "column", gap: 10 }}
+                  >
+                    <span style={{ textAlign: "center", maxWidth: 360 }}>{previewError}</span>
+                    <button
+                      type="button"
+                      onClick={retryPreview}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        color: "var(--text-primary)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
                 ) : annotatedPreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     {/* Without the placement/remove props the preview is a plain

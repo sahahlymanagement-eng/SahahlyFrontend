@@ -682,6 +682,7 @@ const resolvePdfSummary = (submissionId, result) =>
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
@@ -5794,8 +5795,27 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           Generating preview…
                         </div>
                       ) : previewError ? (
-                        <div style={{ color: "var(--danger)", fontSize: 13 }}>
-                          {previewError}
+                        <div
+                          className="pdf-preview-status pdf-preview-status--error"
+                          style={{ flexDirection: "column", gap: 10 }}
+                        >
+                          <span style={{ textAlign: "center", maxWidth: 360 }}>{previewError}</span>
+                          <button
+                            type="button"
+                            onClick={retryPreview}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border)",
+                              background: "var(--surface)",
+                              color: "var(--text-primary)",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Retry
+                          </button>
                         </div>
                       ) : annotatedPreviewUrl ? (
                         <div

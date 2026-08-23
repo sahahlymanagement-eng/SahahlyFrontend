@@ -13,6 +13,7 @@ import {
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { fetchStudentPdf } from "../utils/studentPdfCache";
+import { studentGoogleUserId } from "../utils/returnAllExecution";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -152,10 +153,12 @@ export function useAnnotatedResultPreview({
         // Cached per paper for the session: a preview is rebuilt several times
         // while one modal is open, and the student's file cannot change under
         // it. See utils/studentPdfCache.js.
+        const googleUserId = studentGoogleUserId(resultModalRef.current?.student);
         const studentFile = await withTimeout(
           fetchStudentPdf(api, {
             assignmentId,
             submissionId: snapshot.submissionId,
+            googleUserId: googleUserId || undefined,
           }),
           90_000,
           "Loading student PDF"
@@ -184,7 +187,10 @@ export function useAnnotatedResultPreview({
         if (requestId !== previewRequestRef.current) return;
         if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
 
-        revokePreviewUrl();
+        // Swap the object URL without clearing state first. Revoking the previous
+        // blob while AnnotatedPdfPreview is still fetching it shows up as a bare
+        // "Network Error" in the middle pane (mark scheme can still look fine).
+        const previousUrl = previewUrlRef.current;
         const url = URL.createObjectURL(
           new Blob([pdfBytes], { type: "application/pdf" })
         );
@@ -192,6 +198,11 @@ export function useAnnotatedResultPreview({
         previewSubmissionIdRef.current = snapshot.submissionId;
         setAnnotatedPreviewUrl(url);
         setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
+        if (previousUrl && previousUrl !== url) {
+          requestAnimationFrame(() => {
+            setTimeout(() => URL.revokeObjectURL(previousUrl), 0);
+          });
+        }
       } catch (err) {
         if (requestId === previewRequestRef.current) {
           const message = await getApiErrorMessage(err);
@@ -204,7 +215,7 @@ export function useAnnotatedResultPreview({
         }
       }
     },
-    [api, assignmentId, revokePreviewUrl]
+    [api, assignmentId]
   );
 
   const openSubmissionId =
@@ -473,6 +484,16 @@ export function useAnnotatedResultPreview({
     generatePreview(confirmedSnapshot, { lockPlacement: true });
   }, [confirmedSnapshot, generatePreview]);
 
+  /** Re-fetch student PDF + rebuild preview after a transient Network Error. */
+  const retryPreview = useCallback(() => {
+    const modal = resultModalRef.current;
+    if (!modal) return;
+    const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);
+    if (!snapshot) return;
+    if (!confirmedSnapshot) setConfirmedSnapshot(snapshot);
+    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot) });
+  }, [confirmedSnapshot, buildSnapshotFromModal, generatePreview]);
+
   /** After user drags a marking box — regenerate preview with locked positions. */
   const refreshPreviewFromQuestions = useCallback(
     async (questions) => {
@@ -515,6 +536,7 @@ export function useAnnotatedResultPreview({
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
     refreshPreviewFromQuestions,
   };

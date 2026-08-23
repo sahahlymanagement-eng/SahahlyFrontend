@@ -58,7 +58,9 @@ export default function MarkingQuestionCard({
     }
     onChange(
       index,
-      alignExaminerFeedbackToMarks({ ...q, marksAwarded, markPoints }, mode)
+      alignExaminerFeedbackToMarks({ ...q, marksAwarded, markPoints }, mode, {
+        preferMarksOverBlank: true,
+      })
     );
   };
 
@@ -67,7 +69,9 @@ export default function MarkingQuestionCard({
     const marksAwarded = Math.min(max, Number(q.marksAwarded) || 0);
     onChange(
       index,
-      alignExaminerFeedbackToMarks({ ...q, maxMarks: max, marksAwarded }, mode)
+      alignExaminerFeedbackToMarks({ ...q, maxMarks: max, marksAwarded }, mode, {
+        preferMarksOverBlank: true,
+      })
     );
   };
 
@@ -303,7 +307,8 @@ export default function MarkingQuestionCard({
                       index,
                       alignExaminerFeedbackToMarks(
                         { ...q, markPoints, marksAwarded },
-                        "full"
+                        "full",
+                        { preferMarksOverBlank: true }
                       )
                     );
                   }}

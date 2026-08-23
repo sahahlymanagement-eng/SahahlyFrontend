@@ -59,38 +59,59 @@ function cleanKeywordList(list) {
  * @param {"prefix"|"full"} [mode]
  *   prefix — rewrite only the Awarded/Full/No-marks lead (safe while typing).
  *   full — also drop contradictory blank/missing copy and earned/missing lines.
+ * @param {{ preferMarksOverBlank?: boolean }} [opts]
+ *   preferMarksOverBlank — teacher is editing marks/MPs in the UI: clear the
+ *   blank flag instead of forcing the score back to 0 (AI post-process still
+ *   prefers blank when the model contradicts itself).
  */
-export function alignExaminerFeedbackToMarks(question, mode = "full") {
+export function alignExaminerFeedbackToMarks(question, mode = "full", opts = {}) {
   if (!question || typeof question !== "object") return question;
 
+  const preferMarksOverBlank = opts?.preferMarksOverBlank === true;
   let awarded = Math.max(0, Number(question.marksAwarded) || 0);
   const max = Math.max(0, Number(question.maxMarks) || 0);
   const qNum = qNumOf(question);
 
-  // Blank flag + positive marks is a model contradiction. Prefer the blank
-  // flag (zero the award) — never clear answerIsBlank just to match marks.
+  // Blank flag + positive marks is a model contradiction. Default: prefer the
+  // blank flag (zero the award). Manual UI edits pass preferMarksOverBlank so
+  // teachers can raise marks / tick MPs without the score snapping back to 0.
   let next = { ...question };
   if (awarded > 0 && next.checklist?.answerIsBlank) {
-    awarded = 0;
-    next.marksAwarded = 0;
-    if (Array.isArray(next.markPoints)) {
-      next.markPoints = next.markPoints.map((p) => ({ ...p, awarded: false }));
-    }
-    const isMcq =
-      next.isMcq === true ||
-      String(next.questionType || "").toLowerCase() === "mcq";
-    if (isMcq) {
-      next.studentFinalAnswer = "Not attempted";
+    if (preferMarksOverBlank) {
+      next.checklist = {
+        ...next.checklist,
+        answerIsBlank: false,
+        studentAnswerUnderstanding: true,
+      };
       const student = String(next.studentAnswer || "").trim();
-      if (!student || STANDARD_BLANK_ANSWER_RE.test(student)) {
-        next.studentAnswer = "Not attempted";
+      if (student && STANDARD_BLANK_ANSWER_RE.test(student)) {
+        next.studentAnswer = "";
       }
+      if (String(next.studentFinalAnswer || "").trim().toLowerCase() === "not attempted") {
+        next.studentFinalAnswer = "";
+      }
+    } else {
+      awarded = 0;
+      next.marksAwarded = 0;
+      if (Array.isArray(next.markPoints)) {
+        next.markPoints = next.markPoints.map((p) => ({ ...p, awarded: false }));
+      }
+      const isMcq =
+        next.isMcq === true ||
+        String(next.questionType || "").toLowerCase() === "mcq";
+      if (isMcq) {
+        next.studentFinalAnswer = "Not attempted";
+        const student = String(next.studentAnswer || "").trim();
+        if (!student || STANDARD_BLANK_ANSWER_RE.test(student)) {
+          next.studentAnswer = "Not attempted";
+        }
+      }
+      next.checklist = {
+        ...next.checklist,
+        answerIsBlank: true,
+        studentAnswerUnderstanding: false,
+      };
     }
-    next.checklist = {
-      ...next.checklist,
-      answerIsBlank: true,
-      studentAnswerUnderstanding: false,
-    };
   }
 
   const lead = awardLeadForMarks(awarded, max, qNum);
