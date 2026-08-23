@@ -15,6 +15,29 @@ function normChecklist(c) {
   return JSON.stringify(out);
 }
 
+/** Evidence text shown on PDF Marks: lines (same field preference as annotatePdf). */
+function markPointEvidenceText(point) {
+  return String(
+    point?.evidence ||
+      point?.description ||
+      point?.criterion ||
+      point?.label ||
+      point?.text ||
+      ""
+  ).trim();
+}
+
+function normMarkPoints(points) {
+  return JSON.stringify(
+    (Array.isArray(points) ? points : []).map((p) => ({
+      code: String(p?.code ?? "").trim(),
+      awarded: p?.awarded === true,
+      marks: Number(p?.marks) || 0,
+      evidence: markPointEvidenceText(p),
+    }))
+  );
+}
+
 /**
  * NaN-safe compare: `Number(undefined) !== Number(undefined)` is true, so a
  * plain `!==` reports an edit between two rows that both simply lack the field
@@ -37,6 +60,8 @@ export function questionRowHasEdits(current, confirmed) {
     numChanged(current.maxMarks, confirmed.maxMarks) ||
     String(current.reason ?? "") !== String(confirmed.reason ?? "") ||
     String(current.studentAnswer ?? "") !== String(confirmed.studentAnswer ?? "") ||
+    String(current.studentFinalAnswer ?? "") !==
+      String(confirmed.studentFinalAnswer ?? "") ||
     String(current.correctAnswer ?? "") !== String(confirmed.correctAnswer ?? "") ||
     String(current.studyTopic ?? "") !== String(confirmed.studyTopic ?? "") ||
     String(current.mistakeAdvice ?? "") !== String(confirmed.mistakeAdvice ?? "") ||
@@ -44,7 +69,8 @@ export function questionRowHasEdits(current, confirmed) {
     numChanged(current.yPercent, confirmed.yPercent) ||
     normKeywords(current.markedKeywords) !== normKeywords(confirmed.markedKeywords) ||
     normKeywords(current.missingKeywords) !== normKeywords(confirmed.missingKeywords) ||
-    normChecklist(current.checklist) !== normChecklist(confirmed.checklist)
+    normChecklist(current.checklist) !== normChecklist(confirmed.checklist) ||
+    normMarkPoints(current.markPoints) !== normMarkPoints(confirmed.markPoints)
   );
 }
 

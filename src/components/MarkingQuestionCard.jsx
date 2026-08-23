@@ -279,51 +279,104 @@ export default function MarkingQuestionCard({
       {Array.isArray(q.markPoints) && q.markPoints.length > 0 && (
         <div style={{ marginBottom: 10 }}>
           <div style={fieldLabel}>Mark points (score follows these ticks)</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {q.markPoints.map((point, pointIndex) => (
-              <label
-                key={`${point.code || "P"}-${pointIndex}`}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={point.awarded === true}
-                  onChange={() => {
-                    const markPoints = q.markPoints.map((p, i) =>
-                      i === pointIndex ? { ...p, awarded: !p.awarded } : p
-                    );
-                    const fromPoints = markPoints.reduce(
-                      (sum, p) => sum + (p.awarded ? Number(p.marks) || 1 : 0),
-                      0
-                    );
-                    const marksAwarded = Math.min(qMax, Math.max(0, fromPoints));
-                    onChange(
-                      index,
-                      alignExaminerFeedbackToMarks(
-                        { ...q, markPoints, marksAwarded },
-                        "full",
-                        { preferMarksOverBlank: true }
-                      )
-                    );
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {q.markPoints.map((point, pointIndex) => {
+              const evidenceText = String(
+                point.evidence ||
+                  point.description ||
+                  point.criterion ||
+                  point.label ||
+                  point.text ||
+                  ""
+              );
+              return (
+                <div
+                  key={`${point.code || "P"}-${pointIndex}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    fontSize: 12,
                   }}
-                  style={{ marginTop: 2 }}
-                />
-                <span>
-                  <strong>{point.code || `P${pointIndex + 1}`}</strong>
-                  {point.evidence || point.description || point.criterion || point.label
-                    ? `: ${point.evidence || point.description || point.criterion || point.label}`
-                    : point.awarded
-                      ? ""
-                      : ": not met"}
-                </span>
-              </label>
-            ))}
+                >
+                  <input
+                    type="checkbox"
+                    checked={point.awarded === true}
+                    title="Award this mark point"
+                    onChange={() => {
+                      const markPoints = q.markPoints.map((p, i) =>
+                        i === pointIndex ? { ...p, awarded: !p.awarded } : p
+                      );
+                      const fromPoints = markPoints.reduce(
+                        (sum, p) => sum + (p.awarded ? Number(p.marks) || 1 : 0),
+                        0
+                      );
+                      const marksAwarded = Math.min(qMax, Math.max(0, fromPoints));
+                      onChange(
+                        index,
+                        alignExaminerFeedbackToMarks(
+                          { ...q, markPoints, marksAwarded },
+                          "full",
+                          { preferMarksOverBlank: true }
+                        )
+                      );
+                    }}
+                    style={{ marginTop: 8 }}
+                  />
+                  <input
+                    type="text"
+                    value={point.code || ""}
+                    title="Mark point code (e.g. B1)"
+                    placeholder={`P${pointIndex + 1}`}
+                    onChange={(e) => {
+                      const markPoints = q.markPoints.map((p, i) =>
+                        i === pointIndex ? { ...p, code: e.target.value } : p
+                      );
+                      update({ markPoints });
+                    }}
+                    style={{
+                      ...textAreaStyle,
+                      width: 56,
+                      flex: "0 0 56px",
+                      resize: "none",
+                      padding: "6px 8px",
+                      fontWeight: 700,
+                      textAlign: "center",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={evidenceText}
+                    title="Mark point text shown on the annotated PDF"
+                    placeholder="What this mark point requires / notes"
+                    onChange={(e) => {
+                      const nextEvidence = e.target.value;
+                      const markPoints = q.markPoints.map((p, i) =>
+                        i === pointIndex
+                          ? {
+                              ...p,
+                              evidence: nextEvidence,
+                              // Keep PDF text in sync with the edited field —
+                              // annotatePdf prefers evidence, then these aliases.
+                              description: undefined,
+                              criterion: undefined,
+                              label: undefined,
+                              text: undefined,
+                            }
+                          : p
+                      );
+                      update({ markPoints });
+                    }}
+                    style={{
+                      ...textAreaStyle,
+                      flex: 1,
+                      resize: "none",
+                      padding: "6px 8px",
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
