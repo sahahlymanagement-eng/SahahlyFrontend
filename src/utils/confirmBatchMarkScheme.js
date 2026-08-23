@@ -26,8 +26,13 @@ export async function confirmBatchMarkScheme(assignmentId, options = {}) {
     result = await runMarkSchemeVerification(assignmentId, "", options);
   } catch (err) {
     toast.dismiss(checking);
-    const message =
+    const raw =
       (await getApiErrorMessage(err)) || "Mark scheme check failed";
+    const message = /503|timed?\s*out|UNAVAILABLE|temporarily unavailable/i.test(
+      String(raw)
+    )
+      ? "Mark scheme check timed out or the AI service was temporarily unavailable. You can retry later, or continue batch marking without this check."
+      : raw;
     const ok = await confirmToast(
       `${message}\n\nContinue batch marking anyway?`,
       {
