@@ -114,6 +114,45 @@ export function inventoryPositionOf(question, orderIndex) {
  *        orders the whole list when there is no inventory, and orders the
  *        off-inventory tail when there is one.
  */
+/**
+ * Every inventory position a normalized label occupies, in inventory order.
+ *
+ * buildInventoryOrderIndex keeps ONE position per label (first writer wins),
+ * which is the right answer for "does the inventory know this row at all".
+ * It is the wrong answer for ordering when a mark scheme genuinely lists the
+ * same label twice (seen live: TEST 3 YASSIN lists 5b at sequenceOrder 2 AND
+ * at 22). With a single position both graded 5b rows collapse onto the first
+ * slot and render adjacent, so the second one never appears where the mark
+ * scheme actually puts it.
+ */
+function buildInventorySlotIndex(assignmentInventory) {
+  const items = Array.isArray(assignmentInventory?.includedItems)
+    ? assignmentInventory.includedItems
+    : [];
+  const slots = new Map();
+
+  items.forEach((item, i) => {
+    const declared = Number(item?.sequenceOrder);
+    const position = Number.isFinite(declared) && declared > 0 ? declared - 1 : i;
+    for (const label of inventoryItemLabels(item)) {
+      const key = normalizeQuestionKey(label);
+      if (!key) continue;
+      if (!slots.has(key)) slots.set(key, []);
+      slots.get(key).push(position);
+    }
+  });
+
+  // One slot per INVENTORY ITEM, not per label alias: inventoryItemLabels
+  // returns both the mark-scheme reference and the printed label, and when an
+  // item's two aliases normalize to the same key it would otherwise push its
+  // position twice - so a label listed twice yields [1,1,21,21] and the second
+  // graded row consumes index 1 (still position 1) instead of position 21.
+  for (const [key, list] of slots) {
+    slots.set(key, [...new Set(list)].sort((a, b) => a - b));
+  }
+  return slots;
+}
+
 export function orderQuestionsByInventory(questions, assignmentInventory, opts = {}) {
   const rows = Array.isArray(questions) ? questions : [];
   const sortFallback = typeof opts.fallbackSort === "function" ? opts.fallbackSort : (r) => r;
@@ -121,10 +160,31 @@ export function orderQuestionsByInventory(questions, assignmentInventory, opts =
   const orderIndex = buildInventoryOrderIndex(assignmentInventory);
   if (orderIndex.size === 0) return sortFallback(rows);
 
+  // Repeated labels are handed out one slot per occurrence, in the order the
+  // rows arrive, so the second graded "5b" lands on the second "5b" slot
+  // instead of doubling up on the first. Falls back to the shared-position
+  // lookup (parent/child, printed number) for anything with no exact match.
+  const slots = buildInventorySlotIndex(assignmentInventory);
+  const used = new Map();
+
+  const positionFor = (q) => {
+    for (const candidate of [q?.questionNumber, q?.msQuestionNumber, q?.printedQuestionNumber]) {
+      const key = normalizeQuestionKey(candidate);
+      if (!key || !slots.has(key)) continue;
+      const list = slots.get(key);
+      const nth = used.get(key) || 0;
+      used.set(key, nth + 1);
+      // More graded rows than the mark scheme has slots: the extras stay on
+      // the last one rather than being pushed off the end of the list.
+      return list[Math.min(nth, list.length - 1)];
+    }
+    return inventoryPositionOf(q, orderIndex);
+  };
+
   const known = [];
   const unknown = [];
   for (const q of rows) {
-    const position = inventoryPositionOf(q, orderIndex);
+    const position = positionFor(q);
     if (position === null) unknown.push(q);
     else known.push({ q, position });
   }
@@ -136,7 +196,6 @@ export function orderQuestionsByInventory(questions, assignmentInventory, opts =
 
   return [...known.map((entry) => entry.q), ...sortFallback(unknown)];
 }
-
 /** Normalized labels the pairing pass could not find on the question paper. */
 export function buildMarkSchemeOnlyKeys(prunedQuestions) {
   const keys = new Set();

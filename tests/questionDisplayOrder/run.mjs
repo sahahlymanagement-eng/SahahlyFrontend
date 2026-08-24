@@ -213,5 +213,94 @@ test("non-array / null input degrades instead of throwing", () => {
   assert.strictEqual(buildInventoryOrderIndex(null).size, 0);
 });
 
+section("a label the mark scheme lists twice gets two slots (live: TEST 3 YASSIN lists 5b at seq 2 and 22)");
+
+test("REGRESSION: the second graded 5b lands on the second 5b slot, not beside the first", () => {
+  // Exactly the live inventory shape: 5b appears at sequenceOrder 2 and again
+  // at 22. With one position per label both rows collapsed onto slot 2 and
+  // rendered adjacent (observed in the browser as 5a, 5b, 5b, 5c...), so the
+  // mark scheme's own ordering was not reproduced.
+  const inventory = {
+    includedItems: [
+      item("5a", 1),
+      item("5b", 2),
+      item("5c", 3),
+      item("5a(ii)", 21),
+      item("5b", 22),
+      item("6a", 23),
+    ],
+  };
+  const graded = [row("5a"), row("5b"), row("5b"), row("5c"), row("5a(ii)"), row("6a")];
+  const out = orderQuestionsByInventory(graded, inventory, { fallbackSort: byPlacement });
+  assert.deepStrictEqual(labels(out), ["5a", "5b", "5c", "5a(ii)", "5b", "6a"]);
+});
+
+test("occurrences are handed out in arrival order, first row to the first slot", () => {
+  const inventory = { includedItems: [item("2", 1), item("7", 2), item("2", 3)] };
+  const first = row("2", { tag: "first" });
+  const second = row("2", { tag: "second" });
+  const out = orderQuestionsByInventory([first, second, row("7")], inventory);
+  assert.deepStrictEqual(labels(out), ["2", "7", "2"]);
+  assert.strictEqual(out[0].tag, "first", "the first 2 row keeps the first 2 slot");
+  assert.strictEqual(out[2].tag, "second");
+});
+
+test("more graded rows than slots: the extras stay on the last slot, none are dropped", () => {
+  const inventory = { includedItems: [item("1", 1), item("9", 2)] };
+  const out = orderQuestionsByInventory(
+    [row("1", { tag: "a" }), row("1", { tag: "b" }), row("1", { tag: "c" }), row("9")],
+    inventory
+  );
+  assert.strictEqual(out.length, 4, "nothing may be dropped");
+  assert.deepStrictEqual(labels(out), ["1", "1", "1", "9"]);
+});
+
+test("a single-occurrence label is unaffected by slot consumption", () => {
+  const inventory = { includedItems: [item("3", 1), item("1", 2), item("2", 3)] };
+  const out = orderQuestionsByInventory([row("1"), row("2"), row("3")], inventory);
+  assert.deepStrictEqual(labels(out), ["3", "1", "2"]);
+});
+
+test("duplicate labels still resolve when the graded row uses different punctuation", () => {
+  const inventory = { includedItems: [item("5(b)", 1), item("9", 2), item("5b", 3)] };
+  const out = orderQuestionsByInventory([row("5b"), row("5(b)"), row("9")], inventory);
+  assert.deepStrictEqual(labels(out), ["5b", "9", "5(b)"]);
+});
+
+test("slot consumption never promotes an off-inventory row out of the tail", () => {
+  const inventory = { includedItems: [item("1", 1), item("1", 2)] };
+  const out = orderQuestionsByInventory(
+    [row("99"), row("1"), row("1")],
+    inventory,
+    { fallbackSort: byPlacement }
+  );
+  assert.deepStrictEqual(labels(out), ["1", "1", "99"]);
+});
+
+test("REGRESSION: an item whose printed label matches its msReference still yields ONE slot", () => {
+  // Live data carries printedQuestion/printedPart as well as msReference, and
+  // inventoryItemLabels returns both. When the two aliases normalize to the
+  // same key the item pushed its position twice, so a twice-listed label gave
+  // [1,1,21,21] and the second graded row consumed index 1 - landing back on
+  // position 1. The unit fixtures set msReference only, so this only showed up
+  // in the browser: the two 5b rows stayed adjacent after the "fix".
+  const inventory = {
+    includedItems: [
+      { msReference: "5a", printedQuestion: "5", printedPart: "a", sequenceOrder: 1, maxMarks: 2 },
+      { msReference: "5b", printedQuestion: "5", printedPart: "b", sequenceOrder: 2, maxMarks: 3 },
+      { msReference: "5c", printedQuestion: "5", printedPart: "c", sequenceOrder: 3, maxMarks: 2 },
+      { msReference: "5b", printedQuestion: "5", printedPart: "b", sequenceOrder: 4, maxMarks: 4 },
+      { msReference: "6a", printedQuestion: "6", printedPart: "a", sequenceOrder: 5, maxMarks: 2 },
+    ],
+  };
+  const graded = [row("5a"), row("5b"), row("5b"), row("5c"), row("6a")];
+  const out = orderQuestionsByInventory(graded, inventory, { fallbackSort: byPlacement });
+  assert.deepStrictEqual(
+    labels(out),
+    ["5a", "5b", "5c", "5b", "6a"],
+    "the second 5b must take the second 5b slot even when printed aliases duplicate it"
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
