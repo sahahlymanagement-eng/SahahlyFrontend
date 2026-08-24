@@ -174,7 +174,8 @@ export default function GradingProviderPage({ slug, label }) {
   const { delegations, delegationsLoaded } = useGradingDelegations();
 
   // Marking itself is manager01's job (see gradingAccess), or that of someone
-  // the director delegated this partner to AS A MANAGER. Everyone else reviews
+  // the director delegated this partner to AS A MANAGER — or a director/admin
+  // opening the partner tab from the director portal. Everyone else reviews
   // what was produced: open the results modal, edit it, publish it. Every
   // control that would start or undo a marking run hangs off this flag.
   const canMark = canRunGradingMarking(slug, delegations);
@@ -195,6 +196,24 @@ export default function GradingProviderPage({ slug, label }) {
       return null;
     }
   });
+
+  const roleName = useMemo(() => {
+    const raw =
+      user?.roleName ?? user?.roleId?.name ?? user?.role?.name ?? user?.role ?? "";
+    return String(raw).trim().toLowerCase();
+  }, [user]);
+
+  // Same free chunk-size picker as the director classroom Submission Viewer.
+  const canPickChunkSizeIndependently =
+    roleName === "director" || roleName === "admin";
+  const [directorChunkSize, setDirectorChunkSize] = useState(5);
+  const resolveMarkingChunkSize = useCallback(
+    (modelId) =>
+      canPickChunkSizeIndependently
+        ? directorChunkSize
+        : chunkSizeForGeminiModel(modelId),
+    [canPickChunkSizeIndependently, directorChunkSize]
+  );
 
   // ── submissions list ──
   const [submissions, setSubmissions] = useState([]);
@@ -1136,7 +1155,7 @@ export default function GradingProviderPage({ slug, label }) {
       appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
-    fd.append("chunkSize", String(chunkSizeForGeminiModel(selectedModel)));
+    fd.append("chunkSize", String(resolveMarkingChunkSize(selectedModel)));
 
     let endpoint = "/marking/mark";
     if (provider === "claude") endpoint = "/markingClaude/mark-claude";
@@ -1436,7 +1455,7 @@ export default function GradingProviderPage({ slug, label }) {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
-        chunkSize: chunkSizeForGeminiModel(selectedModel),
+        chunkSize: resolveMarkingChunkSize(selectedModel),
       }, { timeout: 900_000 });
       ({ msUri, succeeded, failed } = res.data || {});
     } catch (err) {
@@ -1485,7 +1504,7 @@ export default function GradingProviderPage({ slug, label }) {
           ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
           : {}),
         geminiModel: selectedModel,
-        chunkSize: chunkSizeForGeminiModel(selectedModel),
+        chunkSize: resolveMarkingChunkSize(selectedModel),
       }, { timeout: 300_000 });
       jobId = res.data?.jobId;
       firstBatch = res.data?.firstBatch;
@@ -2547,6 +2566,22 @@ export default function GradingProviderPage({ slug, label }) {
                     />
                     {canMark && (
                     <>
+                    {canPickChunkSizeIndependently ? (
+                      <select
+                        className="msv-gemini-select"
+                        value={directorChunkSize}
+                        onChange={(e) => setDirectorChunkSize(Number(e.target.value))}
+                        disabled={bulkMarking || priorityBulkRunning}
+                        title="Pages per AI request (batch, single, and bulk marking)"
+                        style={{ minWidth: 120 }}
+                      >
+                        {[0, 1, 2, 3, 5, 8, 10].map((n) => (
+                          <option key={n} value={n}>
+                            {n === 0 ? "Full PDF (1 request)" : `${n} page${n !== 1 ? "s" : ""} / request`}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
                     <span
                       className="msv-gemini-select"
                       title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
@@ -2564,6 +2599,7 @@ export default function GradingProviderPage({ slug, label }) {
                         )
                       )}
                     </span>
+                    )}
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
