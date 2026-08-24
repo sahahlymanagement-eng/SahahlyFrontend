@@ -171,10 +171,15 @@ export function MarkingCompletenessNotice({ result, questionCount }) {
       ` Re-mark or finish every question before publishing. (${questionCount} question rows total)`;
   } else if (added) {
     body = `${added} question${added === 1 ? "" : "s"} were not detected by AI and were added as blank rows — please review and adjust marks manually. (${questionCount} question rows total)`;
-  } else {
+  } else if (suppressed) {
     body =
       "Some mark-scheme items were treated as another booklet and not added as zeros. Confirm this paper was fully marked before publishing.";
   }
+  // No trailing else: widening the early return above to let an off-inventory-only
+  // paper through means this chain can now be reached with none of main`s
+  // conditions true. Falling into the suppressed message there would tell the
+  // reviewer mark-scheme items were held back for another booklet, which is a
+  // different situation entirely - the off-inventory block below says the real one.
 
   return (
     <div
@@ -189,7 +194,7 @@ export function MarkingCompletenessNotice({ result, questionCount }) {
         color,
       }}
     >
-      {body}
+      {body || null}
       {offInventoryCount > 0 && (
         <div style={{ marginTop: 6 }}>
           {offInventoryCount} question{offInventoryCount === 1 ? "" : "s"} graded (
