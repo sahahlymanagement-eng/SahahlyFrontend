@@ -256,6 +256,57 @@ export default function MarkingQuestionCard({
         })}
       </div>
 
+      {/*
+        Scope flags from utils/questionDisplayOrder.js. These answer two
+        questions a reviewer cannot otherwise tell apart from a bare 0/N row:
+        did the student not answer it, or was it never really asked?
+      */}
+      {q._scopeFlags?.notAnswered && (
+        <div style={{
+            fontSize: 11,
+            color: "var(--warning)",
+            marginBottom: 8,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
+            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+          }}>
+          {q._scopeFlags.notDetected
+            ? "Not found on the script - this question was not detected during automated marking. Check the paper and award marks manually if the student did answer it."
+            : "Not answered - the student left this question blank."}
+        </div>
+      )}
+
+      {q._scopeFlags?.markSchemeOnly && (
+        <div style={{
+            fontSize: 11,
+            color: "var(--warning)",
+            marginBottom: 8,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
+            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+          }}>
+          In the mark scheme but not found on the question paper - this question
+          may not have been asked. Verify before counting it against the student.
+        </div>
+      )}
+
+      {q._scopeFlags?.offInventory && (
+        <div style={{
+            fontSize: 11,
+            color: "var(--warning)",
+            marginBottom: 8,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
+            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+          }}>
+          Not in the assignment question list - graded anyway, and its marks are
+          counted in the total. Confirm it belongs to this assignment.
+        </div>
+      )}
+
       {q.needsReview === true && (
         <div
           style={{
@@ -269,6 +320,33 @@ export default function MarkingQuestionCard({
           }}
         >
           Flagged for review — a critical digit, sign, or choice could not be read reliably
+        </div>
+      )}
+
+      {/*
+        REGRESSION: markingGroundingCheck.js has computed these flags on every
+        marked paper all along (see groundingFlags / groundingReviewCount in
+        markingGrades.js), but nothing anywhere in the frontend ever rendered
+        them — a suspected mark-scheme-copy answer had no visible signal to
+        the human reviewing the paper. Mirrors the needsReview badge above.
+      */}
+      {Array.isArray(q.groundingFlags) && q.groundingFlags.length > 0 && (
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--warning)",
+            marginBottom: 8,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
+            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+          }}
+        >
+          {q.groundingFlags.map((flag, flagIndex) => (
+            <div key={flag.code || flagIndex}>
+              ⚠ {flag.detail || "This answer may not be grounded in the student's own script — verify against the scan."}
+            </div>
+          ))}
         </div>
       )}
 

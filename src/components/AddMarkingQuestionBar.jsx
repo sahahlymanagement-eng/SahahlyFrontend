@@ -132,9 +132,20 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
 export function MarkingCompletenessNotice({ result, questionCount }) {
   const info = result?.markingCompleteness;
   const backfilled = (result?.questions || []).filter(isBackfilledStub).length;
-  if (!info?.backfilledCount && !backfilled) return null;
-
   const added = info?.backfilledCount ?? backfilled;
+
+  // REGRESSION: gradingv2's own advisory escape hatch (postProcess.js —
+  // questions graded but absent from the assignment inventory, kept and
+  // counted toward the total rather than suppressed, since the inventory
+  // itself can be incomplete) computed this correctly all along but nothing
+  // in the frontend ever rendered it — "excluded, optional or unrelated
+  // questions could be included in the total" had no visible signal for a
+  // reviewer to catch it.
+  const offInventoryCount = result?.gradingV2Dedup?.offInventoryCount || 0;
+  const offInventoryQuestions = result?.gradingV2Dedup?.offInventoryQuestions || [];
+
+  if (!added && !offInventoryCount) return null;
+
   return (
     <div
       style={{
@@ -148,8 +159,20 @@ export function MarkingCompletenessNotice({ result, questionCount }) {
         color: "#fcd34d",
       }}
     >
-      {added} question{added === 1 ? "" : "s"} were not detected by AI and were added as blank rows —
-      please review and adjust marks manually. ({questionCount} question rows total)
+      {added > 0 && (
+        <div>
+          {added} question{added === 1 ? "" : "s"} were not detected by AI and were added as blank rows —
+          please review and adjust marks manually. ({questionCount} question rows total)
+        </div>
+      )}
+      {offInventoryCount > 0 && (
+        <div style={{ marginTop: added > 0 ? 6 : 0 }}>
+          {offInventoryCount} question{offInventoryCount === 1 ? "" : "s"} graded (
+          {offInventoryQuestions.join(", ")}) are not in the assignment's known question list —
+          verify they're actually part of this assignment before confirming; their marks are
+          currently counted toward the total.
+        </div>
+      )}
     </div>
   );
 }
