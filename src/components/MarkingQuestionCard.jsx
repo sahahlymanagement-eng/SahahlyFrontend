@@ -333,7 +333,7 @@ export default function MarkingQuestionCard({
         through this same badge on purpose: one visual language for "this needs
         a second look", rather than a new badge style per integrity check.
       */}
-      {(q.groundingFlags?.length > 0 || q.coverageFlags?.length > 0) && (
+      {(q.groundingFlags?.length > 0 || q.coverageFlags?.length > 0 || q.ruleFlags?.length > 0) && (
         <div
           style={{
             fontSize: 11,
@@ -345,7 +345,7 @@ export default function MarkingQuestionCard({
             background: "color-mix(in srgb, var(--warning) 10%, transparent)",
           }}
         >
-          {[...(q.groundingFlags || []), ...(q.coverageFlags || [])].map((flag, flagIndex) => (
+          {[...(q.groundingFlags || []), ...(q.coverageFlags || []), ...(q.ruleFlags || [])].map((flag, flagIndex) => (
             <div key={`${flag.code || "FLAG"}-${flagIndex}`}>
               ⚠ {flag.detail || "This answer may not be grounded in the student's own script — verify against the scan."}
             </div>
