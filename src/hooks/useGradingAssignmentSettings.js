@@ -33,14 +33,24 @@ const EMPTY = {
   board: null,
   paperCode: null,
   paperNumber: null,
+  inventoryMaxMarks: null,
+  inventoryItemCount: 0,
 };
 
-/** Every field the endpoint round-trips, so read and save stay in step. */
-const FIELDS = Object.keys(EMPTY);
+/** Editable fields the PUT endpoint accepts (inventory* are read-only from the server). */
+const EDITABLE_FIELDS = ["expectedPages", "maxGrade", "board", "paperCode", "paperNumber"];
 
-/** Pick the known fields out of a response, defaulting each to null. */
+/** Every field the GET endpoint may return. */
+const FIELDS = [...EDITABLE_FIELDS, "inventoryMaxMarks", "inventoryItemCount"];
+
+/** Pick the known fields out of a response, defaulting each to null / 0. */
 function readSettings(data) {
-  return Object.fromEntries(FIELDS.map((f) => [f, data?.[f] ?? null]));
+  return Object.fromEntries(
+    FIELDS.map((f) => [
+      f,
+      data?.[f] ?? (f === "inventoryItemCount" ? 0 : null),
+    ])
+  );
 }
 
 /**
@@ -94,7 +104,19 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
       setSaving(true);
       try {
         const { data } = await api.put(gradingSettingsPath(provider, assignmentId), patch);
-        setByAssignment((prev) => ({ ...prev, [assignmentId]: readSettings(data) }));
+        setByAssignment((prev) => {
+          const next = readSettings(data);
+          const prevRow = prev[assignmentId] || EMPTY;
+          return {
+            ...prev,
+            [assignmentId]: {
+              ...next,
+              // PUT does not re-emit inventory fields — keep the last GET values.
+              inventoryMaxMarks: next.inventoryMaxMarks ?? prevRow.inventoryMaxMarks,
+              inventoryItemCount: next.inventoryItemCount || prevRow.inventoryItemCount,
+            },
+          };
+        });
         toast.success("Assignment settings saved");
         return true;
       } catch (err) {

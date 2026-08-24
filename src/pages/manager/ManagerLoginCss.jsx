@@ -36,6 +36,8 @@ import {
   prepareEditingQuestions,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { resolvePartnerAssignmentMax } from "../../utils/partnerExamTotal";
+import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
 import {
   chunkSizeForGeminiModel,
@@ -339,8 +341,11 @@ export default function ManagerLoginCss() {
   // A configured maxGrade outranks the partner's own assignment total — it is
   // what the backend clamps to, so the UI must agree.
   const effectiveMaxTotal = resolveDisplayMaxTotal({
-    assignmentMaxPoints:
-      assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+    assignmentMaxPoints: resolvePartnerAssignmentMax({
+      maxGrade: assignmentSettings.settings.maxGrade,
+      inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+      partnerGrade: selectedAssignment?.grade,
+    }),
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -1415,9 +1420,14 @@ export default function ManagerLoginCss() {
         guidance: guidanceForForm(guidanceText),
         ...examBoardGuidance.getExamBoardFields(),
         // A configured maxGrade wins over the partner's own assignment total.
-        ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
-          ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
-          : {}),
+        ...((() => {
+          const total = resolvePartnerAssignmentMax({
+            maxGrade: assignmentSettings.settings.maxGrade,
+            inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+            partnerGrade: selectedAssignment.grade,
+          });
+          return total != null ? { totalGrade: total } : {};
+        })()),
         geminiModel: selectedModel,
         chunkSize: chunkSizeForGeminiModel(selectedModel),
       }, { timeout: 300_000 });
@@ -1895,6 +1905,19 @@ export default function ManagerLoginCss() {
     }
     const submissionId = resultModal.submissionId;
 
+    const integrityGate = getMarkingIntegrityPublishGate(resultModal.result);
+    if (integrityGate?.level === "block") {
+      toast.error(integrityGate.message);
+      return;
+    }
+    if (integrityGate?.level === "warn") {
+      const okIncomplete = await confirmToast(integrityGate.message, {
+        title: integrityGate.title,
+        confirmLabel: "Publish anyway",
+      });
+      if (!okIncomplete) return;
+    }
+
     if (isPublishedStatus(resultModal.student?.localStatus)) {
       const ok = await confirmToast("This submission was already published. Re-upload and overwrite?", {
         title: "Re-upload to LoginCSS",
@@ -2019,7 +2042,11 @@ export default function ManagerLoginCss() {
       base: "/external-grading",
       queue: queued,
       assignmentMaxPoints:
-        assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+        resolvePartnerAssignmentMax({
+          maxGrade: assignmentSettings.settings.maxGrade,
+          inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+          partnerGrade: selectedAssignment?.grade,
+        }),
       getStudentFile,
       // A run over a whole assignment would otherwise leave every downloaded
       // submission PDF sitting in the cache for the rest of the session.

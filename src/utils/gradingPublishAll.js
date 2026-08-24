@@ -27,6 +27,7 @@ import {
   resolveTotalMarksFromResult,
   resolveDisplayMaxTotal,
 } from "./markingFormData";
+import { getMarkingIntegrityPublishGate } from "./markingIntegrityPublish";
 
 /**
  * The publish queue for an assignment: [{ submissionId, name, submittedAt }].
@@ -102,6 +103,15 @@ export async function runGradingPublishAll({
       const result = data?.draftResult;
       if (!result) {
         throw new Error("No saved marking result to publish");
+      }
+
+      const integrityGate = getMarkingIntegrityPublishGate(result);
+      if (integrityGate) {
+        throw new Error(
+          integrityGate.level === "block"
+            ? integrityGate.message
+            : `Skipped — ${integrityGate.title}. Open the paper, re-mark or finish questions, then publish singly.`
+        );
       }
 
       const questions = result.questions || [];

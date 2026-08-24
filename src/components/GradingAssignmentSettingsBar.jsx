@@ -93,6 +93,29 @@ export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
               (partner says this assignment is out of {partnerGrade})
             </span>
           )}
+          {settings.inventoryMaxMarks != null && (
+            <span
+              style={{
+                fontSize: 11,
+                color:
+                  partnerGrade != null &&
+                  Math.abs(Number(partnerGrade) - Number(settings.inventoryMaxMarks)) > 3
+                    ? "#fbbf24"
+                    : "var(--muted)",
+              }}
+              title="Sum of marks on the stored mark-scheme inventory"
+            >
+              (mark scheme inventory: {settings.inventoryMaxMarks}
+              {settings.inventoryItemCount
+                ? ` across ${settings.inventoryItemCount} items`
+                : ""}
+              {partnerGrade != null &&
+              Math.abs(Number(partnerGrade) - Number(settings.inventoryMaxMarks)) > 3
+                ? " — set Max grade if the partner total looks wrong"
+                : ""}
+              )
+            </span>
+          )}
         </>
       ) : (
         <>

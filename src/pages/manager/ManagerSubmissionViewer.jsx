@@ -82,6 +82,7 @@ import AddMarkingQuestionBar, {
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import QuestionNumberBadge from "../../components/QuestionNumberBadge";
+import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import {
   formatCostPair,
   geminiModelLabel,
@@ -3703,6 +3704,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     if (hasPendingEdits) {
       toast.warn("Save & regenerate PDF first so the returned PDF matches the preview");
       return;
+    }
+
+    const integrityGate = getMarkingIntegrityPublishGate(resultModal.result);
+    if (integrityGate?.level === "block") {
+      toast.error(integrityGate.message);
+      return;
+    }
+    if (integrityGate?.level === "warn") {
+      const okIncomplete = await confirmToast(integrityGate.message, {
+        title: integrityGate.title,
+        confirmLabel: "Return anyway",
+      });
+      if (!okIncomplete) return;
     }
 
     const confirmed = await confirmReturnSingle(resultModal.student?.name);

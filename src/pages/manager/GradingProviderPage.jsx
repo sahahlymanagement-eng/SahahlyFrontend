@@ -36,6 +36,8 @@ import {
   prepareEditingQuestions,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { resolvePartnerAssignmentMax } from "../../utils/partnerExamTotal";
+import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
 import {
   chunkSizeForGeminiModel,
@@ -398,11 +400,14 @@ export default function GradingProviderPage({ slug, label }) {
 
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
 
-  // A configured maxGrade outranks the partner's own assignment total — it is
-  // what the backend clamps to, so the UI must agree.
+  // Local maxGrade → MS inventory when partner grade is wrong → partner grade.
+  // Classroom is unaffected (uses Google Classroom maxPoints).
   const effectiveMaxTotal = resolveDisplayMaxTotal({
-    assignmentMaxPoints:
-      assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+    assignmentMaxPoints: resolvePartnerAssignmentMax({
+      maxGrade: assignmentSettings.settings.maxGrade,
+      inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+      partnerGrade: selectedAssignment?.grade,
+    }),
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -1499,10 +1504,14 @@ export default function GradingProviderPage({ slug, label }) {
         markingMode: mode,
         guidance: guidanceForForm(guidanceText),
         ...examBoardGuidance.getExamBoardFields(),
-        // A configured maxGrade wins over the partner's own assignment total.
-        ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
-          ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
-          : {}),
+        ...((() => {
+          const total = resolvePartnerAssignmentMax({
+            maxGrade: assignmentSettings.settings.maxGrade,
+            inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+            partnerGrade: selectedAssignment.grade,
+          });
+          return total != null ? { totalGrade: total } : {};
+        })()),
         geminiModel: selectedModel,
         chunkSize: resolveMarkingChunkSize(selectedModel),
       }, { timeout: 300_000 });
@@ -1986,6 +1995,19 @@ export default function GradingProviderPage({ slug, label }) {
     }
     const submissionId = resultModal.submissionId;
 
+    const integrityGate = getMarkingIntegrityPublishGate(resultModal.result);
+    if (integrityGate?.level === "block") {
+      toast.error(integrityGate.message);
+      return;
+    }
+    if (integrityGate?.level === "warn") {
+      const okIncomplete = await confirmToast(integrityGate.message, {
+        title: integrityGate.title,
+        confirmLabel: "Publish anyway",
+      });
+      if (!okIncomplete) return;
+    }
+
     if (isPublishedStatus(resultModal.student?.localStatus)) {
       const ok = await confirmToast("This submission was already published. Re-upload and overwrite?", {
         title: `Re-upload to ${label}`,
@@ -2110,7 +2132,13 @@ export default function GradingProviderPage({ slug, label }) {
       base: BASE,
       queue: queued,
       assignmentMaxPoints:
-        assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+        assignmentSettings.settings.maxGrade != null
+          ? assignmentSettings.settings.maxGrade
+          : resolvePartnerAssignmentMax({
+              maxGrade: null,
+              inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+              partnerGrade: selectedAssignment?.grade,
+            }),
       getStudentFile,
       // A run over a whole assignment would otherwise leave every downloaded
       // submission PDF sitting in the cache for the rest of the session.
