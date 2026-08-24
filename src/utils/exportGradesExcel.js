@@ -61,7 +61,8 @@ export function buildGradeExportRow(
     student,
     gradeOverrides,
     savedResults,
-    classroomSyncedGrades
+    classroomSyncedGrades,
+    assignmentMaxPoints
   );
 
   const savedRow = savedResults?.[student.submissionId];

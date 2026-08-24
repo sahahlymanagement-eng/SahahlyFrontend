@@ -9,6 +9,7 @@ import {
   getOutOfScopeNotes,
   getTeacherAnnotations,
   getApiErrorMessage,
+  sumQuestionMarks,
 } from "../utils/markingFormData";
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
@@ -107,15 +108,27 @@ export function useExternalAnnotatedPreview({
     const submissionId = getSubmissionId(modal);
     if (!submissionId) return null;
     const questions = (modal.result?.questions || []).map((q) => ({ ...q }));
-    const maxTotal = resolveDisplayMaxTotal({
-      result: modal.result,
-      editingMaxTotal: editingMaxTotalRef.current,
-    });
+    // Prefer the live display max (partner maxGrade / Classroom max / editor).
+    // Without it, resolveDisplayMaxTotal falls through to sum of question maxes
+    // and the report cover can say 8/8 while the modal header shows 8/67.
+    const maxTotal = Math.max(
+      1,
+      Number(effectiveMaxTotalRef.current) ||
+        resolveDisplayMaxTotal({
+          result: modal.result,
+          editingMaxTotal: editingMaxTotalRef.current,
+        }) ||
+        1
+    );
     const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
     const outOfScopeNotes = (modal.result?.outOfScopeNotes || []).map((n) => ({ ...n }));
     const teacherAnnotations = getTeacherAnnotations(modal.result).map((a) => ({ ...a }));
     const criteriaGrade = cloneCriteriaGrade(modal.result?.criteriaGrade);
     const studentFile = modal.studentFile || null;
+    const finalObtainedMarks = questions.reduce(
+      (s, q) => s + (Number(q.marksAwarded) || 0),
+      0
+    );
     return {
       submissionId,
       questions,
@@ -125,6 +138,8 @@ export function useExternalAnnotatedPreview({
       teacherAnnotations,
       criteriaGrade,
       studentFile,
+      finalObtainedMarks,
+      finalMaximumMarks: maxTotal,
     };
   }, []);
 
@@ -347,6 +362,10 @@ export function useExternalAnnotatedPreview({
           teacherAnnotations,
           criteriaGrade: cloneCriteriaGrade(finalResult.criteriaGrade),
           studentFile,
+          finalObtainedMarks:
+            finalResult.finalObtainedMarks ??
+            sumQuestionMarks(finalResult.questions || questions),
+          finalMaximumMarks: finalResult.finalMaximumMarks ?? maxTotal,
         };
 
         if (onPersist) {

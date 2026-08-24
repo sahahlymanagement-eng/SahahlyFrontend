@@ -1,13 +1,48 @@
+/** Classroom sometimes stores a 0–100 percentage in assignedGrade while maxPoints is the raw total. */
+export function isPercentStoredAsGrade(assignedGrade, maxPoints) {
+  const grade = Number(assignedGrade);
+  const max = Number(maxPoints);
+  return (
+    Number.isFinite(grade) &&
+    Number.isFinite(max) &&
+    max > 0 &&
+    max < 100 &&
+    grade > max &&
+    grade <= 100
+  );
+}
+
+/**
+ * Absolute marks for table / Classroom return.
+ * Converts percent-style Classroom grades (e.g. 73 with max 39 → 28).
+ * Clamps any other impossible absolute mark down to max.
+ */
+export function normalizeAssignedGrade(assignedGrade, maxPoints) {
+  if (assignedGrade == null || assignedGrade === "") return null;
+  const grade = Number(assignedGrade);
+  if (!Number.isFinite(grade)) return null;
+  const max = Number(maxPoints);
+  if (isPercentStoredAsGrade(grade, max)) {
+    return Math.round((grade / 100) * max);
+  }
+  if (Number.isFinite(max) && max > 0) {
+    return Math.max(0, Math.min(max, Math.round(grade)));
+  }
+  return Math.round(grade);
+}
+
 /** Round grade ÷ max to 0–100 for report display. */
 export function computeGradePercent(assignedGrade, maxPoints) {
   const grade = Number(assignedGrade);
   const max = Number(maxPoints);
   if (!Number.isFinite(grade) || !Number.isFinite(max) || max <= 0) return "";
-  // Classroom sometimes stores a percentage as assignedGrade while maxPoints is the raw total.
-  if (grade > max && grade <= 100 && max < 100) {
+  // Keep Classroom's own percentage when that is what was stored as assignedGrade.
+  if (isPercentStoredAsGrade(grade, max)) {
     return String(Math.round(grade));
   }
-  return String(Math.min(100, Math.round((grade / max) * 100)));
+  const absolute = normalizeAssignedGrade(grade, max);
+  if (absolute == null) return "";
+  return String(Math.min(100, Math.round((absolute / max) * 100)));
 }
 
 /**

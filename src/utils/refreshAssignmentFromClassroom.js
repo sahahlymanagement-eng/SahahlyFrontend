@@ -1,5 +1,5 @@
 import { syncReportCartGrades, studentsByKey } from "./syncReportCartGrades";
-import { computeGradePercent } from "./reportGradePercent";
+import { computeGradePercent, normalizeAssignedGrade } from "./reportGradePercent";
 import { buildGradesToPush } from "./submissionGrades";
 
 /** Sync maxPoints from Google Classroom into the local assignment record. */
@@ -39,14 +39,18 @@ export function applyReportCartGradeSync(reportCart, freshList, maxPoints, getSt
     const fresh = freshByKey[keyStr] || freshByKey[key];
     const items = {};
     for (const [asgId, item] of Object.entries(entry.items || {})) {
-      const grade = fresh?.assignedGrade ?? item.assignedGrade;
+      const rawGrade = fresh?.assignedGrade ?? item.assignedGrade;
       const points = maxPoints ?? item.maxPoints ?? null;
+      const grade =
+        points != null && rawGrade != null
+          ? normalizeAssignedGrade(rawGrade, points)
+          : rawGrade;
       items[asgId] = {
         ...item,
         assignedGrade: grade,
         maxPoints: points,
         percentage:
-          points != null
+          points != null && grade != null
             ? computeGradePercent(grade, points) || null
             : null,
       };
@@ -62,8 +66,10 @@ export function buildPercentOverridesFromStudents(students, maxPoints, getSubmis
   const next = {};
   for (const student of students) {
     const submissionId = getSubmissionId(student);
-    const grade = student?.assignedGrade;
-    if (!submissionId || grade == null) continue;
+    const raw = student?.assignedGrade;
+    if (!submissionId || raw == null) continue;
+    const grade = normalizeAssignedGrade(raw, maxPoints);
+    if (grade == null) continue;
     const pct = computeGradePercent(grade, maxPoints);
     if (pct !== "") next[submissionId] = pct;
   }

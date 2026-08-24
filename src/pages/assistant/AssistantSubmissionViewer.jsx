@@ -2897,6 +2897,7 @@ window.open(url);
         savedResults,
         classroomSyncedGrades,
         fallbackTotal: total,
+        maxPoints: selectedAssignment?.maxPoints ?? effectiveMaxTotal,
       });
       
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
@@ -2997,6 +2998,7 @@ window.open(url);
         gradeOverrides,
         savedResults: mergedSaved,
         classroomSyncedGrades,
+        maxPoints: maxGrade ?? null,
       },
       annotatePdf,
       resolvePdfSummary,
@@ -3702,7 +3704,8 @@ return (
                                   s,
                                   gradeOverrides,
                                   savedResults,
-                                  classroomSyncedGrades
+                                  classroomSyncedGrades,
+                                  assignmentMaxPoints
                                 ) != null &&
                                 assignmentMaxPoints ? (
                                       <div className="ma-percent-wrap">
@@ -3719,7 +3722,8 @@ return (
                                                 s,
                                                 gradeOverrides,
                                                 savedResults,
-                                                classroomSyncedGrades
+                                                classroomSyncedGrades,
+                                                assignmentMaxPoints
                                               ),
                                               assignmentMaxPoints
                                             )

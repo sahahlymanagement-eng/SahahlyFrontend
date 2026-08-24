@@ -22,7 +22,8 @@ export default function SubmissionGradeInput({
     student,
     gradeOverrides,
     savedResults,
-    classroomSyncedGrades
+    classroomSyncedGrades,
+    assignmentMaxPoints
   );
 
   // Saved AI result with no extractable total still deserves a visible cell

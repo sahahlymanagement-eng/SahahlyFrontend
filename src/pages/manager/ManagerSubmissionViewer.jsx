@@ -3782,6 +3782,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         savedResults,
         classroomSyncedGrades,
         fallbackTotal: totalMarks,
+        maxPoints: selectedAssignment?.maxPoints ?? effectiveMaxTotal,
       });
 
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
@@ -4006,6 +4007,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         gradeOverrides,
         savedResults: mergedSaved,
         classroomSyncedGrades,
+        maxPoints: selectedAssignment?.maxPoints ?? null,
       },
       annotatePdf,
       resolvePdfSummary,
@@ -4805,7 +4807,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       s,
                                       gradeOverrides,
                                       savedResults,
-                                      classroomSyncedGrades
+                                      classroomSyncedGrades,
+                                      assignmentMaxPoints
                                     ) != null &&
                                     assignmentMaxPoints ? (
                                       <div className="ma-percent-wrap">
@@ -4822,7 +4825,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                                 s,
                                                 gradeOverrides,
                                                 savedResults,
-                                                classroomSyncedGrades
+                                                classroomSyncedGrades,
+                                                assignmentMaxPoints
                                               ),
                                               assignmentMaxPoints
                                             )
