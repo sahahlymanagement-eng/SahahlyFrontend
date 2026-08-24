@@ -208,3 +208,194 @@
     transform: rotate(360deg);
   }
 }
+
+.directorGoogleModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: color-mix(in srgb, #0a0a0a 45%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.directorGoogleModal {
+  width: min(640px, 100%);
+  max-height: min(84vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.directorGoogleModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 8px;
+}
+
+.directorGoogleModalHeader h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.directorGoogleModalClose {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: inline-flex;
+}
+
+.directorGoogleModalClose:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.directorGoogleModalClose:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.directorGoogleModalHint,
+.directorGoogleModalStatus {
+  margin: 0;
+  padding: 0 20px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.directorGooglePickerToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 0 20px 10px;
+}
+
+.directorGooglePickerSearch {
+  flex: 1;
+  min-width: 160px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.directorGooglePickerSearch:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.directorGooglePickerToolbarActions {
+  display: flex;
+  gap: 8px;
+}
+
+.directorGooglePickerToolbarActions button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.directorGooglePickerToolbarActions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.directorGooglePickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 120px;
+}
+
+.directorGooglePickerRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.directorGooglePickerRow:hover {
+  background: var(--surface-2);
+}
+
+.directorGooglePickerRow input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.directorGooglePickerMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.directorGooglePickerName {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.directorGooglePickerSub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.directorGoogleModalFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.directorGoogleModalFooterRight {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.directorGoogleModalSecondary {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.directorGoogleModalSecondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+

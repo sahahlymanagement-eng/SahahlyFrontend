@@ -87,6 +87,7 @@ import {
 } from "../../utils/questionDisplayOrder";
 import { isBackfilledStub } from "../../utils/backfilledStub";
 import QuestionNumberBadge from "../../components/QuestionNumberBadge";
+import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import {
   formatCostPair,
   geminiModelLabel,
@@ -96,6 +97,10 @@ import {
   resolveMarkingCost,
   sahahlyModelLabel,
 } from "../../utils/markingCost";
+import {
+  chunkSizeForGeminiModel,
+  formatChunkSizeLabel,
+} from "../../utils/markingChunkSize";
 import { canViewMoneyCostsFromStorage, maybeStripMoney } from "../../utils/moneyVisibility";
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
@@ -193,8 +198,18 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const isTeacherScope = scope === "teacher";
   const [directorChunkSize, setDirectorChunkSize] = useState(5);
   const showMarkingTools = !isTeacherScope;
-  const appendDirectorChunkSize = (fd) => {
-    if (isDirectorScope) fd.append("chunkSize", String(directorChunkSize));
+  // Only the director picks chunk size freely; backup + managers + others follow the model.
+  const canPickChunkSizeIndependently = scope === "director";
+  /** Director picks freely; everyone else locks pages/request to the model. */
+  const resolveMarkingChunkSize = useCallback(
+    (modelId) =>
+      canPickChunkSizeIndependently
+        ? directorChunkSize
+        : chunkSizeForGeminiModel(modelId),
+    [canPickChunkSizeIndependently, directorChunkSize]
+  );
+  const appendMarkingChunkSize = (fd, modelId) => {
+    fd.append("chunkSize", String(resolveMarkingChunkSize(modelId)));
   };
   const examBoardGuidance = useExamBoardGuidance({
     classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId ?? null,
@@ -741,6 +756,7 @@ const resolvePdfSummary = (submissionId, result) =>
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
@@ -2160,7 +2176,7 @@ useEffect(() => {
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
-      appendDirectorChunkSize(fd);
+      appendMarkingChunkSize(fd, selectedModel);
 
       if (provider !== "claude") {
         fd.append("geminiModel", selectedModel);
@@ -2298,7 +2314,7 @@ useEffect(() => {
         assignmentId: selectedAssignment._id,
         classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
       });
-      appendDirectorChunkSize(fd);
+      appendMarkingChunkSize(fd, selectedModel);
       fd.append("geminiModel", selectedModel);
       fd.append("markSchemePdf", msFile);
 
@@ -2439,7 +2455,7 @@ useEffect(() => {
           subjectId: selectedAssignment.subjectId,
           ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-          ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+          chunkSize: resolveMarkingChunkSize(selectedModel),
         },
         { timeout: 600_000 }
       );
@@ -2675,7 +2691,7 @@ useEffect(() => {
           assignmentId: selectedAssignment._id,
           classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
         });
-        appendDirectorChunkSize(fd);
+        appendMarkingChunkSize(fd, selectedModel);
         if (provider !== "claude") {
           fd.append("geminiModel", selectedModel);
         }
@@ -2883,14 +2899,26 @@ useEffect(() => {
     (async () => {
       try {
         const { data } = await api.get(`/marking/first-batch/status/${assignId}`);
-        const run = data?.firstBatch?.remainingRun;
-        const engine = data?.firstBatch?.engine === "v2" ? "v2" : "v1";
+        const fb = data?.firstBatch || { status: "none" };
+        const run = fb.remainingRun;
+        const engine = fb.engine === "v2" ? "v2" : "v1";
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          // Don't leave phase undefined — an empty phase blanks the Mark (Batch) button.
+          phase: prev?.phase || "done",
+          engine: prev?.engine || engine,
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            ...fb,
+          },
+        }));
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
+            phase: prev?.phase || "done",
             engine: prev?.engine || engine,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
               remainingRun: run,
             },
@@ -2900,7 +2928,7 @@ useEffect(() => {
             ...prev,
             engine: prev?.engine || engine,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "confirming",
               remainingRun: run,
             },
@@ -2988,11 +3016,21 @@ useEffect(() => {
                   s.submissionId === student.submissionId
                     ? {
                         ...s,
-                        assignedGrade: resolveTotalMarksFromResult(result),
+                        assignedGrade: resolveTotalMarksFromResult(enrichedResult),
+                        aiGrade: resolveTotalMarksFromResult(enrichedResult),
                       }
                     : s
                 )
               );
+              setSavedResults((prev) => ({
+                ...prev,
+                [student.submissionId]: {
+                  status: "done",
+                  result: enrichedResult,
+                  aiOriginalResult: originalAiResult,
+                  totalMarks: resolveTotalMarksFromResult(enrichedResult),
+                },
+              }));
             }
 
             await api.post("/submission-files/save-results", {
@@ -3036,6 +3074,11 @@ useEffect(() => {
           );
         }
         if (isViewingThisAssignment()) {
+          try {
+            await fetchSavedResults();
+          } catch (_) {
+            /* list still has in-memory savedResults from above */
+          }
           const { fetchPage, page } = pollCtxRef.current;
           fetchPage?.(page);
         }
@@ -3131,7 +3174,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     const res = await api.post(`${base}/mark-batch/upload`, {
       assignmentId: selectedAssignment._id,
       markingMode: mode,          // HEAD: included for zeroed detection
-      ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+      chunkSize: resolveMarkingChunkSize(selectedModel),
       students: eligible.map(s => ({
         submissionId: s.submissionId,
         studentId:    s.studentId,
@@ -3228,7 +3271,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     subjectId:     selectedAssignment.subjectId,
     ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
     classroomId:   selectedClassroom?._id ?? selectedAssignment?.classroomId,
-    ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+    chunkSize: resolveMarkingChunkSize(selectedModel),
     // v2 only: per-page mark-scheme URIs, so each window references just the
     // scheme pages it needs instead of the whole document.
     ...(msPageUris ? { msPageUris } : {}),
@@ -3357,7 +3400,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       subjectId:   selectedAssignment.subjectId,
       ...(selectedAssignment.maxPoints && { totalGrade: selectedAssignment.maxPoints }),
       classroomId: selectedClassroom?._id ?? selectedAssignment?.classroomId,
-      ...(isDirectorScope ? { chunkSize: directorChunkSize } : {}),
+      chunkSize: resolveMarkingChunkSize(selectedModel),
     });
 
     if (priorityStopRef.current) {
@@ -3856,6 +3899,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       return;
     }
 
+    const integrityGate = getMarkingIntegrityPublishGate(resultModal.result);
+    if (integrityGate?.level === "block") {
+      toast.error(integrityGate.message);
+      return;
+    }
+    if (integrityGate?.level === "warn") {
+      const okIncomplete = await confirmToast(integrityGate.message, {
+        title: integrityGate.title,
+        confirmLabel: "Return anyway",
+      });
+      if (!okIncomplete) return;
+    }
+
     const confirmed = await confirmReturnSingle(resultModal.student?.name);
     if (!confirmed) return;
 
@@ -3933,6 +3989,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         savedResults,
         classroomSyncedGrades,
         fallbackTotal: totalMarks,
+        maxPoints: selectedAssignment?.maxPoints ?? effectiveMaxTotal,
       });
 
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
@@ -4157,6 +4214,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         gradeOverrides,
         savedResults: mergedSaved,
         classroomSyncedGrades,
+        maxPoints: selectedAssignment?.maxPoints ?? null,
       },
       annotatePdf,
       resolvePdfSummary,
@@ -4593,7 +4651,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {/* BATCH MARKING */}
                   {msInfo && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
-                      {isDirectorScope && (
+                      {canPickChunkSizeIndependently ? (
                         <select
                           className="msv-gemini-select"
                           value={directorChunkSize}
@@ -4608,6 +4666,24 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             </option>
                           ))}
                         </select>
+                      ) : (
+                        <span
+                          className="msv-gemini-select"
+                          title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
+                          style={{
+                            minWidth: 120,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            opacity: 0.85,
+                            cursor: "default",
+                          }}
+                        >
+                          {formatChunkSizeLabel(
+                            chunkSizeForGeminiModel(
+                              pickValidGeminiModel(geminiModels, geminiModel)
+                            )
+                          )}
+                        </span>
                       )}
                       <select
                         className="msv-gemini-select"
@@ -4627,6 +4703,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         ))}
                       </select>
                         <button
+                          type="button"
                           className="msv-btn-ai"
                           onClick={() => {
                             if (batchJob?.phase === "processing") {
@@ -4649,14 +4726,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                           {batchJob?.phase === "processing" && <><span className="pm-spinner" /> {isV2(batchJob.engine) ? "Batch v2 running… (tap to check)" : "Batch running… (tap to check)"}</>}
                           {batchJob?.phase === "error"      && <>⚡ Batch failed — retry?</>}
-                          {(!batchJob || batchJob.phase === "done") && <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>}
+                          {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
+                            <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>
+                          )}
                         </button>
 
                         {/* BATCH MARKING — gradingv2 (allow-listed while unvalidated).
                             Hidden while a job is running so the two engines cannot be
                             started against the same assignment at once. */}
-                        {canMarkV2 && (!batchJob || batchJob.phase === "done" || batchJob.phase === "error") && (
+                        {canMarkV2 && (!batchJob || !["uploading", "submitting", "processing"].includes(batchJob.phase)) && (
                           <button
+                            type="button"
                             className="msv-btn-ai"
                             onClick={() => openGuidanceModal(null, false, "batchV2")}
                             disabled={bulkMarking || batchStarting}
@@ -4698,7 +4778,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       )}
                     </div>
                     )}
-                    {batchJob && batchJob.phase !== "done" && (
+                    {batchJob && ["uploading", "submitting", "processing"].includes(batchJob.phase) && (
                       <div style={{
                         marginTop: 8, padding: "10px 14px", borderRadius: 10,
                         background: "color-mix(in srgb, var(--primary) 8%, transparent)",
@@ -5073,7 +5153,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       s,
                                       gradeOverrides,
                                       savedResults,
-                                      classroomSyncedGrades
+                                      classroomSyncedGrades,
+                                      assignmentMaxPoints
                                     ) != null &&
                                     assignmentMaxPoints ? (
                                       <div className="ma-percent-wrap">
@@ -5090,7 +5171,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                                 s,
                                                 gradeOverrides,
                                                 savedResults,
-                                                classroomSyncedGrades
+                                                classroomSyncedGrades,
+                                                assignmentMaxPoints
                                               ),
                                               assignmentMaxPoints
                                             )
@@ -6063,8 +6145,27 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           Generating preview…
                         </div>
                       ) : previewError ? (
-                        <div style={{ color: "var(--danger)", fontSize: 13 }}>
-                          {previewError}
+                        <div
+                          className="pdf-preview-status pdf-preview-status--error"
+                          style={{ flexDirection: "column", gap: 10 }}
+                        >
+                          <span style={{ textAlign: "center", maxWidth: 360 }}>{previewError}</span>
+                          <button
+                            type="button"
+                            onClick={retryPreview}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border)",
+                              background: "var(--surface)",
+                              color: "var(--text-primary)",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Retry
+                          </button>
                         </div>
                       ) : annotatedPreviewUrl ? (
                         <div

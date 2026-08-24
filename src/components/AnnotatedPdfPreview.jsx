@@ -12,13 +12,43 @@ import "../utils/uint8ArrayToHexPolyfill";
 // Legacy build includes browser polyfills (e.g. Uint8Array#toHex) so PDF preview
 // works on Chromium/Edge builds that don't ship that API yet.
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { version as pdfjsVersion } from "pdfjs-dist/package.json";
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey, normalizeQuestionLabelInput } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
 
-// CDN legacy worker must match the legacy API build above
-GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/legacy/build/pdf.worker.min.mjs`;
+// Stable public URL (see vite-plugin-pdf-worker.js). Hashed /assets/*.mjs workers
+// fail on production ("Setting up fake worker failed: Failed to fetch…mjs").
+const base = String(import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
+GlobalWorkerOptions.workerSrc = `${base}pdf.worker.min.js`;
+
+function friendlyPdfLoadError(err) {
+  const raw = String(err?.message || err || "").trim();
+  if (/fake worker|pdf\.worker|dynamically imported module/i.test(raw)) {
+    return "PDF viewer failed to start. Hard-refresh the page (Ctrl+Shift+R), then Retry.";
+  }
+  if (/^network error$/i.test(raw) || err?.name === "NetworkError") {
+    return "Could not load this PDF preview (network blip or stale file). Click Retry.";
+  }
+  return raw || "Failed to load PDF preview";
+}
+
+/** Read blob/object URLs into bytes so pdf.js never XHRs a revoked object URL. */
+async function loadPdfDocumentFromUrl(url) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to read preview PDF (${res.status})`);
+  }
+  const data = await res.arrayBuffer();
+  if (data.byteLength < 100) {
+    throw new Error("Preview PDF is empty");
+  }
+  const loadingTask = getDocument({
+    data: new Uint8Array(data),
+    disableAutoFetch: true,
+    disableStream: true,
+  });
+  return loadingTask.promise;
+}
 
 const MAX_RENDER_WIDTH = 720;
 const MAX_RENDER_PIXEL_WIDTH = 3200;
@@ -397,6 +427,7 @@ export default function AnnotatedPdfPreview({
   const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [loadNonce, setLoadNonce] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
   const [renderZoom, setRenderZoom] = useState(DEFAULT_ZOOM);
@@ -562,8 +593,7 @@ export default function AnnotatedPdfPreview({
 
     (async () => {
       try {
-        const loadingTask = getDocument({ url, disableAutoFetch: false, disableStream: false });
-        const doc = await loadingTask.promise;
+        const doc = await loadPdfDocumentFromUrl(url);
         if (cancelled) {
           await doc.destroy();
           return;
@@ -573,7 +603,7 @@ export default function AnnotatedPdfPreview({
       } catch (err) {
         if (!cancelled) {
           console.error("[AnnotatedPdfPreview] load:", err);
-          setError(err.message || "Failed to load PDF preview");
+          setError(friendlyPdfLoadError(err));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -587,7 +617,7 @@ export default function AnnotatedPdfPreview({
         return null;
       });
     };
-  }, [url]);
+  }, [url, loadNonce]);
 
   const effectiveQuestions = useMemo(() => {
     if (!placementEnabled) return [];
@@ -979,7 +1009,21 @@ export default function AnnotatedPdfPreview({
     return <div className="pdf-preview-status">Loading preview pages…</div>;
   }
   if (error) {
-    return <div className="pdf-preview-status pdf-preview-status--error">{error}</div>;
+    return (
+      <div className="pdf-preview-status pdf-preview-status--error">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, maxWidth: 360, textAlign: "center" }}>
+          <span>{error}</span>
+          <button
+            type="button"
+            className="pdf-preview-tool-btn"
+            onClick={() => setLoadNonce((n) => n + 1)}
+            style={{ padding: "6px 12px" }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
   if (!pdf || numPages === 0) {
     return <div className="pdf-preview-status">No preview available</div>;

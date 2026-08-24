@@ -246,13 +246,15 @@ function markSchemeVerificationPath({ grading, provider, assignmentId }) {
  * @param {{grading?: boolean, provider?: string|null}} [options]
  */
 export async function runMarkSchemeVerification(assignmentId, masterPrompt = "", options) {
+  // Server budget is ~150s; client must fail before the toast sits for 10+ minutes.
   const res = await api.post(
     markSchemeVerificationPath({
       grading: Boolean(options?.grading),
       provider: options?.provider ?? null,
       assignmentId,
     }),
-    { masterPrompt: String(masterPrompt || "").trim() }
+    { masterPrompt: String(masterPrompt || "").trim() },
+    { timeout: 180000 }
   );
   return res.data;
 }

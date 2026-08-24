@@ -189,6 +189,13 @@ export async function getApiErrorMessage(err) {
     return "Request timed out. The server may still be working — wait a moment and refresh, or try again with fewer submissions.";
   }
 
+  if (
+    err?.code === "ERR_NETWORK" ||
+    (!err?.response && /^network error$/i.test(String(err?.message || "").trim()))
+  ) {
+    return "Could not reach the server for this PDF (network blip). Click Retry, or close and reopen the paper.";
+  }
+
   return scrubProviderNames(formatGoogleOAuthError(err?.message) || err?.message || "Request failed");
 
 }

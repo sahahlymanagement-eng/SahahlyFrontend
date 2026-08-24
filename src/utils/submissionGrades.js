@@ -1,5 +1,9 @@
 import { resolveSavedMarkingGrade } from "./markingFormData";
-import { computeGradePercent, parsePercentInput } from "./reportGradePercent";
+import {
+  computeGradePercent,
+  normalizeAssignedGrade,
+  parsePercentInput,
+} from "./reportGradePercent";
 
 export function parseGradeInput(value, maxPoints) {
   const raw = String(value ?? "").trim();
@@ -26,29 +30,43 @@ export function resolveTableGrade(
   student,
   gradeOverrides,
   savedResults,
-  classroomSyncedGrades = {}
+  classroomSyncedGrades = {},
+  maxPoints = null
 ) {
+  let grade = null;
   if (
     submissionId &&
     gradeOverrides?.[submissionId] != null &&
     gradeOverrides[submissionId] !== ""
   ) {
-    return gradeOverrides[submissionId];
-  }
-  if (
+    grade = gradeOverrides[submissionId];
+  } else if (
     submissionId &&
     classroomSyncedGrades?.[submissionId] != null &&
     classroomSyncedGrades[submissionId] !== ""
   ) {
-    return classroomSyncedGrades[submissionId];
+    grade = classroomSyncedGrades[submissionId];
+  } else {
+    const persistedClassroom = savedResults?.[submissionId]?.classroomAssignedGrade;
+    if (persistedClassroom != null && persistedClassroom !== "") {
+      grade = Number(persistedClassroom);
+    } else {
+      const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
+      if (fromSaved != null) grade = fromSaved;
+      else if (student?.aiGrade != null && student.aiGrade !== "") {
+        grade = Number(student.aiGrade);
+      } else if (student?.assignedGrade != null) {
+        grade = student.assignedGrade;
+      }
+    }
   }
-  const persistedClassroom = savedResults?.[submissionId]?.classroomAssignedGrade;
-  if (persistedClassroom != null && persistedClassroom !== "") {
-    return Number(persistedClassroom);
+
+  if (grade == null || grade === "") return null;
+  if (maxPoints != null && Number(maxPoints) > 0) {
+    return normalizeAssignedGrade(grade, maxPoints);
   }
-  const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
-  if (fromSaved != null) return fromSaved;
-  return student?.assignedGrade != null ? student.assignedGrade : null;
+  const n = Number(grade);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Grade posted to Google Classroom on return. */
@@ -58,30 +76,24 @@ export function resolveClassroomReturnGrade(
   gradeOverrides,
   savedResults,
   fallbackTotal = null,
-  classroomSyncedGrades = {}
+  classroomSyncedGrades = {},
+  maxPoints = null
 ) {
-  if (
-    submissionId &&
-    gradeOverrides?.[submissionId] != null &&
-    gradeOverrides[submissionId] !== ""
-  ) {
-    return Number(gradeOverrides[submissionId]);
+  const fromTable = resolveTableGrade(
+    submissionId,
+    student,
+    gradeOverrides,
+    savedResults,
+    classroomSyncedGrades,
+    maxPoints
+  );
+  if (fromTable != null) return fromTable;
+  if (fallbackTotal != null) {
+    if (maxPoints != null && Number(maxPoints) > 0) {
+      return normalizeAssignedGrade(fallbackTotal, maxPoints);
+    }
+    return Number(fallbackTotal);
   }
-  if (
-    submissionId &&
-    classroomSyncedGrades?.[submissionId] != null &&
-    classroomSyncedGrades[submissionId] !== ""
-  ) {
-    return Number(classroomSyncedGrades[submissionId]);
-  }
-  const persistedClassroom = savedResults?.[submissionId]?.classroomAssignedGrade;
-  if (persistedClassroom != null && persistedClassroom !== "") {
-    return Number(persistedClassroom);
-  }
-  const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
-  if (fromSaved != null) return fromSaved;
-  if (student?.assignedGrade != null) return Number(student.assignedGrade);
-  if (fallbackTotal != null) return Number(fallbackTotal);
   return null;
 }
 
@@ -94,6 +106,7 @@ export function appendClassroomGradeToFormData(
     savedResults,
     fallbackTotal,
     classroomSyncedGrades,
+    maxPoints = null,
   }
 ) {
   const grade = resolveClassroomReturnGrade(
@@ -102,7 +115,8 @@ export function appendClassroomGradeToFormData(
     gradeOverrides,
     savedResults,
     fallbackTotal,
-    classroomSyncedGrades
+    classroomSyncedGrades,
+    maxPoints
   );
   if (grade != null && Number.isFinite(grade)) {
     fd.append("classroomGrade", String(grade));
@@ -149,5 +163,6 @@ export function studentHasEditableGrade(submissionId, student, savedResults) {
   if (resolveTableGrade(submissionId, student, {}, savedResults) != null) {
     return true;
   }
+  if (student?.aiGrade != null && student.aiGrade !== "") return true;
   return Boolean(savedResults?.[submissionId]);
 }

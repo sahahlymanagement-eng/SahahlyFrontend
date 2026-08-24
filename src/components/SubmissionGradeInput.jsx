@@ -17,13 +17,20 @@ export default function SubmissionGradeInput({
     return <span className="ma-cell-empty">—</span>;
   }
 
-  const displayGrade = resolveTableGrade(
+  let displayGrade = resolveTableGrade(
     submissionId,
     student,
     gradeOverrides,
     savedResults,
-    classroomSyncedGrades
+    classroomSyncedGrades,
+    assignmentMaxPoints
   );
+
+  // Saved AI result with no extractable total still deserves a visible cell
+  // (e.g. after safe batch before totals are normalized).
+  if (displayGrade == null && savedResults?.[submissionId]?.result) {
+    displayGrade = 0;
+  }
 
   if (displayGrade == null) {
     return <span className="ma-cell-empty">—</span>;

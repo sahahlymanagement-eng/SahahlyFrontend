@@ -9,6 +9,7 @@ import {
   getOutOfScopeNotes,
   getTeacherAnnotations,
   getApiErrorMessage,
+  sumQuestionMarks,
 } from "../utils/markingFormData";
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
@@ -107,15 +108,27 @@ export function useExternalAnnotatedPreview({
     const submissionId = getSubmissionId(modal);
     if (!submissionId) return null;
     const questions = (modal.result?.questions || []).map((q) => ({ ...q }));
-    const maxTotal = resolveDisplayMaxTotal({
-      result: modal.result,
-      editingMaxTotal: editingMaxTotalRef.current,
-    });
+    // Prefer the live display max (partner maxGrade / Classroom max / editor).
+    // Without it, resolveDisplayMaxTotal falls through to sum of question maxes
+    // and the report cover can say 8/8 while the modal header shows 8/67.
+    const maxTotal = Math.max(
+      1,
+      Number(effectiveMaxTotalRef.current) ||
+        resolveDisplayMaxTotal({
+          result: modal.result,
+          editingMaxTotal: editingMaxTotalRef.current,
+        }) ||
+        1
+    );
     const summary = resolvePdfSummaryRef.current(submissionId, modal.result);
     const outOfScopeNotes = (modal.result?.outOfScopeNotes || []).map((n) => ({ ...n }));
     const teacherAnnotations = getTeacherAnnotations(modal.result).map((a) => ({ ...a }));
     const criteriaGrade = cloneCriteriaGrade(modal.result?.criteriaGrade);
     const studentFile = modal.studentFile || null;
+    const finalObtainedMarks = questions.reduce(
+      (s, q) => s + (Number(q.marksAwarded) || 0),
+      0
+    );
     return {
       submissionId,
       questions,
@@ -125,6 +138,8 @@ export function useExternalAnnotatedPreview({
       teacherAnnotations,
       criteriaGrade,
       studentFile,
+      finalObtainedMarks,
+      finalMaximumMarks: maxTotal,
     };
   }, []);
 
@@ -168,11 +183,18 @@ export function useExternalAnnotatedPreview({
       if (requestId !== previewRequestRef.current) return;
       if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
 
-      revokePreviewUrl();
+      // Same deferred-revoke pattern as classroom preview — never kill the blob
+      // URL while pdf.js may still be reading it ("Network Error" in the pane).
+      const previousUrl = previewUrlRef.current;
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       previewUrlRef.current = url;
       setAnnotatedPreviewUrl(url);
       setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
+      if (previousUrl && previousUrl !== url) {
+        requestAnimationFrame(() => {
+          setTimeout(() => URL.revokeObjectURL(previousUrl), 0);
+        });
+      }
     } catch (err) {
       if (requestId === previewRequestRef.current) {
         const message = await getApiErrorMessage(err);
@@ -184,7 +206,7 @@ export function useExternalAnnotatedPreview({
         setPreviewLoading(false);
       }
     }
-  }, [revokePreviewUrl]);
+  }, []);
 
   const openSubmissionId = getSubmissionId(resultModal);
 
@@ -340,6 +362,10 @@ export function useExternalAnnotatedPreview({
           teacherAnnotations,
           criteriaGrade: cloneCriteriaGrade(finalResult.criteriaGrade),
           studentFile,
+          finalObtainedMarks:
+            finalResult.finalObtainedMarks ??
+            sumQuestionMarks(finalResult.questions || questions),
+          finalMaximumMarks: finalResult.finalMaximumMarks ?? maxTotal,
         };
 
         if (onPersist) {
@@ -420,6 +446,15 @@ export function useExternalAnnotatedPreview({
     generatePreview(confirmedSnapshot, { lockPlacement: true });
   }, [confirmedSnapshot, generatePreview]);
 
+  const retryPreview = useCallback(() => {
+    const modal = resultModalRef.current;
+    if (!modal) return;
+    const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);
+    if (!snapshot) return;
+    if (!confirmedSnapshot) setConfirmedSnapshot(snapshot);
+    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot) });
+  }, [confirmedSnapshot, buildSnapshotFromModal, generatePreview]);
+
   const refreshPreviewFromQuestions = useCallback(
     async (questions) => {
       if (!confirmedSnapshot) return;
@@ -462,6 +497,7 @@ export function useExternalAnnotatedPreview({
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
     refreshPreviewFromQuestions,
   };

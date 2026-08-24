@@ -36,7 +36,13 @@ import {
   prepareEditingQuestions,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { resolvePartnerAssignmentMax } from "../../utils/partnerExamTotal";
+import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
+import {
+  chunkSizeForGeminiModel,
+  formatChunkSizeLabel,
+} from "../../utils/markingChunkSize";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
@@ -335,8 +341,11 @@ export default function ManagerLoginCss() {
   // A configured maxGrade outranks the partner's own assignment total — it is
   // what the backend clamps to, so the UI must agree.
   const effectiveMaxTotal = resolveDisplayMaxTotal({
-    assignmentMaxPoints:
-      assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+    assignmentMaxPoints: resolvePartnerAssignmentMax({
+      maxGrade: assignmentSettings.settings.maxGrade,
+      inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+      partnerGrade: selectedAssignment?.grade,
+    }),
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -504,6 +513,7 @@ export default function ManagerLoginCss() {
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
@@ -1065,6 +1075,7 @@ export default function ManagerLoginCss() {
       appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
+    fd.append("chunkSize", String(chunkSizeForGeminiModel(selectedModel)));
 
     let endpoint = "/marking/mark";
     if (provider === "claude") endpoint = "/markingClaude/mark-claude";
@@ -1364,6 +1375,7 @@ export default function ManagerLoginCss() {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
+        chunkSize: chunkSizeForGeminiModel(selectedModel),
       }, { timeout: 900_000 });
       ({ msUri, succeeded, failed } = res.data || {});
     } catch (err) {
@@ -1408,10 +1420,16 @@ export default function ManagerLoginCss() {
         guidance: guidanceForForm(guidanceText),
         ...examBoardGuidance.getExamBoardFields(),
         // A configured maxGrade wins over the partner's own assignment total.
-        ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
-          ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
-          : {}),
+        ...((() => {
+          const total = resolvePartnerAssignmentMax({
+            maxGrade: assignmentSettings.settings.maxGrade,
+            inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+            partnerGrade: selectedAssignment.grade,
+          });
+          return total != null ? { totalGrade: total } : {};
+        })()),
         geminiModel: selectedModel,
+        chunkSize: chunkSizeForGeminiModel(selectedModel),
       }, { timeout: 300_000 });
       jobId = res.data?.jobId;
       firstBatch = res.data?.firstBatch;
@@ -1595,12 +1613,22 @@ export default function ManagerLoginCss() {
     (async () => {
       try {
         const { data } = await api.get(`/external-grading/first-batch/status/${numericId}`);
-        const run = data?.firstBatch?.remainingRun;
+        const fb = data?.firstBatch || { status: "none" };
+        const run = fb.remainingRun;
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          phase: prev?.phase || "done",
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            ...fb,
+          },
+        }));
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
+            phase: prev?.phase || "done",
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
               remainingRun: run,
             },
@@ -1609,7 +1637,7 @@ export default function ManagerLoginCss() {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "confirming",
               remainingRun: run,
             },
@@ -1654,9 +1682,13 @@ export default function ManagerLoginCss() {
     }
   };
 
-  const deleteResult = (student) => {
+  const deleteResult = async (student) => {
     const id = student.submissionId;
-    deleteDraft(id);
+    try {
+      await deleteDraft(id);
+    } catch {
+      // ignore
+    }
     setResults((prev) => {
       const n = { ...prev };
       delete n[id];
@@ -1680,10 +1712,32 @@ export default function ManagerLoginCss() {
     setSubmissions((prev) =>
       prev.map((s) =>
         s.submissionId === id
-          ? { ...s, localGrade: isPublished(s) ? s.localGrade : null }
+          ? {
+              ...s,
+              hasDraft: false,
+              hasMarkingResult: false,
+              localGrade: isPublished(s) ? s.localGrade : null,
+              localStatus: isPublished(s) ? s.localStatus : "pending",
+            }
           : s
       )
     );
+
+    if (selectedAssignment?.id != null) {
+      const assignId = String(selectedAssignment.id);
+      try {
+        const { data } = await api.get(
+          `/external-grading/first-batch/status/${selectedAssignment.id}`
+        );
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: data?.firstBatch || { status: "none" },
+        }));
+      } catch {
+        // best-effort
+      }
+    }
+
     toast.success("Result cleared — you can mark again");
   };
 
@@ -1851,6 +1905,19 @@ export default function ManagerLoginCss() {
     }
     const submissionId = resultModal.submissionId;
 
+    const integrityGate = getMarkingIntegrityPublishGate(resultModal.result);
+    if (integrityGate?.level === "block") {
+      toast.error(integrityGate.message);
+      return;
+    }
+    if (integrityGate?.level === "warn") {
+      const okIncomplete = await confirmToast(integrityGate.message, {
+        title: integrityGate.title,
+        confirmLabel: "Publish anyway",
+      });
+      if (!okIncomplete) return;
+    }
+
     if (isPublishedStatus(resultModal.student?.localStatus)) {
       const ok = await confirmToast("This submission was already published. Re-upload and overwrite?", {
         title: "Re-upload to LoginCSS",
@@ -1975,7 +2042,11 @@ export default function ManagerLoginCss() {
       base: "/external-grading",
       queue: queued,
       assignmentMaxPoints:
-        assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+        resolvePartnerAssignmentMax({
+          maxGrade: assignmentSettings.settings.maxGrade,
+          inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+          partnerGrade: selectedAssignment?.grade,
+        }),
       getStudentFile,
       // A run over a whole assignment would otherwise leave every downloaded
       // submission PDF sitting in the cache for the rest of the session.
@@ -2406,6 +2477,23 @@ export default function ManagerLoginCss() {
                     />
                     {canMark && (
                     <>
+                    <span
+                      className="msv-gemini-select"
+                      title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
+                      style={{
+                        minWidth: 120,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        opacity: 0.85,
+                        cursor: "default",
+                      }}
+                    >
+                      {formatChunkSizeLabel(
+                        chunkSizeForGeminiModel(
+                          pickValidGeminiModel(geminiModels, geminiModel)
+                        )
+                      )}
+                    </span>
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
@@ -2455,7 +2543,7 @@ export default function ManagerLoginCss() {
                       {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                       {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                       {batchJob?.phase === "error" && <>⚡ Batch failed — retry?</>}
-                      {(!batchJob || batchJob.phase === "done") && (
+                      {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
                         <>
                           <FiLayers size={13} />{" "}
                           {markingActionLabel("Mark batch", "Mark Selected (Batch)", markingSelection.selectedCount)}
@@ -3752,7 +3840,28 @@ export default function ManagerLoginCss() {
                 {previewLoading ? (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
                 ) : previewError ? (
-                  <div style={{ color: "var(--danger)", fontSize: 13 }}>{previewError}</div>
+                  <div
+                    className="pdf-preview-status pdf-preview-status--error"
+                    style={{ flexDirection: "column", gap: 10 }}
+                  >
+                    <span style={{ textAlign: "center", maxWidth: 360 }}>{previewError}</span>
+                    <button
+                      type="button"
+                      onClick={retryPreview}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        color: "var(--text-primary)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
                 ) : annotatedPreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     <AnnotatedPdfPreview

@@ -36,7 +36,13 @@ import {
   prepareEditingQuestions,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { resolvePartnerAssignmentMax } from "../../utils/partnerExamTotal";
+import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";
+import {
+  chunkSizeForGeminiModel,
+  formatChunkSizeLabel,
+} from "../../utils/markingChunkSize";
 import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
@@ -170,7 +176,8 @@ export default function GradingProviderPage({ slug, label }) {
   const { delegations, delegationsLoaded } = useGradingDelegations();
 
   // Marking itself is manager01's job (see gradingAccess), or that of someone
-  // the director delegated this partner to AS A MANAGER. Everyone else reviews
+  // the director delegated this partner to AS A MANAGER — or a director/admin
+  // opening the partner tab from the director portal. Everyone else reviews
   // what was produced: open the results modal, edit it, publish it. Every
   // control that would start or undo a marking run hangs off this flag.
   const canMark = canRunGradingMarking(slug, delegations);
@@ -191,6 +198,24 @@ export default function GradingProviderPage({ slug, label }) {
       return null;
     }
   });
+
+  const roleName = useMemo(() => {
+    const raw =
+      user?.roleName ?? user?.roleId?.name ?? user?.role?.name ?? user?.role ?? "";
+    return String(raw).trim().toLowerCase();
+  }, [user]);
+
+  // Same free chunk-size picker as the director classroom Submission Viewer.
+  const canPickChunkSizeIndependently =
+    roleName === "director" || roleName === "admin";
+  const [directorChunkSize, setDirectorChunkSize] = useState(5);
+  const resolveMarkingChunkSize = useCallback(
+    (modelId) =>
+      canPickChunkSizeIndependently
+        ? directorChunkSize
+        : chunkSizeForGeminiModel(modelId),
+    [canPickChunkSizeIndependently, directorChunkSize]
+  );
 
   // ── submissions list ──
   const [submissions, setSubmissions] = useState([]);
@@ -375,11 +400,14 @@ export default function GradingProviderPage({ slug, label }) {
 
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
 
-  // A configured maxGrade outranks the partner's own assignment total — it is
-  // what the backend clamps to, so the UI must agree.
+  // Local maxGrade → MS inventory when partner grade is wrong → partner grade.
+  // Classroom is unaffected (uses Google Classroom maxPoints).
   const effectiveMaxTotal = resolveDisplayMaxTotal({
-    assignmentMaxPoints:
-      assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+    assignmentMaxPoints: resolvePartnerAssignmentMax({
+      maxGrade: assignmentSettings.settings.maxGrade,
+      inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+      partnerGrade: selectedAssignment?.grade,
+    }),
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -549,6 +577,7 @@ export default function GradingProviderPage({ slug, label }) {
     buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
+    retryPreview,
     reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
@@ -1131,6 +1160,7 @@ export default function GradingProviderPage({ slug, label }) {
       appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
+    fd.append("chunkSize", String(resolveMarkingChunkSize(selectedModel)));
 
     let endpoint = "/marking/mark";
     if (provider === "claude") endpoint = "/markingClaude/mark-claude";
@@ -1430,6 +1460,7 @@ export default function GradingProviderPage({ slug, label }) {
         assignmentId: selectedAssignment.id,
         submissions: eligible.map((s) => ({ submissionId: s.submissionId })),
         markingMode: mode,
+        chunkSize: resolveMarkingChunkSize(selectedModel),
       }, { timeout: 900_000 });
       ({ msUri, succeeded, failed } = res.data || {});
     } catch (err) {
@@ -1473,11 +1504,16 @@ export default function GradingProviderPage({ slug, label }) {
         markingMode: mode,
         guidance: guidanceForForm(guidanceText),
         ...examBoardGuidance.getExamBoardFields(),
-        // A configured maxGrade wins over the partner's own assignment total.
-        ...((assignmentSettings.settings.maxGrade ?? selectedAssignment.grade) != null
-          ? { totalGrade: assignmentSettings.settings.maxGrade ?? selectedAssignment.grade }
-          : {}),
+        ...((() => {
+          const total = resolvePartnerAssignmentMax({
+            maxGrade: assignmentSettings.settings.maxGrade,
+            inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+            partnerGrade: selectedAssignment.grade,
+          });
+          return total != null ? { totalGrade: total } : {};
+        })()),
         geminiModel: selectedModel,
+        chunkSize: resolveMarkingChunkSize(selectedModel),
       }, { timeout: 300_000 });
       jobId = res.data?.jobId;
       firstBatch = res.data?.firstBatch;
@@ -1661,12 +1697,24 @@ export default function GradingProviderPage({ slug, label }) {
     (async () => {
       try {
         const { data } = await api.get(`${BASE}/first-batch/status/${numericId}`);
-        const run = data?.firstBatch?.remainingRun;
+        const fb = data?.firstBatch || { status: "none" };
+        const run = fb.remainingRun;
+        // Always hydrate firstBatch (including pending_confirmation / none after
+        // a reconcile) so the safety banner matches the server after refresh.
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          phase: prev?.phase || "done",
+          firstBatch: {
+            ...(prev?.firstBatch || {}),
+            ...fb,
+          },
+        }));
         if (run?.status === "failed" || remainingRunIsStale(run)) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
+            phase: prev?.phase || "done",
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "remaining_failed",
               remainingRun: run,
             },
@@ -1675,7 +1723,7 @@ export default function GradingProviderPage({ slug, label }) {
           patchBatchJob(assignId, (prev) => ({
             ...prev,
             firstBatch: {
-              ...(prev?.firstBatch || data.firstBatch || {}),
+              ...(prev?.firstBatch || fb || {}),
               status: "confirming",
               remainingRun: run,
             },
@@ -1718,9 +1766,13 @@ export default function GradingProviderPage({ slug, label }) {
     }
   };
 
-  const deleteResult = (student) => {
+  const deleteResult = async (student) => {
     const id = student.submissionId;
-    deleteDraft(id);
+    try {
+      await deleteDraft(id);
+    } catch {
+      // deleteDraft already swallows; keep UI consistent either way
+    }
     setResults((prev) => {
       const n = { ...prev };
       delete n[id];
@@ -1744,10 +1796,32 @@ export default function GradingProviderPage({ slug, label }) {
     setSubmissions((prev) =>
       prev.map((s) =>
         s.submissionId === id
-          ? { ...s, localGrade: isPublished(s) ? s.localGrade : null }
+          ? {
+              ...s,
+              hasDraft: false,
+              hasMarkingResult: false,
+              localGrade: isPublished(s) ? s.localGrade : null,
+              localStatus: isPublished(s) ? s.localStatus : "pending",
+            }
           : s
       )
     );
+
+    // Refresh safety-batch gate — deleting the last safety draft unlocks re-mark.
+    if (selectedAssignment?.id != null) {
+      const assignId = batchKey(selectedAssignment.id);
+      try {
+        const { data } = await api.get(`${BASE}/first-batch/status/${selectedAssignment.id}`);
+        const fb = data?.firstBatch || { status: "none" };
+        patchBatchJob(assignId, (prev) => ({
+          ...prev,
+          firstBatch: fb,
+        }));
+      } catch {
+        // best-effort
+      }
+    }
+
     toast.success("Result cleared — you can mark again");
   };
 
@@ -1921,6 +1995,19 @@ export default function GradingProviderPage({ slug, label }) {
     }
     const submissionId = resultModal.submissionId;
 
+    const integrityGate = getMarkingIntegrityPublishGate(resultModal.result);
+    if (integrityGate?.level === "block") {
+      toast.error(integrityGate.message);
+      return;
+    }
+    if (integrityGate?.level === "warn") {
+      const okIncomplete = await confirmToast(integrityGate.message, {
+        title: integrityGate.title,
+        confirmLabel: "Publish anyway",
+      });
+      if (!okIncomplete) return;
+    }
+
     if (isPublishedStatus(resultModal.student?.localStatus)) {
       const ok = await confirmToast("This submission was already published. Re-upload and overwrite?", {
         title: `Re-upload to ${label}`,
@@ -2045,7 +2132,13 @@ export default function GradingProviderPage({ slug, label }) {
       base: BASE,
       queue: queued,
       assignmentMaxPoints:
-        assignmentSettings.settings.maxGrade ?? (Number(selectedAssignment?.grade) || null),
+        assignmentSettings.settings.maxGrade != null
+          ? assignmentSettings.settings.maxGrade
+          : resolvePartnerAssignmentMax({
+              maxGrade: null,
+              inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+              partnerGrade: selectedAssignment?.grade,
+            }),
       getStudentFile,
       // A run over a whole assignment would otherwise leave every downloaded
       // submission PDF sitting in the cache for the rest of the session.
@@ -2501,6 +2594,40 @@ export default function GradingProviderPage({ slug, label }) {
                     />
                     {canMark && (
                     <>
+                    {canPickChunkSizeIndependently ? (
+                      <select
+                        className="msv-gemini-select"
+                        value={directorChunkSize}
+                        onChange={(e) => setDirectorChunkSize(Number(e.target.value))}
+                        disabled={bulkMarking || priorityBulkRunning}
+                        title="Pages per AI request (batch, single, and bulk marking)"
+                        style={{ minWidth: 120 }}
+                      >
+                        {[0, 1, 2, 3, 5, 8, 10].map((n) => (
+                          <option key={n} value={n}>
+                            {n === 0 ? "Full PDF (1 request)" : `${n} page${n !== 1 ? "s" : ""} / request`}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                    <span
+                      className="msv-gemini-select"
+                      title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
+                      style={{
+                        minWidth: 120,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        opacity: 0.85,
+                        cursor: "default",
+                      }}
+                    >
+                      {formatChunkSizeLabel(
+                        chunkSizeForGeminiModel(
+                          pickValidGeminiModel(geminiModels, geminiModel)
+                        )
+                      )}
+                    </span>
+                    )}
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
@@ -2550,7 +2677,7 @@ export default function GradingProviderPage({ slug, label }) {
                       {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
                       {batchJob?.phase === "processing" && <><span className="pm-spinner" /> Batch running… (tap to check)</>}
                       {batchJob?.phase === "error" && <>⚡ Batch failed — retry?</>}
-                      {(!batchJob || batchJob.phase === "done") && (
+                      {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
                         <>
                           <FiLayers size={13} />{" "}
                           {markingActionLabel("Mark batch", "Mark Selected (Batch)", markingSelection.selectedCount)}
@@ -3868,7 +3995,28 @@ export default function GradingProviderPage({ slug, label }) {
                 {previewLoading ? (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
                 ) : previewError ? (
-                  <div style={{ color: "var(--danger)", fontSize: 13 }}>{previewError}</div>
+                  <div
+                    className="pdf-preview-status pdf-preview-status--error"
+                    style={{ flexDirection: "column", gap: 10 }}
+                  >
+                    <span style={{ textAlign: "center", maxWidth: 360 }}>{previewError}</span>
+                    <button
+                      type="button"
+                      onClick={retryPreview}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        color: "var(--text-primary)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
                 ) : annotatedPreviewUrl ? (
                   <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     {/* Without the placement/remove props the preview is a plain

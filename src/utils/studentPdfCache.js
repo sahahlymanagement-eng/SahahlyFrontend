@@ -12,7 +12,10 @@
  * screen and the couple before it are ever wanted again.
  */
 
+import { assertPdfBlob } from "./markingFormData";
+
 const MAX_ENTRIES = 4;
+const MAX_ATTEMPTS = 3;
 
 /** key -> Blob */
 const blobs = new Map();
@@ -30,6 +33,21 @@ function cacheKey(assignmentId, submissionId) {
   return `${assignmentId}::${submissionId}`;
 }
 
+function isRetryablePdfFetchError(err) {
+  if (!err) return false;
+  const status = err?.response?.status;
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (err?.code === "ECONNABORTED") return true;
+  if (err?.code === "ERR_NETWORK") return true;
+  // Axios surfaces dropped Drive/proxy connections as a bare "Network Error"
+  // with no response body — common right after a safety-batch marks several
+  // papers and the preview immediately re-fetches the same files.
+  if (!err?.response && /network error/i.test(String(err?.message || ""))) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * The student's PDF as a File, from cache when we already have it.
  *
@@ -37,10 +55,14 @@ function cacheKey(assignmentId, submissionId) {
  * @param {object} opts
  * @param {string} opts.assignmentId
  * @param {string} opts.submissionId
+ * @param {string} [opts.googleUserId]  stale Classroom submission-id recovery
  * @param {number} [opts.timeout]
  * @returns {Promise<File>}
  */
-export async function fetchStudentPdf(api, { assignmentId, submissionId, timeout = 90_000 }) {
+export async function fetchStudentPdf(
+  api,
+  { assignmentId, submissionId, googleUserId, timeout = 90_000 }
+) {
   const key = cacheKey(assignmentId, submissionId);
 
   const toFile = (blob) =>
@@ -58,13 +80,31 @@ export async function fetchStudentPdf(api, { assignmentId, submissionId, timeout
   const pending = inflight.get(key);
   if (pending) return toFile(await pending);
 
-  const request = api
-    .get("/submission-files/pdf", {
-      params: { assignmentId, submissionId },
-      responseType: "blob",
-      timeout,
-    })
-    .then((res) => res.data);
+  const request = (async () => {
+    let lastErr;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const res = await api.get("/submission-files/pdf", {
+          params: {
+            assignmentId,
+            submissionId,
+            ...(googleUserId ? { googleUserId } : {}),
+          },
+          responseType: "blob",
+          timeout,
+        });
+        await assertPdfBlob(res.data, "Student submission");
+        return res.data;
+      } catch (err) {
+        lastErr = err;
+        if (!isRetryablePdfFetchError(err) || attempt === MAX_ATTEMPTS) {
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      }
+    }
+    throw lastErr;
+  })();
 
   inflight.set(key, request);
   try {

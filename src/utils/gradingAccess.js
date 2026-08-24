@@ -190,17 +190,34 @@ function currentGradingAccount(forUser = null) {
  * May this account open one specific partner's tab? Also the "can this account
  * see any grading tab at all" test — it is false for every slug otherwise.
  *
+ * Directors and admins always see Mariam Gabalawy and Dr Peter (org-wide
+ * oversight, same as the classroom Submission Viewer). Static allow-list and
+ * director delegations still gate managers/assistants.
+ *
  * @param {string} slug
  * @param {object} [grant] the delegation grant to judge against. Defaults to the
  *   module cache; React callers pass the one from GradingNotificationContext so
  *   their render is tied to it and re-runs when it resolves.
  */
 export function canGradeProvider(slug, grant = delegatedProviders) {
+  // Director portal partner tabs — full queue, unscoped on the backend.
+  if (
+    (slug === "mariamgabalawy" || slug === "drpeter") &&
+    isDirectorPartnerOverseer()
+  ) {
+    return true;
+  }
   if (grant?.[slug]) return true;
   const account = currentGradingAccount();
   if (!account) return false;
   const providers = withPairedProviders(account.providers);
   return providers === null || providers.includes(slug);
+}
+
+/** Director/admin get the partner tabs (backup does not — separate portal). */
+function isDirectorPartnerOverseer(forUser = null) {
+  const role = currentRoleName(forUser);
+  return role === "director" || role === "admin";
 }
 
 /** The signed-in role name, lowercased ("admin", "director", "manager", …). */
@@ -269,6 +286,13 @@ export function canRunGradingMarking(slug, grant = delegatedProviders) {
   // A review-only account is review-only whatever it is handed: the point of the
   // tier is that this login never runs marking, so a delegation cannot promote it.
   if (isGradingReviewOnly()) return false;
+  // Same full marking tools as the director classroom Submission Viewer.
+  if (
+    isDirectorPartnerOverseer() &&
+    (!slug || slug === "mariamgabalawy" || slug === "drpeter")
+  ) {
+    return true;
+  }
   if (currentGradingAccount()?.canMark === true) return true;
   return !!slug && grant?.[slug] === "manager";
 }

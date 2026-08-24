@@ -16,12 +16,15 @@ export function isBackfilledStub(q) {
 
   // Authoritative — injected by mark-scheme backfill.
   if (q._backfilled === true) return true;
+  if (q._incompleteMarking === true) return true;
 
   if (Number(q.marksAwarded) !== 0) return false;
 
-  if (q._staffNote && /not detected/i.test(String(q._staffNote))) return true;
+  if (q._staffNote && /not detected|not graded|re-mark required/i.test(String(q._staffNote))) {
+    return true;
+  }
 
-  return /not detected during automated marking/i.test(
+  return /not detected during automated marking|not graded in this (automated )?run|marking failed/i.test(
     `${q.studentAnswer || ""} ${q.reason || ""} ${q._staffNote || ""}`
   );
 }

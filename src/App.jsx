@@ -369,6 +369,8 @@ function App() {
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
+          <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
+          <Route path="drpeter" element={<ManagerDrPeter />} />
           <Route path="manual-correction" element={<DirectorManualCorrection />} />
           <Route path="assign-assistants" element={<ManagerDashboard scope="director" />} />
           <Route path="ai-agent" element={<DirectorChatbot />} />

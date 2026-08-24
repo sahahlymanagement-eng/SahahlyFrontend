@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import api from "../../api/api";
 import "./DirectorGoogleAccount.css";
 import {
@@ -8,6 +8,7 @@ import {
   FiPlus,
   FiRefreshCw,
   FiTrash2,
+  FiX,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 
@@ -22,6 +23,12 @@ export default function DirectorGoogleAccountsPage() {
   const [refreshingTokenId, setRefreshingTokenId] = useState(null);
   const [newEmail, setNewEmail] = useState("");
   const [connecting, setConnecting] = useState(false);
+
+  const [pickerAccount, setPickerAccount] = useState(null);
+  const [pickerCourses, setPickerCourses] = useState([]);
+  const [pickerSelected, setPickerSelected] = useState(() => new Set());
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -75,26 +82,155 @@ export default function DirectorGoogleAccountsPage() {
     openGoogleConnect(email);
   };
 
-  const syncClassroomsFromGoogle = async (account) => {
+  const resetPicker = () => {
+    setPickerAccount(null);
+    setPickerCourses([]);
+    setPickerSelected(new Set());
+    setPickerSearch("");
+    setPickerLoading(false);
+  };
+
+  const closePicker = () => {
     if (syncingAccountId) return;
+    resetPicker();
+  };
+
+  const openFetchPicker = async (account) => {
+    if (syncingAccountId || pickerLoading) return;
+    try {
+      setPickerAccount(account);
+      setPickerLoading(true);
+      setPickerCourses([]);
+      setPickerSelected(new Set());
+      setPickerSearch("");
+
+      const res = await api.get(`/classrooms/preview/${account._id}`);
+      const courses = Array.isArray(res.data?.courses) ? res.data.courses : [];
+      setPickerCourses(courses);
+      // Pre-select not-yet-synced courses; if all already synced, select all
+      const unsynced = courses.filter((c) => !c.alreadySynced).map((c) => c.id);
+      const initial =
+        unsynced.length > 0 ? unsynced : courses.map((c) => c.id);
+      setPickerSelected(new Set(initial));
+    } catch (err) {
+      console.error("Failed to preview Google classrooms", err);
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        "Failed to list classrooms from Google";
+      const detail = err.response?.data?.detail;
+      toast.error(detail && detail !== msg ? `${msg} (${detail})` : msg);
+      setPickerAccount(null);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+
+  const filteredPickerCourses = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    if (!q) return pickerCourses;
+    return pickerCourses.filter((c) => {
+      const blob = `${c.name || ""} ${c.section || ""} ${c.description || ""}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [pickerCourses, pickerSearch]);
+
+  const togglePickerCourse = (id) => {
+    setPickerSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setPickerSelected((prev) => {
+      const next = new Set(prev);
+      for (const c of filteredPickerCourses) next.add(c.id);
+      return next;
+    });
+  };
+
+  const clearVisible = () => {
+    const visibleIds = new Set(filteredPickerCourses.map((c) => c.id));
+    setPickerSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of visibleIds) next.delete(id);
+      return next;
+    });
+  };
+
+  const syncSelectedClassrooms = async () => {
+    if (!pickerAccount || syncingAccountId) return;
+    const courseIds = [...pickerSelected];
+    if (courseIds.length === 0) {
+      toast.warn("Select at least one classroom");
+      return;
+    }
 
     try {
-      setSyncingAccountId(account._id);
-      setSelectedAccount(account);
+      setSyncingAccountId(pickerAccount._id);
+      setSelectedAccount(pickerAccount);
 
-      const res = await api.post(`/classrooms/sync/${account._id}`);
+      const res = await api.post(`/classrooms/sync/${pickerAccount._id}`, {
+        courseIds,
+      });
+      const total = res.data?.total ?? 0;
+
+      toast.success(
+        total > 0
+          ? `Fetched ${total} classroom${total === 1 ? "" : "s"} for ${pickerAccount.email}`
+          : `No classrooms imported for ${pickerAccount.email}`
+      );
+
+      const account = pickerAccount;
+      resetPicker();
+      await loadClassrooms(account);
+    } catch (err) {
+      console.error("Failed to sync classrooms from Google", err);
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        "Failed to fetch classrooms from Google";
+      const detail = err.response?.data?.detail;
+      toast.error(detail && detail !== msg ? `${msg} (${detail})` : msg);
+    } finally {
+      setSyncingAccountId(null);
+    }
+  };
+
+  const syncAllClassrooms = async () => {
+    if (!pickerAccount || syncingAccountId) return;
+    if (
+      !window.confirm(
+        `Fetch ALL ${pickerCourses.length} classroom${pickerCourses.length === 1 ? "" : "s"} for ${pickerAccount.email}? Classrooms no longer on Google will be archived.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSyncingAccountId(pickerAccount._id);
+      setSelectedAccount(pickerAccount);
+
+      const res = await api.post(`/classrooms/sync/${pickerAccount._id}`, {
+        mode: "all",
+      });
       const total = res.data?.total ?? 0;
       const deactivated = res.data?.deactivated ?? 0;
 
       toast.success(
         total > 0
-          ? `Fetched ${total} classroom${total === 1 ? "" : "s"} for ${account.email}` +
+          ? `Fetched ${total} classroom${total === 1 ? "" : "s"} for ${pickerAccount.email}` +
             (deactivated > 0
               ? ` — ${deactivated} archived classroom${deactivated === 1 ? "" : "s"} hidden`
               : "")
-          : `No active classrooms found for ${account.email}`
+          : `No active classrooms found for ${pickerAccount.email}`
       );
 
+      const account = pickerAccount;
+      resetPicker();
       await loadClassrooms(account);
     } catch (err) {
       console.error("Failed to sync classrooms from Google", err);
@@ -189,6 +325,9 @@ export default function DirectorGoogleAccountsPage() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [loadAccounts]);
+
+  const selectedCount = pickerSelected.size;
+  const isPickerSyncing = pickerAccount && syncingAccountId === pickerAccount._id;
 
   return (
     <div className="directorGooglePage">
@@ -289,8 +428,8 @@ export default function DirectorGoogleAccountsPage() {
                   <button
                     type="button"
                     className="directorGoogleFetchBtn"
-                    onClick={() => syncClassroomsFromGoogle(acc)}
-                    disabled={!!syncingAccountId}
+                    onClick={() => openFetchPicker(acc)}
+                    disabled={!!syncingAccountId || pickerLoading}
                   >
                     <FiDownloadCloud />
                     {isSyncing ? "Fetching…" : "Fetch Classrooms"}
@@ -349,6 +488,134 @@ export default function DirectorGoogleAccountsPage() {
             </div>
           )}
         </section>
+      )}
+
+      {pickerAccount && (
+        <div
+          className="directorGoogleModalBackdrop"
+          role="presentation"
+          onClick={closePicker}
+        >
+          <div
+            className="directorGoogleModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="director-google-fetch-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="directorGoogleModalHeader">
+              <h3 id="director-google-fetch-title">
+                Fetch classrooms — {pickerAccount.email}
+              </h3>
+              <button
+                type="button"
+                className="directorGoogleModalClose"
+                onClick={closePicker}
+                disabled={!!isPickerSyncing}
+                aria-label="Close"
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+
+            <p className="directorGoogleModalHint">
+              Choose which Google classrooms to import. Leaving one unchecked does not
+              remove it from Sahahly if it was already fetched.
+            </p>
+
+            {pickerLoading ? (
+              <p className="directorGoogleModalStatus">Loading classrooms from Google…</p>
+            ) : pickerCourses.length === 0 ? (
+              <p className="directorGoogleModalStatus">
+                No active classrooms found on this Google account.
+              </p>
+            ) : (
+              <>
+                <div className="directorGooglePickerToolbar">
+                  <input
+                    type="search"
+                    className="directorGooglePickerSearch"
+                    placeholder="Search by name or section…"
+                    value={pickerSearch}
+                    onChange={(e) => setPickerSearch(e.target.value)}
+                    disabled={!!isPickerSyncing}
+                  />
+                  <div className="directorGooglePickerToolbarActions">
+                    <button type="button" onClick={selectAllVisible} disabled={!!isPickerSyncing}>
+                      Select visible
+                    </button>
+                    <button type="button" onClick={clearVisible} disabled={!!isPickerSyncing}>
+                      Clear visible
+                    </button>
+                  </div>
+                </div>
+
+                <ul className="directorGooglePickerList">
+                  {filteredPickerCourses.map((c) => {
+                    const checked = pickerSelected.has(c.id);
+                    return (
+                      <li key={c.id}>
+                        <label className="directorGooglePickerRow">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePickerCourse(c.id)}
+                            disabled={!!isPickerSyncing}
+                          />
+                          <span className="directorGooglePickerMeta">
+                            <span className="directorGooglePickerName">{c.name}</span>
+                            <span className="directorGooglePickerSub">
+                              {c.section ? `Section: ${c.section}` : "No section"}
+                              {c.alreadySynced ? " · already in Sahahly" : ""}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+
+            <div className="directorGoogleModalFooter">
+              <button
+                type="button"
+                className="directorGoogleModalSecondary"
+                onClick={syncAllClassrooms}
+                disabled={
+                  !!isPickerSyncing || pickerLoading || pickerCourses.length === 0
+                }
+              >
+                {isPickerSyncing ? "Fetching…" : "Fetch all"}
+              </button>
+              <div className="directorGoogleModalFooterRight">
+                <button
+                  type="button"
+                  className="directorGoogleModalSecondary"
+                  onClick={closePicker}
+                  disabled={!!isPickerSyncing}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="directorGooglePrimaryBtn"
+                  onClick={syncSelectedClassrooms}
+                  disabled={
+                    !!isPickerSyncing ||
+                    pickerLoading ||
+                    selectedCount === 0
+                  }
+                >
+                  <FiDownloadCloud />
+                  {isPickerSyncing
+                    ? "Fetching…"
+                    : `Fetch selected (${selectedCount})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
