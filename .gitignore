@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# generated staging fixtures — not part of the product
+public/fixtures/
