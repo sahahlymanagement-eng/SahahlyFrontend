@@ -344,21 +344,32 @@ function shouldKeepBesideReals(q, reals) {
   if (!reals.length) return true;
 
   const distinctPage = isOnDistinctPageFromReals(q, reals);
+  const hasScoredReal = reals.some((r) => Number(r?.marksAwarded) > 0);
 
   if (q?._backfilled === true) {
-    return distinctPage;
+    if (!distinctPage) return false;
+    if (!hasScoredReal) return true;
+    const qm = maxMarksOf(q);
+    return qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
   }
 
   if (looksLikeGhostZero(q)) {
     if (!distinctPage) return false;
     const qm = maxMarksOf(q);
-    return qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+    const distinctMax = qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+    if (!distinctMax) return false;
+    // Scored read exists: only keep a clearly different classified item
+    // (55.pdf Q7bi 2/2 must drop ghost 0/1 "unanswered" with no distinct stem).
+    if (!hasScoredReal) return true;
+    const stem = stemFingerprint(q);
+    const realStems = reals.map(stemFingerprint).filter((s) => s.length >= 12);
+    return stem.length >= 12 && !realStems.includes(stem);
   }
 
   // Scored row already present for this MS id: drop trailing-punctuation /
   // chunk twins that claim a different answer on another page without a
   // distinct stem + distinct maxMarks (the "4a-" vs blank "4a" case).
-  if (reals.some((r) => Number(r?.marksAwarded) > 0) && Number(q?.marksAwarded) === 0) {
+  if (hasScoredReal && Number(q?.marksAwarded) === 0) {
     if (!distinctPage) return false;
     const stem = stemFingerprint(q);
     const qm = maxMarksOf(q);

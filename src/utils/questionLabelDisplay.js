@@ -135,6 +135,15 @@ export function getDisplayQuestionNumber(question, guidance) {
   const ms = String(question?.questionNumber ?? "").trim();
 
   if (printed && ms && normalizeLabel(printed) !== normalizeLabel(ms)) {
+    const p = normalizeLabel(printed);
+    const m = normalizeLabel(ms);
+    const childOf = (parent, child) => {
+      if (!parent || !child || parent === child || !child.startsWith(parent)) return false;
+      return /[a-z]/.test(child.charAt(parent.length));
+    };
+    // Prefer the deeper part id (ms "9a" over printed "9").
+    if (childOf(p, m)) return ms;
+    if (childOf(m, p)) return printed;
     return printed;
   }
   return ms || printed || "?";
