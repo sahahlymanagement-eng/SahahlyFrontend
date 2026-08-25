@@ -5,8 +5,10 @@ import {
   dropUnusableInventedQuestions,
   clearImplausiblePrintedQuestionNumbers,
   normalizeQuestionNumberLabels,
+  repairQuestionNumbersFromFeedback,
   dropGhostDuplicateQuestions,
   repairOrphanPartQuestionNumbers,
+  labelAliases,
 } from "./markingQuestionDedupe";
 import {
   compareQuestionNumbers,
@@ -1000,30 +1002,52 @@ const isUngraded =
   const integrity = integrityEarly;
 
   if (notOnPaper.length > 0) {
-    const listed = notOnPaper
+    // Drop stubs that alias a graded row (PDF-side safety net for older saved results).
+    const gradedAliasKeys = new Set();
+    for (const q of breakdownQuestions) {
+      const labels = [q?.questionNumber, q?.msQuestionNumber, q?.printedQuestionNumber];
+      for (const label of labels) {
+        for (const key of labelAliases(label)) gradedAliasKeys.add(key);
+      }
+    }
+    const visibleStubs = [];
+    const seenStub = new Set();
+    for (const q of notOnPaper) {
+      const stubKeys = labelAliases(q?.questionNumber);
+      const covered = [...stubKeys].some((k) => gradedAliasKeys.has(k));
+      const primary = [...stubKeys][0] || "";
+      if (!primary || covered || seenStub.has(primary)) continue;
+      seenStub.add(primary);
+      visibleStubs.push(q);
+    }
+
+    if (visibleStubs.length > 0) {
+    const listed = visibleStubs
       .map((q) => String(q.questionNumber ?? "").trim())
       .filter(Boolean)
       .map((n) => `Q${n}`)
       .join(", ");
-    const marksAvailable = notOnPaper.reduce(
+    const marksAvailable = visibleStubs.reduce(
       (sum, q) => sum + (Number(q.maxMarks) || 0),
       0
     );
-    const incompleteList = integrity.incomplete;
+    const incompleteList = integrity.incomplete || visibleStubs.some((q) => q?._incompleteMarking);
+    // Never tell the student questions were "not on this paper" when stubs are
+    // under-detection leftovers — that label is reserved for true other-booklet dumps.
     const title = incompleteList
       ? integrity.failed
         ? "MARKING FAILED — QUESTIONS NOT GRADED"
         : "MARKING INCOMPLETE — QUESTIONS NOT GRADED"
       : studentFacing
-        ? "QUESTIONS NOT ON THIS PAPER"
+        ? "QUESTIONS NOT DETECTED IN THIS MARKING RUN"
         : "QUESTIONS NOT FOUND ON THIS SCRIPT";
     const body = incompleteList
       ? integrity.failed
         ? `Automated marking did not match any questions on this script. Do not treat the 0 total as a student score — re-mark required. Expected items (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}): ${listed}.`
-        : `These mark-scheme question${notOnPaper.length === 1 ? "" : "s"} ${notOnPaper.length === 1 ? "was" : "were"} not graded in this automated run (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}). Review the script or re-mark before returning: ${listed}.`
+        : `These mark-scheme question${visibleStubs.length === 1 ? "" : "s"} ${visibleStubs.length === 1 ? "was" : "were"} not graded in this automated run (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}). Review the script or re-mark before returning: ${listed}.`
       : studentFacing
-        ? `The following mark-scheme question${notOnPaper.length === 1 ? "" : "s"} ${notOnPaper.length === 1 ? "was" : "were"} not present on this paper and scored 0 (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}): ${listed}.`
-        : `Not present on the student script — listed here only (not stamped on the exam pages). Scored 0 / ${marksAvailable} available: ${listed}.`;
+        ? `The following mark-scheme question${visibleStubs.length === 1 ? "" : "s"} ${visibleStubs.length === 1 ? "was" : "were"} not matched to an answer on this script and scored 0 (${marksAvailable} mark${marksAvailable === 1 ? "" : "s"}). If you answered them, ask for a re-mark: ${listed}.`
+        : `Not matched on the student script — listed here only (not stamped on the exam pages). Scored 0 / ${marksAvailable} available: ${listed}.`;
     const bodyLines = wrap(body, reg, 7.4, CW - 28);
     const boxH = Math.max(44, 28 + bodyLines.length * 10);
 
@@ -1077,6 +1101,7 @@ const isUngraded =
       });
     });
     yPos -= boxH + 12;
+    } // visibleStubs.length > 0
   }
 
   if (unanswered.count > 0 && unanswered.message) {
@@ -1589,7 +1614,9 @@ export async function annotatePdf({
   const cleanedInput = dropGhostDuplicateQuestions(
     clearImplausiblePrintedQuestionNumbers(
       dropUnusableInventedQuestions(
-        repairOrphanPartQuestionNumbers(normalizeQuestionNumberLabels(questions || []))
+        repairOrphanPartQuestionNumbers(
+          repairQuestionNumbersFromFeedback(normalizeQuestionNumberLabels(questions || []))
+        )
       )
     )
   );
