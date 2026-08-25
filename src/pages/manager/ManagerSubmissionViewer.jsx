@@ -13,6 +13,7 @@ import {
 import { usePagination } from "../../hooks/usePagination";
 import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import { getStoredUser } from "../../utils/session";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText, applyPageCountDecision } from "../../hooks/usePageCountCheck";
 import {
@@ -185,7 +186,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const deepLinkHandledRef = useRef(null);
   const msInputRef = useRef();
 
-  const [user,               setUser]               = useState(null);
+  const [user,               setUser]               = useState(() => getStoredUser());
   const [selectedClassroom,  setSelectedClassroom]  = usePersistedState(`subviewer:${scope}:classroom`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`subviewer:${scope}:assignment`, null);
   const assignmentPrompt = useAssignmentMarkingPrompt(selectedAssignment?._id);
@@ -768,6 +769,7 @@ const resolvePdfSummary = (submissionId, result) =>
     effectiveMaxTotal,
     assignmentMaxPoints,
     editingMaxTotal,
+    editingTotal,
     resolvePdfSummary,
     pendingRemovedIndices,
     editingCriteriaGrade,
@@ -829,6 +831,15 @@ const resolvePdfSummary = (submissionId, result) =>
     // A hand-set paper total is part of the edits, so it comes back too.
     const restoredMax = Number(restored.maxTotalMarks);
     setEditingMaxTotal(Number.isFinite(restoredMax) && restoredMax > 0 ? restoredMax : null);
+    const restoredObtained = Number(
+      restored.finalObtainedMarks ?? restored.totalMarks
+    );
+    const questionSum = sumQuestionMarks(restored.questions || []);
+    setEditingTotal(
+      Number.isFinite(restoredObtained) && restoredObtained !== questionSum
+        ? restoredObtained
+        : null
+    );
   }, []);
 
   const pendingEdits = usePendingEditsAutosave({
@@ -864,6 +875,7 @@ const resolvePdfSummary = (submissionId, result) =>
       setEditingSummary(confirmed.summary);
       setSummaryTouched(false);
       setEditingMaxTotal(null);
+      setEditingTotal(null);
       setPendingRemovedIndices(new Set());
       setEditingOutOfScopeNotes(
         resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
@@ -906,12 +918,17 @@ useEffect(() => {
         getMarkingResultSummary(resultModal.result, {
           storedSummary: savedResults[submissionId]?.summary,
         }),
+      totalMarksOverride:
+        editingTotal !== null && Number.isFinite(Number(editingTotal))
+          ? Number(editingTotal)
+          : null,
     })
   );
 }, [
   resultModal,
   questionsForDisplay,
   effectiveMaxTotal,
+  editingTotal,
   summaryTouched,
   savedResults,
 ]);
@@ -1311,9 +1328,12 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) return navigate("/login");
-    setUser(JSON.parse(stored));
+    const stored = getStoredUser();
+    if (!stored) {
+      navigate("/login");
+      return;
+    }
+    setUser(stored);
   }, [navigate]);
 
   useEffect(() => {
@@ -4263,14 +4283,33 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     return { successCount, failures };
   };
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="ma-root" style={{ alignItems: "center", justifyContent: "center", minHeight: "50vh" }}>
+        <p className="ma-loading-msg">Loading submission viewer…</p>
+      </div>
+    );
+  }
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
 
-  const total =
+  const summedTotal =
     isCriteria && editingCriteriaGrade
       ? Number(editingCriteriaGrade.totalMarks) || 0
       : sumQuestionMarks(questionsForDisplay);
+  const storedFinal =
+    resultModal?.result?.finalObtainedMarks != null &&
+    Number.isFinite(Number(resultModal.result.finalObtainedMarks))
+      ? Number(resultModal.result.finalObtainedMarks)
+      : null;
+  const total =
+    editingTotal !== null && Number.isFinite(Number(editingTotal))
+      ? Number(editingTotal)
+      : isCriteria && editingCriteriaGrade
+        ? summedTotal
+        : !hasPendingEdits && storedFinal != null
+          ? storedFinal
+          : summedTotal;
   const coverTotal =
     isCriteria && editingCriteriaGrade
       ? Number(editingCriteriaGrade.totalMarks) || 0
@@ -5090,7 +5129,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             
 
                               return (
-                                <tr key={s._id || s.submissionId} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
+                                <tr key={`${s.submissionId || s.googleUserId || s._id || "row"}-${i}`} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
                                   {showMarkingTools && (
                                   <td>
                                     {s.submissionId ? (
@@ -5770,19 +5809,25 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <span style={{ fontSize: 12, color: "var(--muted)" }}>Final Grade:</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   <input
-                    readOnly
                     type="number"
                     min={0}
                     max={effectiveMaxTotal}
-                    value={total}
-                    // onChange={e => setEditingTotal(Math.min(effectiveMaxTotal, Math.max(0, Number(e.target.value))))}
+                    value={editingTotal !== null ? editingTotal : total}
+                    onChange={(e) =>
+                      setEditingTotal(
+                        Math.min(
+                          effectiveMaxTotal,
+                          Math.max(0, Number(e.target.value))
+                        )
+                      )
+                    }
+                    title="Edit final obtained marks (overrides question sum)"
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
                       border: `1px solid ${color}`,
                       background: `color-mix(in srgb, ${color} 15%, transparent)`,
                       color: color,
                       fontWeight: 700, fontSize: 15, textAlign: "center", outline: "none",
-                      cursor:"not-allowed"
                     }}
                   />
                   <span style={{ fontSize: 13, color: "var(--muted)" }}>/</span>
@@ -5810,7 +5855,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       Unsaved edits
                     </span>
                   )}
-                  {(hasPendingEdits || editingMaxTotal !== null) && (
+                  {(hasPendingEdits || editingMaxTotal !== null || editingTotal !== null) && (
                     <button
                       onClick={() => {
                         const reset = resetToConfirmed();
@@ -5999,7 +6044,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     ...resultModal.result,
                     questions: editingQuestions,
                     summary: editingSummary,
-                    totalMarks: sumQuestionMarks(questionsForDisplay),
+                    totalMarks: total,
                   }}
                   onApplyPatch={handleCorrectionPatch}
                 />

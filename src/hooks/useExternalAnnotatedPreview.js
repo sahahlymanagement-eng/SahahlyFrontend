@@ -52,6 +52,7 @@ export function useExternalAnnotatedPreview({
   editingSummary,
   effectiveMaxTotal,
   editingMaxTotal,
+  editingTotal = null,
   resolvePdfSummary,
   getStudentFile,
   pendingRemovedIndices = null,
@@ -74,6 +75,8 @@ export function useExternalAnnotatedPreview({
   resultModalRef.current = resultModal;
   const editingMaxTotalRef = useRef(editingMaxTotal);
   editingMaxTotalRef.current = editingMaxTotal;
+  const editingTotalRef = useRef(editingTotal);
+  editingTotalRef.current = editingTotal;
   const editingQuestionsRef = useRef(editingQuestions);
   editingQuestionsRef.current = editingQuestions;
   const editingAnnotationsRef = useRef(editingAnnotations);
@@ -125,10 +128,18 @@ export function useExternalAnnotatedPreview({
     const teacherAnnotations = getTeacherAnnotations(modal.result).map((a) => ({ ...a }));
     const criteriaGrade = cloneCriteriaGrade(modal.result?.criteriaGrade);
     const studentFile = modal.studentFile || null;
-    const finalObtainedMarks = questions.reduce(
+    const summed = questions.reduce(
       (s, q) => s + (Number(q.marksAwarded) || 0),
       0
     );
+    const stored =
+      modal.result?.finalObtainedMarks ??
+      criteriaGrade?.totalMarks ??
+      modal.result?.totalMarks;
+    const finalObtainedMarks =
+      stored != null && Number.isFinite(Number(stored))
+        ? Number(stored)
+        : summed;
     return {
       submissionId,
       questions,
@@ -241,6 +252,12 @@ export function useExternalAnnotatedPreview({
     ) {
       return true;
     }
+    if (
+      editingTotal !== null &&
+      Number(editingTotal) !== Number(confirmedSnapshot.finalObtainedMarks)
+    ) {
+      return true;
+    }
     if (questionsHavePendingEdits(questionsForPreviewEdits, confirmedSnapshot)) {
       return true;
     }
@@ -285,6 +302,7 @@ export function useExternalAnnotatedPreview({
     editingSummary,
     effectiveMaxTotal,
     editingMaxTotal,
+    editingTotal,
     editingCriteriaGrade,
     outOfScopeNotesOverride,
   ]);
@@ -306,7 +324,8 @@ export function useExternalAnnotatedPreview({
       Math.max(1, Number(effectiveMaxTotal) || 1),
       (editingAnnotations || []).map((a) => ({ ...a })),
       editingSummary,
-      editingCriteriaGrade
+      editingCriteriaGrade,
+      editingTotal
     );
     if (Array.isArray(outOfScopeNotesOverride)) {
       finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
@@ -319,6 +338,7 @@ export function useExternalAnnotatedPreview({
     editingSummary,
     effectiveMaxTotal,
     editingCriteriaGrade,
+    editingTotal,
     outOfScopeNotesOverride,
   ]);
 
@@ -344,7 +364,8 @@ export function useExternalAnnotatedPreview({
           maxTotal,
           teacherAnnotations,
           editingSummary,
-          editingCriteriaGrade
+          editingCriteriaGrade,
+          editingTotal
         );
         if (Array.isArray(outOfScopeNotesOverride)) {
           // Lets a grader delete "Not included in your assignment" markers in the
@@ -423,6 +444,7 @@ export function useExternalAnnotatedPreview({
       effectiveMaxTotal,
       generatePreview,
       editingCriteriaGrade,
+      editingTotal,
       outOfScopeNotesOverride,
       confirmedSnapshot,
     ]

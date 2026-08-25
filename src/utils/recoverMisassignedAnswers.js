@@ -5,6 +5,7 @@ import {
   dropUnusableInventedQuestions,
   clearImplausiblePrintedQuestionNumbers,
   normalizeQuestionNumberLabels,
+  repairQuestionNumbersFromFeedback,
   repairOrphanPartQuestionNumbers,
 } from "./markingQuestionDedupe";
 import { enrichMarkingQuestions } from "./blankQuestionFeedback";
@@ -136,7 +137,8 @@ export function recoverMisassignedAnswers(questions) {
 /** Normalize placement + recover common mislabel patterns for the editor. */
 export function prepareEditingQuestions(questions) {
   const labeled = normalizeQuestionNumberLabels(questions || []);
-  const repaired = repairOrphanPartQuestionNumbers(labeled);
+  const fromFeedback = repairQuestionNumbersFromFeedback(labeled);
+  const repaired = repairOrphanPartQuestionNumbers(fromFeedback);
   const cleaned = dropUnusableInventedQuestions(repaired);
   const printedClean = clearImplausiblePrintedQuestionNumbers(cleaned);
   const mathClean = normalizeMathSymbolsInQuestions(printedClean);

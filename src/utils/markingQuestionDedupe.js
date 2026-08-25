@@ -24,6 +24,43 @@ export function canonicalQuestionKey(q) {
   return s;
 }
 
+/**
+ * Comparable keys for OUTER-SOURCE booklet labels.
+ * Keep in sync with backend/src/utils/assignmentQuestionInventory.js labelAliases.
+ */
+export function labelAliases(raw) {
+  const out = new Set();
+  const primary = canonicalQuestionKey({ questionNumber: raw });
+  if (primary) out.add(primary);
+
+  const s = String(raw ?? "").trim();
+  if (!s) return out;
+
+  const m = s.match(/^Q?\s*(\d{1,3})\s*[-.]\s*(\d{1,2})\s*(.*)$/i);
+  if (!m) return out;
+
+  const outer = Number(m[1]);
+  const source = m[2];
+  const rest = m[3] || "";
+
+  const sourceForm = canonicalQuestionKey({ questionNumber: `${source}${rest}` });
+  if (sourceForm) out.add(sourceForm);
+
+  const outerPartForm = canonicalQuestionKey({ questionNumber: `${m[1]}${rest}` });
+  if (outerPartForm) out.add(outerPartForm);
+
+  if (Number.isFinite(outer)) {
+    for (const delta of [-1, 1]) {
+      const o = outer + delta;
+      if (o < 1) continue;
+      const neigh = canonicalQuestionKey({ questionNumber: `${o}-${source}${rest}` });
+      if (neigh) out.add(neigh);
+    }
+  }
+
+  return out;
+}
+
 const PROMPT_LEAK_RE =
   /authority|expectedanswers?|keywords?|tolerances?|totalmark|markaudit|targetsubmission|forevaluation|evaluation\/grading|markscheme|submissionfor|soleauthority|preparedby|additionalguidance|mark\s*scheme/i;
 
@@ -87,9 +124,77 @@ export function normalizeQuestionNumberLabels(questions) {
   if (!Array.isArray(questions)) return questions;
   return questions.map((q) => {
     if (!q || typeof q !== "object") return q;
-    const next = sanitizeQuestionNumber(q.questionNumber);
+    let next = sanitizeQuestionNumber(q.questionNumber);
+    if (next) {
+      const open = (next.match(/\(/g) || []).length;
+      const close = (next.match(/\)/g) || []).length;
+      if (open > close) next = `${next}${")".repeat(open - close)}`;
+    }
     if (!next || next === q.questionNumber) return q;
     return { ...q, questionNumber: next };
+  });
+}
+
+/** Pull a full Q-label out of examiner prose ("Full marks awarded for Q42-3(a)(iii)"). */
+export function extractQuestionLabelFromFeedback(text) {
+  const blob = String(text ?? "");
+  if (!blob.trim()) return "";
+  const m = blob.match(
+    /(?:Full marks awarded for|Awarded\s+\d+\s*\/\s*\d+\s+marks(?:\s+for)?|marks(?:\s+awarded)?\s+for)\s+Q\s*([0-9][0-9A-Za-z().\-]{0,24})/i
+  );
+  if (!m) return "";
+  let label = sanitizeQuestionNumber(m[1].replace(/[.,;:]+$/g, ""));
+  if (!label) return "";
+  const open = (label.match(/\(/g) || []).length;
+  const close = (label.match(/\)/g) || []).length;
+  if (open > close) label = `${label}${")".repeat(open - close)}`;
+  return looksLikePlausibleQuestionNumber(label) ? label : "";
+}
+
+/**
+ * When the row id is truncated/malformed or disagrees with examiner prose,
+ * prefer the label named in the feedback (Gemini often keeps the true id there).
+ * Keep in sync with backend/src/utils/markingGrades.js.
+ */
+export function repairQuestionNumbersFromFeedback(questions) {
+  if (!Array.isArray(questions)) return questions;
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const fromFb = extractQuestionLabelFromFeedback(
+      [q.reason, q.mistakeAdvice, q.correctAnswer].filter(Boolean).join(" ")
+    );
+    if (!fromFb) return q;
+
+    const printed = sanitizeQuestionNumber(q.printedQuestionNumber);
+    if (printed && looksLikePlausibleQuestionNumber(printed)) {
+      const pKey = canonicalQuestionKey({ questionNumber: printed });
+      const fbKey = canonicalQuestionKey({ questionNumber: fromFb });
+      // Do not overwrite a clear page label with a contaminated award-lead
+      // (e.g. every reason says "Full marks awarded for Q1h").
+      if (pKey && fbKey && pKey !== fbKey) return q;
+    }
+
+    const cur = String(q.questionNumber ?? "").trim();
+    const curNorm = canonicalQuestionKey({ questionNumber: cur });
+    const fbNorm = canonicalQuestionKey({ questionNumber: fromFb });
+    if (!fbNorm) return q;
+
+    const open = (cur.match(/\(/g) || []).length;
+    const close = (cur.match(/\)/g) || []).length;
+    const malformed = !cur || open !== close || /[(-]$/.test(cur);
+    const fbRicher = fbNorm.length > curNorm.length;
+    const fbExtends =
+      curNorm &&
+      fbNorm !== curNorm &&
+      (fbNorm.startsWith(curNorm) ||
+        curNorm.startsWith(fbNorm.slice(0, Math.max(0, curNorm.length - 1))));
+
+    if (!(malformed || fbRicher || fbExtends)) return q;
+    if (curNorm === fbNorm && !malformed) return q;
+
+    const next = { ...q, questionNumber: fromFb };
+    if (!q.msQuestionNumber) next.msQuestionNumber = fromFb;
+    return next;
   });
 }
 
@@ -227,28 +332,53 @@ function preferQuestionEntry(a, b) {
   if (bMarks !== aMarks) return bMarks > aMarks ? b : a;
   const aText = String(a?.studentAnswer || "").trim().length;
   const bText = String(b?.studentAnswer || "").trim().length;
-  return bText > aText ? b : a;
+  if (bText !== aText) return bText > aText ? b : a;
+
+  const labelScore = (q) => {
+    const s = String(q?.questionNumber ?? "");
+    if (!s) return 0;
+    const open = (s.match(/\(/g) || []).length;
+    const close = (s.match(/\)/g) || []).length;
+    if (open !== close) return -2;
+    if (/\([a-zivx]+\)/i.test(s)) return 2;
+    return 1;
+  };
+  const la = labelScore(a);
+  const lb = labelScore(b);
+  if (lb !== la) return lb > la ? b : a;
+  return a;
 }
 
 function shouldKeepBesideReals(q, reals) {
   if (!reals.length) return true;
 
   const distinctPage = isOnDistinctPageFromReals(q, reals);
+  const hasScoredReal = reals.some((r) => Number(r?.marksAwarded) > 0);
 
   if (q?._backfilled === true) {
-    return distinctPage;
+    if (!distinctPage) return false;
+    if (!hasScoredReal) return true;
+    const qm = maxMarksOf(q);
+    return qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
   }
 
   if (looksLikeGhostZero(q)) {
     if (!distinctPage) return false;
     const qm = maxMarksOf(q);
-    return qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+    const distinctMax = qm > 0 && reals.every((r) => maxMarksOf(r) !== qm);
+    if (!distinctMax) return false;
+    // Scored read exists: only keep a clearly different classified item
+    // (55.pdf Q7bi 2/2 must drop ghost 0/1 "unanswered" with no distinct stem).
+    if (!hasScoredReal) return true;
+    const stem = stemFingerprint(q);
+    const realStems = reals.map(stemFingerprint).filter((s) => s.length >= 12);
+    return stem.length >= 12 && !realStems.includes(stem);
   }
 
   // Scored row already present for this MS id: drop trailing-punctuation /
   // chunk twins that claim a different answer on another page without a
   // distinct stem + distinct maxMarks (the "4a-" vs blank "4a" case).
-  if (reals.some((r) => Number(r?.marksAwarded) > 0) && Number(q?.marksAwarded) === 0) {
+  if (hasScoredReal && Number(q?.marksAwarded) === 0) {
     if (!distinctPage) return false;
     const stem = stemFingerprint(q);
     const qm = maxMarksOf(q);
@@ -264,15 +394,41 @@ function shouldKeepBesideReals(q, reals) {
   return !realStems.includes(stem);
 }
 
+/** Same-page alias reals collapse; different pages stay (classified repeats). */
+function collapseRealsByPage(reals) {
+  if (!Array.isArray(reals) || reals.length <= 1) return reals || [];
+  const byPage = new Map();
+  const noPage = [];
+  for (const q of reals) {
+    const p = pageOf(q);
+    if (p == null) {
+      noPage.push(q);
+      continue;
+    }
+    const list = byPage.get(p) || [];
+    list.push(q);
+    byPage.set(p, list);
+  }
+  const out = [];
+  for (const list of byPage.values()) {
+    out.push(list.reduce((a, b) => preferQuestionEntry(a, b)));
+  }
+  if (noPage.length) {
+    out.push(noPage.reduce((a, b) => preferQuestionEntry(a, b)));
+  }
+  return out;
+}
+
 function collapseGhostGroup(rows) {
   if (!Array.isArray(rows) || rows.length <= 1) return rows || [];
 
   const reals = rows.filter(looksLikeRealAttempt);
   if (reals.length > 0) {
+    const collapsedReals = collapseRealsByPage(reals);
     const extras = rows.filter(
-      (q) => !looksLikeRealAttempt(q) && shouldKeepBesideReals(q, reals)
+      (q) => !looksLikeRealAttempt(q) && shouldKeepBesideReals(q, collapsedReals)
     );
-    return [...reals, ...extras];
+    return [...collapsedReals, ...extras];
   }
 
   const byStem = new Map();

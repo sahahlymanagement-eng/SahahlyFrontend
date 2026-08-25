@@ -1,7 +1,8 @@
-import { toast } from "react-toastify";
-import { confirmToast } from "./confirmToast";
-import { runMarkSchemeVerification } from "../components/MarkSchemeVerificationModal";
-import { getApiErrorMessage } from "./markingFormData";
+// TEMP DISABLED 2026-08-25 — mark-scheme verification paused; restore imports + body later.
+// import { toast } from "react-toastify";
+// import { confirmToast } from "./confirmToast";
+// import { runMarkSchemeVerification } from "../components/MarkSchemeVerificationModal";
+// import { getApiErrorMessage } from "./markingFormData";
 
 /**
  * Batch-pipeline mark-scheme gate (same check as the old toolbar button).
@@ -17,6 +18,11 @@ import { getApiErrorMessage } from "./markingFormData";
 export async function confirmBatchMarkScheme(assignmentId, options = {}) {
   if (assignmentId == null || assignmentId === "") return true;
 
+  // TEMP DISABLED 2026-08-25 — skip mark-scheme verification for now; re-enable below later.
+  void options;
+  return true;
+
+  /*
   const checking = toast.info("Checking mark scheme against sample papers…", {
     autoClose: false,
   });
@@ -75,4 +81,5 @@ export async function confirmBatchMarkScheme(assignmentId, options = {}) {
     }
   );
   return Boolean(ok);
+  */
 }

@@ -39,8 +39,8 @@
 }
 
 .director-page-inner > .ma-root {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: min(70vh, calc(100dvh - 120px));
   height: auto;
   width: 100%;
   display: flex;

@@ -31,7 +31,29 @@ function isOrphanPartLabel(label) {
  * Prefer the fuller mark-scheme id over a bare page-local part.
  * Classified sheets often print "(a)" under Q19 — models set printedQuestionNumber
  * to "a" while questionNumber is "19a"; overlays must show "19a", not "a".
+ *
+ * When printed is only the parent number ("9") and MS is the part ("9a"), show
+ * "9a" — otherwise PDF stamps collapse to Q9 while notes still say Q9a.
  */
+function preferDeeperPartLabel(a, b) {
+  const norm = (v) =>
+    String(v || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  const pa = norm(a);
+  const pb = norm(b);
+  if (!pa && !pb) return "";
+  if (!pa) return String(b || "");
+  if (!pb) return String(a || "");
+  const childOf = (parent, child) => {
+    if (!parent || !child || parent === child || !child.startsWith(parent)) return false;
+    return /[a-z]/.test(child.charAt(parent.length));
+  };
+  if (childOf(pa, pb)) return String(b);
+  if (childOf(pb, pa)) return String(a);
+  return null;
+}
+
 export function overlayQuestionLabel(q) {
   const printedRaw = stripLeadingQ(q?.printedQuestionNumber);
   const printed = looksLikePlausibleQuestionNumber(printedRaw) ? printedRaw : "";
@@ -40,6 +62,9 @@ export function overlayQuestionLabel(q) {
   const msKey = ms.toLowerCase().replace(/[()[\]\s]/g, "");
 
   if (printed && printedKey && printedKey !== msKey) {
+    const deeper = preferDeeperPartLabel(printed, ms);
+    if (deeper) return deeper;
+
     const printedOrphan = isOrphanPartLabel(printedKey);
     const msHasDigit = /\d/.test(msKey);
     if (printedOrphan && msHasDigit) return ms || printed;

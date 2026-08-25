@@ -507,8 +507,12 @@ export function rebuildMarkingSummary({
   questions = [],
   maxTotalMarks,
   previousSummary = "",
+  totalMarksOverride = null,
 } = {}) {
-  const total = sumQuestionMarks(questions);
+  const total =
+    totalMarksOverride != null && Number.isFinite(Number(totalMarksOverride))
+      ? Number(totalMarksOverride)
+      : sumQuestionMarks(questions);
   const max = Math.max(1, Number(maxTotalMarks) || 1);
   const pct = gradeScorePercent(total, max);
 
@@ -916,18 +920,19 @@ export function applyTeacherEditsToResult(
   maxTotalMarks,
   editingAnnotations = null,
   summaryOverride = null,
-  editingCriteriaGrade = null
+  editingCriteriaGrade = null,
+  obtainedMarksOverride = null
 ) {
   const questions = syncQuestionsExaminerFeedback(
     editingQuestions,
     baseResult?.questions || []
   );
-  const totalMarks = sumQuestionMarks(questions);
+  const questionSum = sumQuestionMarks(questions);
 
   const finalResult = {
     ...baseResult,
     questions,
-    totalMarks,
+    totalMarks: questionSum,
   };
 
   const max = Math.max(1, Number(maxTotalMarks) || getResultMaxTotal(baseResult));
@@ -951,7 +956,7 @@ export function applyTeacherEditsToResult(
     }
     const breakdownSum = Array.isArray(criteria.breakdown) && criteria.breakdown.length
       ? sumQuestionMarks(criteria.breakdown)
-      : totalMarks;
+      : questionSum;
     finalResult.criteriaGrade = {
       ...criteria,
       maxTotalMarks: max,
@@ -959,7 +964,23 @@ export function applyTeacherEditsToResult(
     };
     finalResult.totalMarks = breakdownSum;
   } else {
-    finalResult.totalMarks = totalMarks;
+    finalResult.totalMarks = questionSum;
+  }
+
+  // Manual Final Grade override (teacher typed obtained marks).
+  if (
+    obtainedMarksOverride != null &&
+    obtainedMarksOverride !== "" &&
+    Number.isFinite(Number(obtainedMarksOverride))
+  ) {
+    const override = Math.max(0, Math.min(max, Number(obtainedMarksOverride)));
+    finalResult.totalMarks = override;
+    if (finalResult.criteriaGrade) {
+      finalResult.criteriaGrade = {
+        ...finalResult.criteriaGrade,
+        totalMarks: override,
+      };
+    }
   }
 
   if (editingAnnotations != null) {
@@ -973,6 +994,7 @@ export function applyTeacherEditsToResult(
       questions,
       maxTotalMarks: max,
       previousSummary: baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
+      totalMarksOverride: finalResult.totalMarks,
     });
   }
 
