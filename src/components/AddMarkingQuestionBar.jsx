@@ -6,22 +6,30 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [questionNumber, setQuestionNumber] = useState("");
   const [maxMarks, setMaxMarks] = useState("1");
+  const [marksAwarded, setMarksAwarded] = useState("0");
   const [pageNumber, setPageNumber] = useState("1");
 
   const handleAdd = () => {
     const qNum = questionNumber.trim();
     if (!qNum) return;
     const max = Math.max(1, Number(maxMarks) || 1);
+    const awardedRaw = Number(marksAwarded);
+    const awarded = Math.min(
+      max,
+      Math.max(0, Number.isFinite(awardedRaw) ? awardedRaw : 0)
+    );
     const page = Math.max(1, Number(pageNumber) || 1);
     onAdd(
       createManualQuestion({
         questionNumber: qNum,
         maxMarks: max,
+        marksAwarded: awarded,
         pageNumber: page,
       })
     );
     setQuestionNumber("");
     setMaxMarks("1");
+    setMarksAwarded("0");
     setPageNumber("1");
     setOpen(false);
   };
@@ -68,6 +76,27 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
             style={{
               marginLeft: 4,
               width: 72,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(0,0,0,0.2)",
+              color: "#fff",
+            }}
+          />
+        </label>
+        <label style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+          Marks
+          <input
+            type="number"
+            min={0}
+            max={50}
+            step="any"
+            value={marksAwarded}
+            onChange={(e) => setMarksAwarded(e.target.value)}
+            title="Marks awarded (0 is allowed)"
+            style={{
+              marginLeft: 4,
+              width: 52,
               padding: "4px 8px",
               borderRadius: 6,
               border: "1px solid rgba(255,255,255,0.12)",
