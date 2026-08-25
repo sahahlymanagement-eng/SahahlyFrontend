@@ -82,11 +82,6 @@ import AddMarkingQuestionBar, {
 } from "../../components/AddMarkingQuestionBar";
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
-import {
-  orderQuestionsByInventory,
-  annotateQuestionScopeFlags,
-} from "../../utils/questionDisplayOrder";
-import { isBackfilledStub } from "../../utils/backfilledStub";
 import QuestionNumberBadge from "../../components/QuestionNumberBadge";
 import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import {
@@ -343,74 +338,6 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // Mark scheme
   const [msInfo,      setMsInfo]      = useState(null);
   const [uploadingMs, setUploadingMs] = useState(false);
-
-  // Question paper (scope + order evidence — see questionPaperScope.js).
-  // Optional: an assignment with none keeps the pre-existing mark-scheme +
-  // sample-submissions behavior.
-  const [qpInfo,           setQpInfo]           = useState(null);
-  const [uploadingQp,      setUploadingQp]      = useState(false);
-  const [pairingQp,        setPairingQp]        = useState(false);
-  const [scopeLockedAt,    setScopeLockedAt]    = useState(null);
-  const [prunedQuestions,  setPrunedQuestions]  = useState([]);
-  // The whole inventory, not just the excluded subset: it is the canonical
-  // question ORDER for the correction panel (see utils/questionDisplayOrder.js).
-  const [assignmentInventory, setAssignmentInventory] = useState(null);
-  const qpInputRef = useRef(null);
-
-  // Manual question exclusion (see backend's questionExclusion.js) —
-  // independent of the question paper: for "only part of this paper was
-  // assigned" with nothing to derive that from automatically.
-  const [excludedQuestions,   setExcludedQuestions]   = useState([]);
-  const [excludeLabelsInput,  setExcludeLabelsInput]  = useState("");
-  const [excludingQuestions,  setExcludingQuestions]  = useState(false);
-
-  /**
-   * Question-paper + exclusion state for one assignment, read from a FULL
-   * assignment document.
-   *
-   * Extracted so every branch that switches or reloads the assignment applies
-   * the identical set — the previous version populated this at the primary
-   * load effect only, so switching assignments (or arriving via deep link)
-   * left the previous assignment's scope-lock badge and pruned/excluded lists
-   * on screen. A stale "scope locked" indicator is exactly the wrong thing to
-   * show, so the two helpers are always used as a pair: reset on every switch,
-   * populate only from a payload that actually carries these fields.
-   *
-   * Callers must pass a full Assignment doc (`/full`, or the assignments-list
-   * endpoint, which does not .select()). The `/markscheme` endpoint returns
-   * only {fileId, webLink} and must NOT be used here.
-   */
-  const applyQuestionPaperStateFrom = (a) => {
-    setAssignmentInventory(a?.assignmentInventory || null);
-    setQpInfo(
-      a?.questionPaperFileId
-        ? { fileId: a.questionPaperFileId, webLink: a.questionPaperWebLink }
-        : null
-    );
-    setScopeLockedAt(a?.assignmentScopeLockedAt || null);
-    setPrunedQuestions(
-      Array.isArray(a?.assignmentInventoryPrunedQuestions)
-        ? a.assignmentInventoryPrunedQuestions
-        : []
-    );
-    const items = Array.isArray(a?.assignmentInventory?.includedItems)
-      ? a.assignmentInventory.includedItems
-      : [];
-    setExcludedQuestions(
-      items
-        .filter((i) => i?.excluded === true)
-        .map((i) => ({ msLabel: i.msReference, maxMarks: i.maxMarks }))
-    );
-  };
-
-  /** Clear to "nothing known yet" — mirrors each setMsInfo(null) reset. */
-  const resetQuestionPaperState = () => {
-    setAssignmentInventory(null);
-    setQpInfo(null);
-    setScopeLockedAt(null);
-    setPrunedQuestions([]);
-    setExcludedQuestions([]);
-  };
 
   // Guidance modal
   const [guidanceModal,      setGuidanceModal]      = useState(null);
@@ -887,18 +814,8 @@ const resolvePdfSummary = (submissionId, result) =>
   const questionsForDisplay = useMemo(() => {
     const withIdx = editingQuestions.map((q, i) => ({ ...q, _placementIndex: i }));
     const filtered = withIdx.filter((q) => !pendingRemovedIndices.has(q._placementIndex));
-    // Order by the canonical question list: question-paper order when a
-    // question paper was uploaded, mark-scheme order otherwise. Physical
-    // placement is only the fallback (no inventory, and for off-list rows).
-    const ordered = orderQuestionsByInventory(filtered, assignmentInventory, {
-      fallbackSort: sortQuestionsByPlacement,
-    });
-    return annotateQuestionScopeFlags(ordered, {
-      assignmentInventory,
-      prunedQuestions,
-      isBackfilledStub,
-    });
-  }, [editingQuestions, pendingRemovedIndices, assignmentInventory, prunedQuestions]);
+    return sortQuestionsByPlacement(filtered);
+  }, [editingQuestions, pendingRemovedIndices]);
 
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
@@ -1383,10 +1300,6 @@ useEffect(() => {
       setMsInfo(a.markSchemeFileId ? { fileId: a.markSchemeFileId, webLink: a.markSchemeWebLink } : null);
       setExpectedPages(a.expectedPages ?? null);
       setExpectedPagesInput(a.expectedPages != null ? String(a.expectedPages) : "");
-      // Question-paper scoping (questionPaperScope.js / questionPaperGate.js)
-      // and manual exclusion (questionExclusion.js). `/full` returns the whole
-      // assignment doc, so every field these need is present here.
-      applyQuestionPaperStateFrom(a);
     }
   }, [studentExtra.assignment]);
 
@@ -1417,16 +1330,11 @@ useEffect(() => {
     setSelectedClassroom(classroom);
     setSelectedAssignment(null);
     setMsInfo(null);
-    resetQuestionPaperState();
   };
 
   const selectAssignment = async (assignment) => {
     setSelectedAssignment(assignment);
     setMsInfo(null);
-    // Reset only — the /markscheme call below returns {fileId, webLink} and
-    // carries none of these fields. The primary load effect repopulates them
-    // when this assignment's /full response lands.
-    resetQuestionPaperState();
     setBulkProgress({});
     setExpectedPages(null);
     setExpectedPagesInput("");
@@ -1441,14 +1349,12 @@ useEffect(() => {
     setSelectedClassroom(null);
     setSelectedAssignment(null);
     setMsInfo(null);
-    resetQuestionPaperState();
     setBulkProgress({});
   };
 
   const expandAssignmentSection = () => {
     setSelectedAssignment(null);
     setMsInfo(null);
-    resetQuestionPaperState();
     setBulkProgress({});
     setExpectedPages(null);
     setExpectedPagesInput("");
@@ -1497,11 +1403,6 @@ useEffect(() => {
         setSelectedClassroom(classroom);
         setSelectedAssignment(assignment);
         setMsInfo(null);
-        // The assignments-list endpoint does not .select(), so `assignment` is
-        // the full doc and carries every question-paper/exclusion field. The
-        // primary load effect will also run once /full lands; applying here
-        // avoids showing the previous assignment's scope state until it does.
-        applyQuestionPaperStateFrom(assignment);
         setBulkProgress({});
         setExpectedPages(assignment.expectedPages ?? null);
         setExpectedPagesInput(
@@ -1595,100 +1496,6 @@ useEffect(() => {
     } catch (err) {
       toast.error(err.response?.data?.message || "Upload failed");
     } finally { setUploadingMs(false); }
-  };
-
-  // The blank exam paper — no student answers, no mark-scheme text. Layout,
-  // scope, and ORDER evidence for questionPaperScope.js. Uploading a new one
-  // invalidates any previous pairing server-side (see the upload route), so
-  // scopeLockedAt/prunedQuestions are cleared here to match immediately
-  // rather than waiting for a refetch.
-  const handleQpUpload = async (file) => {
-    if (!file || !selectedAssignment) return;
-    setUploadingQp(true);
-    try {
-      const fd = new FormData();
-      fd.append("questionPaper", file);
-      const res = await api.post(
-        `/manager-assignments/${selectedAssignment._id}/upload-question-paper`,
-        fd, { headers: { "Content-Type": "multipart/form-data" } }
-      );
-      setQpInfo({ fileId: res.data.fileId, webLink: res.data.webLink });
-      setScopeLockedAt(null);
-      setPrunedQuestions([]);
-      toast.success("Question paper uploaded — run 'Lock Scope' to pair it against the mark scheme");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Upload failed");
-    } finally { setUploadingQp(false); }
-  };
-
-  // Runs the question-paper index + pairing pass and persists the result —
-  // this is the step that actually locks assignmentInventory's scope/order to
-  // the question paper (backend: managerAssignments.js /pair-question-paper).
-  const handlePairQuestionPaper = async () => {
-    if (!selectedAssignment || !qpInfo) return;
-    setPairingQp(true);
-    try {
-      const res = await api.post(
-        `/manager-assignments/${selectedAssignment._id}/pair-question-paper`
-      );
-      setPrunedQuestions(Array.isArray(res.data.prunedQuestions) ? res.data.prunedQuestions : []);
-      setScopeLockedAt(res.data.scopeLocked ? new Date().toISOString() : null);
-      if (res.data.allResolved) {
-        toast.success("Scope locked to the question paper");
-      } else {
-        toast.warn("Some mark-scheme questions need manual review before scope can lock — see the list below");
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Pairing failed");
-    } finally { setPairingQp(false); }
-  };
-
-  // Manually exclude specific mark-scheme questions from this assignment —
-  // for when only part of a paper was assigned and there's no question
-  // paper to derive that from (backend: questionExclusion.js).
-  const handleExcludeQuestions = async (excluded) => {
-    if (!selectedAssignment) return;
-    const msLabels = excludeLabelsInput
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!msLabels.length) {
-      toast.warn("Enter one or more question labels, comma-separated (e.g. 6, 7a, 8)");
-      return;
-    }
-    setExcludingQuestions(true);
-    try {
-      const res = await api.patch(
-        `/manager-assignments/${selectedAssignment._id}/excluded-questions`,
-        { msLabels, excluded }
-      );
-      setExcludedQuestions(Array.isArray(res.data.excludedQuestions) ? res.data.excludedQuestions : []);
-      if (res.data.unmatched?.length) {
-        toast.warn(`Not found in the mark scheme: ${res.data.unmatched.join(", ")}`);
-      }
-      if (res.data.matched?.length) {
-        toast.success(
-          `${excluded ? "Excluded" : "Restored"}: ${res.data.matched.join(", ")}`
-        );
-        setExcludeLabelsInput("");
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update question exclusions");
-    } finally { setExcludingQuestions(false); }
-  };
-
-  const handleRestoreQuestion = async (msLabel) => {
-    if (!selectedAssignment) return;
-    try {
-      const res = await api.patch(
-        `/manager-assignments/${selectedAssignment._id}/excluded-questions`,
-        { msLabels: [msLabel], excluded: false }
-      );
-      setExcludedQuestions(Array.isArray(res.data.excludedQuestions) ? res.data.excludedQuestions : []);
-      toast.success(`Restored Q${msLabel}`);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to restore question");
-    }
   };
 
 
@@ -4534,145 +4341,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       </button>
                     )}
 
-                    {/* Question paper — optional scope/order evidence, see questionPaperScope.js */}
-                    <input
-                      ref={qpInputRef}
-                      type="file"
-                      accept=".pdf"
-                      style={{ display: "none" }}
-                      onChange={(e) => handleQpUpload(e.target.files[0])}
-                    />
-                    <button
-                      className="ma-send-btn"
-                      onClick={() => qpInputRef.current.click()}
-                      disabled={uploadingQp}
-                      style={{ fontSize: 12, marginLeft: 10 }}
-                      title="The blank exam paper — no student answers. Used to lock question scope and order."
-                    >
-                      <FiUploadCloud size={13} />
-                      {uploadingQp ? "Uploading…" : qpInfo ? "Replace QP" : "Upload Question Paper"}
-                    </button>
-                    {qpInfo && (
-                      <button
-                        className="msv-btn-ai"
-                        onClick={handlePairQuestionPaper}
-                        disabled={pairingQp || !msInfo}
-                        style={{ marginLeft: 6 }}
-                        title={!msInfo ? "Upload a mark scheme first" : "Pair the mark scheme onto the question paper's scope and order"}
-                      >
-                        {pairingQp ? "Locking…" : scopeLockedAt ? "✅ Scope Locked — Re-run" : "Lock Scope"}
-                      </button>
-                    )}
-
-                    {/* Mark-scheme entries the question-paper pairing pass excluded or
-                        couldn't resolve — never silently dropped, see questionPaperScope.js.
-                        A needsReview entry blocks first-batch (questionPaperGate.js) until
-                        someone looks at this list. */}
-                    {prunedQuestions.length > 0 && (
-                      <div
-                        style={{
-                          width: "100%",
-                          marginTop: 8,
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
-                          background: "color-mix(in srgb, var(--warning) 8%, transparent)",
-                        }}
-                      >
-                        <strong>{prunedQuestions.filter((p) => p.needsReview).length > 0 ? "⚠ Needs review" : "Excluded from scope"}:</strong>{" "}
-                        {prunedQuestions.map((p, i) => (
-                          <span key={p.msLabel || i}>
-                            {i > 0 && ", "}
-                            {p.msLabel} ({p.reason}
-                            {p.needsReview ? " — needs review" : ""})
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Manually exclude specific mark-scheme questions — independent of
-                        the question paper, for "only part of this paper was assigned"
-                        with nothing to derive that from automatically (questionExclusion.js). */}
-                    {msInfo && (
-                      <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                        <input
-                          type="text"
-                          value={excludeLabelsInput}
-                          onChange={(e) => setExcludeLabelsInput(e.target.value)}
-                          placeholder="Exclude questions, e.g. 6, 7a, 8"
-                          style={{
-                            fontSize: 12,
-                            padding: "5px 8px",
-                            borderRadius: 6,
-                            border: "1px solid var(--border)",
-                            background: "var(--surface-2)",
-                            color: "var(--text-primary)",
-                            minWidth: 200,
-                          }}
-                        />
-                        <button
-                          className="ma-send-btn"
-                          onClick={() => handleExcludeQuestions(true)}
-                          disabled={excludingQuestions}
-                          style={{ fontSize: 12 }}
-                          title="Exclude these questions from grading and the total for this assignment only"
-                        >
-                          {excludingQuestions ? "Updating…" : "Exclude"}
-                        </button>
-                      </div>
-                    )}
-                    {excludedQuestions.length > 0 && (
-                      <div
-                        style={{
-                          width: "100%",
-                          marginTop: 6,
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: "1px solid var(--border)",
-                          background: "var(--surface-2)",
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 6,
-                          alignItems: "center",
-                        }}
-                      >
-                        <strong>Excluded from this assignment:</strong>
-                        {excludedQuestions.map((q) => (
-                          <span
-                            key={q.msLabel}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              padding: "2px 6px",
-                              borderRadius: 10,
-                              background: "var(--surface-1)",
-                              border: "1px solid var(--border)",
-                            }}
-                          >
-                            Q{q.msLabel} ({q.maxMarks})
-                            <button
-                              onClick={() => handleRestoreQuestion(q.msLabel)}
-                              title="Restore this question to grading"
-                              style={{
-                                border: "none",
-                                background: "none",
-                                cursor: "pointer",
-                                color: "var(--muted)",
-                                fontSize: 12,
-                                padding: 0,
-                                lineHeight: 1,
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
                     {/* Non-batch "Mark All Students" removed — keep only batch marking */}
                  {/* Return All */}
                   {!bulkMarking && (isTeacherScope || msInfo || hasGradedWork) && (
@@ -5416,7 +5084,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
                   )}
                   {!loadingStudents && students.length > 0 && (
-                    <Pagination page={studentPage} totalPages={studentTotalPages} onPageChange={fetchStudentPage} />
+                    <Pagination
+                      page={studentPage}
+                      totalPages={studentTotalPages}
+                      onPageChange={fetchStudentPage}
+                      showAllPages
+                    />
                   )}
                 </div>
             </div>
