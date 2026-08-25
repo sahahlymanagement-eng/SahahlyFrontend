@@ -321,6 +321,11 @@ function isOnDistinctPageFromReals(q, reals) {
 }
 
 function preferQuestionEntry(a, b) {
+  // Teacher-added / stub-edited rows win ties — never collapse them away as ghosts.
+  const aManual = a?._manual === true || a?._stubEdited === true;
+  const bManual = b?._manual === true || b?._stubEdited === true;
+  if (aManual !== bManual) return aManual ? a : b;
+
   const rank = (q) => {
     if (Number(q?.marksAwarded) > 0) return 3;
     if (q?.checklist?.answerIsBlank !== true) return 2;
@@ -353,6 +358,8 @@ function preferQuestionEntry(a, b) {
 
 function shouldKeepBesideReals(q, reals) {
   if (!reals.length) return true;
+  // Staff-added / reviewed rows are intentional — never drop as chunk ghosts.
+  if (q?._manual === true || q?._stubEdited === true) return true;
 
   const distinctPage = isOnDistinctPageFromReals(q, reals);
   const hasScoredReal = reals.some((r) => Number(r?.marksAwarded) > 0);

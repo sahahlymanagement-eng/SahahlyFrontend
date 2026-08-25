@@ -623,17 +623,16 @@ export function createManualQuestion({
       handwritingClarity: true,
       markSchemeUnderstanding: true,
       studentAnswerUnderstanding: awarded > 0,
-      // 0 can mean blank OR wrong — default blank for a newly added miss; the
-      // teacher can untick "Answer is Blank" and still keep 0 marks.
-      answerIsBlank: awarded === 0,
+      // Default: not blank — 0 can mean wrong. Teacher can tick "Answer is Blank".
+      answerIsBlank: false,
     },
-    studentAnswer: awarded === 0 ? "Question left blank — no answer provided." : "",
+    studentAnswer: "",
     correctAnswer: "",
     reason:
       awarded >= max
         ? `Full marks awarded for Q${qNum}.`
         : awarded === 0
-          ? `No marks awarded for Q${qNum}.`
+          ? `Awarded 0/${max} marks.`
           : `Awarded ${awarded}/${max} marks for Q${qNum}.`,
     _manual: true,
     _staffNote: "Added manually by teacher — adjust marks and feedback as needed.",
