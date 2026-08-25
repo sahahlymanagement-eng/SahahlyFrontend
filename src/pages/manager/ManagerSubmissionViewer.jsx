@@ -13,6 +13,7 @@ import {
 import { usePagination } from "../../hooks/usePagination";
 import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import { getStoredUser } from "../../utils/session";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText, applyPageCountDecision } from "../../hooks/usePageCountCheck";
 import {
@@ -180,7 +181,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const deepLinkHandledRef = useRef(null);
   const msInputRef = useRef();
 
-  const [user,               setUser]               = useState(null);
+  const [user,               setUser]               = useState(() => getStoredUser());
   const [selectedClassroom,  setSelectedClassroom]  = usePersistedState(`subviewer:${scope}:classroom`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`subviewer:${scope}:assignment`, null);
   const assignmentPrompt = useAssignmentMarkingPrompt(selectedAssignment?._id);
@@ -687,7 +688,7 @@ const resolvePdfSummary = (submissionId, result) =>
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
-    assignmentId,
+    assignmentId: selectedAssignment?._id,
     resultModal,
     editingQuestions,
     editingAnnotations,
@@ -1244,9 +1245,12 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) return navigate("/login");
-    setUser(JSON.parse(stored));
+    const stored = getStoredUser();
+    if (!stored) {
+      navigate("/login");
+      return;
+    }
+    setUser(stored);
   }, [navigate]);
 
   useEffect(() => {
@@ -4086,7 +4090,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     return { successCount, failures };
   };
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="ma-root" style={{ alignItems: "center", justifyContent: "center", minHeight: "50vh" }}>
+        <p className="ma-loading-msg">Loading submission viewer…</p>
+      </div>
+    );
+  }
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
 
@@ -4787,7 +4797,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             
 
                               return (
-                                <tr key={s._id || s.submissionId} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
+                                <tr key={`${s.submissionId || s.googleUserId || s._id || "row"}-${i}`} className="ma-row" style={{ animationDelay: `${i * 0.025}s` }}>
                                   {showMarkingTools && (
                                   <td>
                                     {s.submissionId ? (

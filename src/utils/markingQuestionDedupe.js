@@ -165,6 +165,15 @@ export function repairQuestionNumbersFromFeedback(questions) {
     );
     if (!fromFb) return q;
 
+    const printed = sanitizeQuestionNumber(q.printedQuestionNumber);
+    if (printed && looksLikePlausibleQuestionNumber(printed)) {
+      const pKey = canonicalQuestionKey({ questionNumber: printed });
+      const fbKey = canonicalQuestionKey({ questionNumber: fromFb });
+      // Do not overwrite a clear page label with a contaminated award-lead
+      // (e.g. every reason says "Full marks awarded for Q1h").
+      if (pKey && fbKey && pKey !== fbKey) return q;
+    }
+
     const cur = String(q.questionNumber ?? "").trim();
     const curNorm = canonicalQuestionKey({ questionNumber: cur });
     const fbNorm = canonicalQuestionKey({ questionNumber: fromFb });
