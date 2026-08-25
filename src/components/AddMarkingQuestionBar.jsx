@@ -166,19 +166,11 @@ export function MarkingCompletenessNotice({ result, questionCount }) {
     body =
       `Marking incomplete — the AI skipped many mark-scheme questions.${cov}` +
       (added
-        ? ` ${added} unmarked question${added === 1 ? " was" : "s were"} added for review.`
+        ? ` ${added} blank row${added === 1 ? " was" : "s were"} added for review.`
         : "") +
       ` Re-mark or finish every question before publishing. (${questionCount} question rows total)`;
   } else if (added) {
-    // Deliberately NOT "added as blank rows": these questions were never
-    // graded, which is not the same as the student leaving them empty. The old
-    // wording matched a stub that also told the STUDENT they had left it blank,
-    // and 1,829 marks across 19.5% of papers were scored 0 on that basis.
-    body =
-      `${added} question${added === 1 ? " was" : "s were"} not marked by the AI. ` +
-      `The 0 shown for ${added === 1 ? "it" : "them"} is NOT a confirmed student score — ` +
-      `check ${added === 1 ? "it" : "them"} against the script and set the marks before publishing. ` +
-      `(${questionCount} question rows total)`;
+    body = `${added} question${added === 1 ? "" : "s"} were not detected by AI and were added as blank rows — please review and adjust marks manually. (${questionCount} question rows total)`;
   } else if (suppressed) {
     body =
       "Some mark-scheme items were treated as another booklet and not added as zeros. Confirm this paper was fully marked before publishing.";
