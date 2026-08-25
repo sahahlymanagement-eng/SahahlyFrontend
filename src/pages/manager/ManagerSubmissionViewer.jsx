@@ -95,6 +95,7 @@ import {
 } from "../../utils/markingCost";
 import {
   chunkSizeForGeminiModel,
+  pickableChunkSizes,
   formatChunkSizeLabel,
 } from "../../utils/markingChunkSize";
 import { canViewMoneyCostsFromStorage, maybeStripMoney } from "../../utils/moneyVisibility";
@@ -4382,7 +4383,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           title="Pages per AI request (batch, single, and bulk marking)"
                           style={{ minWidth: 120 }}
                         >
-                          {[0, 1, 2, 3, 5, 8, 10].map((n) => (
+                          {pickableChunkSizes().map((n) => (
                             <option key={n} value={n}>
                               {n === 0 ? "Full PDF (1 request)" : `${n} page${n !== 1 ? "s" : ""} / request`}
                             </option>
