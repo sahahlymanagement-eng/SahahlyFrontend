@@ -742,11 +742,9 @@ export default function ManagerLoginCss() {
   // ONE page of ONE assignment's submissions.
   //
   // Paged on the server rather than downloading the assignment and slicing in
-  // the browser: with the marking drafts attached, a 100-submission assignment
-  // was ~2.9 MB, against ~30 KB for the ten rows actually on screen.
-  //
-  // `includeDrafts` is affordable at this size and keeps "✅ Results" and grades
-  // populated for the visible rows without a second request each.
+  // the browser. Draft JSON is NOT included here — it dominated the payload
+  // (~2.9 MB for 100 papers). List rows carry hasDraft + grade totals; opening
+  // Results fetches that one paper's draft via /submissions/:id/draft.
   const loadAssignmentSubmissions = useCallback(async (assignment, pageNum = 1) => {
     if (!assignment) return;
     setLoadingList(true);
@@ -756,23 +754,13 @@ export default function ManagerLoginCss() {
           ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
           page: pageNum,
           per_page: PER_PAGE,
-          includeDrafts: 1,
         },
       });
       const items = data?.data || [];
 
       const collected = [];
-      const hydrated = {};
       for (const raw of items) {
         collected.push(normalizeItem(raw));
-        const sid = raw.id ?? raw.submissionId ?? raw._id;
-        if (sid != null && raw.draftResult) {
-          hydrated[sid] = {
-            result: raw.draftResult,
-            originalAiResult: raw.draftOriginalAiResult || raw.draftResult,
-            studentFile: undefined,
-          };
-        }
       }
 
       setSubmissions(sortStudentsBySubmittedAt(collected));
@@ -780,8 +768,6 @@ export default function ManagerLoginCss() {
         total: data?.total ?? collected.length,
         lastPage: data?.last_page ?? 1,
       });
-      // In-memory results (prev) win over server drafts — keep fresher local edits.
-      setResults((prev) => ({ ...hydrated, ...prev }));
     } catch (err) {
       console.error("Failed to load submissions", err);
       toast.error((await getApiErrorMessage(err)) || "Failed to load submissions");
@@ -3048,6 +3034,7 @@ export default function ManagerLoginCss() {
                       // page is its own request.
                       if (!isSearching) loadAssignmentSubmissions(selectedAssignment, p);
                     }}
+                    showAllPages
                   />
                 )}
               </div>

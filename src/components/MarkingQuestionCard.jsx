@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import QuestionNumberBadge from "./QuestionNumberBadge";
 import QuestionKeywordFields from "./QuestionKeywordFields";
 import QuestionErrorTypePicker from "./QuestionErrorTypePicker";
@@ -28,6 +29,14 @@ const textAreaStyle = {
   outline: "none",
 };
 
+/** Parse marks from an input; empty/partial typing returns null (don't commit yet). */
+function parseMarksInput(raw) {
+  const s = String(raw ?? "").trim();
+  if (s === "" || s === "-" || s === "." || s === "-.") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function MarkingQuestionCard({
   question,
   index,
@@ -38,16 +47,30 @@ export default function MarkingQuestionCard({
   onRemove,
 }) {
   const q = question || {};
-  const awarded = Number(q.marksAwarded) || 0;
+  const awarded = Number.isFinite(Number(q.marksAwarded)) ? Number(q.marksAwarded) : 0;
   const qMax = Math.max(0, Number(q.maxMarks) || 0);
   const color = getScoreColor(awarded, qMax || 1);
   const qPct = qMax > 0 ? Math.round((awarded / qMax) * 100) : 0;
+
+  // Local draft so typing "0" / clearing the field is not fought by controlled
+  // Number(value)||0 snapping, and blur commits the real input (not a stale prop).
+  const [marksDraft, setMarksDraft] = useState(null);
+  const [maxDraft, setMaxDraft] = useState(null);
+
+  useEffect(() => {
+    setMarksDraft(null);
+    setMaxDraft(null);
+  }, [index, q.questionNumber]);
 
   const update = (patch) => onChange(index, { ...q, ...patch });
 
   const setMarks = (nextAwarded, { mode = "prefix" } = {}) => {
     const max = Math.max(0, Number(q.maxMarks) || 0);
-    const marksAwarded = Math.min(max, Math.max(0, Number(nextAwarded) || 0));
+    const parsed = Number(nextAwarded);
+    const marksAwarded = Math.min(
+      max,
+      Math.max(0, Number.isFinite(parsed) ? parsed : 0)
+    );
     let markPoints = q.markPoints;
     if (Array.isArray(markPoints) && markPoints.length) {
       if (marksAwarded >= max && max > 0) {
@@ -65,8 +88,12 @@ export default function MarkingQuestionCard({
   };
 
   const setMaxMarks = (nextMax, { mode = "prefix" } = {}) => {
-    const max = Math.max(1, Number(nextMax) || 1);
-    const marksAwarded = Math.min(max, Number(q.marksAwarded) || 0);
+    const parsed = Number(nextMax);
+    const max = Math.max(1, Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
+    const currentAwarded = Number.isFinite(Number(q.marksAwarded))
+      ? Number(q.marksAwarded)
+      : 0;
+    const marksAwarded = Math.min(max, Math.max(0, currentAwarded));
     onChange(
       index,
       alignExaminerFeedbackToMarks({ ...q, maxMarks: max, marksAwarded }, mode, {
@@ -117,9 +144,20 @@ export default function MarkingQuestionCard({
             type="number"
             min={0}
             max={qMax || 999}
-            value={awarded}
-            onChange={(e) => setMarks(e.target.value)}
-            onBlur={() => setMarks(awarded, { mode: "full" })}
+            step="any"
+            value={marksDraft !== null ? marksDraft : awarded}
+            onFocus={() => setMarksDraft(String(awarded))}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setMarksDraft(raw);
+              const n = parseMarksInput(raw);
+              if (n != null) setMarks(n);
+            }}
+            onBlur={(e) => {
+              const n = parseMarksInput(e.target.value);
+              setMarks(n != null ? n : 0, { mode: "full" });
+              setMarksDraft(null);
+            }}
             style={{
               width: 52,
               padding: "4px 8px",
@@ -138,9 +176,20 @@ export default function MarkingQuestionCard({
             type="number"
             min={1}
             max={999}
-            value={qMax || 1}
-            onChange={(e) => setMaxMarks(e.target.value)}
-            onBlur={() => setMaxMarks(qMax || 1, { mode: "full" })}
+            step="any"
+            value={maxDraft !== null ? maxDraft : qMax || 1}
+            onFocus={() => setMaxDraft(String(qMax || 1))}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setMaxDraft(raw);
+              const n = parseMarksInput(raw);
+              if (n != null && n >= 1) setMaxMarks(n);
+            }}
+            onBlur={(e) => {
+              const n = parseMarksInput(e.target.value);
+              setMaxMarks(n != null && n >= 1 ? n : 1, { mode: "full" });
+              setMaxDraft(null);
+            }}
             style={{
               width: 44,
               padding: "4px 6px",
@@ -157,7 +206,10 @@ export default function MarkingQuestionCard({
 
         <button
           type="button"
-          onClick={() => setMarks(qMax, { mode: "full" })}
+          onClick={() => {
+            setMarksDraft(null);
+            setMarks(qMax, { mode: "full" });
+          }}
           title="Award full marks"
           style={{
             fontSize: 11,
@@ -173,7 +225,10 @@ export default function MarkingQuestionCard({
         </button>
         <button
           type="button"
-          onClick={() => setMarks(0, { mode: "full" })}
+          onClick={() => {
+            setMarksDraft("0");
+            setMarks(0, { mode: "full" });
+          }}
           title="Award zero marks"
           style={{
             fontSize: 11,
@@ -260,57 +315,6 @@ export default function MarkingQuestionCard({
         })}
       </div>
 
-      {/*
-        Scope flags from utils/questionDisplayOrder.js. These answer two
-        questions a reviewer cannot otherwise tell apart from a bare 0/N row:
-        did the student not answer it, or was it never really asked?
-      */}
-      {q._scopeFlags?.notAnswered && (
-        <div style={{
-            fontSize: 11,
-            color: "var(--warning)",
-            marginBottom: 8,
-            padding: "4px 8px",
-            borderRadius: 6,
-            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
-            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
-          }}>
-          {q._scopeFlags.notDetected
-            ? "Not found on the script - this question was not detected during automated marking. Check the paper and award marks manually if the student did answer it."
-            : "Not answered - the student left this question blank."}
-        </div>
-      )}
-
-      {q._scopeFlags?.markSchemeOnly && (
-        <div style={{
-            fontSize: 11,
-            color: "var(--warning)",
-            marginBottom: 8,
-            padding: "4px 8px",
-            borderRadius: 6,
-            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
-            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
-          }}>
-          In the mark scheme but not found on the question paper - this question
-          may not have been asked. Verify before counting it against the student.
-        </div>
-      )}
-
-      {q._scopeFlags?.offInventory && (
-        <div style={{
-            fontSize: 11,
-            color: "var(--warning)",
-            marginBottom: 8,
-            padding: "4px 8px",
-            borderRadius: 6,
-            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
-            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
-          }}>
-          Not in the assignment question list - graded anyway, and its marks are
-          counted in the total. Confirm it belongs to this assignment.
-        </div>
-      )}
-
       {q.needsReview === true && (
         <div
           style={{
@@ -324,36 +328,6 @@ export default function MarkingQuestionCard({
           }}
         >
           Flagged for review — a critical digit, sign, or choice could not be read reliably
-        </div>
-      )}
-
-      {/*
-        REGRESSION: markingGroundingCheck.js has computed these flags on every
-        marked paper all along (see groundingFlags / groundingReviewCount in
-        markingGrades.js), but nothing anywhere in the frontend ever rendered
-        them — a suspected mark-scheme-copy answer had no visible signal to
-        the human reviewing the paper. Mirrors the needsReview badge above.
-        Coverage/award contradictions (coverageContradictionCheck.js) render
-        through this same badge on purpose: one visual language for "this needs
-        a second look", rather than a new badge style per integrity check.
-      */}
-      {(q.groundingFlags?.length > 0 || q.coverageFlags?.length > 0 || q.ruleFlags?.length > 0) && (
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--warning)",
-            marginBottom: 8,
-            padding: "4px 8px",
-            borderRadius: 6,
-            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
-            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
-          }}
-        >
-          {[...(q.groundingFlags || []), ...(q.coverageFlags || []), ...(q.ruleFlags || [])].map((flag, flagIndex) => (
-            <div key={`${flag.code || "FLAG"}-${flagIndex}`}>
-              ⚠ {flag.detail || "This answer may not be grounded in the student's own script — verify against the scan."}
-            </div>
-          ))}
         </div>
       )}
 

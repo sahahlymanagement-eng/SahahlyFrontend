@@ -273,6 +273,8 @@ function isOffChunkFiller(q) {
 
 function looksLikeGhostZero(q) {
   if (!q || Number(q.marksAwarded) > 0) return false;
+  // Staff-added rows are intentional — never treat a manual 0 as a chunk ghost.
+  if (q._manual === true || q._stubEdited === true) return false;
   if (q._backfilled === true) return false;
   if (isOffChunkFiller(q)) return true;
 

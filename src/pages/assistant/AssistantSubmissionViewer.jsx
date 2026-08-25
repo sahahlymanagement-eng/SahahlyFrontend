@@ -3966,7 +3966,7 @@ return (
           })}
         </tbody>
       </table>
-<Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} />
+<Pagination page={page} totalPages={totalPages} onPageChange={fetchPage} showAllPages />
     </div>
   </div>
 )}

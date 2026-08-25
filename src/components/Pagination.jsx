@@ -1,23 +1,31 @@
 import "../styles/ui-polish.css";
 
-export default function Pagination({ page, totalPages, onPageChange }) {
+export default function Pagination({
+  page,
+  totalPages,
+  onPageChange,
+  /** When true, every page number is clickable (no … gaps). Use for assignment
+   *  student lists where jumping to a late page should not require hopping. */
+  showAllPages = false,
+}) {
   if (totalPages <= 1) return null;
 
   const getPages = () => {
     const pages = [];
 
-    if (totalPages <= 7) {
+    if (showAllPages || totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      const near = new Set([1, totalPages, page, page - 1, page + 1]);
-      const sorted = [...near].filter((p) => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+      return pages;
+    }
 
-      for (let i = 0; i < sorted.length; i++) {
-        if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
-          pages.push("...");
-        }
-        pages.push(sorted[i]);
+    const near = new Set([1, totalPages, page, page - 1, page + 1]);
+    const sorted = [...near].filter((p) => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
+        pages.push("...");
       }
+      pages.push(sorted[i]);
     }
 
     return pages;
