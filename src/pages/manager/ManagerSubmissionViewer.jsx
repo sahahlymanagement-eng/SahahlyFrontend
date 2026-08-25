@@ -611,8 +611,9 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
 
   // Load the assignment's mark scheme as a blob object URL when the results modal opens.
   // Cached per assignment (mark scheme is per-assignment, not per-submission).
+  const resultModalOpen = Boolean(resultModal);
   useEffect(() => {
-    if (!resultModal) return;
+    if (!resultModalOpen) return;
     const aid = selectedAssignment?._id;
     if (!aid || !msInfo?.fileId) {
       setMarkSchemePreviewUrl(null);
@@ -623,12 +624,19 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
       setMarkSchemePreviewUrl(msPreviewRef.current.url);
       return;
     }
-    let cancelled = false;
+    // AbortController (not just an ignore-flag) so a re-render mid-fetch — e.g. the
+    // auto-save-on-open flow replacing `resultModal` with a new object right after the
+    // modal mounts — cancels the in-flight 6MB request instead of leaving it running
+    // alongside a fresh duplicate. Two concurrent blob GETs for the same large file was
+    // producing net::ERR_FAILED on one or both in Chrome.
+    const controller = new AbortController();
     setMarkSchemeLoading(true);
     setMarkSchemeError(null);
-    api.get(`/manager-assignments/${aid}/markscheme-file`, { responseType: "blob" })
+    api.get(`/manager-assignments/${aid}/markscheme-file`, {
+      responseType: "blob",
+      signal: controller.signal,
+    })
       .then((res) => {
-        if (cancelled) return;
         const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
         if (msPreviewRef.current.url && msPreviewRef.current.assignmentId !== aid) {
           URL.revokeObjectURL(msPreviewRef.current.url);
@@ -637,14 +645,16 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
         setMarkSchemePreviewUrl(url);
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         console.error("[markscheme preview]", err);
         setMarkSchemeError("Failed to load mark scheme");
         setMarkSchemePreviewUrl(null);
       })
-      .finally(() => { if (!cancelled) setMarkSchemeLoading(false); });
-    return () => { cancelled = true; };
-  }, [resultModal, selectedAssignment?._id, msInfo?.fileId]);
+      .finally(() => {
+        if (!controller.signal.aborted) setMarkSchemeLoading(false);
+      });
+    return () => controller.abort();
+  }, [resultModalOpen, selectedAssignment?._id, msInfo?.fileId]);
 
   // Revoke the cached mark scheme object URL on unmount.
   useEffect(() => () => {
