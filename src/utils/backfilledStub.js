@@ -17,6 +17,7 @@ export function isBackfilledStub(q) {
   // Authoritative — injected by mark-scheme backfill.
   if (q._backfilled === true) return true;
   if (q._incompleteMarking === true) return true;
+  if (q._apiGap === true) return true;
   // Set on every stub: the question was never graded, as opposed to graded
   // and found blank. Checked before any wording match so a copy edit to the
   // stub text cannot make stubs invisible here.

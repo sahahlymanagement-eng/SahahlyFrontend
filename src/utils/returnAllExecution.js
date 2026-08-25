@@ -5,6 +5,7 @@
 import { buildReturnAllQueue } from "./returnAllQueue";
 import { getApiErrorMessage } from "./markingFormData";
 import { invalidateStudentPdf } from "./studentPdfCache";
+import { getMarkingIntegrityPublishGate } from "./markingIntegrityPublish";
 
 export function mapSavedResultsFromApi(rows = []) {
   const map = {};
@@ -142,6 +143,12 @@ export async function runReturnAllQueue({
 
     if (!result) {
       failures.push({ submissionId, label, reason: "Missing marking data" });
+      return;
+    }
+
+    const integrityGate = getMarkingIntegrityPublishGate(result);
+    if (integrityGate?.level === "block") {
+      failures.push({ submissionId, label, reason: integrityGate.message });
       return;
     }
 

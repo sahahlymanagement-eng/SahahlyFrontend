@@ -14,7 +14,7 @@ export function getMarkingIntegrityState(result) {
 }
 
 /**
- * @returns {{ level: 'block'|'warn', title: string, message: string } | null}
+ * @returns {{ level: 'block', title: string, message: string } | null}
  */
 export function getMarkingIntegrityPublishGate(result) {
   const { failed, incomplete, coverage, backfilled } = getMarkingIntegrityState(result);
@@ -30,14 +30,14 @@ export function getMarkingIntegrityPublishGate(result) {
     const covPct =
       coverage != null ? ` Mark-scheme coverage was about ${Math.round(coverage * 100)}%.` : "";
     return {
-      level: "warn",
+      level: "block",
       title: "Marking incomplete",
       message:
         `Many mark-scheme questions were not graded in this run.${covPct}` +
         (backfilled
           ? ` ${backfilled} blank row(s) were added for review.`
           : "") +
-        " Re-mark or finish the list before publishing. Publish anyway only if you have verified the paper by hand.",
+        " Re-mark or finish the question list, then Confirm Edits, before publishing or returning.",
     };
   }
   return null;

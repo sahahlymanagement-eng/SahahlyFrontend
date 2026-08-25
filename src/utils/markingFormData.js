@@ -599,8 +599,14 @@ export function createManualQuestion({
   yPercent = 30,
   marksAwarded = 0,
 } = {}) {
-  const max = Math.max(1, Number(maxMarks) || 1);
-  const awarded = Math.min(max, Math.max(0, Number(marksAwarded) || 0));
+  const maxRaw = Number(maxMarks);
+  const max = Math.max(1, Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : 1);
+  // `Number(0) || 0` is fine, but keep explicit so 0 is never treated as "missing".
+  const awardedRaw = Number(marksAwarded);
+  const awarded = Math.min(
+    max,
+    Math.max(0, Number.isFinite(awardedRaw) ? awardedRaw : 0)
+  );
   const qNum = String(questionNumber || "").trim();
   return {
     questionNumber: qNum,
@@ -616,7 +622,9 @@ export function createManualQuestion({
       scanningClarity: true,
       handwritingClarity: true,
       markSchemeUnderstanding: true,
-      studentAnswerUnderstanding: true,
+      studentAnswerUnderstanding: awarded > 0,
+      // 0 can mean blank OR wrong — default blank for a newly added miss; the
+      // teacher can untick "Answer is Blank" and still keep 0 marks.
       answerIsBlank: awarded === 0,
     },
     studentAnswer: awarded === 0 ? "Question left blank — no answer provided." : "",

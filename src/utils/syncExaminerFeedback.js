@@ -179,6 +179,10 @@ export function syncQuestionsExaminerFeedback(questions, previousQuestions = [])
       !prev ||
       Number(prev.marksAwarded) !== Number(q.marksAwarded) ||
       Number(prev.maxMarks) !== Number(q.maxMarks);
-    return marksChanged ? alignExaminerFeedbackToMarks(q, "full") : q;
+    // Teacher editor path: never snap marks back to 0 because of a leftover
+    // blank flag (same rule as MarkingQuestionCard setMarks).
+    return marksChanged
+      ? alignExaminerFeedbackToMarks(q, "full", { preferMarksOverBlank: true })
+      : q;
   });
 }

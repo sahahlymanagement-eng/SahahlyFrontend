@@ -48,7 +48,11 @@ export default function MarkingQuestionCard({
 }) {
   const q = question || {};
   const awarded = Number.isFinite(Number(q.marksAwarded)) ? Number(q.marksAwarded) : 0;
-  const qMax = Math.max(0, Number(q.maxMarks) || 0);
+  // Missing/invalid max used to become 0, which made Math.min(0, …) lock the
+  // awarded mark at 0 forever (common after "Add missing question").
+  const rawMax = Number(q.maxMarks);
+  const qMax =
+    Number.isFinite(rawMax) && rawMax > 0 ? rawMax : Math.max(1, rawMax || 1);
   const color = getScoreColor(awarded, qMax || 1);
   const qPct = qMax > 0 ? Math.round((awarded / qMax) * 100) : 0;
 
@@ -65,7 +69,11 @@ export default function MarkingQuestionCard({
   const update = (patch) => onChange(index, { ...q, ...patch });
 
   const setMarks = (nextAwarded, { mode = "prefix" } = {}) => {
-    const max = Math.max(0, Number(q.maxMarks) || 0);
+    // Never clamp against a 0/NaN max — that trapped teachers at awarded=0.
+    const max =
+      Number.isFinite(Number(q.maxMarks)) && Number(q.maxMarks) > 0
+        ? Number(q.maxMarks)
+        : qMax;
     const parsed = Number(nextAwarded);
     const marksAwarded = Math.min(
       max,
@@ -79,9 +87,15 @@ export default function MarkingQuestionCard({
         markPoints = markPoints.map((p) => ({ ...p, awarded: false }));
       }
     }
+    const nextQ = {
+      ...q,
+      maxMarks: max,
+      marksAwarded,
+      markPoints,
+    };
     onChange(
       index,
-      alignExaminerFeedbackToMarks({ ...q, marksAwarded, markPoints }, mode, {
+      alignExaminerFeedbackToMarks(nextQ, mode, {
         preferMarksOverBlank: true,
       })
     );
@@ -93,6 +107,7 @@ export default function MarkingQuestionCard({
     const currentAwarded = Number.isFinite(Number(q.marksAwarded))
       ? Number(q.marksAwarded)
       : 0;
+    // 0 is a valid awarded mark when raising/lowering max.
     const marksAwarded = Math.min(max, Math.max(0, currentAwarded));
     onChange(
       index,
@@ -141,14 +156,12 @@ export default function MarkingQuestionCard({
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
-            type="number"
-            min={0}
-            max={qMax || 999}
-            step="any"
-            value={marksDraft !== null ? marksDraft : awarded}
+            type="text"
+            inputMode="decimal"
+            value={marksDraft !== null ? marksDraft : String(awarded)}
             onFocus={() => setMarksDraft(String(awarded))}
             onChange={(e) => {
-              const raw = e.target.value;
+              const raw = e.target.value.replace(/[^\d./-]/g, "");
               setMarksDraft(raw);
               const n = parseMarksInput(raw);
               if (n != null) setMarks(n);
@@ -158,6 +171,8 @@ export default function MarkingQuestionCard({
               setMarks(n != null ? n : 0, { mode: "full" });
               setMarksDraft(null);
             }}
+            title="Marks awarded (0 is allowed)"
+            aria-label="Marks awarded"
             style={{
               width: 52,
               padding: "4px 8px",
@@ -173,14 +188,12 @@ export default function MarkingQuestionCard({
           />
           <span style={{ color: "var(--muted)", fontSize: 13 }}>/</span>
           <input
-            type="number"
-            min={1}
-            max={999}
-            step="any"
-            value={maxDraft !== null ? maxDraft : qMax || 1}
+            type="text"
+            inputMode="decimal"
+            value={maxDraft !== null ? maxDraft : String(qMax || 1)}
             onFocus={() => setMaxDraft(String(qMax || 1))}
             onChange={(e) => {
-              const raw = e.target.value;
+              const raw = e.target.value.replace(/[^\d./-]/g, "");
               setMaxDraft(raw);
               const n = parseMarksInput(raw);
               if (n != null && n >= 1) setMaxMarks(n);
@@ -190,6 +203,8 @@ export default function MarkingQuestionCard({
               setMaxMarks(n != null && n >= 1 ? n : 1, { mode: "full" });
               setMaxDraft(null);
             }}
+            title="Maximum marks for this question"
+            aria-label="Maximum marks"
             style={{
               width: 44,
               padding: "4px 6px",
