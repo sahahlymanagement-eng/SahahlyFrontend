@@ -53,6 +53,7 @@ export function useAnnotatedResultPreview({
   effectiveMaxTotal,
   assignmentMaxPoints,
   editingMaxTotal,
+  editingTotal = null,
   resolvePdfSummary,
   pendingRemovedIndices = null,
   editingCriteriaGrade = null,
@@ -78,6 +79,8 @@ export function useAnnotatedResultPreview({
   assignmentMaxPointsRef.current = assignmentMaxPoints;
   const editingMaxTotalRef = useRef(editingMaxTotal);
   editingMaxTotalRef.current = editingMaxTotal;
+  const editingTotalRef = useRef(editingTotal);
+  editingTotalRef.current = editingTotal;
   const editingQuestionsRef = useRef(editingQuestions);
   editingQuestionsRef.current = editingQuestions;
   const editingAnnotationsRef = useRef(editingAnnotations);
@@ -126,6 +129,18 @@ export function useAnnotatedResultPreview({
         : getTeacherAnnotations(modal.result)
     ).map((a) => ({ ...a }));
     const criteriaGrade = cloneCriteriaGrade(modal.result?.criteriaGrade);
+    const summed = questions.reduce(
+      (s, q) => s + (Number(q.marksAwarded) || 0),
+      0
+    );
+    const stored =
+      modal.result?.finalObtainedMarks ??
+      criteriaGrade?.totalMarks ??
+      modal.result?.totalMarks;
+    const finalObtainedMarks =
+      stored != null && Number.isFinite(Number(stored))
+        ? Number(stored)
+        : summed;
     return {
       submissionId,
       questions,
@@ -134,10 +149,7 @@ export function useAnnotatedResultPreview({
       outOfScopeNotes,
       teacherAnnotations,
       criteriaGrade,
-      finalObtainedMarks: questions.reduce(
-        (s, q) => s + (Number(q.marksAwarded) || 0),
-        0
-      ),
+      finalObtainedMarks,
       finalMaximumMarks: maxTotal,
     };
   }, []);
@@ -258,6 +270,12 @@ export function useAnnotatedResultPreview({
     ) {
       return true;
     }
+    if (
+      editingTotal !== null &&
+      Number(editingTotal) !== Number(confirmedSnapshot.finalObtainedMarks)
+    ) {
+      return true;
+    }
     if (questionsHavePendingEdits(questionsForPreviewEdits, confirmedSnapshot)) {
       return true;
     }
@@ -304,6 +322,7 @@ export function useAnnotatedResultPreview({
     editingSummary,
     effectiveMaxTotal,
     editingMaxTotal,
+    editingTotal,
     editingCriteriaGrade,
     outOfScopeNotesOverride,
   ]);
@@ -325,7 +344,8 @@ export function useAnnotatedResultPreview({
       Math.max(1, Number(effectiveMaxTotal) || 1),
       (editingAnnotations || []).map((a) => ({ ...a })),
       editingSummary,
-      editingCriteriaGrade
+      editingCriteriaGrade,
+      editingTotal
     );
     if (Array.isArray(outOfScopeNotesOverride)) {
       finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
@@ -339,6 +359,7 @@ export function useAnnotatedResultPreview({
     effectiveMaxTotal,
     editingCriteriaGrade,
     outOfScopeNotesOverride,
+    editingTotal,
   ]);
 
   const confirmEdits = useCallback(
@@ -365,7 +386,8 @@ export function useAnnotatedResultPreview({
           maxTotal,
           teacherAnnotations,
           editingSummary,
-          editingCriteriaGrade
+          editingCriteriaGrade,
+          editingTotal
         );
 
         if (Array.isArray(outOfScopeNotesOverride)) {
@@ -460,6 +482,7 @@ export function useAnnotatedResultPreview({
       effectiveMaxTotal,
       generatePreview,
       editingCriteriaGrade,
+      editingTotal,
       outOfScopeNotesOverride,
       confirmedSnapshot,
       hasPendingEdits,

@@ -586,6 +586,7 @@ export default function GradingProviderPage({ slug, label }) {
     editingSummary,
     effectiveMaxTotal,
     editingMaxTotal,
+    editingTotal,
     resolvePdfSummary,
     getStudentFile,
     pendingRemovedIndices,
@@ -648,6 +649,15 @@ export default function GradingProviderPage({ slug, label }) {
     // A hand-set paper total is part of the edits, so it comes back too.
     const restoredMax = Number(restored.maxTotalMarks);
     setEditingMaxTotal(Number.isFinite(restoredMax) && restoredMax > 0 ? restoredMax : null);
+    const restoredObtained = Number(
+      restored.finalObtainedMarks ?? restored.totalMarks
+    );
+    const questionSum = sumQuestionMarks(restored.questions || []);
+    setEditingTotal(
+      Number.isFinite(restoredObtained) && restoredObtained !== questionSum
+        ? restoredObtained
+        : null
+    );
   }, []);
 
   const pendingEdits = usePendingEditsAutosave({
@@ -678,6 +688,7 @@ export default function GradingProviderPage({ slug, label }) {
       setEditingSummary(confirmed.summary);
       setSummaryTouched(false);
       setEditingMaxTotal(null);
+      setEditingTotal(null);
       setPendingRemovedIndices(new Set());
       setEditingOutOfScopeNotes(
         resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
@@ -715,9 +726,13 @@ export default function GradingProviderPage({ slug, label }) {
         previousSummary:
           resultModal.result?.summary ||
           getMarkingResultSummary(resultModal.result, {}),
+        totalMarksOverride:
+          editingTotal !== null && Number.isFinite(Number(editingTotal))
+            ? Number(editingTotal)
+            : null,
       })
     );
-  }, [resultModal, questionsForDisplay, effectiveMaxTotal, summaryTouched, canEdit]);
+  }, [resultModal, questionsForDisplay, effectiveMaxTotal, editingTotal, summaryTouched, canEdit]);
 
   // ── Defensive normalisation of the partner list envelope ──
   const normalizeItem = (raw) => {
@@ -2395,10 +2410,23 @@ export default function GradingProviderPage({ slug, label }) {
   };
 
   const isCriteria = resultModal?.result?.markingMode === "criteria";
-  const total =
+  const summedTotal =
     isCriteria && editingCriteriaGrade
       ? Number(editingCriteriaGrade.totalMarks) || 0
       : sumQuestionMarks(questionsForDisplay);
+  const storedFinal =
+    resultModal?.result?.finalObtainedMarks != null &&
+    Number.isFinite(Number(resultModal.result.finalObtainedMarks))
+      ? Number(resultModal.result.finalObtainedMarks)
+      : null;
+  const total =
+    editingTotal !== null && Number.isFinite(Number(editingTotal))
+      ? Number(editingTotal)
+      : isCriteria && editingCriteriaGrade
+        ? summedTotal
+        : !hasPendingEdits && storedFinal != null
+          ? storedFinal
+          : summedTotal;
   // The cover page prints the result's own total; the body prints the sum of the
   // question rows. Editing, adding or removing a row can pull them apart, and the
   // paper then contradicts itself — so say so before it is uploaded to the partner.
@@ -3559,11 +3587,20 @@ export default function GradingProviderPage({ slug, label }) {
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>Final Grade:</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <input
-                      readOnly
                       type="number"
                       min={0}
                       max={effectiveMaxTotal}
-                      value={total}
+                      readOnly={!canEdit}
+                      value={editingTotal !== null ? editingTotal : total}
+                      onChange={(e) =>
+                        setEditingTotal(
+                          Math.min(
+                            effectiveMaxTotal,
+                            Math.max(0, Number(e.target.value))
+                          )
+                        )
+                      }
+                      title="Edit final obtained marks (overrides question sum)"
                       style={{
                         width: 56,
                         padding: "3px 8px",
@@ -3575,7 +3612,7 @@ export default function GradingProviderPage({ slug, label }) {
                         fontSize: 15,
                         textAlign: "center",
                         outline: "none",
-                        cursor: "not-allowed",
+                        cursor: canEdit ? "text" : "not-allowed",
                       }}
                     />
                     <span style={{ fontSize: 13, color: "var(--muted)" }}>/</span>
@@ -3603,7 +3640,7 @@ export default function GradingProviderPage({ slug, label }) {
                     {hasPendingEdits && (
                       <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 600 }}>Unsaved edits</span>
                     )}
-                    {(hasPendingEdits || editingMaxTotal !== null) && (
+                    {(hasPendingEdits || editingMaxTotal !== null || editingTotal !== null) && (
                       <button
                         onClick={() => {
                           const reset = resetToConfirmed();
@@ -3805,7 +3842,7 @@ export default function GradingProviderPage({ slug, label }) {
                       ...resultModal.result,
                       questions: editingQuestions,
                       summary: editingSummary,
-                      totalMarks: sumQuestionMarks(questionsForDisplay),
+                      totalMarks: total,
                     }}
                     onApplyPatch={handleCorrectionPatch}
                   />

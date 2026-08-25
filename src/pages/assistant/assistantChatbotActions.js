@@ -13,7 +13,8 @@ import {
   parseGeminiModelsResponse,
   pickValidGeminiModel,
 } from "../../utils/markingCost";
-import { runMarkSchemeVerification } from "../../components/MarkSchemeVerificationModal";
+// TEMP DISABLED 2026-08-25 — mark-scheme verification paused; restore later.
+// import { runMarkSchemeVerification } from "../../components/MarkSchemeVerificationModal";
 import { computeGradePercent } from "../../utils/reportGradePercent";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -173,6 +174,9 @@ export async function runMarkingPipeline({
     }
   }
 
+  // TEMP DISABLED 2026-08-25 — mark-scheme verification paused; restore block below later.
+  progress("Mark scheme verification skipped (temporarily disabled).");
+  /*
   // 2) Mark scheme verification
   progress("Running mark scheme verification…");
   try {
@@ -197,6 +201,7 @@ export async function runMarkingPipeline({
       `Mark scheme verification failed (${errMsg(err)}). Continuing with marking.`
     );
   }
+  */
 
   // 3) Mark
   const selectedIds =
