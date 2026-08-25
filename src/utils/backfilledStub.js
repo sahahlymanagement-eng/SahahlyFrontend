@@ -17,6 +17,10 @@ export function isBackfilledStub(q) {
   // Authoritative — injected by mark-scheme backfill.
   if (q._backfilled === true) return true;
   if (q._incompleteMarking === true) return true;
+  // Set on every stub: the question was never graded, as opposed to graded
+  // and found blank. Checked before any wording match so a copy edit to the
+  // stub text cannot make stubs invisible here.
+  if (q._notMarked === true || q.checklist?.notMarked === true) return true;
 
   if (Number(q.marksAwarded) !== 0) return false;
 
@@ -24,7 +28,7 @@ export function isBackfilledStub(q) {
     return true;
   }
 
-  return /not detected during automated marking|not graded in this (automated )?run|marking failed/i.test(
+  return /not detected during automated marking|not (graded|marked) in this (automated )?run|marking failed/i.test(
     `${q.studentAnswer || ""} ${q.reason || ""} ${q._staffNote || ""}`
   );
 }
