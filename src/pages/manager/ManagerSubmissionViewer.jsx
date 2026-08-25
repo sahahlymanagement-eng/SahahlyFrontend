@@ -2803,6 +2803,11 @@ useEffect(() => {
 
         if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+          // Wait for this response before scheduling the next one — a bare
+          // setInterval would fire again even while this request is still in
+          // flight, and a slow poll used to spawn overlapping requests
+          // against the same job.
+          registerBatchPoll(jobId, setTimeout(doPoll, 15_000));
           return;
         }
 
@@ -2930,6 +2935,7 @@ useEffect(() => {
         if (transient && pollFailStreak < 4) {
           toast.warn(`Batch status check hiccup (${pollFailStreak}/3) — retrying…`);
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+          registerBatchPoll(jobId, setTimeout(doPoll, 15_000));
           return;
         }
         clearBatchPoll(jobId);
@@ -2939,7 +2945,6 @@ useEffect(() => {
     };
 
     doPoll();
-    registerBatchPoll(jobId, setInterval(doPoll, 15_000));
   };
 
 
