@@ -132,13 +132,21 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
 export function MarkingCompletenessNotice({ result, questionCount }) {
   const info = result?.markingCompleteness;
   const backfilled = (result?.questions || []).filter(isBackfilledStub).length;
+  // gradingv2 keeps questions that were graded but are absent from the
+  // assignment inventory, counting them toward the total rather than
+  // suppressing them (the inventory itself can be incomplete). It computed
+  // this all along and nothing rendered it, so "unrelated questions could be
+  // included in the total" had no visible signal for a reviewer.
+  const offInventoryCount = result?.gradingV2Dedup?.offInventoryCount || 0;
+  const offInventoryQuestions = result?.gradingV2Dedup?.offInventoryQuestions || [];
+
   const failed = Boolean(result?.markingFailed || info?.markingFailed);
   const incomplete = Boolean(result?.markingIncomplete || info?.markingIncomplete);
   const suppressed = Boolean(info?.suppressedOtherPaper);
   const coverage =
     typeof info?.marksCoverage === "number" ? info.marksCoverage : null;
 
-  if (!failed && !incomplete && !info?.backfilledCount && !backfilled && !suppressed) {
+  if (!failed && !incomplete && !info?.backfilledCount && !backfilled && !suppressed && !offInventoryCount) {
     return null;
   }
 
@@ -158,15 +166,28 @@ export function MarkingCompletenessNotice({ result, questionCount }) {
     body =
       `Marking incomplete — the AI skipped many mark-scheme questions.${cov}` +
       (added
-        ? ` ${added} blank row${added === 1 ? " was" : "s were"} added for review.`
+        ? ` ${added} unmarked question${added === 1 ? " was" : "s were"} added for review.`
         : "") +
       ` Re-mark or finish every question before publishing. (${questionCount} question rows total)`;
   } else if (added) {
-    body = `${added} question${added === 1 ? "" : "s"} were not detected by AI and were added as blank rows — please review and adjust marks manually. (${questionCount} question rows total)`;
-  } else {
+    // Deliberately NOT "added as blank rows": these questions were never
+    // graded, which is not the same as the student leaving them empty. The old
+    // wording matched a stub that also told the STUDENT they had left it blank,
+    // and 1,829 marks across 19.5% of papers were scored 0 on that basis.
+    body =
+      `${added} question${added === 1 ? " was" : "s were"} not marked by the AI. ` +
+      `The 0 shown for ${added === 1 ? "it" : "them"} is NOT a confirmed student score — ` +
+      `check ${added === 1 ? "it" : "them"} against the script and set the marks before publishing. ` +
+      `(${questionCount} question rows total)`;
+  } else if (suppressed) {
     body =
       "Some mark-scheme items were treated as another booklet and not added as zeros. Confirm this paper was fully marked before publishing.";
   }
+  // No trailing else: widening the early return above to let an off-inventory-only
+  // paper through means this chain can now be reached with none of main`s
+  // conditions true. Falling into the suppressed message there would tell the
+  // reviewer mark-scheme items were held back for another booklet, which is a
+  // different situation entirely - the off-inventory block below says the real one.
 
   return (
     <div
@@ -181,7 +202,15 @@ export function MarkingCompletenessNotice({ result, questionCount }) {
         color,
       }}
     >
-      {body}
+      {body || null}
+      {offInventoryCount > 0 && (
+        <div style={{ marginTop: 6 }}>
+          {offInventoryCount} question{offInventoryCount === 1 ? "" : "s"} graded (
+          {offInventoryQuestions.join(", ")}) are not in the assignment's known question list —
+          verify they're actually part of this assignment before confirming; their marks are
+          currently counted toward the total.
+        </div>
+      )}
     </div>
   );
 }

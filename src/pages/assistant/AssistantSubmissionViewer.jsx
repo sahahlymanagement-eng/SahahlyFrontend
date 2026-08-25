@@ -114,6 +114,11 @@ import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
 import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import {
+  orderQuestionsByInventory,
+  annotateQuestionScopeFlags,
+} from "../../utils/questionDisplayOrder";
+import { isBackfilledStub } from "../../utils/backfilledStub";
+import {
   geminiModelLabel,
   getDefaultMarkingModels,
   parseGeminiModelsResponse,
@@ -510,6 +515,9 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   );
 
   const { dueDateTime, maxGrade, assignmentTitle, classroomId, summaryMap = {}, googleUnavailable, pdfCount } = extra;
+  // Canonical question order + scope evidence (see utils/questionDisplayOrder.js).
+  const assignmentInventory = extra.assignmentInventory || null;
+  const assignmentPrunedQuestions = extra.assignmentInventoryPrunedQuestions || null;
   const examBoardGuidance = useExamBoardGuidance({
     classroomId: classroomId ?? null,
     assignmentId: assignmentId ?? null,
@@ -864,8 +872,18 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   const questionsForDisplay = useMemo(() => {
     const withIdx = editingQuestions.map((q, i) => ({ ...q, _placementIndex: i }));
     const filtered = withIdx.filter((q) => !pendingRemovedIndices.has(q._placementIndex));
-    return sortQuestionsByPlacement(filtered);
-  }, [editingQuestions, pendingRemovedIndices]);
+    // Order by the assignment's canonical question list: question-paper order
+    // when a question paper was uploaded, mark-scheme order otherwise. Physical
+    // placement is only the fallback (no inventory, and for off-list rows).
+    const ordered = orderQuestionsByInventory(filtered, assignmentInventory, {
+      fallbackSort: sortQuestionsByPlacement,
+    });
+    return annotateQuestionScopeFlags(ordered, {
+      assignmentInventory,
+      prunedQuestions: assignmentPrunedQuestions,
+      isBackfilledStub,
+    });
+  }, [editingQuestions, pendingRemovedIndices, assignmentInventory, assignmentPrunedQuestions]);
 
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
