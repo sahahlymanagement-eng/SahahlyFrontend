@@ -78,6 +78,10 @@ export function overlayQuestionLabel(q) {
 
 export function isBlankQuestion(q) {
   if (!q) return false;
+  // A backfilled / never-matched stub means nobody read the answer, not that the
+  // student left it empty. Twin of the backend guard in
+  // backend/src/utils/blankQuestionFeedback.js.
+  if (q._notMarked === true || q.checklist?.notMarked === true) return false;
   if (q.continuesOnNextPage === true) return false;
   if (looksLikePageSplitDeferral(q)) return false;
   const awarded = Number(q.marksAwarded) || 0;
@@ -130,7 +134,8 @@ export function enrichBlankQuestionFeedback(q) {
   if (!isBlankQuestion(q)) return q;
 
   const max = Math.max(0, Number(q.maxMarks) || 0);
-  const qNum = q.questionNumber != null ? String(q.questionNumber) : "?";
+  // Same label the badge shows — see qNumOf in syncExaminerFeedback.js.
+  const qNum = String(overlayQuestionLabel(q) || "") || "?";
   const topic = q.studyTopic ? String(q.studyTopic).trim() : "";
   const correct = q.correctAnswer ? String(q.correctAnswer).trim() : "";
 
@@ -198,7 +203,8 @@ function enrichZeroMarkFeedback(q) {
   if (isBlankQuestion(q)) return enrichBlankQuestionFeedback(q);
   if (!reasonIsTerse(q.reason, max)) return q;
 
-  const qNum = q.questionNumber != null ? String(q.questionNumber) : "?";
+  // Same label the badge shows — see qNumOf in syncExaminerFeedback.js.
+  const qNum = String(overlayQuestionLabel(q) || "") || "?";
   const correct = q.correctAnswer ? String(q.correctAnswer).trim() : "";
   return {
     ...q,
@@ -245,9 +251,11 @@ export function summarizeUnansweredQuestions(questions, { isBackfilledStub } = {
   const blanks = (questions || []).filter((q) =>
     isReportOnlyBlankQuestion(q, { isBackfilledStub })
   );
+  // Overlay label, so the "left unanswered" box names the same Q the badge on
+  // the page does.
   const questionNumbers = blanks
-    .map((q) => String(q.questionNumber ?? "").trim())
-    .filter(Boolean);
+    .map((q) => String(overlayQuestionLabel(q) ?? "").trim())
+    .filter((s) => s && s !== "?");
   const marksDeducted = blanks.reduce(
     (sum, q) => sum + (Number(q.maxMarks) || 0),
     0

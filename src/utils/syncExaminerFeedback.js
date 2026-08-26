@@ -4,6 +4,8 @@
  * "Awarded 0/5. Not attempted" and red Missing lines on the script.
  */
 
+import { overlayQuestionLabel } from "./blankQuestionFeedback";
+
 const AWARD_LEAD_RE =
   /^(?:Awarded\s+\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?(?:\s+marks?)?(?:\s+for\s+Q[^\s.]+)?\.?\s*|Full marks awarded(?:\s+for\s+Q[^\s.]+)?\.?\s*|No marks awarded(?:\s+for\s+Q[^\s.]+)?(?:\s+[—\-–]\s+review[^.]+)?\.?\s*)/i;
 
@@ -18,7 +20,19 @@ const POSITIVE_REST_RE = /\b(full marks|correct(?:ly)?|neat working)\b/i;
 const STANDARD_BLANK_ANSWER_RE =
   /^(question left blank|not attempted|blank|unanswered|no answer provided)\b/i;
 
+/**
+ * The label to name inside the examiner note.
+ *
+ * MUST be the same label the badge/report shows, which is overlayQuestionLabel
+ * (printed label preferred over the mark-scheme id) — not `questionNumber`.
+ * On a classified paper the model often takes `questionNumber` from the printed
+ * marks box ("2aii") while the answer is printed as "1(a)(ii)", so the badge
+ * read "Q1aii" and the note under it read "Full marks awarded for Q2aii".
+ * Twin of backend/src/utils/syncExaminerFeedback.js.
+ */
 function qNumOf(q) {
+  const label = String(overlayQuestionLabel(q) || "").trim();
+  if (label && label !== "?") return label;
   return q?.questionNumber != null && String(q.questionNumber).trim()
     ? String(q.questionNumber).trim()
     : "?";
