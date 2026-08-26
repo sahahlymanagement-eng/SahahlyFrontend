@@ -1,4 +1,5 @@
 import api from "../api/api";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /**
  * Ask the backend whether this correction may be released.
@@ -19,11 +20,43 @@ import api from "../api/api";
  * a bad correction reaching a student; it must never stop a good one reaching
  * them because a request timed out.
  */
+/**
+ * Text from the first page or two of the submission.
+ *
+ * A mark scheme uploaded as a student's work is caught by its filename only
+ * when the filename follows the 9700_s23_ms_42 convention. A scan named
+ * "IMG_2931.pdf" needs the header text - "MARK SCHEME for the May/June 2023
+ * series" - and that is on the page, not in the name.
+ *
+ * Two pages, not the whole document: the header is at the front, and reading
+ * a 40-page scan to decide this would cost more than the check is worth.
+ * Returns "" on any failure - a scanned image PDF has no text layer at all,
+ * which is normal and must not look like an error.
+ */
+async function firstPagesText(file) {
+  if (!file) return "";
+  try {
+    const buf = await file.arrayBuffer();
+    const doc = await getDocument({ data: buf }).promise;
+    let out = "";
+    for (let i = 1; i <= Math.min(2, doc.numPages); i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      out += content.items.map((it) => it.str).join(" ") + " ";
+    }
+    return out.slice(0, 4000);
+  } catch {
+    return "";
+  }
+}
+
 export async function checkReviewGate({
   questions,
   result,
   expectedStudentName,
   fileName,
+  studentFile = null,
+  assignmentId = null,
   pageCountFlag = null,
   reviewedBy = null,
   reviewReason = null,
@@ -32,6 +65,8 @@ export async function checkReviewGate({
   try {
     const { data } = await api.post("/pdf-annotation/review-gate", {
       questions: Array.isArray(questions) ? questions : [],
+      assignmentId: assignmentId || null,
+      submissionHeaderText: await firstPagesText(studentFile),
       result: result || null,
       expectedStudentName: expectedStudentName || null,
       fileName: fileName || null,

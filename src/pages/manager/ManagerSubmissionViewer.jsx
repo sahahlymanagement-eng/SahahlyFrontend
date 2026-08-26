@@ -3809,6 +3809,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         result: resultModal.result,
         expectedStudentName: resultModal.student?.name,
         fileName: studentFile?.name,
+        // Header text catches a mark scheme whose filename gives nothing away.
+        studentFile,
+        // Lets the server resolve this paper's printed code from the
+        // assignment, so a wrong variant can be caught.
+        assignmentId: selectedAssignment?._id,
+        // Computed at marking time against the locked page count.
+        pageCountFlag: pageCountFlags[resultModal.student?.submissionId] || null,
       });
       if (gate.blocked && !confirmRelease(gate.blockers)) {
         // The reviewer read the reasons and declined. Not an error.
