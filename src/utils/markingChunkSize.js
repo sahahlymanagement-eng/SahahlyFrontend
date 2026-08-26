@@ -12,6 +12,29 @@ export const CHUNK_SIZE_FOR_MODEL_3 = 10;
 export const CHUNK_SIZE_DEFAULT = CHUNK_SIZE_FOR_MODEL_2_5;
 
 /**
+ * Smallest pages-per-request the director picker may offer.
+ *
+ * MEASURED: the picker offered [0,1,2,3,5,8,10] with no floor, and 1 was
+ * selected across 17 distinct assignments / 124 papers on 18-19 Aug. Live logs
+ * confirmed the effect - "16 pages -> 16 Gemini request(s)" - i.e. eight times
+ * the requests a 10-page window would have made, each carrying the full mark
+ * scheme and (on gemini-3-flash-preview) tens of thousands of thinking tokens.
+ *
+ * 0 stays available and is NOT below the floor: it means "whole PDF in one
+ * request", the cheapest option, not the most expensive.
+ *
+ * Note this is a cost/latency guardrail only. A boundary-adjacency test on 405
+ * papers found 1-page windows did NOT miss more questions than larger ones
+ * (11.3% vs 8.1%, non-monotonic), so this is not claimed as an accuracy fix.
+ */
+export const CHUNK_SIZE_MIN_PICKABLE = 3;
+
+/** Options a free picker may show: whole-PDF, or >= the floor. */
+export function pickableChunkSizes(all = [0, 1, 2, 3, 5, 8, 10]) {
+  return all.filter((n) => n === 0 || n >= CHUNK_SIZE_MIN_PICKABLE);
+}
+
+/**
  * @param {string|null|undefined} modelId Gemini / Sahahly model id
  * @returns {number} pages per AI request (1–10)
  */
