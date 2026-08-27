@@ -3623,12 +3623,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         const { canonical, saved } = await persistMarkingResult(finalResult, sid);
         setResultModal((prev) => ({
           ...prev,
-          [submissionId]: {
-            ...(prev[submissionId] || { status: "done" }),
-            result: canonical,
-            summary: canonical.summary || "",
-            totalMarks: resolveTotalMarksFromResult(canonical),
-          },
+          result: canonical,
         }));
         setEditingSummary(canonical.summary || "");
         setSummaryTouched(false);

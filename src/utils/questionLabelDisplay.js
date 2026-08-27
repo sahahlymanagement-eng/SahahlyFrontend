@@ -27,11 +27,15 @@ function combinePrintedQuestionAndPart(printedQuestion, partLabel) {
 
   const partNorm = normalizeLabel(part);
   if (!partNorm) return base;
+  // Printed column already includes the part (e.g. "1c" + "(c)") — do not
+  // append again or badges become "1cc" for a typed "1a"/"1c".
+  if (base.toLowerCase().endsWith(partNorm.toLowerCase())) return base;
   if (/^\d+[a-zivx]*$/i.test(base) && /^[a-zivx]+$/i.test(partNorm)) {
     const m = base.match(/^(\d+)([a-zivx]*)$/i);
     if (m && !m[2]) return `${m[1]}${partNorm}`;
   }
-  return partNorm.length <= 3 && /^\d/.test(base) ? `${base}${partNorm}` : base;
+  if (!/^[a-z]+$/i.test(partNorm)) return base;
+  return partNorm.length <= 4 && /^\d/.test(base) ? `${base}${partNorm}` : base;
 }
 
 function extractMsReference(raw) {
@@ -96,6 +100,12 @@ function lookupPrintedLabel(msMaps, msRef, pageNumber) {
 export function resolvePrintedQuestionNumber(question, guidance) {
   const existing = String(question?.printedQuestionNumber ?? "").trim();
   if (existing) return existing;
+
+  // Teacher-typed / manual rows must keep the id the teacher entered — do not
+  // invent a different badge from the MS→printed guidance table.
+  if (question?._manual === true || question?._stubEdited === true) {
+    return String(question?.questionNumber ?? "").trim();
+  }
 
   const page = Math.max(1, Number(question?.pageNumber) || 1);
   const msRef = question?.msQuestionNumber || question?.questionNumber;

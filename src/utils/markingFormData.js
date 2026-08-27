@@ -610,6 +610,9 @@ export function createManualQuestion({
   const qNum = String(questionNumber || "").trim();
   return {
     questionNumber: qNum,
+    // Pin the teacher-typed id so guidance lookup cannot invent a different
+    // printed badge (e.g. "1a" shown as "1cc" from a corrupted MS→printed map).
+    printedQuestionNumber: qNum,
     pageNumber: Math.max(1, Number(pageNumber) || 1),
     yPercent: Math.min(100, Math.max(0, Number(yPercent) || 30)),
     maxMarks: max,
@@ -987,6 +990,25 @@ export function applyTeacherEditsToResult(
         ...finalResult.criteriaGrade,
         totalMarks: override,
       };
+    }
+  } else {
+    // Save / reopen with editingTotal=null must NOT wipe a stored final when
+    // per-question awarded marks did not change (cover≠paper override, or a
+    // teacher-confirmed total that differs from a later row-normalizer sum).
+    const baseQuestionSum = sumQuestionMarks(baseResult?.questions || []);
+    const prevFinal =
+      baseResult?.finalObtainedMarks != null &&
+      Number.isFinite(Number(baseResult.finalObtainedMarks))
+        ? Number(baseResult.finalObtainedMarks)
+        : null;
+    if (prevFinal != null && questionSum === baseQuestionSum) {
+      finalResult.totalMarks = prevFinal;
+      if (finalResult.criteriaGrade) {
+        finalResult.criteriaGrade = {
+          ...finalResult.criteriaGrade,
+          totalMarks: prevFinal,
+        };
+      }
     }
   }
 
