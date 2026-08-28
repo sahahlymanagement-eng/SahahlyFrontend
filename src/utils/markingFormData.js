@@ -594,7 +594,7 @@ const CORRECTION_PATCH_FIELDS = [
 /**
  * A question the teacher adds by hand, for something the AI missed entirely.
  *
- * WHY studentAnswer AND reason ARE PARAMETERS
+ * WHY printedStem, studentAnswer AND reason ARE PARAMETERS
  *
  * They used to be hardcoded empty. The row then reached the annotated PDF with
  * a mark badge and nothing else - no answer to show, no feedback to print - so
@@ -612,6 +612,7 @@ const CORRECTION_PATCH_FIELDS = [
  */
 export function createManualQuestion({
   questionNumber,
+  printedStem = "",
   maxMarks = 1,
   pageNumber = 1,
   yPercent = 30,
@@ -635,6 +636,10 @@ export function createManualQuestion({
     // Pin the teacher-typed id so guidance lookup cannot invent a different
     // printed badge (e.g. "1a" shown as "1cc" from a corrupted MS→printed map).
     printedQuestionNumber: qNum,
+    // The question itself, stored under the field the marking model already
+    // uses for it, so nothing downstream needs a second code path for a
+    // hand-typed one.
+    printedStem: String(printedStem || "").trim(),
     pageNumber: Math.max(1, Number(pageNumber) || 1),
     yPercent: Math.min(100, Math.max(0, Number(yPercent) || 30)),
     maxMarks: max,

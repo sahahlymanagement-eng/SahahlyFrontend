@@ -11,6 +11,7 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
   // The AI missed this question, so there is no transcription to fall back on.
   // If the teacher does not type what the student wrote, nothing in the system
   // knows it - and the annotated PDF prints a mark with no answer beside it.
+  const [printedStem, setPrintedStem] = useState("");
   const [studentAnswer, setStudentAnswer] = useState("");
   const [reason, setReason] = useState("");
 
@@ -30,6 +31,7 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
         maxMarks: max,
         marksAwarded: awarded,
         pageNumber: page,
+        printedStem,
         studentAnswer,
         reason,
       })
@@ -38,6 +40,7 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
     setMaxMarks("1");
     setMarksAwarded("0");
     setPageNumber("1");
+    setPrintedStem("");
     setStudentAnswer("");
     setReason("");
     setOpen(false);
@@ -164,6 +167,17 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
           />
         </label>
       </div>
+
+      <label style={{ display: "block", marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+        The question (optional)
+        <textarea
+          rows={2}
+          value={printedStem}
+          onChange={(e) => setPrintedStem(e.target.value)}
+          placeholder="Type the question as printed on the paper — leave empty to show only the number"
+          style={textFieldStyle}
+        />
+      </label>
 
       <label style={{ display: "block", marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
         What the student wrote

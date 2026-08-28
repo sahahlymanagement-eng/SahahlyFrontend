@@ -509,6 +509,18 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     !mcq.isMcq && (blank || safeQ._manual === true) && safeQ.studentAnswer
       ? wrap(safeQ.studentAnswer, font, noteSize - 0.5, colWidth)
       : [];
+  // The question text, for manually added rows only.
+  //
+  // Same reasoning as the answer above, and the same reason it is NOT printed
+  // for ordinary rows: the question is on the page the badge is stamped beside,
+  // so reprinting every stem would fill the column with what the reader is
+  // already looking at. A hand-added question is the exception - the marker
+  // never located it, so the badge can land beside the wrong part of the page,
+  // and the stem is what tells a reader which question the mark belongs to.
+  const stemLines =
+    safeQ._manual === true && safeQ.printedStem
+      ? wrap(String(safeQ.printedStem), font, noteSize - 0.5, colWidth)
+      : [];
   const correctLines =
     mcq.isMcq && mcq.correct ? wrap(mcq.correct, font, noteSize - 0.5, colWidth) : [];
 
@@ -525,6 +537,7 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     if (correctLines.length && (!mcq.full || mcq.notAttempted)) h += labelH + correctLines.length * kwLineH;
     if (noteLines.length) h += sectionGap + labelH + noteLines.length * noteLineH;
       } else {
+    if (stemLines.length) h += labelH + stemLines.length * kwLineH;
     if (blankAnswerLines.length) h += labelH + blankAnswerLines.length * kwLineH;
     if (usePoints) {
       h += 9 + pointRows.reduce(
@@ -550,6 +563,7 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     missing,
     noteLines,
     studentLines,
+    stemLines,
     blankAnswerLines,
     correctLines,
     mcq,
@@ -629,6 +643,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       missing,
       noteLines,
       studentLines,
+      stemLines,
       blankAnswerLines,
       correctLines,
       mcq,
@@ -737,6 +752,27 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
         });
       }
     } else {
+      // The question first, then the answer - the order a reader expects, and
+      // the order they appear on the paper.
+      if (stemLines.length > 0) {
+        drawBoldText(page, "Question:", {
+          x: layout.colX,
+          y: cy,
+          size: noteSize - 0.5,
+          font: bold,
+          color: GREY,
+        });
+        cy -= 8;
+        cy = drawWrappedLines(page, stemLines, {
+          x: layout.colX + 2,
+          y: cy,
+          size: noteSize - 0.5,
+          font: reg,
+          color: GREY,
+          lineH: kwLineH,
+        });
+        cy -= 2;
+      }
       if (blankAnswerLines.length > 0) {
         // Two different things share this block, so the label must not lie: a
         // blank answer is "Not answered", while a manually added question is a
