@@ -591,13 +591,33 @@ const CORRECTION_PATCH_FIELDS = [
   "mistakeAdvice",
 ];
 
-/** Merge AI correction suggestions into live editing state. */
+/**
+ * A question the teacher adds by hand, for something the AI missed entirely.
+ *
+ * WHY studentAnswer AND reason ARE PARAMETERS
+ *
+ * They used to be hardcoded empty. The row then reached the annotated PDF with
+ * a mark badge and nothing else - no answer to show, no feedback to print - so
+ * the block rendered blank and the question looked like it had never been
+ * added. The mark was there; everything a reader needs to make sense of it was
+ * not.
+ *
+ * The student's answer is the one thing only a human can supply here. The AI
+ * missed this question, so there is no transcription to fall back on: if the
+ * teacher does not type what the student wrote, nothing else in the system
+ * knows it.
+ *
+ * Both stay optional. A teacher who only wants to award the marks still gets a
+ * usable row, and `reason` falls back to the generated summary as before.
+ */
 export function createManualQuestion({
   questionNumber,
   maxMarks = 1,
   pageNumber = 1,
   yPercent = 30,
   marksAwarded = 0,
+  studentAnswer = "",
+  reason: reasonInput = "",
 } = {}) {
   const maxRaw = Number(maxMarks);
   const max = Math.max(1, Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : 1);
@@ -608,6 +628,8 @@ export function createManualQuestion({
     Math.max(0, Number.isFinite(awardedRaw) ? awardedRaw : 0)
   );
   const qNum = String(questionNumber || "").trim();
+  const answer = String(studentAnswer || "").trim();
+  const note = String(reasonInput || "").trim();
   return {
     questionNumber: qNum,
     // Pin the teacher-typed id so guidance lookup cannot invent a different
@@ -626,17 +648,22 @@ export function createManualQuestion({
       handwritingClarity: true,
       markSchemeUnderstanding: true,
       studentAnswerUnderstanding: awarded > 0,
-      // Default: not blank — 0 can mean wrong. Teacher can tick "Answer is Blank".
-      answerIsBlank: false,
+      // Blank only when the teacher left the answer empty AND awarded nothing.
+      // Typing an answer is proof the student wrote something, so a row that
+      // carries one must never be filed as an unanswered question.
+      answerIsBlank: !answer && awarded === 0,
     },
-    studentAnswer: "",
+    studentAnswer: answer,
     correctAnswer: "",
+    // The teacher's own wording wins. Without one, fall back to the generated
+    // summary so the row is never left with no explanation at all.
     reason:
-      awarded >= max
+      note ||
+      (awarded >= max
         ? `Full marks awarded for Q${qNum}.`
         : awarded === 0
           ? `Awarded 0/${max} marks.`
-          : `Awarded ${awarded}/${max} marks for Q${qNum}.`,
+          : `Awarded ${awarded}/${max} marks for Q${qNum}.`),
     _manual: true,
     _staffNote: "Added manually by teacher — adjust marks and feedback as needed.",
   };
@@ -731,6 +758,10 @@ export function applyCorrectionPatch(editingQuestions, { changes = [], summary =
         maxMarks: add.maxMarks,
         pageNumber: add.pageNumber,
         marksAwarded: add.marksAwarded,
+        // Carried through for the same reason the manual form asks for them:
+        // a row with a mark and no answer prints as an empty block.
+        studentAnswer: add.studentAnswer,
+        reason: add.reason,
       })
     );
   }

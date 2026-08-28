@@ -494,8 +494,19 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     mcq.isMcq && (mcq.student || mcq.notAttempted)
       ? wrap(mcq.student || "Question left blank — no answer provided.", font, noteSize - 0.5, colWidth)
       : [];
+  // The student's answer is normally NOT reprinted: this page is stamped on
+  // their own script, so their handwriting is already beside the badge and
+  // repeating it wastes the column. It is shown for two cases where the reader
+  // cannot see it otherwise - a blank answer (there is nothing on the page),
+  // and an MCQ (the chosen letter is a mark, not prose).
+  //
+  // A MANUALLY ADDED question is a third such case. The marker never read it,
+  // so nothing in the system transcribed it; the teacher's typed record is the
+  // only evidence of what was actually assessed. Without this, a hand-added
+  // question printed a mark with an empty block beside it, which is what made
+  // it look as though nothing had been added at all.
   const blankAnswerLines =
-    !mcq.isMcq && blank && safeQ.studentAnswer
+    !mcq.isMcq && (blank || safeQ._manual === true) && safeQ.studentAnswer
       ? wrap(safeQ.studentAnswer, font, noteSize - 0.5, colWidth)
       : [];
   const correctLines =
@@ -726,13 +737,19 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
         });
       }
     } else {
-      if (blank && blankAnswerLines.length > 0) {
-        drawBoldText(page, "Not answered:", {
+      if (blankAnswerLines.length > 0) {
+        // Two different things share this block, so the label must not lie: a
+        // blank answer is "Not answered", while a manually added question is a
+        // real answer the marker never saw. Calling the second one "Not
+        // answered" would tell the student they left blank a question they
+        // actually attempted.
+        const manualAnswered = !blank && q._manual === true;
+        drawBoldText(page, manualAnswered ? "Your answer:" : "Not answered:", {
           x: layout.colX,
           y: cy,
           size: noteSize - 0.5,
             font: bold,
-          color: AMBER,
+          color: manualAnswered ? NAVY : AMBER,
         });
         cy -= 8;
         cy = drawWrappedLines(page, blankAnswerLines, {
@@ -740,7 +757,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
           y: cy,
           size: noteSize - 0.5,
           font: reg,
-          color: AMBER,
+          color: manualAnswered ? NAVY : AMBER,
           lineH: kwLineH,
         });
         cy -= 2;

@@ -8,6 +8,11 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
   const [maxMarks, setMaxMarks] = useState("1");
   const [marksAwarded, setMarksAwarded] = useState("0");
   const [pageNumber, setPageNumber] = useState("1");
+  // The AI missed this question, so there is no transcription to fall back on.
+  // If the teacher does not type what the student wrote, nothing in the system
+  // knows it - and the annotated PDF prints a mark with no answer beside it.
+  const [studentAnswer, setStudentAnswer] = useState("");
+  const [reason, setReason] = useState("");
 
   const handleAdd = () => {
     const qNum = questionNumber.trim();
@@ -25,13 +30,29 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
         maxMarks: max,
         marksAwarded: awarded,
         pageNumber: page,
+        studentAnswer,
+        reason,
       })
     );
     setQuestionNumber("");
     setMaxMarks("1");
     setMarksAwarded("0");
     setPageNumber("1");
+    setStudentAnswer("");
+    setReason("");
     setOpen(false);
+  };
+
+  const textFieldStyle = {
+    width: "100%",
+    marginTop: 4,
+    padding: "6px 8px",
+    borderRadius: 6,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.2)",
+    color: "#fff",
+    fontSize: 12,
+    resize: "vertical",
   };
 
   if (!open) {
@@ -142,6 +163,31 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
             }}
           />
         </label>
+      </div>
+
+      <label style={{ display: "block", marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+        What the student wrote
+        <textarea
+          rows={2}
+          value={studentAnswer}
+          onChange={(e) => setStudentAnswer(e.target.value)}
+          placeholder="Type the student's answer as it appears on the page — leave empty only if they left it blank"
+          style={textFieldStyle}
+        />
+      </label>
+
+      <label style={{ display: "block", marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+        Feedback for the student <span style={{ opacity: 0.6 }}>(optional)</span>
+        <textarea
+          rows={2}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Why these marks? Left empty, a short summary is generated."
+          style={textFieldStyle}
+        />
+      </label>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button type="button" className="msv-btn-ai" onClick={handleAdd} disabled={!questionNumber.trim()}>
           Add
         </button>
