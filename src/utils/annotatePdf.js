@@ -23,6 +23,7 @@ import {
   sanitizeQuestionForStudentPdf,
   sanitizeQuestionsForStudentPdf,
   resolveAnnotatePdfTotalMarks,
+  isStaffOnlyCopy,
 } from "./markingFormData";
 import { normalizeMathSymbols } from "./normalizeMathSymbols";
 
@@ -523,6 +524,33 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
       : [];
   const correctLines =
     mcq.isMcq && mcq.correct ? wrap(mcq.correct, font, noteSize - 0.5, colWidth) : [];
+  // The mark-scheme answer for a WRITTEN question that lost marks.
+  //
+  // MCQs have shown this all along ("Correct: C — ..."), but a written answer
+  // showed only what was missing, never what the right answer was - so a
+  // student read "x A1: final value wrong" with no way to learn the value. The
+  // model already returns correctAnswer for every row (it is in the marking
+  // prompt schema), so nothing new has to be asked of the marker; the field was
+  // simply not being drawn outside the MCQ branch.
+  //
+  // Two gates. Full marks: there is nothing to correct. Already in the note:
+  // blankQuestionFeedback writes "The mark scheme expects: ..." into the reason
+  // for untouched blanks, and printing the same sentence twice in one block
+  // reads as a fault rather than as emphasis.
+  //
+  // Third gate: until now this field was staff-only for written questions - it
+  // is editable in the marking card but was never printed - so whatever sits in
+  // it has never been read by a student. Backfilled stubs and manual-add rows
+  // can carry review boilerplate there. Run the same staff-copy guard the
+  // student answer and the note already get.
+  const solutionRaw =
+    !mcq.isMcq && !fullMarks ? String(safeQ.correctAnswer || "").trim() : "";
+  const solutionText = isStaffOnlyCopy(solutionRaw) ? "" : solutionRaw;
+  const solutionLines =
+    solutionText &&
+    !String(safeQ.reason || "").toLowerCase().includes(solutionText.toLowerCase())
+      ? wrap(solutionText, font, noteSize - 0.5, colWidth)
+      : [];
 
   const kwLineH = noteSize + 5;
   const noteLineH = noteSize + 2.5;
@@ -552,6 +580,7 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
         h += 9 + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
       }
     }
+    if (solutionLines.length) h += labelH + solutionLines.length * kwLineH;
     if (noteLines.length) h += sectionGap + noteLines.length * noteLineH;
   }
 
@@ -566,6 +595,7 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     stemLines,
     blankAnswerLines,
     correctLines,
+    solutionLines,
     mcq,
     blank,
     pointRows,
@@ -646,6 +676,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       stemLines,
       blankAnswerLines,
       correctLines,
+      solutionLines,
       mcq,
       blank,
       pointRows,
@@ -856,6 +887,29 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
           }
           cy -= 2;
         }
+      }
+
+      // What the mark scheme wanted. Last of the marking detail and directly
+      // above the note, so the block reads: what was missed, then what the
+      // answer was, then why the marks came out as they did.
+      if (solutionLines.length > 0) {
+        drawBoldText(page, "Mark scheme answer:", {
+          x: layout.colX,
+          y: cy,
+          size: noteSize - 0.5,
+          font: bold,
+          color: GREEN,
+        });
+        cy -= 8;
+        cy = drawWrappedLines(page, solutionLines, {
+          x: layout.colX + 2,
+          y: cy,
+          size: noteSize - 0.5,
+          font: reg,
+          color: GREEN,
+          lineH: kwLineH,
+        });
+        cy -= 2;
       }
 
       if (noteLines.length > 0) {

@@ -244,6 +244,73 @@ test("REGRESSION: an ordinary AI row does NOT print its question text", () => {
   );
 });
 
+section("4. the mark scheme answer is printed when marks were lost");
+
+const solved = {};
+{
+  const wrong = {
+    questionNumber: "4", maxMarks: 4, marksAwarded: 1, pageNumber: 1, yPercent: 40,
+    markedKeywords: [], missingKeywords: ["units omitted"],
+    studentAnswer: "x = 4",
+    correctAnswer: "x = 4 cm, with the unit stated as the mark scheme requires.",
+    reason: "Awarded 1/4 marks. The unit was missing.",
+    checklist: { answerIsBlank: false },
+  };
+  solved.wrong = await render([wrong]);
+  solved.wrongNoScheme = await render([{ ...wrong, correctAnswer: "" }]);
+  solved.full = await render([{ ...wrong, marksAwarded: 4, missingKeywords: [] }]);
+  solved.fullNoScheme = await render([
+    { ...wrong, marksAwarded: 4, missingKeywords: [], correctAnswer: "" },
+  ]);
+  // blankQuestionFeedback already writes the scheme answer into the note for
+  // untouched blanks. Printing it again in its own block is the duplication
+  // this render must not produce.
+  const quoted =
+    "Awarded 1/4 marks. x = 4 cm, with the unit stated as the mark scheme requires.";
+  solved.staffCopy = await render([
+    { ...wrong, correctAnswer: "Question not detected during automated marking - please review manually." },
+  ]);
+  solved.inNote = await render([{ ...wrong, reason: quoted }]);
+  solved.inNoteNoScheme = await render([{ ...wrong, correctAnswer: "", reason: quoted }]);
+}
+
+test("REGRESSION: a written answer that lost marks prints the scheme answer", () => {
+  // The point of the change: before it, a written row showed only what was
+  // missing and never what the right answer was, so a student read "final
+  // value wrong" with no way to learn the value. MCQs had shown it all along.
+  assert.ok(
+    solved.wrong.length > solved.wrongNoScheme.length,
+    "the mark scheme answer was not drawn for a written question that lost marks"
+  );
+});
+
+test("REGRESSION: a full-marks row does NOT print the scheme answer", () => {
+  // Nothing to correct. Same row with and without correctAnswer must match.
+  assert.strictEqual(
+    solved.full.length,
+    solved.fullNoScheme.length,
+    "the scheme answer was drawn on a full-marks row - it is not gated on lost marks"
+  );
+});
+
+test("REGRESSION: staff-only boilerplate in the field is not shown to a student", () => {
+  // The field was staff-only for written questions until this change, so what
+  // sits in it on older rows has never been read by a student.
+  assert.strictEqual(
+    solved.staffCopy.length,
+    solved.wrongNoScheme.length,
+    "staff review boilerplate was printed to the student as a mark scheme answer"
+  );
+});
+
+test("REGRESSION: the scheme answer is not printed twice when the note quotes it", () => {
+  assert.strictEqual(
+    solved.inNote.length,
+    solved.inNoteNoScheme.length,
+    "the scheme answer was printed in its own block as well as inside the note"
+  );
+});
+
 test("adding a manual row does not disturb the AI row", () => {
   assert.ok(
     results.aiPlusManual.length > results.aiOnly.length,
