@@ -3879,7 +3879,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       return;
     }
 
-    if (showMarkingTools && hasPendingEdits) {
+    if (hasPendingEdits) {
       toast.warn("Save & regenerate PDF first so returned PDFs match the preview");
       return;
     }
@@ -5563,6 +5563,33 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       Reset
                     </button>
                   )}
+                  {/*
+                    Save sits beside Reset because this is where the edit is
+                    made and where "Unsaved edits" appears. The full button in
+                    the toolbar is the same action — offering only Reset next to
+                    the warning meant the nearest control to an unsaved change
+                    was the one that discards it.
+                  */}
+                  {hasPendingEdits && (
+                    <button
+                      onClick={handleConfirmEdits}
+                      disabled={confirmingEdits || previewLoading}
+                      title="Save these marks and rebuild the annotated PDF"
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 10px",
+                        borderRadius: 6,
+                        border: "1px solid var(--success)",
+                        background: "var(--success)",
+                        color: "#fff",
+                        fontWeight: 600,
+                        cursor: confirmingEdits || previewLoading ? "default" : "pointer",
+                        opacity: confirmingEdits || previewLoading ? 0.6 : 1,
+                      }}
+                    >
+                      {confirmingEdits ? "Saving…" : "Save"}
+                    </button>
+                  )}
                 </div>
                 <div style={{ flex: "1 1 180px", minWidth: 140, maxWidth: 280 }}>
                   <div style={{ height: 6, background: "color-mix(in srgb, var(--text-primary) 8%, transparent)", borderRadius: 4 }}>
@@ -5627,7 +5654,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </button>
                   </>
                 )}
-                {showMarkingTools && hasPendingEdits && (
+                {/*
+                  NOT gated on showMarkingTools, unlike the undo/redo/annotate
+                  buttons above.
+
+                  It used to be, and teacher scope (scope="teacher", the
+                  /teacher/submissions route) sets showMarkingTools false — so a
+                  teacher could edit the grade, was told "Unsaved edits", and was
+                  offered Reset to throw the work away, while the only control
+                  that would KEEP it was hidden. Every other control in that row
+                  is ungated, so hiding this one alone made editing a dead end.
+
+                  Saving is not gated server-side either: POST
+                  /api/submission-files/save-results carries no role check, so
+                  this was never a permission boundary — only a missing button.
+                */}
+                {hasPendingEdits && (
                   <button
                     className="msv-btn-ai"
                     onClick={handleConfirmEdits}
@@ -5641,10 +5683,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 {showMarkingTools && pendingEdits.status !== "restored" && (
                   <PendingEditsSavingHint saving={pendingEdits.saving} />
                 )}
-                <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || (showMarkingTools && hasPendingEdits)} style={{ fontSize: 12 }} title={showMarkingTools && hasPendingEdits ? "Confirm edits first" : undefined}>
+                <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
                 </button>
-                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || (showMarkingTools && hasPendingEdits)} title={showMarkingTools && hasPendingEdits ? "Confirm edits first" : undefined}>
+                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
                 </button>
                 <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
