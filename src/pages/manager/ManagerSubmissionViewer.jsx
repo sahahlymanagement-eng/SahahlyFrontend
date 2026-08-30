@@ -13,6 +13,7 @@ import {
 import { usePagination } from "../../hooks/usePagination";
 import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import { useMarkingSummaryAutoRebuild } from "../../hooks/useMarkingSummaryAutoRebuild";
 import { getStoredUser } from "../../utils/session";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText, applyPageCountDecision } from "../../hooks/usePageCountCheck";
@@ -833,33 +834,28 @@ const resolvePdfSummary = (submissionId, result) =>
     [editingQuestions, pendingRemovedIndices]
   );
 
-useEffect(() => {
-  if (!resultModal || summaryTouched) return;
-  const submissionId =
-    resultModal.submissionId || resultModal.student?.submissionId;
-  setEditingSummary(
-    rebuildMarkingSummary({
-      questions: questionsForDisplay,
-      maxTotalMarks: effectiveMaxTotal,
-      previousSummary:
-        resultModal.result?.summary ||
-        getMarkingResultSummary(resultModal.result, {
-          storedSummary: savedResults[submissionId]?.summary,
-        }),
-      totalMarksOverride:
-        editingTotal !== null && Number.isFinite(Number(editingTotal))
-          ? Number(editingTotal)
-          : null,
-    })
-  );
-}, [
-  resultModal,
-  questionsForDisplay,
-  effectiveMaxTotal,
-  editingTotal,
-  summaryTouched,
-  savedResults,
-]);
+  const summaryPreviousBaseline = useMemo(() => {
+    if (!resultModal) return "";
+    const submissionId =
+      resultModal.submissionId || resultModal.student?.submissionId;
+    return (
+      resultModal.result?.summary ||
+      getMarkingResultSummary(resultModal.result, {
+        storedSummary: savedResults[submissionId]?.summary,
+      })
+    );
+  }, [resultModal, savedResults]);
+
+  useMarkingSummaryAutoRebuild({
+    resultModal,
+    questionsForDisplay,
+    effectiveMaxTotal,
+    editingTotal,
+    editingSummary,
+    setEditingSummary,
+    summaryTouched,
+    previousSummary: summaryPreviousBaseline,
+  });
 
 const fetchSavedResults = useCallback(async () => {
   if (!selectedAssignment?._id) return;

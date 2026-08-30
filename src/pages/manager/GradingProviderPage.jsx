@@ -66,6 +66,7 @@ import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
+import { useMarkingSummaryAutoRebuild } from "../../hooks/useMarkingSummaryAutoRebuild";
 import {
   patchBatchJob,
   subscribeBatchJob,
@@ -710,29 +711,19 @@ export default function GradingProviderPage({ slug, label }) {
     [editingQuestions, pendingRemovedIndices]
   );
 
-  // Auto-rebuild the editable summary from current marks/feedback until the
-  // teacher manually edits it (summaryTouched).
-  // Skipped for a review-only reviewer: with no editable marks there is nothing
-  // for the summary to follow, and rebuilding it would make an untouched paper
-  // differ from its confirmed state — i.e. read as pending edits, which is what
-  // blocks publishing. Leaving it at the stored summary means the PDF they
-  // publish is byte-for-byte the one Publish All would send.
-  useEffect(() => {
-    if (!resultModal || summaryTouched || !canEdit) return;
-    setEditingSummary(
-      rebuildMarkingSummary({
-        questions: questionsForDisplay,
-        maxTotalMarks: effectiveMaxTotal,
-        previousSummary:
-          resultModal.result?.summary ||
-          getMarkingResultSummary(resultModal.result, {}),
-        totalMarksOverride:
-          editingTotal !== null && Number.isFinite(Number(editingTotal))
-            ? Number(editingTotal)
-            : null,
-      })
-    );
-  }, [resultModal, questionsForDisplay, effectiveMaxTotal, editingTotal, summaryTouched, canEdit]);
+  useMarkingSummaryAutoRebuild({
+    enabled: canEdit,
+    resultModal,
+    questionsForDisplay,
+    effectiveMaxTotal,
+    editingTotal,
+    editingSummary,
+    setEditingSummary,
+    summaryTouched,
+    previousSummary:
+      resultModal?.result?.summary ||
+      getMarkingResultSummary(resultModal?.result, {}),
+  });
 
   // ── Defensive normalisation of the partner list envelope ──
   const normalizeItem = (raw) => {

@@ -66,6 +66,7 @@ import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
+import { useMarkingSummaryAutoRebuild } from "../../hooks/useMarkingSummaryAutoRebuild";
 import {
   patchBatchJob,
   subscribeBatchJob,
@@ -644,24 +645,18 @@ export default function ManagerLoginCss() {
     [editingQuestions, pendingRemovedIndices]
   );
 
-  // Auto-rebuild the editable summary from current marks/feedback until the
-  // teacher manually edits it (summaryTouched).
-  useEffect(() => {
-    if (!resultModal || summaryTouched) return;
-    setEditingSummary(
-      rebuildMarkingSummary({
-        questions: questionsForDisplay,
-        maxTotalMarks: effectiveMaxTotal,
-        previousSummary:
-          resultModal.result?.summary ||
-          getMarkingResultSummary(resultModal.result, {}),
-        totalMarksOverride:
-          editingTotal !== null && Number.isFinite(Number(editingTotal))
-            ? Number(editingTotal)
-            : null,
-      })
-    );
-  }, [resultModal, questionsForDisplay, effectiveMaxTotal, editingTotal, summaryTouched]);
+  useMarkingSummaryAutoRebuild({
+    resultModal,
+    questionsForDisplay,
+    effectiveMaxTotal,
+    editingTotal,
+    editingSummary,
+    setEditingSummary,
+    summaryTouched,
+    previousSummary:
+      resultModal?.result?.summary ||
+      getMarkingResultSummary(resultModal?.result, {}),
+  });
 
   // ── Defensive normalisation of the LoginCSS list envelope ──
   const normalizeItem = (raw) => {

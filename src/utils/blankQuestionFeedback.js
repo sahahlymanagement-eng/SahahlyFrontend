@@ -78,6 +78,10 @@ export function overlayQuestionLabel(q) {
 
 export function isBlankQuestion(q) {
   if (!q) return false;
+  // Staff-added rows are intentional — only blank when the teacher ticks it.
+  if (q._manual === true || q._stubEdited === true) {
+    return q.checklist?.answerIsBlank === true;
+  }
   // A backfilled / never-matched stub means nobody read the answer, not that the
   // student left it empty. Twin of the backend guard in
   // backend/src/utils/blankQuestionFeedback.js.

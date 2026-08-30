@@ -13,6 +13,7 @@ import {
 } from "../utils/markingFormData";
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
+import { useLiveAnnotatedPreviewSync } from "./useLiveAnnotatedPreviewSync";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -341,6 +342,17 @@ export function useExternalAnnotatedPreview({
     editingTotal,
     outOfScopeNotesOverride,
   ]);
+
+  useLiveAnnotatedPreviewSync({
+    openSubmissionId,
+    confirmedSnapshot,
+    hasPendingEdits,
+    questionsForPreviewEdits,
+    buildEditedResult,
+    effectiveMaxTotal,
+    editingAnnotations,
+    generatePreview,
+  });
 
   const confirmEdits = useCallback(
     async (onPersist, { skipPreview = false } = {}) => {

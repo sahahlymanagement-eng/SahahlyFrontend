@@ -8,6 +8,7 @@ import { downloadBlob } from "../../utils/downloadBlob";
 
 import { usePagination } from "../../hooks/usePagination";
 import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview";
+import { useMarkingSummaryAutoRebuild } from "../../hooks/useMarkingSummaryAutoRebuild";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText, applyPageCountDecision } from "../../hooks/usePageCountCheck";
 import {
@@ -909,33 +910,28 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     [editingQuestions, pendingRemovedIndices]
   );
 
-  useEffect(() => {
-    if (!resultModal || summaryTouched) return;
+  const summaryPreviousBaseline = useMemo(() => {
+    if (!resultModal) return "";
     const submissionId =
       resultModal.submissionId || resultModal.student?.submissionId;
-    setEditingSummary(
-      rebuildMarkingSummary({
-        questions: questionsForDisplay,
-        maxTotalMarks: effectiveMaxTotal,
-        previousSummary:
-          resultModal.result?.summary ||
-          getMarkingResultSummary(resultModal.result, {
-            storedSummary: savedResults[submissionId]?.summary,
-          }),
-        totalMarksOverride:
-          editingTotal !== null && Number.isFinite(Number(editingTotal))
-            ? Number(editingTotal)
-            : null,
+    return (
+      resultModal.result?.summary ||
+      getMarkingResultSummary(resultModal.result, {
+        storedSummary: savedResults[submissionId]?.summary,
       })
     );
-  }, [
+  }, [resultModal, savedResults]);
+
+  useMarkingSummaryAutoRebuild({
     resultModal,
     questionsForDisplay,
     effectiveMaxTotal,
     editingTotal,
+    editingSummary,
+    setEditingSummary,
     summaryTouched,
-    savedResults,
-  ]);
+    previousSummary: summaryPreviousBaseline,
+  });
 
   // useEffect(() => {
   //   if (!assignmentId) return;
