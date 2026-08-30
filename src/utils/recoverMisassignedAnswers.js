@@ -10,6 +10,7 @@ import {
 } from "./markingQuestionDedupe";
 import { enrichMarkingQuestions } from "./blankQuestionFeedback";
 import { normalizeMathSymbolsInQuestions } from "./normalizeMathSymbols";
+import { reconcileBlankFlagContradictions } from "./reconcileBlankFlagContradictions";
 
 function normalizePrintedLabel(raw) {
   return String(raw ?? "")
@@ -145,6 +146,8 @@ export function prepareEditingQuestions(questions) {
   const recovered = recoverMisassignedAnswers(mathClean);
   const collapsed = dropGhostDuplicateQuestions(recovered);
   return normalizeQuestionPlacement(
-    enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))
+    reconcileBlankFlagContradictions(
+      enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))
+    )
   );
 }
