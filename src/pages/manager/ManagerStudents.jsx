@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -24,6 +24,11 @@ import {
 } from "../../hooks/useReportTeacherFilter";
 import { useClassroomRosterSync } from "../../hooks/useClassroomRosterSync";
 import { confirmToast } from "../../utils/confirmToast";
+import {
+  formatPhoneForInput,
+  phoneFieldForSave,
+  stripPhoneDigits,
+} from "../../utils/phoneInputFormat";
 
 export default function ManagerStudents({ scope = "manager" }) {
   const navigate = useNavigate();
@@ -37,6 +42,10 @@ export default function ManagerStudents({ scope = "manager" }) {
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [editBaseline, setEditBaseline] = useState({});
+  const editingIdRef = useRef(null);
+  const pageRef = useRef(1);
+  editingIdRef.current = editingId;
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
@@ -109,10 +118,14 @@ export default function ManagerStudents({ scope = "manager" }) {
     !!selectedClassroom?._id
   );
 
+  pageRef.current = page;
+
   const { syncRoster, syncing } = useClassroomRosterSync(selectedClassroom?._id, {
     enabled: Boolean(selectedClassroom?._id),
     autoSync: Boolean(selectedClassroom?._id),
-    onSynced: () => fetchPage(1),
+    onSynced: () => {
+      if (!editingIdRef.current) fetchPage(pageRef.current);
+    },
   });
 
   /* SELECT CLASSROOM */
@@ -149,35 +162,55 @@ export default function ManagerStudents({ scope = "manager" }) {
 
   /* EDIT */
   const startEdit = (student) => {
+    const baseline = {
+      name: student.name || "",
+      email: student.email || "",
+      phone: stripPhoneDigits(student.phone),
+      parentName: student.parentName || "",
+      parentPhone: stripPhoneDigits(student.parentPhone),
+    };
     setEditingId(student._id);
-    setEditForm({
-        name: student.name || "",
-        email: student.email || "",
-        phone: student.phone ? `+${student.phone}` : "",
-        parentName: student.parentName || "",
-        parentPhone: student.parentPhone ? `+${student.parentPhone}` : "",
-    });
+    setEditBaseline(baseline);
+    setEditForm(baseline);
   };
 
   const saveEdit = async (studentId) => {
     try {
-        const payload = {
-        ...editForm,
-        phone: editForm.phone?.replace(/\D/g, ""),
-        parentPhone: editForm.parentPhone?.replace(/\D/g, ""),
-        classroomId: selectedClassroom?._id,
-        };
+      const phone = phoneFieldForSave(editForm.phone, {
+        hadValue: Boolean(editBaseline.phone),
+      });
+      const parentPhone = phoneFieldForSave(editForm.parentPhone, {
+        hadValue: Boolean(editBaseline.parentPhone),
+      });
 
-        const res = await api.put(`/students/${studentId}`, payload);
-      setStudents(prev => prev.map(s => s._id === studentId ? res.data : s));
+      const payload = {
+        name: editForm.name,
+        email: editForm.email,
+        parentName: editForm.parentName,
+        classroomId: selectedClassroom?._id,
+      };
+      if (phone !== undefined) payload.phone = phone;
+      if (parentPhone !== undefined) payload.parentPhone = parentPhone;
+
+      const res = await api.put(`/students/${studentId}`, payload);
       setEditingId(null);
+      setEditBaseline({});
+      setStudents((prev) =>
+        prev.map((s) =>
+          String(s._id) === String(studentId) ? res.data : s
+        )
+      );
+      await fetchPage(pageRef.current);
       toast.success("Student updated");
     } catch {
       toast.error("Failed to update student");
     }
   };
 
-  const cancelEdit = () => setEditingId(null);
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditBaseline({});
+  };
 
   const deleteStudent = async (student) => {
     if (!selectedClassroom?._id || deletingId) return;
@@ -423,11 +456,11 @@ export default function ManagerStudents({ scope = "manager" }) {
                                     <td data-label="Phone">
                                     <PhoneInput
                                         defaultCountry="eg"
-                                        value={editForm.phone}
+                                        value={formatPhoneForInput(editForm.phone)}
                                         onChange={(value) =>
                                         setEditForm((p) => ({
                                             ...p,
-                                            phone: value
+                                            phone: stripPhoneDigits(value),
                                         }))
                                         }
                                         className="ms-phone-input"
@@ -437,11 +470,11 @@ export default function ManagerStudents({ scope = "manager" }) {
                                     <td data-label="Parent Phone">
                                         <PhoneInput
                                             defaultCountry="eg"
-                                            value={editForm.parentPhone}
+                                            value={formatPhoneForInput(editForm.parentPhone)}
                                             onChange={(value) =>
                                             setEditForm((p) => ({
                                                 ...p,
-                                                parentPhone: value
+                                                parentPhone: stripPhoneDigits(value),
                                             }))
                                             }
                                             className="ms-phone-input"

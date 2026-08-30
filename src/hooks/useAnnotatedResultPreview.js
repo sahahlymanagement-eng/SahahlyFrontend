@@ -14,7 +14,7 @@ import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { fetchStudentPdf } from "../utils/studentPdfCache";
 import { studentGoogleUserId } from "../utils/returnAllExecution";
-import { useLiveAnnotatedPreviewSync } from "./useLiveAnnotatedPreviewSync";
+import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -55,10 +55,13 @@ export function useAnnotatedResultPreview({
   assignmentMaxPoints,
   editingMaxTotal,
   editingTotal = null,
+  summaryTouched = false,
   resolvePdfSummary,
   pendingRemovedIndices = null,
   editingCriteriaGrade = null,
   outOfScopeNotesOverride = null,
+  editorReadySubmissionId = null,
+  getEditorBaseline = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -82,6 +85,8 @@ export function useAnnotatedResultPreview({
   editingMaxTotalRef.current = editingMaxTotal;
   const editingTotalRef = useRef(editingTotal);
   editingTotalRef.current = editingTotal;
+  const summaryTouchedRef = useRef(summaryTouched);
+  summaryTouchedRef.current = summaryTouched;
   const editingQuestionsRef = useRef(editingQuestions);
   editingQuestionsRef.current = editingQuestions;
   const editingAnnotationsRef = useRef(editingAnnotations);
@@ -94,6 +99,8 @@ export function useAnnotatedResultPreview({
   effectiveMaxTotalRef.current = effectiveMaxTotal;
   const outOfScopeNotesOverrideRef = useRef(outOfScopeNotesOverride);
   outOfScopeNotesOverrideRef.current = outOfScopeNotesOverride;
+  const getEditorBaselineRef = useRef(getEditorBaseline);
+  getEditorBaselineRef.current = getEditorBaseline;
 
   const pendingRemovedRef = useRef(pendingRemovedIndices);
   pendingRemovedRef.current = pendingRemovedIndices;
@@ -246,9 +253,13 @@ export function useAnnotatedResultPreview({
       return;
     }
 
-    if (!resultModalRef.current) return;
+    // Wait until the editor holds THIS paper — otherwise the baseline is built
+    // from raw stored JSON while the cards show prepareEditingQuestions output.
+    if (editorReadySubmissionId !== openSubmissionId) return;
 
-    const snapshot = buildSnapshotFromModal(resultModalRef.current);
+    const snapshot =
+      getEditorBaselineRef.current?.() ||
+      buildSnapshotFromModal(resultModalRef.current);
     if (!snapshot) return;
 
     setConfirmedSnapshot(snapshot);
@@ -256,6 +267,7 @@ export function useAnnotatedResultPreview({
   }, [
     openSubmissionId,
     assignmentId,
+    editorReadySubmissionId,
     buildSnapshotFromModal,
     generatePreview,
     revokePreviewUrl,
@@ -315,7 +327,10 @@ export function useAnnotatedResultPreview({
 
     const currentSummary = String(editingSummary ?? "").trim();
     const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
-    return currentSummary !== confirmedSummary;
+    if (summaryTouched && currentSummary !== confirmedSummary) {
+      return true;
+    }
+    return false;
   }, [
     confirmedSnapshot,
     questionsForPreviewEdits,
@@ -326,12 +341,12 @@ export function useAnnotatedResultPreview({
     editingTotal,
     editingCriteriaGrade,
     outOfScopeNotesOverride,
+    summaryTouched,
   ]);
 
   /**
-   * The current editor state as a marking-result blob — what Confirm Edits would
-   * write. Exposed so the unconfirmed-edits autosave can snapshot the editor
-   * without persisting anything or touching the preview.
+   * The current editor state as a marking-result blob — what Save & regenerate
+   * would write. Not persisted until the teacher clicks that button.
    */
   const buildEditedResult = useCallback(() => {
     if (!resultModal) return null;
@@ -346,7 +361,8 @@ export function useAnnotatedResultPreview({
       (editingAnnotations || []).map((a) => ({ ...a })),
       editingSummary,
       editingCriteriaGrade,
-      editingTotal
+      editingTotal,
+      summaryTouchedRef.current
     );
     if (Array.isArray(outOfScopeNotesOverride)) {
       finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
@@ -363,27 +379,14 @@ export function useAnnotatedResultPreview({
     editingTotal,
   ]);
 
-  useLiveAnnotatedPreviewSync({
-    openSubmissionId,
-    confirmedSnapshot,
-    hasPendingEdits,
-    questionsForPreviewEdits,
-    buildEditedResult,
-    effectiveMaxTotal,
-    editingAnnotations,
-    generatePreview,
-  });
-
   const confirmEdits = useCallback(
-    async (onPersist, { skipPreview = false, skipPreviewIfUnchanged = false } = {}) => {
+    async (onPersist, { skipPreview = false } = {}) => {
       if (!resultModal || !assignmentId) return null;
       const submissionId = getSubmissionId(resultModal);
       if (!submissionId) return null;
       const stillThisPaper = () => getSubmissionId(resultModalRef.current) === submissionId;
 
       if (!skipPreview) setConfirmingEdits(true);
-      // Explicit Save rebuilds the PDF; auto-save on open must NOT cancel the
-      // preview that just started or the next student's script can land here.
       if (!skipPreview) previewRequestRef.current += 1;
       try {
         const questions = questionsForConfirmEdits(
@@ -399,8 +402,25 @@ export function useAnnotatedResultPreview({
           teacherAnnotations,
           editingSummary,
           editingCriteriaGrade,
-          editingTotal
+          editingTotal,
+          summaryTouchedRef.current
         );
+
+        if (
+          editingTotal === null &&
+          confirmedSnapshot &&
+          questionMarksSignature(questions) ===
+            questionMarksSignature(confirmedSnapshot.questions)
+        ) {
+          finalResult.totalMarks = confirmedSnapshot.finalObtainedMarks;
+          finalResult.finalObtainedMarks = confirmedSnapshot.finalObtainedMarks;
+          if (finalResult.criteriaGrade) {
+            finalResult.criteriaGrade = {
+              ...finalResult.criteriaGrade,
+              totalMarks: confirmedSnapshot.finalObtainedMarks,
+            };
+          }
+        }
 
         if (Array.isArray(outOfScopeNotesOverride)) {
           // Allow assistants to delete out-of-scope ("Not included in your assignment")
@@ -461,24 +481,7 @@ export function useAnnotatedResultPreview({
         if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
         if (!skipPreview) {
-          // The auto-save on open confirms a paper nobody has touched. When the
-          // normalisers moved nothing either, the preview already on screen is
-          // this exact snapshot — re-annotating the whole PDF would redraw it
-          // unchanged. Only safe once a preview for THIS paper has finished:
-          // superseding an in-flight one above and then not replacing it would
-          // leave the modal blank.
-          const previewAlreadyCurrent =
-            previewUrlRef.current &&
-            previewSubmissionIdRef.current === snapshot.submissionId;
-          if (
-            skipPreviewIfUnchanged &&
-            !hasPendingEdits &&
-            previewAlreadyCurrent
-          ) {
-            setPreviewLoading(false);
-          } else {
-            await generatePreview(snapshot, { lockPlacement: true });
-          }
+          await generatePreview(snapshot, { lockPlacement: true });
         }
         return finalResult;
       } finally {
@@ -497,7 +500,6 @@ export function useAnnotatedResultPreview({
       editingTotal,
       outOfScopeNotesOverride,
       confirmedSnapshot,
-      hasPendingEdits,
     ]
   );
 

@@ -66,7 +66,6 @@ import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
 import { base64ToFile } from "../../utils/base64ToFile";
 import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
-import { useMarkingSummaryAutoRebuild } from "../../hooks/useMarkingSummaryAutoRebuild";
 import {
   patchBatchJob,
   subscribeBatchJob,
@@ -85,10 +84,7 @@ import {
 } from "../../utils/firstBatchRemaining";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
-import usePendingEditsAutosave from "../../hooks/usePendingEditsAutosave";
-import PendingEditsBanner, {
-  PendingEditsSavingHint,
-} from "../../components/PendingEditsBanner";
+import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 import { canGradeProvider, canRunGradingMarking } from "../../utils/gradingAccess";
 import { sortStudentsBySubmittedAt } from "../../utils/sortStudentsBySubmittedAt";
 import { getDashboardPathForUser } from "../../utils/authRoutes";
@@ -250,12 +246,7 @@ export default function ManagerLoginCss() {
   const [publishAll, setPublishAll] = useState(null); // { done, total, current, loading }
   const publishStopRef = useRef(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
-  // Which submission the editing state above belongs to — set by openResultModal
-  // so the auto-save below can tell "editor loaded" from "not this paper yet".
   const [editorSubmissionId, setEditorSubmissionId] = useState(null);
-  // Set while the auto-save on open is confirming the displayed result, so the
-  // unconfirmed-edits autosave does not store a copy of what is being confirmed.
-  const [autoSavingOpenFor, setAutoSavingOpenFor] = useState(null);
 
   const editHistory = useMarkingEditHistory({
     questions: editingQuestions,
@@ -338,6 +329,9 @@ export default function ManagerLoginCss() {
   const pdfCacheRef = useRef({});
 
   const resolvePdfSummary = (submissionId, result) => getMarkingResultSummary(result, {});
+
+  const resultModalSubmissionId =
+    resultModal?.submissionId || resultModal?.student?.submissionId || null;
 
   // A configured maxGrade outranks the partner's own assignment total — it is
   // what the backend clamps to, so the UI must agree.
@@ -503,6 +497,34 @@ export default function ManagerLoginCss() {
     if (msPreviewRef.current.url) URL.revokeObjectURL(msPreviewRef.current.url);
   }, []);
 
+  const getEditorBaseline = useCallback(() => {
+    if (!resultModal || editorSubmissionId !== resultModalSubmissionId) return null;
+    return buildEditorPreviewBaseline({
+      submissionId: resultModalSubmissionId,
+      editingQuestions,
+      pendingRemovedIndices,
+      editingSummary,
+      effectiveMaxTotal,
+      editingTotal,
+      editingCriteriaGrade,
+      editingAnnotations,
+      editingOutOfScopeNotes,
+      resultModal,
+    });
+  }, [
+    resultModal,
+    editorSubmissionId,
+    resultModalSubmissionId,
+    editingQuestions,
+    pendingRemovedIndices,
+    editingSummary,
+    effectiveMaxTotal,
+    editingTotal,
+    editingCriteriaGrade,
+    editingAnnotations,
+    editingOutOfScopeNotes,
+  ]);
+
   const {
     annotatedPreviewUrl,
     previewLoading,
@@ -511,7 +533,6 @@ export default function ManagerLoginCss() {
     hasPendingEdits,
     confirmedSnapshot,
     confirmEdits,
-    buildEditedResult,
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
@@ -524,11 +545,17 @@ export default function ManagerLoginCss() {
     effectiveMaxTotal,
     editingMaxTotal,
     editingTotal,
+    summaryTouched,
     resolvePdfSummary,
     getStudentFile,
     pendingRemovedIndices,
     editingCriteriaGrade,
     outOfScopeNotesOverride: editingOutOfScopeNotes,
+    editorReadySubmissionId:
+      editorSubmissionId === resultModalSubmissionId
+        ? resultModalSubmissionId
+        : null,
+    getEditorBaseline,
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -556,8 +583,6 @@ export default function ManagerLoginCss() {
     toast.info("Out-of-scope note will be removed when you confirm edits");
   }, []);
 
-  const resultModalSubmissionId =
-    resultModal?.submissionId || resultModal?.student?.submissionId || null;
   const openSubmissionIdRef = useRef(resultModalSubmissionId);
   openSubmissionIdRef.current = resultModalSubmissionId;
 
@@ -565,72 +590,6 @@ export default function ManagerLoginCss() {
     setPendingRemovedIndices(new Set());
     setEditingOutOfScopeNotes(resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []);
   }, [resultModalSubmissionId]);
-
-  // ── Unconfirmed edits: autosave + restore ─────────────────────────────────
-  // Everything typed in this modal is kept server-side while it is unconfirmed,
-  // so closing the tab no longer loses it, and dropped automatically after 24h if
-  // nobody ever confirms. See hooks/usePendingEditsAutosave.js.
-  const applyRestoredEdits = useCallback((restored) => {
-    // Stored verbatim, not re-normalised: this blob already went through the
-    // editor's normalizers on the way in, and running them again would risk
-    // moving rows the grader had deliberately placed.
-    setEditingQuestions((restored.questions || []).map((q) => ({ ...q })));
-    setEditingCriteriaGrade(cloneCriteriaGrade(restored.criteriaGrade));
-    setEditingAnnotations(getTeacherAnnotations(restored).map((a) => ({ ...a })));
-    setEditingOutOfScopeNotes(getOutOfScopeNotes(restored));
-    // Marked as touched so the auto-rebuild does not immediately overwrite the
-    // summary the grader had actually written.
-    setEditingSummary(restored.summary || "");
-    setSummaryTouched(true);
-    setPendingRemovedIndices(new Set());
-    // A hand-set paper total is part of the edits, so it comes back too.
-    const restoredMax = Number(restored.maxTotalMarks);
-    setEditingMaxTotal(Number.isFinite(restoredMax) && restoredMax > 0 ? restoredMax : null);
-    const restoredObtained = Number(
-      restored.finalObtainedMarks ?? restored.totalMarks
-    );
-    const questionSum = sumQuestionMarks(restored.questions || []);
-    setEditingTotal(
-      Number.isFinite(restoredObtained) && restoredObtained !== questionSum
-        ? restoredObtained
-        : null
-    );
-  }, []);
-
-  const pendingEdits = usePendingEditsAutosave({
-    submissionId: resultModalSubmissionId,
-    ready: editorSubmissionId === resultModalSubmissionId,
-    dirty: hasPendingEdits,
-    buildResult: buildEditedResult,
-    pauseSaves: autoSavingOpenFor === resultModalSubmissionId,
-    load: async (submissionId) => {
-      const { data } = await api.get(
-        `/external-grading/submissions/${submissionId}/pending-edits`
-      );
-      return data?.pendingEdits || null;
-    },
-    save: (submissionId, result) =>
-      api.put(`/external-grading/submissions/${submissionId}/pending-edits`, { result }),
-    discard: (submissionId) =>
-      api.delete(`/external-grading/submissions/${submissionId}/pending-edits`),
-    onRestore: applyRestoredEdits,
-    onDiscard: () => {
-      const confirmed = resetToConfirmed();
-      if (!confirmed) return;
-      setEditingQuestions(confirmed.questions);
-      setEditingCriteriaGrade(cloneCriteriaGrade(confirmed.criteriaGrade));
-      setEditingAnnotations(confirmed.teacherAnnotations);
-      setEditingSummary(confirmed.summary);
-      setSummaryTouched(false);
-      setEditingMaxTotal(null);
-      setEditingTotal(null);
-      setPendingRemovedIndices(new Set());
-      setEditingOutOfScopeNotes(
-        resultModal?.result ? getOutOfScopeNotes(resultModal.result) : []
-      );
-      toast.info("Unconfirmed edits discarded");
-    },
-  });
 
   // `_placementIndex` is the row's index in editingQuestions, kept through the
   // page-order sort so a card's Remove/edit still targets the right row.
@@ -644,19 +603,6 @@ export default function ManagerLoginCss() {
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
     [editingQuestions, pendingRemovedIndices]
   );
-
-  useMarkingSummaryAutoRebuild({
-    resultModal,
-    questionsForDisplay,
-    effectiveMaxTotal,
-    editingTotal,
-    editingSummary,
-    setEditingSummary,
-    summaryTouched,
-    previousSummary:
-      resultModal?.result?.summary ||
-      getMarkingResultSummary(resultModal?.result, {}),
-  });
 
   // ── Defensive normalisation of the LoginCSS list envelope ──
   const normalizeItem = (raw) => {
@@ -1796,77 +1742,6 @@ export default function ManagerLoginCss() {
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
     }
   };
-
-  // ── Auto-save on open ─────────────────────────────────────────────────────
-  // The modal shows a rebuilt summary and normalised totals rather than the raw
-  // marking JSON, so an untouched paper used to read as "pending edits" and had
-  // to be confirmed by hand before it could be published. Save the displayed
-  // version to the draft once per paper instead, so Confirm Edits is only ever
-  // needed for real edits.
-  //
-  // Caveat since the modal gained the classroom normalizers: questions are no
-  // longer shown verbatim. prepareEditingQuestions can re-label a mislabelled
-  // blank row and enrichMarkingQuestions rewrites a terse blank-question reason,
-  // so on those papers this save DOES land as a correction against the AI
-  // baseline (see services/gradingEditStats.js). Untouched papers are unaffected
-  // — both normalizers are no-ops when there is nothing to fix.
-  const autoSavedResultsRef = useRef(new Set());
-  const autoSaveOpenedResultRef = useRef(null);
-
-  autoSaveOpenedResultRef.current = async () => {
-    await confirmEdits(async ({ finalResult, submissionId }) => {
-      setResults((prev) => ({
-        ...prev,
-        [submissionId]: { ...(prev[submissionId] || {}), result: finalResult },
-      }));
-      await saveDraft(
-        submissionId,
-        finalResult,
-        results[submissionId]?.originalAiResult || resultModal?.originalAiResult
-      );
-      setResultModal((prev) =>
-        isSameSubmissionModal(prev, submissionId) ? { ...prev, result: finalResult } : prev
-      );
-      if (openSubmissionIdRef.current === submissionId) {
-        setEditingSummary(finalResult.summary || "");
-        setSummaryTouched(false);
-      }
-      setSubmissions((prev) =>
-        prev.map((s) =>
-          s.submissionId === submissionId
-            ? { ...s, localGrade: resolveTotalMarksFromResult(finalResult) }
-            : s
-        )
-      );
-    }, { skipPreview: true });
-  };
-
-  useEffect(() => {
-    const sid = resultModalSubmissionId;
-    if (!sid) return;
-    if (editorSubmissionId !== sid) return;
-    if (!confirmedSnapshot || confirmedSnapshot.submissionId !== sid) return;
-    // Never auto-confirm on top of edits somebody made and did not confirm —
-    // wait for that check, and stand down entirely if any were restored.
-    if (pendingEdits.status !== "none") return;
-    // Keyed by marking run so a re-mark of the same paper is saved again.
-    const key = `${sid}:${resultModal?.result?.markingRunId || ""}`;
-    if (autoSavedResultsRef.current.has(key)) return;
-    autoSavedResultsRef.current.add(key);
-    setAutoSavingOpenFor(sid);
-    autoSaveOpenedResultRef.current?.()
-      .catch((err) => {
-        autoSavedResultsRef.current.delete(key);
-        console.error("Auto-save of opened results failed", err);
-      })
-      .finally(() => setAutoSavingOpenFor((prev) => (prev === sid ? null : prev)));
-  }, [
-    resultModalSubmissionId,
-    editorSubmissionId,
-    confirmedSnapshot,
-    resultModal?.result?.markingRunId,
-    pendingEdits.status,
-  ]);
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
@@ -3591,9 +3466,6 @@ export default function ManagerLoginCss() {
                     {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
                   </button>
                 )}
-                {pendingEdits.status !== "restored" && (
-                  <PendingEditsSavingHint saving={pendingEdits.saving} />
-                )}
                 <button
                   className="ma-send-btn"
                   onClick={downloadGradedPdf}
@@ -3625,13 +3497,6 @@ export default function ManagerLoginCss() {
             >
               {/* LEFT: results / editor */}
               <div style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
-                {pendingEdits.status === "restored" && (
-                  <PendingEditsBanner
-                    savedAt={pendingEdits.restoredAt}
-                    saving={pendingEdits.saving}
-                    onDiscard={pendingEdits.discardRestored}
-                  />
-                )}
                 {resultModal.result.fileWarning && (
                   <div
                     style={{
@@ -3888,6 +3753,7 @@ export default function ManagerLoginCss() {
                     <AnnotatedPdfPreview
                       key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                       url={annotatedPreviewUrl}
+                      pdfSessionKey={resultModalSubmissionId}
                       placementQuestions={placementQuestions}
                       reportPageCount={reportPageCount}
                       onPlacementChange={handleAnnotationPlacementChange}

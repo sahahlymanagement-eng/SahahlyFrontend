@@ -13,7 +13,7 @@ import {
 } from "../utils/markingFormData";
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
-import { useLiveAnnotatedPreviewSync } from "./useLiveAnnotatedPreviewSync";
+import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -54,11 +54,14 @@ export function useExternalAnnotatedPreview({
   effectiveMaxTotal,
   editingMaxTotal,
   editingTotal = null,
+  summaryTouched = false,
   resolvePdfSummary,
   getStudentFile,
   pendingRemovedIndices = null,
   editingCriteriaGrade = null,
   outOfScopeNotesOverride = null,
+  editorReadySubmissionId = null,
+  getEditorBaseline = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -78,6 +81,8 @@ export function useExternalAnnotatedPreview({
   editingMaxTotalRef.current = editingMaxTotal;
   const editingTotalRef = useRef(editingTotal);
   editingTotalRef.current = editingTotal;
+  const summaryTouchedRef = useRef(summaryTouched);
+  summaryTouchedRef.current = summaryTouched;
   const editingQuestionsRef = useRef(editingQuestions);
   editingQuestionsRef.current = editingQuestions;
   const editingAnnotationsRef = useRef(editingAnnotations);
@@ -90,6 +95,8 @@ export function useExternalAnnotatedPreview({
   effectiveMaxTotalRef.current = effectiveMaxTotal;
   const outOfScopeNotesOverrideRef = useRef(outOfScopeNotesOverride);
   outOfScopeNotesOverrideRef.current = outOfScopeNotesOverride;
+  const getEditorBaselineRef = useRef(getEditorBaseline);
+  getEditorBaselineRef.current = getEditorBaseline;
 
   const pendingRemovedRef = useRef(pendingRemovedIndices);
   pendingRemovedRef.current = pendingRemovedIndices;
@@ -234,14 +241,22 @@ export function useExternalAnnotatedPreview({
       return;
     }
 
-    if (!resultModalRef.current) return;
+    if (editorReadySubmissionId !== openSubmissionId) return;
 
-    const snapshot = buildSnapshotFromModal(resultModalRef.current);
+    const snapshot =
+      getEditorBaselineRef.current?.() ||
+      buildSnapshotFromModal(resultModalRef.current);
     if (!snapshot) return;
 
     setConfirmedSnapshot(snapshot);
     generatePreview(snapshot);
-  }, [openSubmissionId, buildSnapshotFromModal, generatePreview, revokePreviewUrl]);
+  }, [
+    openSubmissionId,
+    editorReadySubmissionId,
+    buildSnapshotFromModal,
+    generatePreview,
+    revokePreviewUrl,
+  ]);
 
   useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
 
@@ -295,7 +310,10 @@ export function useExternalAnnotatedPreview({
 
     const currentSummary = String(editingSummary ?? "").trim();
     const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
-    return currentSummary !== confirmedSummary;
+    if (summaryTouched && currentSummary !== confirmedSummary) {
+      return true;
+    }
+    return false;
   }, [
     confirmedSnapshot,
     questionsForPreviewEdits,
@@ -306,12 +324,12 @@ export function useExternalAnnotatedPreview({
     editingTotal,
     editingCriteriaGrade,
     outOfScopeNotesOverride,
+    summaryTouched,
   ]);
 
   /**
-   * The current editor state as a marking-result blob — what Confirm Edits would
-   * write. Exposed so the unconfirmed-edits autosave can snapshot the editor
-   * without persisting anything or touching the preview.
+   * The current editor state as a marking-result blob — what Save & regenerate
+   * would write. Not persisted until the teacher clicks that button.
    */
   const buildEditedResult = useCallback(() => {
     if (!resultModal) return null;
@@ -326,7 +344,8 @@ export function useExternalAnnotatedPreview({
       (editingAnnotations || []).map((a) => ({ ...a })),
       editingSummary,
       editingCriteriaGrade,
-      editingTotal
+      editingTotal,
+      summaryTouchedRef.current
     );
     if (Array.isArray(outOfScopeNotesOverride)) {
       finalResult.outOfScopeNotes = outOfScopeNotesOverride.map((n) => ({ ...n }));
@@ -342,17 +361,6 @@ export function useExternalAnnotatedPreview({
     editingTotal,
     outOfScopeNotesOverride,
   ]);
-
-  useLiveAnnotatedPreviewSync({
-    openSubmissionId,
-    confirmedSnapshot,
-    hasPendingEdits,
-    questionsForPreviewEdits,
-    buildEditedResult,
-    effectiveMaxTotal,
-    editingAnnotations,
-    generatePreview,
-  });
 
   const confirmEdits = useCallback(
     async (onPersist, { skipPreview = false } = {}) => {
@@ -377,8 +385,26 @@ export function useExternalAnnotatedPreview({
           teacherAnnotations,
           editingSummary,
           editingCriteriaGrade,
-          editingTotal
+          editingTotal,
+          summaryTouchedRef.current
         );
+
+        if (
+          editingTotal === null &&
+          confirmedSnapshot &&
+          questionMarksSignature(questions) ===
+            questionMarksSignature(confirmedSnapshot.questions)
+        ) {
+          finalResult.totalMarks = confirmedSnapshot.finalObtainedMarks;
+          finalResult.finalObtainedMarks = confirmedSnapshot.finalObtainedMarks;
+          if (finalResult.criteriaGrade) {
+            finalResult.criteriaGrade = {
+              ...finalResult.criteriaGrade,
+              totalMarks: confirmedSnapshot.finalObtainedMarks,
+            };
+          }
+        }
+
         if (Array.isArray(outOfScopeNotesOverride)) {
           // Lets a grader delete "Not included in your assignment" markers in the
           // preview before confirming edits.

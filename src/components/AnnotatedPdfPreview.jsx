@@ -411,6 +411,7 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
  */
 export default function AnnotatedPdfPreview({
   url,
+  pdfSessionKey = null,
   placementQuestions = null,
   reportPageCount = 0,
   onPlacementChange = null,
@@ -446,6 +447,8 @@ export default function AnnotatedPdfPreview({
   const pointersRef = useRef(new Map());
   const lastTapRef = useRef({ time: 0, x: 0, y: 0 });
   const zoomRef = useRef(DEFAULT_ZOOM);
+  const pdfSessionRef = useRef(null);
+  const currentPageRef = useRef(1);
 
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
@@ -577,6 +580,10 @@ export default function AnnotatedPdfPreview({
   }, []);
 
   useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
     if (!url) {
       setPdf(null);
       setNumPages(0);
@@ -584,12 +591,19 @@ export default function AnnotatedPdfPreview({
       return;
     }
 
+    const sameSession =
+      pdfSessionKey != null && pdfSessionKey === pdfSessionRef.current;
+    pdfSessionRef.current = pdfSessionKey ?? null;
+
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setCurrentPage(1);
-    setZoomLevel(DEFAULT_ZOOM);
-    setRenderZoom(DEFAULT_ZOOM);
+    if (!sameSession) {
+      setCurrentPage(1);
+      currentPageRef.current = 1;
+      setZoomLevel(DEFAULT_ZOOM);
+      setRenderZoom(DEFAULT_ZOOM);
+    }
 
     (async () => {
       try {
@@ -600,6 +614,14 @@ export default function AnnotatedPdfPreview({
         }
         setPdf(doc);
         setNumPages(doc.numPages);
+        if (sameSession) {
+          const restore = Math.min(
+            Math.max(1, currentPageRef.current),
+            doc.numPages || 1
+          );
+          setCurrentPage(restore);
+          currentPageRef.current = restore;
+        }
       } catch (err) {
         if (!cancelled) {
           console.error("[AnnotatedPdfPreview] load:", err);
@@ -617,7 +639,7 @@ export default function AnnotatedPdfPreview({
         return null;
       });
     };
-  }, [url, loadNonce]);
+  }, [url, loadNonce, pdfSessionKey]);
 
   const effectiveQuestions = useMemo(() => {
     if (!placementEnabled) return [];
@@ -787,6 +809,16 @@ export default function AnnotatedPdfPreview({
 
   const goPrev = () => scrollToPage(currentPage - 1);
   const goNext = () => scrollToPage(currentPage + 1);
+
+  useEffect(() => {
+    if (!pdf || numPages < 1) return;
+    const page = currentPageRef.current;
+    if (page <= 1) return;
+    const frame = requestAnimationFrame(() => {
+      scrollToPage(Math.min(page, numPages));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pdf, numPages, url, scrollToPage]);
 
   const commitPageInput = () => {
     const parsed = Number.parseInt(pageInput, 10);

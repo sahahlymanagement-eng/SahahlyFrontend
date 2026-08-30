@@ -967,13 +967,15 @@ export function applyTeacherEditsToResult(
   editingAnnotations = null,
   summaryOverride = null,
   editingCriteriaGrade = null,
-  obtainedMarksOverride = null
+  obtainedMarksOverride = null,
+  summaryTouched = false
 ) {
   const questions = syncQuestionsExaminerFeedback(
     editingQuestions,
     baseResult?.questions || []
   );
   const questionSum = sumQuestionMarks(questions);
+  const baseQuestionSum = sumQuestionMarks(baseResult?.questions || []);
 
   const finalResult = {
     ...baseResult,
@@ -1031,7 +1033,6 @@ export function applyTeacherEditsToResult(
     // Save / reopen with editingTotal=null must NOT wipe a stored final when
     // per-question awarded marks did not change (cover≠paper override, or a
     // teacher-confirmed total that differs from a later row-normalizer sum).
-    const baseQuestionSum = sumQuestionMarks(baseResult?.questions || []);
     const prevFinal =
       baseResult?.finalObtainedMarks != null &&
       Number.isFinite(Number(baseResult.finalObtainedMarks))
@@ -1052,8 +1053,12 @@ export function applyTeacherEditsToResult(
     finalResult.teacherAnnotations = editingAnnotations.map((a) => ({ ...a }));
   }
 
-  if (summaryOverride != null && String(summaryOverride).trim()) {
+  if (summaryTouched && summaryOverride != null && String(summaryOverride).trim()) {
     finalResult.summary = normalizeMarkingSummaryBullets(summaryOverride);
+  } else if (!summaryTouched && questionSum === baseQuestionSum) {
+    finalResult.summary = normalizeMarkingSummaryBullets(
+      baseResult?.summary || baseResult?.criteriaGrade?.summary || ""
+    );
   } else {
     finalResult.summary = rebuildMarkingSummary({
       questions,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import api from "../../api/api";
 import { toast } from "react-toastify";
@@ -10,6 +10,10 @@ import { useNavigate } from "react-router-dom";
 import "../manager/ManagerStudents.css";
 import { usePagination } from "../../hooks/usePagination";
 import Pagination from "../../components/Pagination";
+import {
+  phoneFieldForSave,
+  stripPhoneDigits,
+} from "../../utils/phoneInputFormat";
 
 export default function AssistantStudents() {
   const { assignmentId } = useParams();
@@ -19,6 +23,8 @@ export default function AssistantStudents() {
 
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [editBaseline, setEditBaseline] = useState({});
+  const pageRef = useRef(1);
 
   // useEffect(() => {
   //   if (!assignmentId) return;
@@ -43,16 +49,19 @@ export default function AssistantStudents() {
     !!assignmentId
   );
   const classroomId = extra?.classroomId || null;
+  pageRef.current = page;
 /* EDIT */
   const startEdit = (s) => {
-    setEditingId(s.studentId);
-    setEditForm({
+    const baseline = {
       name: s.name || "",
-      phone: s.phone || "",
+      phone: stripPhoneDigits(s.phone),
       parentName: s.parentName || "",
-      parentPhone: s.parentPhone || "",
+      parentPhone: stripPhoneDigits(s.parentPhone),
       email: s.email || "",
-    });
+    };
+    setEditingId(s.studentId);
+    setEditBaseline(baseline);
+    setEditForm(baseline);
   };
 
   const cancelEdit = () => {
@@ -62,31 +71,42 @@ export default function AssistantStudents() {
 
   const saveEdit = async (studentId) => {
     try {
+      const phone = phoneFieldForSave(editForm.phone, {
+        hadValue: Boolean(editBaseline.phone),
+      });
+      const parentPhone = phoneFieldForSave(editForm.parentPhone, {
+        hadValue: Boolean(editBaseline.parentPhone),
+      });
+
       const payload = {
-        ...editForm,
-        phone: editForm.phone?.replace(/\D/g, ""),
-        parentPhone: editForm.parentPhone?.replace(/\D/g, ""),
+        name: editForm.name,
+        email: editForm.email,
+        parentName: editForm.parentName,
         classroomId,
       };
+      if (phone !== undefined) payload.phone = phone;
+      if (parentPhone !== undefined) payload.parentPhone = parentPhone;
 
       const res = await api.put(`/students/google/${studentId}`, payload);
 
-setStudents((prev) =>
-  prev.map((s) =>
-    s.studentId === studentId
-      ? {
-          ...s,
-          phone: res.data.phone,
-          parentName: res.data.parentName,
-          parentPhone: res.data.parentPhone,
-          name: res.data.name ?? s.name,
-          email: res.data.email ?? s.email,
-        }
-      : s
-  )
-);
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.studentId === studentId
+            ? {
+                ...s,
+                phone: res.data.phone,
+                parentName: res.data.parentName,
+                parentPhone: res.data.parentPhone,
+                name: res.data.name ?? s.name,
+                email: res.data.email ?? s.email,
+              }
+            : s
+        )
+      );
 
       setEditingId(null);
+      setEditBaseline({});
+      await fetchPage(pageRef.current);
       toast.success("Student updated");
     } catch {
       toast.error("Failed to update student");
@@ -180,7 +200,7 @@ setStudents((prev) =>
                                   onChange={(e) =>
                                     setEditForm((p) => ({
                                       ...p,
-                                      phone: e.target.value
+                                      phone: stripPhoneDigits(e.target.value),
                                     }))
                                   }
                                 />
@@ -206,7 +226,7 @@ setStudents((prev) =>
                                   onChange={(e) =>
                                     setEditForm((p) => ({
                                       ...p,
-                                      parentPhone: e.target.value
+                                      parentPhone: stripPhoneDigits(e.target.value),
                                     }))
                                   }
                                 />
