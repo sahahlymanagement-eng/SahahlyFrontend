@@ -332,6 +332,63 @@ export function sumQuestionMarks(questions) {
   );
 }
 
+/**
+ * Obtained marks shown in the submission viewer header and live PDF preview.
+ *
+ * Per-question rows are the source of truth. A stored final that differs from
+ * the row sum is only honoured while the row set still matches the confirmed
+ * baseline (cover-page override with no structural edits yet). Any add/remove
+ * or mark change switches to the live row sum unless the teacher typed an
+ * explicit override in `editingTotal`.
+ */
+export function resolveEditorObtainedMarks({
+  questions = [],
+  editingTotal = null,
+  storedFinal = null,
+  baselineQuestions = null,
+  markingMode = "normal",
+  criteriaGrade = null,
+} = {}) {
+  if (
+    editingTotal != null &&
+    editingTotal !== "" &&
+    Number.isFinite(Number(editingTotal))
+  ) {
+    return Number(editingTotal);
+  }
+  if (markingMode === "criteria" && criteriaGrade) {
+    const criteriaTotal = Number(criteriaGrade.totalMarks);
+    if (Number.isFinite(criteriaTotal)) return criteriaTotal;
+  }
+  const summed = sumQuestionMarks(questions);
+  const baseline = baselineQuestions ?? questions;
+  if (
+    storedFinal != null &&
+    Number.isFinite(Number(storedFinal)) &&
+    baseline &&
+    !questionsHavePendingEdits(questions, { questions: baseline }) &&
+    Number(storedFinal) !== summed
+  ) {
+    return Number(storedFinal);
+  }
+  return summed;
+}
+
+/** When opening a paper, preserve a cover-page override in the grade input. */
+export function initialEditingTotalFromResult(result) {
+  if (!result) return null;
+  const rowSum = sumQuestionMarks(result.questions || []);
+  const stored = result.finalObtainedMarks;
+  if (
+    stored != null &&
+    Number.isFinite(Number(stored)) &&
+    Number(stored) !== rowSum
+  ) {
+    return Number(stored);
+  }
+  return null;
+}
+
 const STAFF_ONLY_COPY_PATTERNS = [
   /added manually by teacher/i,
   /question not detected during automated marking/i,

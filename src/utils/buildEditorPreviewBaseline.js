@@ -2,6 +2,7 @@ import {
   getOutOfScopeNotes,
   getTeacherAnnotations,
   questionsForConfirmEdits,
+  sumQuestionMarks,
 } from "./markingFormData";
 import { cloneCriteriaGrade } from "./markingQuestionEdits";
 
@@ -13,6 +14,18 @@ export function questionMarksSignature(questions) {
         `${String(q.questionNumber ?? "")}:${Number(q.marksAwarded) || 0}/${Number(q.maxMarks) || 0}`
     )
   );
+}
+
+function resolveSnapshotObtainedMarks({ questions, editingTotal }) {
+  const summed = sumQuestionMarks(questions);
+  if (
+    editingTotal != null &&
+    editingTotal !== "" &&
+    Number.isFinite(Number(editingTotal))
+  ) {
+    return Number(editingTotal);
+  }
+  return summed;
 }
 
 /**
@@ -36,20 +49,10 @@ export function buildEditorPreviewBaseline({
     editingQuestions,
     pendingRemovedIndices
   ).map((q) => ({ ...q }));
-  const summed = questions.reduce(
-    (s, q) => s + (Number(q.marksAwarded) || 0),
-    0
-  );
-  const stored =
-    resultModal?.result?.finalObtainedMarks ??
-    resultModal?.result?.criteriaGrade?.totalMarks ??
-    resultModal?.result?.totalMarks;
-  const finalObtainedMarks =
-    editingTotal != null && Number.isFinite(Number(editingTotal))
-      ? Number(editingTotal)
-      : stored != null && Number.isFinite(Number(stored))
-        ? Number(stored)
-        : summed;
+  const finalObtainedMarks = resolveSnapshotObtainedMarks({
+    questions,
+    editingTotal,
+  });
 
   return {
     submissionId,
@@ -71,5 +74,63 @@ export function buildEditorPreviewBaseline({
     ),
     finalObtainedMarks,
     finalMaximumMarks: Math.max(1, Number(effectiveMaxTotal) || 1),
+  };
+}
+
+/**
+ * Snapshot for debounced live preview while the teacher edits — always sums
+ * question rows for the cover total unless they typed a manual override.
+ */
+export function buildLivePreviewSnapshot({
+  confirmedSnapshot,
+  submissionId,
+  editingQuestions,
+  pendingRemovedIndices,
+  editingSummary,
+  summaryTouched,
+  effectiveMaxTotal,
+  editingTotal,
+  editingCriteriaGrade,
+  editingAnnotations,
+  editingOutOfScopeNotes,
+}) {
+  if (!confirmedSnapshot || !submissionId) return null;
+
+  const questions = questionsForConfirmEdits(
+    editingQuestions,
+    pendingRemovedIndices
+  ).map((q) => ({ ...q }));
+  const maxTotal = Math.max(
+    1,
+    Number(effectiveMaxTotal) || confirmedSnapshot.maxTotal || 1
+  );
+  const summary = summaryTouched
+    ? String(editingSummary ?? "").trim()
+    : String(editingSummary ?? "").trim() || confirmedSnapshot.summary || "";
+
+  return {
+    ...confirmedSnapshot,
+    submissionId,
+    questions,
+    maxTotal,
+    summary,
+    outOfScopeNotes: (
+      editingOutOfScopeNotes ??
+      confirmedSnapshot.outOfScopeNotes ??
+      []
+    ).map((n) => ({ ...n })),
+    teacherAnnotations: (
+      editingAnnotations ??
+      confirmedSnapshot.teacherAnnotations ??
+      []
+    ).map((a) => ({ ...a })),
+    criteriaGrade: cloneCriteriaGrade(
+      editingCriteriaGrade ?? confirmedSnapshot.criteriaGrade
+    ),
+    finalObtainedMarks: resolveSnapshotObtainedMarks({
+      questions,
+      editingTotal,
+    }),
+    finalMaximumMarks: maxTotal,
   };
 }

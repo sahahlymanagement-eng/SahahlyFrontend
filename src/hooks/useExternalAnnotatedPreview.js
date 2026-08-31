@@ -13,13 +13,14 @@ import {
 } from "../utils/markingFormData";
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
-import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
+import { questionMarksSignature, buildLivePreviewSnapshot } from "../utils/buildEditorPreviewBaseline";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
 }
 
 const PREVIEW_TIMEOUT_MS = 120_000;
+const LIVE_PREVIEW_DEBOUNCE_MS = 700;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -45,6 +46,9 @@ function withTimeout(promise, ms, label) {
  * Mirrors useAnnotatedResultPreview, but instead of refetching the student PDF
  * from /submission-files/pdf by assignmentId, it pulls the cached student File
  * (or calls getStudentFile(submissionId) to fetch it from /external-grading/.../pdfs).
+ *
+ * Regenerates when the modal opens, while the teacher edits (debounced), or when
+ * Save & regenerate PDF is clicked.
  */
 export function useExternalAnnotatedPreview({
   resultModal,
@@ -140,13 +144,10 @@ export function useExternalAnnotatedPreview({
       (s, q) => s + (Number(q.marksAwarded) || 0),
       0
     );
-    const stored =
-      modal.result?.finalObtainedMarks ??
-      criteriaGrade?.totalMarks ??
-      modal.result?.totalMarks;
     const finalObtainedMarks =
-      stored != null && Number.isFinite(Number(stored))
-        ? Number(stored)
+      editingTotalRef.current != null &&
+      Number.isFinite(Number(editingTotalRef.current))
+        ? Number(editingTotalRef.current)
         : summed;
     return {
       submissionId,
@@ -325,6 +326,84 @@ export function useExternalAnnotatedPreview({
     editingCriteriaGrade,
     outOfScopeNotesOverride,
     summaryTouched,
+  ]);
+
+  const buildLiveSnapshot = useCallback(() => {
+    if (!confirmedSnapshot || !resultModal) return null;
+    const submissionId = getSubmissionId(resultModal);
+    if (!submissionId) return null;
+    return buildLivePreviewSnapshot({
+      confirmedSnapshot,
+      submissionId,
+      editingQuestions: editingQuestionsRef.current,
+      pendingRemovedIndices: pendingRemovedRef.current,
+      editingSummary: editingSummaryRef.current,
+      summaryTouched: summaryTouchedRef.current,
+      effectiveMaxTotal: effectiveMaxTotalRef.current,
+      editingTotal: editingTotalRef.current,
+      editingCriteriaGrade: editingCriteriaGradeRef.current,
+      editingAnnotations: editingAnnotationsRef.current,
+      editingOutOfScopeNotes: outOfScopeNotesOverrideRef.current,
+    });
+  }, [confirmedSnapshot, resultModal]);
+
+  const livePreviewSignature = useMemo(() => {
+    const removed = pendingRemovedIndices
+      ? [...pendingRemovedIndices].sort((a, b) => a - b).join(",")
+      : "";
+    return JSON.stringify({
+      q: `${questionMarksSignature(questionsForPreviewEdits)}|len:${questionsForPreviewEdits.length}`,
+      s: summaryTouched ? String(editingSummary ?? "") : "",
+      t: editingTotal,
+      m: effectiveMaxTotal,
+      r: removed,
+      a: (editingAnnotations || []).length,
+    });
+  }, [
+    questionsForPreviewEdits,
+    editingSummary,
+    summaryTouched,
+    editingTotal,
+    effectiveMaxTotal,
+    pendingRemovedIndices,
+    editingAnnotations,
+  ]);
+
+  useEffect(() => {
+    if (
+      !openSubmissionId ||
+      !confirmedSnapshot ||
+      !hasPendingEdits ||
+      confirmingEdits
+    ) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      const snapshot = buildLiveSnapshot();
+      if (snapshot) {
+        generatePreview(
+          {
+            ...snapshot,
+            studentFile:
+              resultModalRef.current?.studentFile ||
+              confirmedSnapshot.studentFile ||
+              null,
+          },
+          { lockPlacement: true }
+        );
+      }
+    }, LIVE_PREVIEW_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [
+    openSubmissionId,
+    confirmedSnapshot,
+    hasPendingEdits,
+    confirmingEdits,
+    livePreviewSignature,
+    buildLiveSnapshot,
+    generatePreview,
   ]);
 
   /**
@@ -519,9 +598,16 @@ export function useExternalAnnotatedPreview({
     async (questions) => {
       if (!confirmedSnapshot) return;
       const nextQuestions = (questions || []).map((q) => ({ ...q }));
+      const summed = sumQuestionMarks(nextQuestions);
+      const finalObtainedMarks =
+        editingTotalRef.current != null &&
+        Number.isFinite(Number(editingTotalRef.current))
+          ? Number(editingTotalRef.current)
+          : summed;
       const snapshot = {
         ...confirmedSnapshot,
         questions: nextQuestions,
+        finalObtainedMarks,
         summary:
           String(editingSummary ?? "").trim() || confirmedSnapshot.summary || "",
         teacherAnnotations: (
