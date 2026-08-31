@@ -1,5 +1,5 @@
 import {
-  FiHome, FiClipboard, FiBarChart2, FiSend, FiMessageCircle, FiCpu, FiUploadCloud,
+  FiHome, FiClipboard, FiBarChart2, FiSend, FiMessageCircle, FiCpu, FiUploadCloud, FiBookOpen,
 } from "react-icons/fi";
 import RoleSidebar from "../../components/RoleSidebar";
 import {
@@ -20,6 +20,7 @@ const GRADING_NAV_PATHS = {
 const NAV_ITEMS = [
   { icon: <FiHome />, label: "Dashboard", path: "/assistant/dashboard" },
   { icon: <FiClipboard />, label: "Assignments", path: "/assistant/assignments" },
+  { icon: <FiBookOpen />, label: "Course Management", path: "/assistant/courses" },
   { icon: <FiCpu />, label: "Automation", path: "/assistant/automation" },
   { icon: <FiSend />, label: "Reports", path: "/assistant/reports" },
   { icon: <FiMessageCircle />, label: "Chatbot", path: "/assistant/chatbot" },
@@ -36,14 +37,15 @@ export default function AssistantSidebar() {
   const { counts } = useGradingNotifications();
   const { delegations } = useGradingDelegations();
 
-  // A grading-only account has no business in the coursework side of the portal,
-  // so its sidebar is nothing but the partner tab(s) it can grade for. Every
-  // other assistant keeps the full list.
+  // A grading-only account otherwise has no business in the coursework side of
+  // the portal, so its sidebar is nothing but the partner tab(s) it can grade
+  // for — Course Management is the one exception, kept for every assistant.
+  // Every other assistant keeps the full list.
   const gradingOnly = isGradingOnlyAccount();
 
   const navItems = NAV_ITEMS.filter((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
-    if (!slug) return !gradingOnly;
+    if (!slug) return item.path === "/assistant/courses" || !gradingOnly;
     return canGradeProvider(slug, delegations);
   }).map((item) => {
     const slug = GRADING_NAV_PATHS[item.path];

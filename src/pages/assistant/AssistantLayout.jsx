@@ -10,9 +10,14 @@ export default function AssistantLayout() {
   // A grading-only account's portal IS its partner tab (see gradingAccess): the
   // sidebar hides everything else, and this keeps a typed or remembered URL from
   // walking around that. Empty for every other assistant, so nothing is
-  // redirected for them.
+  // redirected for them. Course Management is exempt — every assistant, grading
+  // or not, keeps access to the classrooms behind their assignments.
   const allowedTabs = gradingOnlyProviders();
-  if (allowedTabs.length) {
+  const onCourseManagement =
+    pathname === "/assistant/courses" ||
+    pathname.startsWith("/assistant/view-coursework/") ||
+    pathname.startsWith("/assistant/coursework/");
+  if (allowedTabs.length && !onCourseManagement) {
     const onAllowedTab = allowedTabs.some(
       (slug) => pathname === `/assistant/${slug}`
     );

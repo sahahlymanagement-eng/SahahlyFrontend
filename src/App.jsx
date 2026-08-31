@@ -255,6 +255,10 @@ function App() {
           />
           <Route path="reports" element={<AssistantReports />} />
           <Route path="chatbot" element={<AssistantChatbot />} />
+          <Route path="courses" element={<CoursesList />} />
+          <Route path="view-coursework/:courseId" element={<ViewCoursework />} />
+          <Route path="coursework/:courseId" element={<CourseWork />} />
+          <Route path="coursework/:courseId/edit/:courseWorkId" element={<CourseWork />} />
           {/* External grading company tabs — the same pages the manager portal
               serves, gated per-account by canGradeProvider() inside each page.
               LoginCSS is here too now: it used to be manager01's alone, but the

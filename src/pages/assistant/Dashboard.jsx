@@ -9,6 +9,7 @@ import {
   FiAlertTriangle,
   FiBarChart2,
   FiChevronRight,
+  FiBookOpen,
 } from "react-icons/fi";
 import { AssistantLoading } from "./AssistantUI";
 import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
@@ -161,6 +162,12 @@ export default function AssistantDashboard() {
           title="Performance"
           desc="Papers corrected and deadline delivery"
           onClick={() => navigate("/assistant/performance")}
+        />
+        <ActionCard
+          icon={<FiBookOpen />}
+          title="Course Management"
+          desc="Browse the classrooms you have assignments in"
+          onClick={() => navigate("/assistant/courses")}
         />
       </div>
     </div>

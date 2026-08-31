@@ -560,9 +560,11 @@ export default function Coursework() {
         const viewPath =
           role === "manager"
             ? `/manager/view-coursework/${courseId}`
-            : isDirectorLikeRole(role)
-              ? `${roleShellPath(role)}/view-coursework/${courseId}`
-              : `/teacher/view-coursework/${courseId}`;
+            : role === "assistant"
+              ? `/assistant/view-coursework/${courseId}`
+              : isDirectorLikeRole(role)
+                ? `${roleShellPath(role)}/view-coursework/${courseId}`
+                : `/teacher/view-coursework/${courseId}`;
         navigate(viewPath, {
           state: { courseName: state?.courseName },
         });

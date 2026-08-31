@@ -76,7 +76,8 @@ export default function CoursesList() {
   const role = user?.roleId?.name?.toLowerCase();
   const isAdmin = isDirectorLikeRole(role);
   const isManager = role === "manager";
-  const isFolderView = isAdmin || isManager;
+  const isAssistant = role === "assistant";
+  const isFolderView = isAdmin || isManager || isAssistant;
 
   useEffect(() => {
     if (isAdmin) {
@@ -86,34 +87,36 @@ export default function CoursesList() {
         .catch(() => {});
       return;
     }
-    if (isManager && user?.id) {
+    if ((isManager || isAssistant) && user?.id) {
       api
         .get("/google-classroom/filter-teachers", { params: { personId: user.id } })
         .then((r) => setAllTeachers(r.data || []))
         .catch(() => {});
     }
-  }, [isAdmin, isManager, user?.id]);
+  }, [isAdmin, isManager, isAssistant, user?.id]);
 
   const listParams = useMemo(() => {
     const params = {};
-    if (isManager && user?.id) params.personId = user.id;
+    if ((isManager || isAssistant) && user?.id) params.personId = user.id;
     if (search) params.search = search;
     if (teacherFilter !== "all") params.teacherId = teacherFilter;
     return params;
-  }, [isManager, user?.id, search, teacherFilter]);
+  }, [isManager, isAssistant, user?.id, search, teacherFilter]);
 
   const url = isAdmin
     ? "/google-classroom/courses"
     : isManager
       ? "/google-classroom/courses/manager"
-      : `/google-classroom/teacher-courses/${user?.id}`;
+      : isAssistant
+        ? "/google-classroom/courses/assistant"
+        : `/google-classroom/teacher-courses/${user?.id}`;
 
   const { data: courses, loading, fetchPage, page } = usePagination(
     url,
     listParams,
     500,
     "data",
-    isManager ? !!user?.id : true
+    (isManager || isAssistant) ? !!user?.id : true
   );
 
   const teacherFolders = useMemo(
@@ -281,7 +284,13 @@ export default function CoursesList() {
     </div>
   );
 
-  const basePath = isManager ? "/manager" : isAdmin ? roleShellPath(role) : "/teacher";
+  const basePath = isManager
+    ? "/manager"
+    : isAssistant
+      ? "/assistant"
+      : isAdmin
+        ? roleShellPath(role)
+        : "/teacher";
 
   const goCreateCoursework = (course) => {
     navigate(`${basePath}/coursework/${courseId(course)}`);
@@ -306,9 +315,11 @@ export default function CoursesList() {
           <p>
             {isManager
               ? "Classrooms assigned to you, grouped by teacher"
-              : isAdmin
-                ? "All classrooms grouped by teacher"
-                : "Your Google Classroom courses"}
+              : isAssistant
+                ? "Classrooms you have assignments in, grouped by teacher"
+                : isAdmin
+                  ? "All classrooms grouped by teacher"
+                  : "Your Google Classroom courses"}
           </p>
         </div>
 
@@ -372,7 +383,9 @@ export default function CoursesList() {
               ? `No courses match "${search}".`
               : isManager
                 ? "No classrooms are assigned to you yet."
-                : "No courses found."}
+                : isAssistant
+                  ? "You have no classrooms with assignments yet."
+                  : "No courses found."}
           </div>
         ) : (
           <div className="cm-folder-list">
