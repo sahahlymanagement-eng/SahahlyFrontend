@@ -16,6 +16,8 @@ import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import {
   assertPdfBlob,
   sumQuestionMarks,
+  resolveEditorObtainedMarks,
+  initialEditingTotalFromResult,
   buildPlacementQuestions,
   applyPlacementChange,
   applyQuestionLabelChange,
@@ -310,8 +312,12 @@ export default function GradingProviderPage({ slug, label }) {
   const editHistory = useMarkingEditHistory({
     questions: editingQuestions,
     summary: editingSummary,
+    pendingRemovedIndices,
+    editingTotal,
     setQuestions: setEditingQuestions,
     setSummary: setEditingSummary,
+    setPendingRemovedIndices,
+    setEditingTotal,
     resetKey: resultModal
       ? resultModal.student?.submissionId || resultModal.submissionId || "open"
       : null,
@@ -1046,7 +1052,7 @@ export default function GradingProviderPage({ slug, label }) {
     setSummaryTouched(false);
     setAnnotationsPanelOpen(false);
     setEditingMaxTotal(null);
-    setEditingTotal(null);
+    setEditingTotal(initialEditingTotalFromResult(result));
     setEditorSubmissionId(student.submissionId);
   };
 
@@ -2280,14 +2286,14 @@ export default function GradingProviderPage({ slug, label }) {
     Number.isFinite(Number(resultModal.result.finalObtainedMarks))
       ? Number(resultModal.result.finalObtainedMarks)
       : null;
-  const total =
-    editingTotal !== null && Number.isFinite(Number(editingTotal))
-      ? Number(editingTotal)
-      : isCriteria && editingCriteriaGrade
-        ? summedTotal
-        : !hasPendingEdits && storedFinal != null
-          ? storedFinal
-          : summedTotal;
+  const total = resolveEditorObtainedMarks({
+    questions: questionsForDisplay,
+    editingTotal,
+    storedFinal,
+    baselineQuestions: confirmedSnapshot?.questions ?? resultModal?.result?.questions,
+    markingMode: isCriteria ? "criteria" : "normal",
+    criteriaGrade: editingCriteriaGrade,
+  });
   // The cover page prints the result's own total; the body prints the sum of the
   // question rows. Editing, adding or removing a row can pull them apart, and the
   // paper then contradicts itself — so say so before it is uploaded to the partner.
@@ -3805,6 +3811,7 @@ export default function GradingProviderPage({ slug, label }) {
                 <AddMarkingQuestionBar
                   onAdd={(q) => {
                     setEditingQuestions((prev) => [...prev, q]);
+                    setEditingTotal(null);
                     toast.success(`Added Q${q.questionNumber}`);
                   }}
                 />
@@ -3861,7 +3868,9 @@ export default function GradingProviderPage({ slug, label }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {hasPendingEdits && (
                       <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
-                        {confirmingEdits ? "Regenerating PDF…" : "Click Save & regenerate PDF to update preview"}
+                        {confirmingEdits || previewLoading
+                          ? "Updating preview…"
+                          : "Preview updates as you edit — click Save & regenerate to persist"}
                       </span>
                     )}
                   </div>
