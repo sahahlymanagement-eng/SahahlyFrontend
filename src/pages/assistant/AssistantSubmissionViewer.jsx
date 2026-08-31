@@ -1344,8 +1344,15 @@ window.open(url);
     if (!ok) return;
 
     const engine = batchJob.engine || "v1";
+    // Whatever model/pages-per-request is picked in the toolbar right now — the
+    // picker stays live while this banner is showing — is what marks the rest,
+    // not whatever the capped safety batch happened to run with.
+    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     try {
-      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignmentId}`);
+      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignmentId}`, {
+        geminiModel: selectedModel,
+        chunkSize: chunkSizeForGeminiModel(selectedModel),
+      });
     } catch (err) {
       toast.error(extractHumanError(err) || "Failed to confirm first batch");
       return;
@@ -1362,8 +1369,12 @@ window.open(url);
   const retryFirstBatchRemaining = async () => {
     if (!assignmentId) return;
     const engine = batchJob?.engine || "v1";
+    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     try {
-      await retryRemainingRun(`${engineBasePath(engine)}/first-batch/retry-remaining/${assignmentId}`);
+      await retryRemainingRun(
+        `${engineBasePath(engine)}/first-batch/retry-remaining/${assignmentId}`,
+        { geminiModel: selectedModel, chunkSize: chunkSizeForGeminiModel(selectedModel) }
+      );
     } catch (err) {
       toast.error(extractHumanError(err) || "Could not retry remaining marking");
       return;
@@ -3343,7 +3354,10 @@ return (
                   <span>
                     ✅ {batchJob.firstBatch.limit ?? 3} paper{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked as a safety
                     check on this new assignment. Review them, then confirm to mark the remaining{" "}
-                    {batchJob.firstBatch.remainingCount ?? "the rest"}.
+                    {batchJob.firstBatch.remainingCount ?? "the rest"} with{" "}
+                    {geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))} (
+                    {formatChunkSizeLabel(chunkSizeForGeminiModel(pickValidGeminiModel(geminiModels, geminiModel)))}
+                    ) — change the model dropdown above to use a different one.
                   </span>
                   <button
                     onClick={confirmFirstBatch}

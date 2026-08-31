@@ -94,6 +94,6 @@ export async function watchRemainingRun({
   }
 }
 
-export async function retryRemainingRun(retryUrl) {
-  return api.post(retryUrl);
+export async function retryRemainingRun(retryUrl, body) {
+  return api.post(retryUrl, body || {});
 }

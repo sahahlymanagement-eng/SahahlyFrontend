@@ -1587,8 +1587,15 @@ useEffect(() => {
     if (!ok) return;
 
     const engine = batchJob.engine || "v1";
+    // Whatever model/pages-per-request is picked in the toolbar right now — the
+    // picker stays live while this banner is showing — is what marks the rest,
+    // not whatever the capped safety batch happened to run with.
+    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     try {
-      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignId}`);
+      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignId}`, {
+        geminiModel: selectedModel,
+        chunkSize: resolveMarkingChunkSize(selectedModel),
+      });
     } catch (err) {
       toast.error(extractHumanError(err) || "Failed to confirm first batch");
       return;
@@ -1606,8 +1613,12 @@ useEffect(() => {
     const assignId = selectedAssignment?._id;
     if (!assignId) return;
     const engine = batchJob?.engine || "v1";
+    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     try {
-      await retryRemainingRun(`${engineBasePath(engine)}/first-batch/retry-remaining/${assignId}`);
+      await retryRemainingRun(
+        `${engineBasePath(engine)}/first-batch/retry-remaining/${assignId}`,
+        { geminiModel: selectedModel, chunkSize: resolveMarkingChunkSize(selectedModel) }
+      );
     } catch (err) {
       toast.error(extractHumanError(err) || "Could not retry remaining marking");
       return;
@@ -4427,7 +4438,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                     <span>
                                       ✅ {batchJob.firstBatch.limit ?? 3} paper{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked as a safety
                                       check on this new assignment. Review them, then confirm to mark the remaining{" "}
-                                      {batchJob.firstBatch.remainingCount ?? "the rest"}.
+                                      {batchJob.firstBatch.remainingCount ?? "the rest"} with{" "}
+                                      {geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))} (
+                                      {formatChunkSizeLabel(resolveMarkingChunkSize(pickValidGeminiModel(geminiModels, geminiModel)))}
+                                      ) — change the model{canPickChunkSizeIndependently ? "/pages-per-request" : ""} picker above to use different settings.
                                     </span>
                                     <button
                                       onClick={confirmFirstBatch}
