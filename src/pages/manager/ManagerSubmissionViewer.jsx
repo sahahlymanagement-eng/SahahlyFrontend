@@ -16,6 +16,12 @@ import { useAnnotatedResultPreview } from "../../hooks/useAnnotatedResultPreview
 import { getStoredUser } from "../../utils/session";
 import useMarkingEditHistory from "../../hooks/useMarkingEditHistory";
 import { usePageCountCheck, buildPageCountFlagMap, pageCountWarningText, applyPageCountDecision } from "../../hooks/usePageCountCheck";
+import { scanQualityWarningText } from "../../utils/scanQualityWarning";
+import SafetyBatchIntegrityNotice from "../../components/SafetyBatchIntegrityNotice";
+import {
+  assessSafetyBatchIntegrity,
+  safetyBatchBlockMessage,
+} from "../../utils/safetyBatchIntegrity";
 import {
   useOrientationCheck,
   buildOrientationFlagMap,
@@ -369,6 +375,12 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     }
     return subscribeBatchJob(selectedAssignment._id, setBatchJob);
   }, [selectedAssignment?._id]);
+
+  const safetyBatchAssessment = useMemo(() => {
+    const status = batchJob?.firstBatch?.status;
+    if (status !== "pending_confirmation" && status !== "confirming") return null;
+    return assessSafetyBatchIntegrity(batchJob, savedResults, students);
+  }, [batchJob, savedResults, students]);
 
   const batchStarting =
     batchJob?.phase === "uploading" || batchJob?.phase === "submitting";
@@ -1580,6 +1592,13 @@ useEffect(() => {
   const confirmFirstBatch = async () => {
     const assignId = selectedAssignment?._id;
     if (!assignId || !batchJob?.firstBatch) return;
+
+    const assessment = assessSafetyBatchIntegrity(batchJob, savedResults, students);
+    if (assessment.blocked) {
+      toast.error(safetyBatchBlockMessage(assessment));
+      return;
+    }
+
     const ok = await confirmToast(
       "This will mark the remaining submissions for this assignment now. Continue?",
       { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
@@ -3455,7 +3474,6 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           result,
           editingMaxTotal: null,
         }),
-        previousSummary: result.summary || "",
       })
     );
     setAnnotationsPanelOpen(false);
@@ -4429,9 +4447,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       check on this new assignment. Review them, then confirm to mark the remaining{" "}
                                       {batchJob.firstBatch.remainingCount ?? "the rest"}.
                                     </span>
+                                    <SafetyBatchIntegrityNotice assessment={safetyBatchAssessment} />
                                     <button
                                       onClick={confirmFirstBatch}
-                                      disabled={batchJob.firstBatch.status === "confirming"}
+                                      disabled={batchJob.firstBatch.status === "confirming" || safetyBatchAssessment?.blocked}
                                       style={{
                                         marginLeft: "auto", fontSize: 11, fontWeight: 600,
                                         color: "#fff", background: "var(--success, #16a34a)",
@@ -4679,10 +4698,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                       {(() => {
                                         const savedWarn = savedResults[s.submissionId]?.result?.fileWarning;
                                         const pageFlagText = pageCountWarningText(pageCountFlags[s.submissionId]);
+                                        const scanFlagText = scanQualityWarningText(
+                                          pageCountFlags[s.submissionId]?.scanQuality
+                                        );
                                         const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
                                         const totalMismatchText = totalMarksMismatchInfo(savedResults[s.submissionId]?.result)?.message;
-                                        if (!savedWarn && !pageFlagText && !orientationFlagText && !totalMismatchText) return null;
+                                        if (!savedWarn && !pageFlagText && !scanFlagText && !orientationFlagText && !totalMismatchText) return null;
                                         const title = pageFlagText
+                                          || scanFlagText
                                           || orientationFlagText
                                           || totalMismatchText
                                           || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)

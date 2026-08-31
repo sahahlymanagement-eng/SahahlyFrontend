@@ -14,6 +14,7 @@ export function buildPageCountFlagMap(report) {
       actualPages: c.actualPages,
       expectedPages: c.expectedPages,
       difference: c.difference,
+      scanQuality: c.scanQuality || { flagged: false },
     };
   }
   return flags;

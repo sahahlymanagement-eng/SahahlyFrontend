@@ -1,4 +1,4 @@
-import { normalizeQuestionPlacement } from "./normalizeQuestionPlacement";
+import { sanitizeQuestionsScenarioNames } from "./sanitizeMarkSchemeScenarioNames";
 import {
   canonicalQuestionKey,
   dropGhostDuplicateQuestions,
@@ -11,6 +11,7 @@ import {
 import { enrichMarkingQuestions } from "./blankQuestionFeedback";
 import { normalizeMathSymbolsInQuestions } from "./normalizeMathSymbols";
 import { reconcileBlankFlagContradictions } from "./reconcileBlankFlagContradictions";
+import { normalizeQuestionPlacement } from "./normalizeQuestionPlacement";
 
 function normalizePrintedLabel(raw) {
   return String(raw ?? "")
@@ -145,9 +146,11 @@ export function prepareEditingQuestions(questions) {
   const mathClean = normalizeMathSymbolsInQuestions(printedClean);
   const recovered = recoverMisassignedAnswers(mathClean);
   const collapsed = dropGhostDuplicateQuestions(recovered);
-  return normalizeQuestionPlacement(
-    reconcileBlankFlagContradictions(
-      enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))
+  return sanitizeQuestionsScenarioNames(
+    normalizeQuestionPlacement(
+      reconcileBlankFlagContradictions(
+        enrichMarkingQuestions(collapsed).map((q) => ({ ...q }))
+      )
     )
   );
 }

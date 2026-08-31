@@ -15,6 +15,7 @@ export default function PageCountCheckModal({ state, onResolve, onOpenPdf }) {
   const report = state.report;
   const checked = report?.checked || [];
   const flagged = checked.filter((c) => c.flagged);
+  const scanFlagged = checked.filter((c) => c.scanQuality?.flagged);
   const unreadable = checked.filter((c) => c.unreadable);
   const skipped = report?.skipped || [];
   const errored = report?.errored || [];
@@ -57,6 +58,13 @@ export default function PageCountCheckModal({ state, onResolve, onOpenPdf }) {
           </div>
         ) : (
           <div style={{ padding: "16px 20px" }}>
+            {scanFlagged.length > 0 && (
+              <div style={{ fontSize: 13, color: "#fbbf24", lineHeight: 1.5, marginBottom: 14 }}>
+                📷 {scanFlagged.length} submission{scanFlagged.length === 1 ? "" : "s"} look like phone-scan
+                PDFs (e.g. CamScanner). Ticks and handwriting may be misread — review before grading.
+              </div>
+            )}
+            {flagged.length > 0 && (
             <div style={{ fontSize: 13, color: "#fbbf24", lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ {report.flaggedCount} submission{report.flaggedCount === 1 ? "" : "s"} differ from the expected{" "}
               {report.expectedPages != null
@@ -65,37 +73,67 @@ export default function PageCountCheckModal({ state, onResolve, onOpenPdf }) {
               {" "}by more than {report.threshold} page{report.threshold === 1 ? "" : "s"}. These may be the wrong
               file — grading them will still cost AI tokens. Review before continuing.
             </div>
+            )}
 
-            <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10 }}>
-              {flagged.map((c) => (
-                <div
-                  key={c.submissionId}
-                  style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-                    padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13,
-                  }}
-                >
-                  <span style={{ fontWeight: 600, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                    {nameOf(c)}
-                  </span>
-                  <span style={{ color: "#fca5a5", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                    {c.unreadable
-                      ? "PDF unreadable"
-                      : `${c.actualPages} pg vs ${c.expectedPages} expected (${c.difference > 0 ? "+" : ""}${c.difference})`}
-                  </span>
-                  {onOpenPdf && (
-                    <button
-                      className="msv-action-btn"
-                      title="Open PDF"
-                      onClick={() => onOpenPdf(c)}
-                      style={{ flexShrink: 0 }}
-                    >
-                      <FiEye size={13} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
+            {scanFlagged.length > 0 && (
+              <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, marginBottom: flagged.length > 0 ? 12 : 0 }}>
+                {scanFlagged.map((c) => (
+                  <div
+                    key={`scan-${c.submissionId}`}
+                    style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                      padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                      {nameOf(c)}
+                    </span>
+                    <span style={{ color: "#fcd34d", whiteSpace: "nowrap" }}>
+                      {c.scanQuality?.scanner || "Scan app"} watermark
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {flagged.length > 0 && (
+              <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10 }}>
+                {flagged.map((c) => (
+                  <div
+                    key={c.submissionId}
+                    style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                      padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                      {nameOf(c)}
+                    </span>
+                    <span style={{ color: "#fca5a5", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                      {c.unreadable
+                        ? "PDF unreadable"
+                        : `${c.actualPages} pg vs ${c.expectedPages} expected (${c.difference > 0 ? "+" : ""}${c.difference})`}
+                    </span>
+                    {onOpenPdf && (
+                      <button
+                        className="msv-action-btn"
+                        title="Open PDF"
+                        onClick={() => onOpenPdf(c)}
+                        style={{ flexShrink: 0 }}
+                      >
+                        <FiEye size={13} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(flagged.length === 0 && scanFlagged.length === 0) && (
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", marginBottom: 14 }}>
+                No page-count mismatches or scan-app watermarks were detected in the checked submissions.
+              </div>
+            )}
 
             {(unreadable.length > 0 || skipped.length > 0 || errored.length > 0) && (
               <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>

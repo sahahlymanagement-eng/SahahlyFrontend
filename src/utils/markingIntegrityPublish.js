@@ -1,11 +1,14 @@
 /**
  * Guards against publishing / returning papers the AI clearly under-marked.
- * Flags are set by backend markSchemeBackfill (markingFailed / markingIncomplete).
+ * Flags are set by backend markSchemeBackfill (markingFailed / markingIncomplete)
+ * and by markingIntegrityDetect for silent empty runs.
  */
+
+import { detectedMarkingFailed } from "./markingIntegrityDetect";
 
 export function getMarkingIntegrityState(result) {
   const info = result?.markingCompleteness || {};
-  const failed = Boolean(result?.markingFailed || info.markingFailed);
+  const failed = detectedMarkingFailed(result);
   const incomplete = Boolean(result?.markingIncomplete || info.markingIncomplete);
   const coverage =
     typeof info.marksCoverage === "number" ? info.marksCoverage : null;

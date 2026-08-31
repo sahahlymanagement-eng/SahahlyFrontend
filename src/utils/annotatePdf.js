@@ -19,6 +19,7 @@ import {
 } from "./normalizeQuestionPlacement";
 import { resolveTeacherAnnotationsForPdf } from "./teacherAnnotations";
 import { isBackfilledStub } from "./backfilledStub";
+import { formatStudyTopic } from "./formatStudyTopic";
 import {
   sanitizeQuestionForStudentPdf,
   sanitizeQuestionsForStudentPdf,
@@ -227,7 +228,7 @@ const BD_TOPIC_W = 124;
 const BD_NOTE_W_OFFSET = 245;
 
 function measureBreakdownRow(q, reg, bold, noteW) {
-  const topicLines = wrap(q.studyTopic || "-", bold, BD_TOPIC_SIZE, BD_TOPIC_W);
+  const topicLines = wrap(formatStudyTopic(q), bold, BD_TOPIC_SIZE, BD_TOPIC_W);
   const noteLines = wrap(q.reason || "-", reg, BD_NOTE_SIZE, noteW);
   const lineCount = Math.max(topicLines.length, noteLines.length, 1);
   const rowH = Math.max(BD_MIN_ROW_H, lineCount * BD_LINE_H + BD_ROW_PAD);
@@ -347,7 +348,7 @@ function buildTopicsMap(questions) {
     .filter((q) => !isBackfilledStub(q))
     .filter((q) => Number(q.marksAwarded) < Number(q.maxMarks))
     .forEach((q) => {
-      const topic = q.studyTopic || "General Revision";
+      const topic = formatStudyTopic(q);
       const lost = Number(q.maxMarks || 0) - Number(q.marksAwarded || 0);
 
       if (!topicsMap[topic]) {
@@ -382,10 +383,13 @@ function shouldShowExcellentWork({ topicsLength, gradedCount, totalMarks, maxTot
  * Empty or heavily stubbed results must never look like a clean full-marks paper.
  * Detected from the question list so regenerated PDFs stay honest without new fields.
  */
-function markingIntegrityFlags(questions, notOnPaper) {
+function markingIntegrityFlags(questions, notOnPaper, { maxTotalMarks = 0 } = {}) {
   const graded = (questions || []).filter((q) => !isBackfilledStub(q));
   const stubs = notOnPaper || (questions || []).filter((q) => isBackfilledStub(q));
-  const failed = graded.length === 0 && stubs.length > 0;
+  const maxTotal = Math.max(0, Number(maxTotalMarks) || 0);
+  const failed =
+    graded.length === 0 &&
+    (stubs.length > 0 || ((questions || []).length === 0 && maxTotal > 0));
   // Many stubs relative to graded rows ⇒ under-marked run (or empty match),
   // not a clean "questions from another booklet" story for the report copy.
   const incomplete =
@@ -956,10 +960,12 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
     isBackfilledStub,
   });
   const displaySummary = studentFacing
-    ? String(summary || "")
-        .split(/\n/)
-        .filter((line) => !/could not be detected automatically/i.test(line))
-        .join("\n")
+    ? integrityEarly.failed
+      ? "AUTOMATED MARKING FAILED: no questions were matched on this script. The score shown is not the student's result — re-mark this paper before returning."
+      : String(summary || "")
+          .split(/\n/)
+          .filter((line) => !/could not be detected automatically/i.test(line))
+          .join("\n")
     : summary;
 
   const summaryPage = pdfDoc.insertPage(0, [595, 842]);
@@ -972,7 +978,9 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   const pct = maxTotalMarks > 0 ? Math.round((totalMarks / maxTotalMarks) * 100) : 0;
   const sCol = scoreCol(totalMarks, maxTotalMarks);
   const sBg = scoreBg(totalMarks, maxTotalMarks);
-  const integrityEarly = markingIntegrityFlags(allQuestions, notOnPaper);
+  const integrityEarly = markingIntegrityFlags(allQuestions, notOnPaper, {
+    maxTotalMarks,
+  });
   const grade = integrityEarly.failed
     ? "Marking Failed — Re-mark"
     : integrityEarly.incomplete

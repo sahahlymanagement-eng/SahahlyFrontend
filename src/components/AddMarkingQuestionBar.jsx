@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createManualQuestion } from "../utils/markingFormData";
 import { isBackfilledStub } from "../utils/backfilledStub";
+import { detectedMarkingFailed } from "../utils/markingIntegrityDetect";
 
 export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -221,7 +222,7 @@ export default function AddMarkingQuestionBar({ onAdd, disabled = false }) {
 export function MarkingCompletenessNotice({ result, questionCount }) {
   const info = result?.markingCompleteness;
   const backfilled = (result?.questions || []).filter(isBackfilledStub).length;
-  const failed = Boolean(result?.markingFailed || info?.markingFailed);
+  const failed = detectedMarkingFailed(result);
   const incomplete = Boolean(result?.markingIncomplete || info?.markingIncomplete);
   const suppressed = Boolean(info?.suppressedOtherPaper);
   const coverage =

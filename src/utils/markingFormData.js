@@ -11,6 +11,7 @@ import {
   alignExaminerFeedbackToMarks,
   syncQuestionsExaminerFeedback,
 } from "./syncExaminerFeedback";
+import { formatStudyTopic } from "./formatStudyTopic";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
 
@@ -506,7 +507,6 @@ export function gradeScorePercent(total, max) {
 export function rebuildMarkingSummary({
   questions = [],
   maxTotalMarks,
-  previousSummary = "",
   totalMarksOverride = null,
 } = {}) {
   const total =
@@ -538,8 +538,9 @@ export function rebuildMarkingSummary({
   } else {
     for (const q of lost.slice(0, 4)) {
       let line = `• Q${q.questionNumber} (${q.marksAwarded}/${q.maxMarks})`;
-      if (q.studyTopic) {
-        line += ` — ${q.studyTopic}`;
+      const topic = formatStudyTopic(q);
+      if (topic) {
+        line += ` — ${topic}`;
       } else if (q.missingKeywords?.length) {
         line += ` — missing: ${q.missingKeywords.slice(0, 2).join(", ")}`;
       } else if (q.reason?.trim()) {
@@ -563,14 +564,6 @@ export function rebuildMarkingSummary({
     bullets.push(
       `• Left unanswered: ${listed}${more} — ${unanswered.marksDeducted} mark(s) deducted`
     );
-  }
-
-  const prevBullets = normalizeMarkingSummaryBullets(previousSummary)
-    .split("\n")
-    .filter((line) => /revise|focus|strength|well|excellent|improve|weak/i.test(line));
-
-  for (const line of prevBullets.slice(0, 2)) {
-    if (!bullets.includes(line)) bullets.push(line);
   }
 
   return bullets.slice(0, 6).join("\n");
@@ -1055,15 +1048,10 @@ export function applyTeacherEditsToResult(
 
   if (summaryTouched && summaryOverride != null && String(summaryOverride).trim()) {
     finalResult.summary = normalizeMarkingSummaryBullets(summaryOverride);
-  } else if (!summaryTouched && questionSum === baseQuestionSum) {
-    finalResult.summary = normalizeMarkingSummaryBullets(
-      baseResult?.summary || baseResult?.criteriaGrade?.summary || ""
-    );
   } else {
     finalResult.summary = rebuildMarkingSummary({
       questions,
       maxTotalMarks: max,
-      previousSummary: baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
       totalMarksOverride: finalResult.totalMarks,
     });
   }

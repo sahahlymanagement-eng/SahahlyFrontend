@@ -118,6 +118,12 @@ import {
   pageCountWarningText,
   applyPageCountDecision,
 } from "../../hooks/usePageCountCheck";
+import { scanQualityWarningText } from "../../utils/scanQualityWarning";
+import SafetyBatchIntegrityNotice from "../../components/SafetyBatchIntegrityNotice";
+import {
+  assessSafetyBatchIntegrity,
+  safetyBatchBlockMessage,
+} from "../../utils/safetyBatchIntegrity";
 import {
   useOrientationCheck,
   buildOrientationFlagMap,
@@ -274,6 +280,12 @@ export default function GradingProviderPage({ slug, label }) {
 
   // ── Server-side batch marking (Gemini batch API via the grading provider) ──
   const [batchJob, setBatchJob] = useState(null);
+
+  const safetyBatchAssessment = useMemo(() => {
+    const status = batchJob?.firstBatch?.status;
+    if (status !== "pending_confirmation" && status !== "confirming") return null;
+    return assessSafetyBatchIntegrity(batchJob, results, submissions);
+  }, [batchJob, results, submissions]);
 
   // ── Row selection for marking (same behaviour as the submission viewer) ──
   // An empty selection means "the whole assignment", so every marking action
@@ -1036,7 +1048,20 @@ export default function GradingProviderPage({ slug, label }) {
     );
     setEditingCriteriaGrade(cloneCriteriaGrade(result.criteriaGrade));
     setEditingAnnotations(getTeacherAnnotations(result).map((a) => ({ ...a })));
-    setEditingSummary(getMarkingResultSummary(result, {}) || "");
+    setEditingSummary(
+      rebuildMarkingSummary({
+        questions: result.questions || [],
+        maxTotalMarks: resolveDisplayMaxTotal({
+          assignmentMaxPoints: resolvePartnerAssignmentMax({
+            maxGrade: assignmentSettings.settings.maxGrade,
+            inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+            partnerGrade: selectedAssignment?.grade,
+          }),
+          result,
+          editingMaxTotal: null,
+        }),
+      })
+    );
     setSummaryTouched(false);
     setAnnotationsPanelOpen(false);
     setEditingMaxTotal(null);
@@ -1531,6 +1556,13 @@ export default function GradingProviderPage({ slug, label }) {
   const confirmFirstBatch = async () => {
     if (!selectedAssignment || selectedAssignment.id == null || !batchJob?.firstBatch) return;
     const assignId = batchKey(selectedAssignment.id);
+
+    const assessment = assessSafetyBatchIntegrity(batchJob, results, submissions);
+    if (assessment.blocked) {
+      toast.error(safetyBatchBlockMessage(assessment));
+      return;
+    }
+
     const ok = await confirmToast(
       "This will mark the remaining submissions for this assignment now. Continue?",
       { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
@@ -2715,9 +2747,10 @@ export default function GradingProviderPage({ slug, label }) {
                         as a safety check on this new assignment. Review them, then confirm to mark the remaining{" "}
                         {batchJob.firstBatch.remainingCount ?? "the rest"}.
                       </span>
+                      <SafetyBatchIntegrityNotice assessment={safetyBatchAssessment} />
                       <button
                         onClick={confirmFirstBatch}
-                        disabled={batchJob.firstBatch.status === "confirming"}
+                        disabled={batchJob.firstBatch.status === "confirming" || safetyBatchAssessment?.blocked}
                         style={{
                           marginLeft: "auto",
                           fontSize: 11,
@@ -2859,10 +2892,14 @@ export default function GradingProviderPage({ slug, label }) {
                                       // Either the live pre-grading check or a
                                       // fileWarning baked into a saved result.
                                       const savedWarn = results[s.submissionId]?.result?.fileWarning;
-                                      const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
+                                      const pageFlagText = pageCountWarningText(pageCountFlags[s.submissionId]);
+                                      const scanFlagText = scanQualityWarningText(
+                                        pageCountFlags[s.submissionId]?.scanQuality
+                                      );
                                       const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
-                                      if (!savedWarn && !flagText && !orientationFlagText) return null;
-                                      const title = flagText
+                                      if (!savedWarn && !pageFlagText && !scanFlagText && !orientationFlagText) return null;
+                                      const title = pageFlagText
+                                        || scanFlagText
                                         || orientationFlagText
                                         || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
                                         || "Submitted file may be wrong — page count differs from expected";
