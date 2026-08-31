@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
 import { downloadBlob } from "../../utils/downloadBlob";
+import { withPdfFetchRetry } from "../../utils/studentPdfCache";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
   FiEdit3, FiDownloadCloud, FiRotateCcw, FiRotateCw,
@@ -477,17 +478,22 @@ export default function GradingProviderPage({ slug, label }) {
 
     let entry = null;
     try {
-      const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs`, { timeout: 120000 });
-      const data = res.data || {};
-      if (!data.submission?.available || !data.submission?.base64) {
-        throw new Error("Student submission PDF is not available for this entry");
-      }
-      if (!data.markScheme?.available || !data.markScheme?.base64) {
-        throw new Error("Mark scheme PDF is not available for this entry");
-      }
-      const studentFile = base64ToFile(data.submission.base64, `submission_${submissionId}.pdf`);
-      const msFile = base64ToFile(data.markScheme.base64, `markscheme_${submissionId}.pdf`);
-      entry = { studentFile, msFile };
+      // A partner's storage drops connections under load more often than Drive
+      // does; retry transient blips instead of falling straight to the
+      // pre-signed-URL fallback (which itself calls the same flaky endpoint).
+      entry = await withPdfFetchRetry(async () => {
+        const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs`, { timeout: 120000 });
+        const data = res.data || {};
+        if (!data.submission?.available || !data.submission?.base64) {
+          throw new Error("Student submission PDF is not available for this entry");
+        }
+        if (!data.markScheme?.available || !data.markScheme?.base64) {
+          throw new Error("Mark scheme PDF is not available for this entry");
+        }
+        const studentFile = base64ToFile(data.submission.base64, `submission_${submissionId}.pdf`);
+        const msFile = base64ToFile(data.markScheme.base64, `markscheme_${submissionId}.pdf`);
+        return { studentFile, msFile };
+      });
     } catch (primaryErr) {
       // /pdfs blocked (e.g. already marked) — try fresh pre-signed URLs instead.
       try {

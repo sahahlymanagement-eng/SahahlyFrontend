@@ -33,7 +33,7 @@ function cacheKey(assignmentId, submissionId) {
   return `${assignmentId}::${submissionId}`;
 }
 
-function isRetryablePdfFetchError(err) {
+export function isRetryablePdfFetchError(err) {
   if (!err) return false;
   const status = err?.response?.status;
   if (status === 502 || status === 503 || status === 504) return true;
@@ -46,6 +46,26 @@ function isRetryablePdfFetchError(err) {
     return true;
   }
   return false;
+}
+
+/**
+ * Run `fn` up to `attempts` times, retrying only transient connection drops
+ * (see isRetryablePdfFetchError) with a short backoff. Shared by every place
+ * that pulls a submission PDF over HTTP, so a dropped connection to Drive or
+ * to a partner's storage doesn't surface as a dead end for the teacher.
+ */
+export async function withPdfFetchRetry(fn, { attempts = MAX_ATTEMPTS } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryablePdfFetchError(err) || attempt === attempts) throw err;
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -80,31 +100,19 @@ export async function fetchStudentPdf(
   const pending = inflight.get(key);
   if (pending) return toFile(await pending);
 
-  const request = (async () => {
-    let lastErr;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      try {
-        const res = await api.get("/submission-files/pdf", {
-          params: {
-            assignmentId,
-            submissionId,
-            ...(googleUserId ? { googleUserId } : {}),
-          },
-          responseType: "blob",
-          timeout,
-        });
-        await assertPdfBlob(res.data, "Student submission");
-        return res.data;
-      } catch (err) {
-        lastErr = err;
-        if (!isRetryablePdfFetchError(err) || attempt === MAX_ATTEMPTS) {
-          throw err;
-        }
-        await new Promise((r) => setTimeout(r, 400 * attempt));
-      }
-    }
-    throw lastErr;
-  })();
+  const request = withPdfFetchRetry(async () => {
+    const res = await api.get("/submission-files/pdf", {
+      params: {
+        assignmentId,
+        submissionId,
+        ...(googleUserId ? { googleUserId } : {}),
+      },
+      responseType: "blob",
+      timeout,
+    });
+    await assertPdfBlob(res.data, "Student submission");
+    return res.data;
+  });
 
   inflight.set(key, request);
   try {

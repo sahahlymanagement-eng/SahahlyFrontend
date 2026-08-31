@@ -29,6 +29,12 @@ function friendlyPdfLoadError(err) {
   if (/^network error$/i.test(raw) || err?.name === "NetworkError") {
     return "Could not load this PDF preview (network blip or stale file). Click Retry.";
   }
+  // A raw JS crash ("Cannot access 'x' before initialization", "x is not
+  // defined") almost always means this tab is still running old code after a
+  // deploy — the fix is a hard refresh, not a Retry of the same stale bundle.
+  if (["ReferenceError", "TypeError", "SyntaxError"].includes(err?.name)) {
+    return "PDF viewer crashed. Hard-refresh the page (Ctrl+Shift+R), then Retry.";
+  }
   return raw || "Failed to load PDF preview";
 }
 

@@ -196,6 +196,18 @@ export async function getApiErrorMessage(err) {
     return "Could not reach the server for this PDF (network blip). Click Retry, or close and reopen the paper.";
   }
 
+  // A genuine JS crash while building the preview (not an HTTP/network failure)
+  // — most often a stale page still running old code after a deploy. The raw
+  // message ("Cannot access 'x' before initialization", "x is not defined") is
+  // meaningless to a teacher, so point at the fix instead of showing it.
+  if (
+    !err?.response &&
+    !err?.code &&
+    ["ReferenceError", "TypeError", "SyntaxError"].includes(err?.name)
+  ) {
+    return "Preview failed to render. Hard-refresh the page (Ctrl+Shift+R) and Retry — if it keeps happening, close and reopen the paper.";
+  }
+
   return scrubProviderNames(formatGoogleOAuthError(err?.message) || err?.message || "Request failed");
 
 }
