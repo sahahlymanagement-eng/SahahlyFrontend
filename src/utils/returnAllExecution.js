@@ -7,32 +7,17 @@ import { getApiErrorMessage } from "./markingFormData";
 import { invalidateStudentPdf } from "./studentPdfCache";
 import { getMarkingIntegrityPublishGate } from "./markingIntegrityPublish";
 
-export function mapSavedResultsFromApi(rows = []) {
-  const map = {};
-  for (const r of rows) {
-    if (!r?.submissionId) continue;
-    map[r.submissionId] = {
-      status: "done",
-      result: r.result,
-      studentFile: r.studentFileMeta,
-      totalMarks: r.totalMarks,
-      classroomAssignedGrade: r.classroomAssignedGrade ?? null,
-      summary: r.summary || "",
-      returnedAt: r.returnedAt ?? null,
-      updatedAt: r.updatedAt ?? null,
-      teacherEditedAt: r.teacherEditedAt ?? null,
-      studentId: r.studentId ?? null,
-      studentName: r.studentName ?? null,
-    };
-  }
-  return map;
-}
+import {
+  mapSavedResultsFromApi,
+  fetchSavedResultsLight,
+  hydrateSavedResultsForReturn,
+} from "./savedResultsApi";
+
+export { mapSavedResultsFromApi };
 
 /** Load persisted marking results so Return All uses DB return state, not stale UI flags. */
 export async function fetchSavedResultsMap(api, assignmentId) {
-  if (!assignmentId) return {};
-  const res = await api.get(`/submission-files/save-results/${assignmentId}`);
-  return mapSavedResultsFromApi(res.data?.data || []);
+  return fetchSavedResultsLight(api, assignmentId);
 }
 
 function isPdfFileLike(file) {
@@ -345,6 +330,11 @@ export async function buildFreshReturnAllQueue({
       fetchAllPaginated(api, studentsMarkingUrl, {}, "students"),
       fetchSavedResultsMap(api, assignmentId),
     ]);
+    savedResults = await hydrateSavedResultsForReturn(
+      api,
+      assignmentId,
+      savedResults
+    );
   } catch (err) {
     console.error("Failed to load students/saved results for Return All:", err);
     throw err;

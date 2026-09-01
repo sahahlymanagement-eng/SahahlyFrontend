@@ -173,7 +173,7 @@ export function buildReturnAllQueue({
     const student = resolveStudent(submissionId, saved);
     const liveId = student?.submissionId || submissionId;
     if (!liveId || seen.has(liveId)) continue;
-    if (!saved?.result) continue;
+    if (!saved?.result && !saved?.hasResult) continue;
     if (isSubmissionAlreadyReturned({ saved })) continue;
 
     bulkQueue.push({

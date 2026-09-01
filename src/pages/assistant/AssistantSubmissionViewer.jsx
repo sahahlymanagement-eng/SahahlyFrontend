@@ -139,6 +139,11 @@ import {
   studentGoogleUserId,
   isNoAttachmentError,
 } from "../../utils/returnAllExecution";
+import {
+  fetchSavedResultsLight,
+  fetchSavedResultDetail,
+  savedRowHasMarkingResult,
+} from "../../utils/savedResultsApi";
 import { sortQuestionsByPlacement } from "../../utils/normalizeQuestionPlacement";
 import { confirmReturnAll, confirmReturnSingle } from "../../utils/returnConfirmation";
 import {
@@ -926,31 +931,18 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   }, [assignmentId]);
 
   const fetchSavedResults = useCallback(async () => {
+    if (!assignmentId) return;
     try {
-      const res = await api.get(`/submission-files/save-results/${assignmentId}`);
-      const map = {};
+      const map = await fetchSavedResultsLight(api, assignmentId);
       const synced = {};
-      res.data.data.forEach(r => {
-        map[r.submissionId] = {
-          status: "done",
-          result: r.result,
-          studentFile: r.studentFileMeta,
-          totalMarks: resolveSavedMarkingGrade(r),
-          classroomAssignedGrade: r.classroomAssignedGrade ?? null,
-          provider: r.provider,
-          mode: r.mode,
-          summary: r.summary || getMarkingResultSummary(r.result) || "",
-          returnedAt: r.returnedAt ?? null,
-          updatedAt: r.updatedAt ?? null,
-          teacherEditedAt: r.teacherEditedAt ?? null,
-        };
-        if (r.classroomAssignedGrade != null) {
-          synced[r.submissionId] = r.classroomAssignedGrade;
+      Object.entries(map).forEach(([submissionId, row]) => {
+        if (row.classroomAssignedGrade != null) {
+          synced[submissionId] = row.classroomAssignedGrade;
         }
       });
       setSavedResults(map);
       setClassroomSyncedGrades(synced);
-      setSingleProgress(prev => ({ ...prev, ...map }));
+      setSingleProgress((prev) => ({ ...prev, ...map }));
     } catch (err) {
       console.error("Failed to load saved results", err);
     }
@@ -1028,13 +1020,7 @@ const refreshStudents = async () => {
 
     let savedMap = {};
     try {
-      const res = await api.get(`/submission-files/save-results/${assignmentId}`);
-      (res.data.data || []).forEach((r) => {
-        savedMap[r.submissionId] = {
-          totalMarks: resolveSavedMarkingGrade(r),
-          result: r.result,
-        };
-      });
+      savedMap = await fetchSavedResultsLight(api, assignmentId);
       await fetchSavedResults();
     } catch {
       // saved results optional
@@ -2545,6 +2531,72 @@ window.open(url);
     }
   };
 
+  const [openingResultsId, setOpeningResultsId] = useState(null);
+
+  const resolveSavedResultForModal = useCallback(
+    async (student, { batch, bulk, single, db }) => {
+      const sessionResult =
+        (batch?.status === "done" ? batch.result : null) ||
+        (bulk?.status === "done" ? bulk.result : null) ||
+        (single?.status === "done" ? single.result : null) ||
+        null;
+
+      if (sessionResult?.questions?.length) {
+        return {
+          result: sessionResult,
+          studentFile: bulk?.studentFile || single?.studentFile || null,
+          originalAiResult:
+            batch?.originalAiResult ||
+            bulk?.originalAiResult ||
+            single?.originalAiResult ||
+            null,
+        };
+      }
+
+      if (db?.result?.questions?.length) {
+        return {
+          result: db.result,
+          studentFile: db.studentFile || null,
+          originalAiResult: null,
+        };
+      }
+
+      if (!assignmentId || !student?.submissionId) {
+        return {
+          result: db?.result || sessionResult || null,
+          studentFile: null,
+          originalAiResult: null,
+        };
+      }
+
+      if (!savedRowHasMarkingResult(db) && !sessionResult) {
+        return { result: null, studentFile: null, originalAiResult: null };
+      }
+
+      const detail = await fetchSavedResultDetail(
+        api,
+        assignmentId,
+        student.submissionId
+      );
+      if (detail) {
+        setSavedResults((prev) => ({
+          ...prev,
+          [student.submissionId]: { ...(prev[student.submissionId] || {}), ...detail },
+        }));
+        setSingleProgress((prev) => ({
+          ...prev,
+          [student.submissionId]: { ...(prev[student.submissionId] || {}), ...detail },
+        }));
+      }
+      return {
+        result: detail?.result || db?.result || sessionResult || null,
+        studentFile: detail?.studentFile || db?.studentFile || null,
+        originalAiResult: null,
+      };
+    },
+    [assignmentId]
+  );
+
   /**
    * Single entry point for showing a result in the modal.
    *
@@ -3546,7 +3598,10 @@ return (
                                                   batchJob?.results?.[s.submissionId] === undefined &&
                                                   batchJob?.total > 0;
                             
-                            const hasResult = !!(single?.status === "done" || db?.result);
+                            const hasResult = !!(
+                              single?.status === "done" ||
+                              savedRowHasMarkingResult(db)
+                            );
                             const isMarking = single?.status === "marking" || markingStudentId === s.submissionId;
                             const hasError = single?.status === "error" || studentErrors[s.submissionId];
 
@@ -3586,13 +3641,22 @@ return (
                   </div>
                   <span className="ma-cell-name">{s.name || "—"}</span>
                                   {(() => {
-                                    const savedWarn = savedResults[s.submissionId]?.result?.fileWarning;
+                                    const listMeta = db?.listMeta;
+                                    const fileWarnText =
+                                      (typeof db?.result?.fileWarning === "string"
+                                        ? db.result.fileWarning
+                                        : db?.result?.fileWarning?.message) ||
+                                      (typeof listMeta?.fileWarning === "string"
+                                        ? listMeta.fileWarning
+                                        : listMeta?.fileWarning?.message);
                                     const flagText = pageCountWarningText(pageCountFlags[s.submissionId]);
                                     const orientationFlagText = orientationWarningText(orientationFlags[s.submissionId]);
-                                    if (!savedWarn && !flagText && !orientationFlagText) return null;
+                                    const totalMismatchText = listMeta?.totalMismatchMessage;
+                                    if (!fileWarnText && !flagText && !orientationFlagText && !totalMismatchText) return null;
                                     const title = flagText
                                       || orientationFlagText
-                                      || (typeof savedWarn === "string" ? savedWarn : savedWarn?.message)
+                                      || totalMismatchText
+                                      || fileWarnText
                                       || "Submitted file may be wrong — page count differs from expected";
                                     return (
                                       <span
@@ -3702,47 +3766,51 @@ return (
                                       </button>
                                     )}
 
-                    {(bulkDone || batchDone || single?.status === "done" || db?.result) && (
+                    {(bulkDone || batchDone || single?.status === "done" || savedRowHasMarkingResult(db)) && (
                       <button
                         className="msv-action-btn msv-action-btn--ai msv-action-btn--done"
                         title="View Results"
-                        onClick={() => {
-                          const savedCanonical =
-                            savedResults[s.submissionId]?.result ?? db?.result;
-                          const result =
-                            savedCanonical ??
-                            (batchDone ? batch.result :
-                            bulkDone ? bulk.result :
-                            single?.status === "done" ? single.result :
-                            null);
-                          const studentFile =
-                            bulkDone ? bulk.studentFile :
-                            single?.status === "done" ? single.studentFile :
-                            null;
-                          // Only a marking run made this session holds a
-                          // distinct AI baseline. A paper loaded from the DB has
-                          // none: the list response no longer ships one, because
-                          // a second full copy of every paper was the single
-                          // biggest thing on it.
-                          const originalAiResult =
-                            (batchDone ? batch?.originalAiResult : null) ??
-                            (bulkDone ? bulk?.originalAiResult : null) ??
-                            (single?.status === "done" ? single?.originalAiResult : null) ??
-                            null;
-                          openResultsModal({
-                            student: s,
-                            result,
-                            studentFile,
-                            originalAiResult,
-                            submissionId: s.submissionId,
-                          });
+                        disabled={openingResultsId === s.submissionId}
+                        onClick={async () => {
+                          setOpeningResultsId(s.submissionId);
+                          try {
+                            const { result, studentFile, originalAiResult } =
+                              await resolveSavedResultForModal(s, {
+                                batch,
+                                bulk,
+                                single,
+                                db,
+                              });
+                            if (!result) {
+                              toast.warn("No marking result found for this student");
+                              return;
+                            }
+                            openResultsModal({
+                              student: s,
+                              result,
+                              studentFile,
+                              originalAiResult,
+                              submissionId: s.submissionId,
+                            });
+                          } catch (err) {
+                            toast.error(
+                              (await getApiErrorMessage(err)) ||
+                                "Failed to load marking result"
+                            );
+                          } finally {
+                            setOpeningResultsId(null);
+                          }
                         }}
                       >
-                        ✅ Results
+                        {openingResultsId === s.submissionId ? (
+                          <span className="pm-spinner" />
+                        ) : (
+                          "✅ Results"
+                        )}
                       </button>
                     )}
 
-                    {db?.result && (
+                    {savedRowHasMarkingResult(db) && (
                       <button
                         className="msv-action-btn msv-action-btn--delete"
                         title="Delete Correction"
