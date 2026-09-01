@@ -14,14 +14,13 @@ import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { fetchStudentPdf } from "../utils/studentPdfCache";
 import { studentGoogleUserId } from "../utils/returnAllExecution";
-import { questionMarksSignature, buildLivePreviewSnapshot } from "../utils/buildEditorPreviewBaseline";
+import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
 }
 
 const PREVIEW_TIMEOUT_MS = 120_000;
-const LIVE_PREVIEW_DEBOUNCE_MS = 700;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -43,8 +42,7 @@ function withTimeout(promise, ms, label) {
 
 /**
  * Annotated PDF preview for the results modal.
- * Regenerates when the modal opens, while the teacher edits (debounced), or when
- * Save & regenerate PDF is clicked.
+ * Regenerates when the modal opens or when Save & regenerate PDF is clicked.
  */
 export function useAnnotatedResultPreview({
   api,
@@ -341,75 +339,6 @@ export function useAnnotatedResultPreview({
     editingCriteriaGrade,
     outOfScopeNotesOverride,
     summaryTouched,
-  ]);
-
-  const buildLiveSnapshot = useCallback(() => {
-    if (!confirmedSnapshot || !resultModal) return null;
-    const submissionId = getSubmissionId(resultModal);
-    if (!submissionId) return null;
-    return buildLivePreviewSnapshot({
-      confirmedSnapshot,
-      submissionId,
-      editingQuestions: editingQuestionsRef.current,
-      pendingRemovedIndices: pendingRemovedRef.current,
-      editingSummary: editingSummaryRef.current,
-      summaryTouched: summaryTouchedRef.current,
-      effectiveMaxTotal: effectiveMaxTotalRef.current,
-      editingTotal: editingTotalRef.current,
-      editingCriteriaGrade: editingCriteriaGradeRef.current,
-      editingAnnotations: editingAnnotationsRef.current,
-      editingOutOfScopeNotes: outOfScopeNotesOverrideRef.current,
-    });
-  }, [confirmedSnapshot, resultModal]);
-
-  const livePreviewSignature = useMemo(() => {
-    const removed = pendingRemovedIndices
-      ? [...pendingRemovedIndices].sort((a, b) => a - b).join(",")
-      : "";
-    return JSON.stringify({
-      q: `${questionMarksSignature(questionsForPreviewEdits)}|len:${questionsForPreviewEdits.length}`,
-      s: summaryTouched ? String(editingSummary ?? "") : "",
-      t: editingTotal,
-      m: effectiveMaxTotal,
-      r: removed,
-      a: (editingAnnotations || []).length,
-    });
-  }, [
-    questionsForPreviewEdits,
-    editingSummary,
-    summaryTouched,
-    editingTotal,
-    effectiveMaxTotal,
-    pendingRemovedIndices,
-    editingAnnotations,
-  ]);
-
-  useEffect(() => {
-    if (
-      !openSubmissionId ||
-      !assignmentId ||
-      !confirmedSnapshot ||
-      !hasPendingEdits ||
-      confirmingEdits
-    ) {
-      return undefined;
-    }
-
-    const timer = setTimeout(() => {
-      const snapshot = buildLiveSnapshot();
-      if (snapshot) generatePreview(snapshot, { lockPlacement: true });
-    }, LIVE_PREVIEW_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [
-    openSubmissionId,
-    assignmentId,
-    confirmedSnapshot,
-    hasPendingEdits,
-    confirmingEdits,
-    livePreviewSignature,
-    buildLiveSnapshot,
-    generatePreview,
   ]);
 
   /**

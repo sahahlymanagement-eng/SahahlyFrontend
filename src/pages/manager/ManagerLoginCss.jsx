@@ -3729,7 +3729,7 @@ export default function ManagerLoginCss() {
                       <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
                         {confirmingEdits || previewLoading
                           ? "Updating preview…"
-                          : "Preview updates as you edit — click Save & regenerate to persist"}
+                          : "Unsaved changes — click Save & regenerate PDF to update preview"}
                       </span>
                     )}
                   </div>

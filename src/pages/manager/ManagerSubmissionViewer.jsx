@@ -52,7 +52,6 @@ import {
   currentUserId,
   getApiErrorMessage,
   getMarkingResultSummary,
-  rebuildMarkingSummary,
   guidanceForForm,
   resolveMarkingGuidanceText,
   hasTeacherEdits,
@@ -3515,15 +3514,10 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     setEditingTotal(initialEditingTotalFromResult(result));
     setSummaryTouched(false);
     setEditingSummary(
-      rebuildMarkingSummary({
-        questions: result.questions || [],
-        maxTotalMarks: resolveDisplayMaxTotal({
-          assignmentMaxPoints,
-          result,
-          editingMaxTotal: null,
-        }),
-        previousSummary: result.summary || "",
-      })
+      getMarkingResultSummary(result, {
+        storedSummary: savedResults[sid]?.summary,
+        studentSummary: summaryMap[sid],
+      }) || ""
     );
     setAnnotationsPanelOpen(false);
     setEditorSubmissionId(sid);
@@ -5817,7 +5811,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600, textTransform: "none" }}>
                               {confirmingEdits || previewLoading
                                 ? "Updating preview…"
-                                : "Preview updates as you edit — click Save & regenerate to persist"}
+                                : "Unsaved changes — click Save & regenerate PDF to update preview"}
                             </span>
                           )}
                         </div>
