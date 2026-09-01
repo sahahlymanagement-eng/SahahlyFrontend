@@ -526,6 +526,20 @@ export default function ManagerDashboard({ scope = "manager", variant = "home" }
     }
   };
 
+  const getAssignedAssistantIds = (assistantDelegations) =>
+    new Set(
+      assistantDelegations
+        .map((d) => String(d.personId?._id || d.personId))
+        .filter(Boolean)
+    );
+
+  const getAvailableAssistantOptions = (assignmentId, assistantDelegations) => {
+    const assignedIds = getAssignedAssistantIds(assistantDelegations);
+    return (assistantsMap[assignmentId] || [])
+      .filter((as) => as.personId?._id && !assignedIds.has(String(as.personId._id)))
+      .map((as) => ({ value: as.personId._id, label: as.personId.name }));
+  };
+
   const assignAssistant = async (assignmentId) => {
     try {
       const sel = selectedAssistants[assignmentId];
@@ -536,6 +550,8 @@ export default function ManagerDashboard({ scope = "manager", variant = "home" }
         assignmentId, personId: sel.value, role: "assistant", assignedBy: user.id, assistantDeadline: deadline,
       });
       toast.success("Assistant assigned successfully");
+      setSelectedAssistants((prev) => ({ ...prev, [assignmentId]: null }));
+      setDeadlines((prev) => ({ ...prev, [assignmentId]: null }));
       fetchPage(page);
       loadBriefing();
     } catch (err) {
@@ -591,41 +607,23 @@ export default function ManagerDashboard({ scope = "manager", variant = "home" }
     0
   );
 
-  const changeAssistant = async (assignmentId) => {
-  try {
-    const sel = selectedAssistants[assignmentId];
-    if (!sel?.value) { toast.error("Please select a new assistant"); return; }
-    await api.put("/assignment-delegations/change-assistant", {
-      assignmentId,
-      newPersonId: sel.value,
-      assignedBy: user.id,
-      assistantDeadline: deadlines[assignmentId] || undefined,
-    });
-    toast.success("Assistant changed successfully");
-    fetchPage(page);
-    loadBriefing();
-  } catch (err) {
-    toast.error(err.response?.data?.message || "Failed to change assistant");
-  }
-};
-
-const removeAssistant = async (assignmentId) => {
-  const confirmed = await confirmToast(
-    "Remove assistant (and quality team if assigned)? Task will become UNASSIGNED.",
-    { title: "Remove assistant", confirmLabel: "Remove", danger: true }
-  );
-  if (!confirmed) return;
-  try {
-    await api.delete("/assignment-delegations/remove-assistant", {
-      data: { assignmentId, assignedBy: user.id },
-    });
-    toast.success("Assistant removed. Task is now UNASSIGNED.");
-    fetchPage(page);
-    loadBriefing();
-  } catch (err) {
-    toast.error(err.response?.data?.message || "Failed to remove assistant");
-  }
-};
+  const removeSingleAssistant = async (assignmentId, personId, personName) => {
+    const confirmed = await confirmToast(
+      `Remove ${personName || "this assistant"} from this assignment?`,
+      { title: "Remove assistant", confirmLabel: "Remove", danger: true }
+    );
+    if (!confirmed) return;
+    try {
+      await api.delete("/assignment-delegations", {
+        data: { assignmentId, personId, role: "assistant", assignedBy: user.id },
+      });
+      toast.success("Assistant removed");
+      fetchPage(page);
+      loadBriefing();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to remove assistant");
+    }
+  };
 
 const loadCountsForAssignment = async (assignmentId) => {
 
@@ -1106,7 +1104,9 @@ const goToSubmissionViewer = (assignment) => {
                           const assistants = related.filter((d) => d.role === "assistant");
                           const qualityTeam = related.filter((d) => d.role === "quality team");
                           const assistantOptions = assistantsMap[a._id]?.map((as) => ({ value: as.personId?._id, label: as.personId?.name })) || [];
+                          const availableAssistantOptions = getAvailableAssistantOptions(a._id, assistants);
                           const hasSubjectAssistants = assistantOptions.length > 0;
+                          const canAddAssistant = availableAssistantOptions.length > 0;
                           const isExpanded = !!expandedRows[a._id];
                           const counts = submissionCounts[a._id];
                           const countsSpinning = counts === "loading" || counts === undefined;
@@ -1170,11 +1170,24 @@ const goToSubmissionViewer = (assignment) => {
                                 </td>
 
                                 <td data-label="Deadline">
-                                  <span className="md-cell-muted">
-                                    {assistants[0]?.assistantDeadline
-                                      ? new Date(assistants[0].assistantDeadline).toLocaleString()
-                                      : "—"}
-                                  </span>
+                                  {assistants.length ? (
+                                    <div className="md-deadlines">
+                                      {assistants.map((d) => (
+                                        <div key={d._id} className="md-deadline-line">
+                                          {assistants.length > 1 && (
+                                            <span className="md-deadline-name">{d.personId?.name}: </span>
+                                          )}
+                                          <span className="md-cell-muted">
+                                            {d.assistantDeadline
+                                              ? new Date(d.assistantDeadline).toLocaleString()
+                                              : "—"}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="md-cell-muted">—</span>
+                                  )}
                                 </td>
 
                                 <td data-label="Quality Team">
@@ -1199,7 +1212,7 @@ const goToSubmissionViewer = (assignment) => {
                                           <Select
                                             styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
                                             menuPortalTarget={document.body}
-                                            options={assistantOptions}
+                                            options={availableAssistantOptions}
                                             value={selectedAssistants[a._id] || null}
                                             onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
                                             placeholder="Select assistant"
@@ -1219,52 +1232,63 @@ const goToSubmissionViewer = (assignment) => {
                                       );
                                     }
 
-                                    const assistantDelegationId = assistants[0]?._id;
-                                    const sendAlertBtn = assistantDelegationId && (
-                                      <button
-                                        type="button"
-                                        className="md-external-alertBtn"
-                                        disabled={alertingAssignmentDelegationId === assistantDelegationId}
-                                        onClick={() => sendAssignmentAlert(assistantDelegationId)}
-                                      >
-                                        {alertingAssignmentDelegationId === assistantDelegationId
-                                          ? "Alerting…"
-                                          : "Alert Assistant"}
-                                      </button>
-                                    );
-
                                     if (canManage) {
-                                      if (!hasSubjectAssistants) {
-                                        return (
-                                          <div className="md-assign-cell">
-                                            <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>
-                                            {sendAlertBtn}
-                                          </div>
-                                        );
-                                      }
                                       return (
-                                        <div className="md-assign-cell">
-                                          <Select
-                                            styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
-                                            menuPortalTarget={document.body}
-                                            options={assistantOptions}
-                                            value={selectedAssistants[a._id] || null}
-                                            onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
-                                            placeholder="Change assistant"
-                                          />
-                                          <DatePicker
-                                            selected={deadlines[a._id] || null}
-                                            onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
-                                            showTimeSelect
-                                            timeIntervals={1}
-                                            dateFormat="Pp"
-                                            className="md-datepicker-input"
-                                            placeholderText="New deadline (optional)"
-                                            portalId="root"
-                                          />
-                                          <button className="md-assign-btn" onClick={() => changeAssistant(a._id)}>Change</button>
-                                          <button className="md-remove-btn" onClick={() => removeAssistant(a._id)}>Remove</button>
-                                          {sendAlertBtn}
+                                        <div className="md-assign-cell md-assign-cell--multi">
+                                          {assistants.length > 0 && (
+                                            <div className="md-assistant-actions">
+                                              {assistants.map((d) => (
+                                                <div key={d._id} className="md-assistant-action-row">
+                                                  <span className="md-assistant-action-name">{d.personId?.name}</span>
+                                                  <button
+                                                    type="button"
+                                                    className="md-remove-btn"
+                                                    onClick={() => removeSingleAssistant(a._id, d.personId?._id, d.personId?.name)}
+                                                  >
+                                                    Remove
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    className="md-external-alertBtn"
+                                                    disabled={alertingAssignmentDelegationId === d._id}
+                                                    onClick={() => sendAssignmentAlert(d._id)}
+                                                  >
+                                                    {alertingAssignmentDelegationId === d._id ? "Alerting…" : "Alert"}
+                                                  </button>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          {canAddAssistant ? (
+                                            <div className="md-add-assistant">
+                                              <Select
+                                                styles={{ ...customSelectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                                                menuPortalTarget={document.body}
+                                                options={availableAssistantOptions}
+                                                value={selectedAssistants[a._id] || null}
+                                                onChange={(sel) => setSelectedAssistants((p) => ({ ...p, [a._id]: sel }))}
+                                                placeholder={assistants.length ? "Add another assistant" : "Select assistant"}
+                                              />
+                                              <DatePicker
+                                                selected={deadlines[a._id] || null}
+                                                onChange={(date) => setDeadlines((p) => ({ ...p, [a._id]: date }))}
+                                                showTimeSelect
+                                                timeIntervals={1}
+                                                dateFormat="Pp"
+                                                className="md-datepicker-input"
+                                                placeholderText="Set deadline"
+                                                portalId="root"
+                                              />
+                                              <button className="md-assign-btn" onClick={() => assignAssistant(a._id)}>
+                                                {assistants.length ? "Add assistant" : "Assign"}
+                                              </button>
+                                            </div>
+                                          ) : !hasSubjectAssistants ? (
+                                            renderAssistantUnavailable(a._id)
+                                          ) : assistants.length > 0 ? (
+                                            <span className="md-no-assistants">All subject assistants assigned</span>
+                                          ) : null}
                                         </div>
                                       );
                                     }

@@ -735,6 +735,57 @@
   flex-wrap: wrap;
 }
 
+.md-assign-cell--multi {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.md-assistant-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.md-assistant-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.md-assistant-action-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 72px;
+}
+
+.md-add-assistant {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.md-deadlines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.md-deadline-line {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.md-deadline-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .md-assign-btn {
   background: var(--primary-strong);
   border: none;
