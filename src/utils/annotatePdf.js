@@ -24,6 +24,7 @@ import {
   sanitizeQuestionsForStudentPdf,
   resolveAnnotatePdfTotalMarks,
   isStaffOnlyCopy,
+  syncSummaryScoreLine,
 } from "./markingFormData";
 import { normalizeMathSymbols } from "./normalizeMathSymbols";
 
@@ -955,12 +956,16 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   const unanswered = summarizeUnansweredQuestions(breakdownQuestions, {
     isBackfilledStub,
   });
-  const displaySummary = studentFacing
-    ? String(summary || "")
-        .split(/\n/)
-        .filter((line) => !/could not be detected automatically/i.test(line))
-        .join("\n")
-    : summary;
+  const displaySummary = syncSummaryScoreLine(
+    studentFacing
+      ? String(summary || "")
+          .split(/\n/)
+          .filter((line) => !/could not be detected automatically/i.test(line))
+          .join("\n")
+      : summary,
+    totalMarks,
+    maxTotalMarks
+  );
 
   const summaryPage = pdfDoc.insertPage(0, [595, 842]);
   const { width: sw, height: sh } = summaryPage.getSize();

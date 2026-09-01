@@ -571,6 +571,34 @@ export function gradeScorePercent(total, max) {
   return m > 0 ? Math.round((t / m) * 100) : 0;
 }
 
+/**
+ * Replace the summary's score bullet so it matches the cover-page total.
+ * AI/chunk summaries often keep an old "Scored X/Y" after dedupe changes marks.
+ */
+export function syncSummaryScoreLine(summary, totalMarks, maxTotalMarks) {
+  const total = Number(totalMarks);
+  const max = Number(maxTotalMarks);
+  if (!Number.isFinite(total) || !Number.isFinite(max) || max <= 0) {
+    return String(summary || "").trim();
+  }
+
+  const bullets = String(summary || "")
+    .split(/\r?\n/)
+    .map((line) => {
+      const t = String(line || "").trim();
+      if (!t) return "";
+      if (t.startsWith("•")) return t;
+      if (/^\*+\s*/.test(t)) return `• ${t.replace(/^\*+\s*/, "")}`;
+      return t;
+    })
+    .filter((line) => line.startsWith("•"))
+    .filter((line) => !/\d+\s*\/\s*\d+/.test(line))
+    .filter((line) => !/\bscored?\b/i.test(line))
+    .filter((line) => !/\bwindow\b|\bthis request\b|\bthis chunk\b/i.test(line));
+
+  return [`• Scored ${total}/${max}`, ...bullets.slice(0, 4)].join("\n");
+}
+
 /** Rebuild overall summary as short bullet points when marks or feedback change. */
 export function rebuildMarkingSummary({
   questions = [],
@@ -1123,10 +1151,16 @@ export function applyTeacherEditsToResult(
   }
 
   if (summaryTouched && summaryOverride != null && String(summaryOverride).trim()) {
-    finalResult.summary = normalizeMarkingSummaryBullets(summaryOverride);
+    finalResult.summary = normalizeMarkingSummaryBullets(
+      syncSummaryScoreLine(summaryOverride, finalResult.totalMarks, max)
+    );
   } else if (!summaryTouched && questionSum === baseQuestionSum) {
     finalResult.summary = normalizeMarkingSummaryBullets(
-      baseResult?.summary || baseResult?.criteriaGrade?.summary || ""
+      syncSummaryScoreLine(
+        baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
+        finalResult.totalMarks,
+        max
+      )
     );
   } else {
     finalResult.summary = rebuildMarkingSummary({
