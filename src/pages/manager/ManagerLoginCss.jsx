@@ -3481,17 +3481,16 @@ export default function ManagerLoginCss() {
                 >
                   <FiRotateCw size={13} />
                 </button>
-                {hasPendingEdits && (
-                  <button
-                    className="msv-btn-ai"
-                    onClick={handleConfirmEdits}
-                    disabled={confirmingEdits || previewLoading}
-                    style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
-                  >
-                    <FiCheck size={13} />
-                    {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
-                  </button>
-                )}
+                <button
+                  className="msv-btn-ai"
+                  onClick={handleConfirmEdits}
+                  disabled={confirmingEdits || previewLoading}
+                  style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
+                  title="Save marks to the database and rebuild the annotated PDF preview"
+                >
+                  <FiCheck size={13} />
+                  {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
+                </button>
                 <button
                   className="ma-send-btn"
                   onClick={downloadGradedPdf}

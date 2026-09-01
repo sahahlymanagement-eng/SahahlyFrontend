@@ -5599,17 +5599,16 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   /api/submission-files/save-results carries no role check, so
                   this was never a permission boundary — only a missing button.
                 */}
-                {hasPendingEdits && (
-                  <button
-                    className="msv-btn-ai"
-                    onClick={handleConfirmEdits}
-                    disabled={confirmingEdits || previewLoading}
-                    style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
-                  >
-                    <FiCheck size={13} />
-                    {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
-                  </button>
-                )}
+                <button
+                  className="msv-btn-ai"
+                  onClick={handleConfirmEdits}
+                  disabled={confirmingEdits || previewLoading}
+                  style={{ background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
+                  title="Save marks to the database and rebuild the annotated PDF preview"
+                >
+                  <FiCheck size={13} />
+                  {confirmingEdits ? "Saving…" : "Save & regenerate PDF"}
+                </button>
                 <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
                 </button>
