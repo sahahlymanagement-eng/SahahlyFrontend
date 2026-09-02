@@ -36,9 +36,17 @@ function attachEstimatedCost(result, geminiModel, tokenUsage, options) {
 }
 
 /** Attach assignment context for backend logging (person comes from JWT only). */
-export function appendMarkingContext(formData, { assignmentId, classroomId } = {}) {
+export function appendMarkingContext(
+  formData,
+  { assignmentId, classroomId, gradingPartnerSlug, partnerAssignmentId, assignmentTitle } = {}
+) {
   if (assignmentId) formData.append("assignmentId", assignmentId);
   if (classroomId) formData.append("classroomId", classroomId);
+  if (gradingPartnerSlug) formData.append("gradingPartnerSlug", gradingPartnerSlug);
+  if (partnerAssignmentId != null && partnerAssignmentId !== "") {
+    formData.append("partnerAssignmentId", String(partnerAssignmentId));
+  }
+  if (assignmentTitle) formData.append("assignmentTitle", assignmentTitle);
 }
 
 

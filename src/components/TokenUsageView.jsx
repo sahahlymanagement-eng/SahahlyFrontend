@@ -58,15 +58,29 @@ const REPORT_BREAKDOWN_OPTIONS = [
 
 const UNASSIGNED_CLASSROOM_KEY = "unassigned";
 const UNKNOWN_CLASSROOM_KEY = "unknown-classroom";
+const PARTNER_CLASSROOM_KEY_PREFIX = "partner:";
+
+function partnerClassroomKey(slug) {
+  return slug ? `${PARTNER_CLASSROOM_KEY_PREFIX}${slug}` : null;
+}
 
 function classroomRowKey(classroom) {
+  if (classroom?.partnerSlug) return partnerClassroomKey(classroom.partnerSlug);
   if (classroom?.classroomId) return String(classroom.classroomId);
   if (classroom?.classroomName === "Unknown classroom") return UNKNOWN_CLASSROOM_KEY;
   return UNASSIGNED_CLASSROOM_KEY;
 }
 
+function isPartnerClassroomRow(classroom) {
+  return Boolean(classroom?.partnerSlug);
+}
+
 function isUnassignedClassroomRow(classroom) {
-  return !classroom?.classroomId && classroom?.classroomName !== "Unknown classroom";
+  return (
+    !classroom?.classroomId &&
+    !isPartnerClassroomRow(classroom) &&
+    classroom?.classroomName !== "Unknown classroom"
+  );
 }
 
 function formatNum(n) {
@@ -362,6 +376,8 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const isUnassignedClassroom =
     selectedClassroomId === UNASSIGNED_CLASSROOM_KEY ||
     (selectedClassroom != null && isUnassignedClassroomRow(selectedClassroom));
+  const isPartnerClassroom =
+    selectedClassroom != null && isPartnerClassroomRow(selectedClassroom);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -836,6 +852,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
               {byClassroom.classrooms.map((c) => {
                 const key = classroomRowKey(c);
                 const unassigned = isUnassignedClassroomRow(c);
+                const partner = isPartnerClassroomRow(c);
                 return (
                   <button
                     key={key}
@@ -848,7 +865,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                       <span>
                         {unassigned
                           ? "Paper Marking, Manual Correction, and other marks with no classroom"
-                          : null}
+                          : partner
+                            ? "Partner marking tab — correction chat tokens are not counted"
+                            : null}
                         {unassigned ? " · " : null}
                         {c.requestCount} marking requests
                         {" · "}
@@ -889,7 +908,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             <p>
               {isUnassignedClassroom
                 ? `AI marking that was not tied to a classroom or assignment · ${rangeLabel}`
-                : `How would you like to break down token usage? · ${rangeLabel}`}
+                : isPartnerClassroom
+                  ? `Partner marking usage · correction chat is excluded · ${rangeLabel}`
+                  : `How would you like to break down token usage? · ${rangeLabel}`}
             </p>
           </div>
           <div className="tu-breakdown-picker">
@@ -906,9 +927,11 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
                   ? isDirector
                     ? "See who used Paper Marking, Manual Correction, or other unassigned marking"
                     : "See which assistants used Paper Marking or other unassigned marking"
-                  : isDirector
-                    ? "See which managers and assistants used tokens in this classroom"
-                    : "See which assistants used tokens in this classroom"}
+                  : isPartnerClassroom
+                    ? `See who marked on ${selectedClassroom.classroomName}`
+                    : isDirector
+                      ? "See which managers and assistants used tokens in this classroom"
+                      : "See which assistants used tokens in this classroom"}
               </span>
             </button>
             <button
@@ -920,7 +943,9 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
               <span className="tu-breakdown-btn-desc">
                 {isUnassignedClassroom
                   ? "These marks usually have no assignment — shown as “No assignment”"
-                  : "See token usage broken down by assignment"}
+                  : isPartnerClassroom
+                    ? "See marking usage broken down by partner assignment"
+                    : "See token usage broken down by assignment"}
               </span>
             </button>
           </div>

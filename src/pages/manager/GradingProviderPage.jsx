@@ -1101,7 +1101,12 @@ export default function GradingProviderPage({ slug, label }) {
     if (guidanceValue) fd.append("guidance", guidanceValue);
     examBoardGuidance.appendExamBoardFields(fd);
     if (selectedAssignment?.id != null) {
-      appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
+      appendMarkingContext(fd, {
+        assignmentId: String(selectedAssignment.id),
+        gradingPartnerSlug: slug,
+        partnerAssignmentId: selectedAssignment.id,
+        assignmentTitle: selectedAssignment.name || selectedAssignment.title,
+      });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
     fd.append("chunkSize", String(resolveMarkingChunkSize(selectedModel)));
@@ -3690,6 +3695,7 @@ export default function GradingProviderPage({ slug, label }) {
 
                 {(resultModal.student?.assignment?.id ?? selectedAssignment?.id) && (
                   <MarkingCorrectionChat
+                    gradingPartnerSlug={slug}
                     assignmentId={
                       resultModal.student?.assignment?.id ?? selectedAssignment?.id
                     }

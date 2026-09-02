@@ -1439,6 +1439,8 @@ useEffect(() => {
         ? { v2: true, student }
         : intent === "batchV2"
         ? { batch: true, engine: "v2" }
+        : intent === "normalBulk"
+        ? { bulk: true, normalBulk: true }
         : isBatch
         ? { batch: true }
         : student
@@ -4359,6 +4361,33 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           )}
                         </button>
 
+                        <button
+                          type="button"
+                          className="msv-btn-ai"
+                          onClick={() => openGuidanceModal(null, false, "normalBulk")}
+                          disabled={bulkMarking || batchStarting || ["uploading", "submitting", "processing"].includes(batchJob?.phase)}
+                          title="Mark students one-by-one at live (standard) pricing — same chunk size and model as batch"
+                          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                        >
+                          {bulkMarking
+                            ? <><span className="pm-spinner" /> Normal marking…</>
+                            : <><FiCpu size={13} /> {markingActionLabel("Mark All (Normal)", "Mark Selected (Normal)", markingSelection.selectedCount)}</>}
+                        </button>
+                        {bulkMarking && (
+                          <button
+                            type="button"
+                            className="msv-btn-ai"
+                            onClick={stopBulkMark}
+                            style={{
+                              background: "var(--danger)",
+                              borderColor: "var(--danger)",
+                              color: "#fff",
+                            }}
+                          >
+                            <FiX size={13} /> Stop
+                          </button>
+                        )}
+
                         {/* BATCH MARKING — gradingv2 (allow-listed while unvalidated).
                             Hidden while a job is running so the two engines cannot be
                             started against the same assignment at once. */}
@@ -5115,6 +5144,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             guidanceModal.v2           ? `🧪 Mark (v2) — ${guidanceModal.student?.name}` :
                             guidanceModal.engine === "v2" ? "🧪 Mark All Students (Batch v2)" :
                             guidanceModal.batch        ? "⚡ Mark All Students (Batch)"  :
+                            guidanceModal.normalBulk   ? "🤖 Mark All Students (Normal)" :
                             guidanceModal.bulk         ? "🤖 Mark All Students"           :
                                                           `🤖 Mark — ${guidanceModal.student?.name}`}
                           </div>
@@ -5129,6 +5159,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               ? `Experimental engine — overlapping 2-page windows, paired mark-scheme pages, on the batch API (~50% cheaper). Preparation takes longer than v1: ${studentTotal} students in class`
                               : guidanceModal.batch
                               ? `Submits all eligible students in this assignment to Sahahly batch (~50% cheaper) — ${studentTotal} students in class`
+                              : guidanceModal.normalBulk
+                              ? `Marks students one-by-one at live pricing — same chunk size and model as batch (${studentTotal} students in class)`
                               : guidanceModal.bulk
                               ? `Marking ${students.filter(s => s.submissionId).length} students with AI`
                               : "AI will mark against the uploaded mark scheme"}
@@ -5340,7 +5372,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       style={{ flex: 1, justifyContent: "center", opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1 }}
                     >
                       <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All with Sahahly" : "Start Marking with Sahahly"}
+                      {guidanceModal.normalBulk
+                        ? "Start Normal Marking (All) with Sahahly"
+                        : guidanceModal.bulk
+                        ? "Start Marking All with Sahahly"
+                        : "Start Marking with Sahahly"}
                     </button>
 
                     <button
@@ -5348,7 +5384,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       onClick={() => handleGuidanceConfirm("claude")}
                     >
                       <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
+                      {guidanceModal.normalBulk
+                        ? "Start Normal Marking (All) with Claude"
+                        : guidanceModal.bulk
+                        ? "Start Marking All with Claude"
+                        : "Start Marking with Claude"}
                     </button>
                   </>
                 )}

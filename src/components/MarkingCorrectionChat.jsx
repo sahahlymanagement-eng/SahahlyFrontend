@@ -36,6 +36,7 @@ export default function MarkingCorrectionChat({
   submissionId,
   studentId,
   studentName,
+  gradingPartnerSlug = null,
   currentResult,
   onApplyPatch,
 }) {
@@ -84,6 +85,7 @@ export default function MarkingCorrectionChat({
         submissionId,
         studentId,
         studentName,
+        gradingPartnerSlug,
         message: text,
         currentResult: {
           ...currentResult,
