@@ -1064,6 +1064,21 @@ export function markingResultHasPendingCriteriaEdits(
   );
 }
 
+/** Whether the teacher changed the overall summary from the stored AI baseline. */
+export function summaryWasManuallyEdited(
+  summaryOverride,
+  baseResult,
+  summaryTouched = false
+) {
+  if (summaryTouched) return true;
+  const base = String(
+    baseResult?.summary || baseResult?.criteriaGrade?.summary || ""
+  ).trim();
+  const next =
+    summaryOverride != null ? String(summaryOverride).trim() : base;
+  return next !== base;
+}
+
 /** Apply teacher question edits and an optional new max-total to a marking result. */
 export function applyTeacherEditsToResult(
   baseResult,
@@ -1158,14 +1173,25 @@ export function applyTeacherEditsToResult(
     finalResult.teacherAnnotations = editingAnnotations.map((a) => ({ ...a }));
   }
 
-  if (summaryTouched && summaryOverride != null && String(summaryOverride).trim()) {
+  const baseSummaryText = String(
+    baseResult?.summary || baseResult?.criteriaGrade?.summary || ""
+  ).trim();
+  const overrideText =
+    summaryOverride != null ? String(summaryOverride).trim() : baseSummaryText;
+  const summaryWasEdited = summaryWasManuallyEdited(
+    summaryOverride,
+    baseResult,
+    summaryTouched
+  );
+
+  if (summaryWasEdited) {
     finalResult.summary = normalizeMarkingSummaryBullets(
-      syncSummaryScoreLine(summaryOverride, finalResult.totalMarks, max)
+      syncSummaryScoreLine(overrideText, finalResult.totalMarks, max)
     );
-  } else if (!summaryTouched && questionSum === baseQuestionSum) {
+  } else if (questionSum === baseQuestionSum) {
     finalResult.summary = normalizeMarkingSummaryBullets(
       syncSummaryScoreLine(
-        baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
+        baseSummaryText,
         finalResult.totalMarks,
         max
       )
@@ -1174,9 +1200,16 @@ export function applyTeacherEditsToResult(
     finalResult.summary = rebuildMarkingSummary({
       questions,
       maxTotalMarks: max,
-      previousSummary: baseResult?.summary || baseResult?.criteriaGrade?.summary || "",
+      previousSummary: baseSummaryText,
       totalMarksOverride: finalResult.totalMarks,
     });
+  }
+
+  if (finalResult.criteriaGrade) {
+    finalResult.criteriaGrade = {
+      ...finalResult.criteriaGrade,
+      summary: finalResult.summary,
+    };
   }
 
   finalResult.unansweredQuestions = summarizeUnansweredQuestions(questions, {

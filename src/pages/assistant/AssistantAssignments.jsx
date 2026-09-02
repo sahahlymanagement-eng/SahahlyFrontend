@@ -148,12 +148,10 @@ export default function AssistantAssignments() {
   const canOpenWorkflow = (status) =>
     ["ASSIGNED", "DONE", "FAILED_DEADLINE", "RECHECK_BY_ASSISTANT"].includes(status);
 
-  // Late work stays FAILED_DEADLINE for managers, but this assistant can still
-  // mark it. If a manager already assigned someone else, the assignment snapshot
-  // is no longer FAILED_DEADLINE and we block.
-  const canContinueAfterDeadline = (assignment) =>
-    assignment.assistantStatus !== "FAILED_DEADLINE" ||
-    assignment.status === "FAILED_DEADLINE";
+  // Failed-deadline assistants can always open submissions to finish late work.
+  // Only block status changes when another assistant has taken over.
+  const canMutateAfterDeadline = (assignment) =>
+    assignment.assistantStatus !== "FAILED_DEADLINE" || !assignment.hasActiveReplacement;
 
   const showReassignedNotice = () => {
     toast.info(
@@ -175,15 +173,10 @@ export default function AssistantAssignments() {
   };
 
   const openWorkflowOrNotify = (assignment, path) => {
-    if (!canContinueAfterDeadline(assignment)) {
-      showReassignedNotice();
-      return;
-    }
     navigate(path);
   };
 
-  const workflowBtnClass = (assignment) =>
-    `ast-table-btn${canContinueAfterDeadline(assignment) ? "" : " ast-table-btn--blocked"}`;
+  const workflowBtnClass = () => "ast-table-btn";
 
   /* SUBMIT */
 
@@ -395,13 +388,23 @@ export default function AssistantAssignments() {
 
                     <td data-label="Update Status">
                       {(assistantStatus === "ASSIGNED" ||
-                        (assistantStatus === "FAILED_DEADLINE" &&
-                          canContinueAfterDeadline(assignment))) && (
+                        assistantStatus === "FAILED_DEADLINE") && (
                         <button
                           type="button"
                           className="ast-table-btn ast-table-btn--done"
-                          disabled={isUpdating}
-                          onClick={() => updateAssignmentStatus(assignment._id, "DONE")}
+                          disabled={isUpdating || !canMutateAfterDeadline(assignment)}
+                          title={
+                            !canMutateAfterDeadline(assignment)
+                              ? "This assignment was reassigned — contact your manager"
+                              : undefined
+                          }
+                          onClick={() => {
+                            if (!canMutateAfterDeadline(assignment)) {
+                              showReassignedNotice();
+                              return;
+                            }
+                            updateAssignmentStatus(assignment._id, "DONE");
+                          }}
                         >
                           <FiCheckCircle />
                           {isUpdating ? "Updating…" : "Mark Done"}
@@ -419,7 +422,7 @@ export default function AssistantAssignments() {
                         </button>
                       )}
                       {assistantStatus === "FAILED_DEADLINE" &&
-                        !canContinueAfterDeadline(assignment) && (
+                        assignment.hasActiveReplacement && (
                         <span className="ast-status-hint">Reassigned</span>
                       )}
                     </td>
@@ -428,7 +431,7 @@ export default function AssistantAssignments() {
                       {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
-                          className={workflowBtnClass(assignment)}
+                          className={workflowBtnClass()}
                           onClick={() =>
                             openWorkflowOrNotify(
                               assignment,
@@ -446,7 +449,7 @@ export default function AssistantAssignments() {
                       {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
-                          className={workflowBtnClass(assignment)}
+                          className={workflowBtnClass()}
                           onClick={() =>
                             openWorkflowOrNotify(
                               assignment,
@@ -463,7 +466,7 @@ export default function AssistantAssignments() {
                       {canOpenWorkflow(assistantStatus) && (
                         <button
                           type="button"
-                          className={workflowBtnClass(assignment)}
+                          className={workflowBtnClass()}
                           onClick={() =>
                             openWorkflowOrNotify(
                               assignment,

@@ -148,6 +148,32 @@ test("lowering a mark is carried through too", () => {
   assert.strictEqual(out.totalMarks, 0);
 });
 
+test("REGRESSION: summary-only edit is kept without summaryTouched flag", () => {
+  const base = {
+    ...baseResult(),
+    summary: "• Scored 1/4\n• Original feedback line",
+  };
+  const editedSummary = "• Scored 1/4\n• Teacher rewrote this summary";
+  const out = applyTeacherEditsToResult(
+    base,
+    [marked()],
+    4,
+    null,
+    editedSummary,
+    null,
+    null,
+    false
+  );
+  assert.ok(
+    out.summary.includes("Teacher rewrote this summary"),
+    "summary edit was dropped: " + out.summary
+  );
+  assert.ok(
+    !out.summary.includes("Original feedback line"),
+    "old summary line was not replaced"
+  );
+});
+
 // ------------------------------------------------------- 3. the PDF redraws
 section("3. the PDF reflects it");
 

@@ -324,7 +324,7 @@ export function useAnnotatedResultPreview({
 
     const currentSummary = String(editingSummary ?? "").trim();
     const confirmedSummary = String(confirmedSnapshot.summary ?? "").trim();
-    if (summaryTouched && currentSummary !== confirmedSummary) {
+    if (currentSummary !== confirmedSummary) {
       return true;
     }
     return false;
