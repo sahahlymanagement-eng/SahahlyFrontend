@@ -7,7 +7,7 @@ import usePersistedState from "../../hooks/usePersistedState";
 import Pagination from "../../components/Pagination";
 import { AssistantPageHeader } from "./AssistantUI";
 
-import { FiSend, FiSearch, FiCheckCircle, FiRotateCcw, FiAlertCircle } from "react-icons/fi";
+import { FiSend, FiSearch, FiCheckCircle, FiRotateCcw } from "react-icons/fi";
 
 export default function AssistantAssignments() {
   const navigate = useNavigate();
@@ -147,30 +147,6 @@ export default function AssistantAssignments() {
 
   const canOpenWorkflow = (status) =>
     ["ASSIGNED", "DONE", "FAILED_DEADLINE", "RECHECK_BY_ASSISTANT"].includes(status);
-
-  // Failed-deadline assistants can always open submissions to finish late work.
-  // Only block status changes when another assistant has taken over.
-  const canMutateAfterDeadline = (assignment) =>
-    assignment.assistantStatus !== "FAILED_DEADLINE" || !assignment.hasActiveReplacement;
-
-  const showReassignedNotice = () => {
-    toast.info(
-      <div className="ast-manager-toast">
-        <div className="ast-manager-toast-icon" aria-hidden="true">
-          <FiAlertCircle size={22} />
-        </div>
-        <div className="ast-manager-toast-body">
-          <p className="ast-manager-toast-title">Assignment reassigned</p>
-          <p className="ast-manager-toast-text">Please contact your manager</p>
-        </div>
-      </div>,
-      {
-        autoClose: 4500,
-        className: "ast-manager-toast-wrap",
-        icon: false,
-      }
-    );
-  };
 
   const openWorkflowOrNotify = (assignment, path) => {
     navigate(path);
@@ -392,19 +368,8 @@ export default function AssistantAssignments() {
                         <button
                           type="button"
                           className="ast-table-btn ast-table-btn--done"
-                          disabled={isUpdating || !canMutateAfterDeadline(assignment)}
-                          title={
-                            !canMutateAfterDeadline(assignment)
-                              ? "This assignment was reassigned — contact your manager"
-                              : undefined
-                          }
-                          onClick={() => {
-                            if (!canMutateAfterDeadline(assignment)) {
-                              showReassignedNotice();
-                              return;
-                            }
-                            updateAssignmentStatus(assignment._id, "DONE");
-                          }}
+                          disabled={isUpdating}
+                          onClick={() => updateAssignmentStatus(assignment._id, "DONE")}
                         >
                           <FiCheckCircle />
                           {isUpdating ? "Updating…" : "Mark Done"}
@@ -420,10 +385,6 @@ export default function AssistantAssignments() {
                           <FiRotateCcw />
                           {isUpdating ? "Updating…" : "Mark Assigned"}
                         </button>
-                      )}
-                      {assistantStatus === "FAILED_DEADLINE" &&
-                        assignment.hasActiveReplacement && (
-                        <span className="ast-status-hint">Reassigned</span>
                       )}
                     </td>
 

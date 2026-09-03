@@ -12,11 +12,20 @@ export function remainingRunIsStale(run, now = Date.now(), staleMs = REMAINING_S
   if (run.status === "done" || run.status === "failed" || run.status === "idle") {
     return false;
   }
-  // Gemini has accepted the job — wait on batch status, not this timer.
-  if (run.status === "processing" && run.jobId) return false;
   const t = run.updatedAt || run.startedAt;
-  if (!t) return true;
-  return now - new Date(t).getTime() >= staleMs;
+  const age = t ? now - new Date(t).getTime() : Number.POSITIVE_INFINITY;
+  // Match backend isRemainingRunRetryable: a processing job with a Gemini jobId
+  // is only "still running" for staleMs. After that (PM2 restart, lost poller)
+  // the banner must be allowed to flip to Retry remaining — otherwise it sits
+  // on "Sahahly is marking the remaining submissions…" for hours.
+  if (run.status === "processing" && run.jobId && age < staleMs) return false;
+  return age >= staleMs;
+}
+
+export function remainingRunNeedsRetry(firstBatch) {
+  const status = firstBatch?.status;
+  if (status === "remaining_failed" || status === "confirmed_pending") return true;
+  return remainingRunIsStale(firstBatch?.remainingRun);
 }
 
 export function remainingRunLabel(run, fallbackStatus) {

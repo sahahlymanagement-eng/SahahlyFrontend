@@ -172,6 +172,7 @@ import {
   remainingRunLabel,
   remainingRunInProgress,
   remainingRunIsStale,
+  remainingRunNeedsRetry,
   watchRemainingRun,
   retryRemainingRun,
 } from "../../utils/firstBatchRemaining";
@@ -3429,7 +3430,22 @@ return (
                   display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap"
                 }}>
                   {batchJob.firstBatch.status === "confirming" ? (
+                    <>
                     <span>{remainingRunLabel(batchJob.firstBatch.remainingRun, "confirming")}</span>
+                    {remainingRunNeedsRetry(batchJob.firstBatch) && (
+                      <button
+                        type="button"
+                        onClick={retryFirstBatchRemaining}
+                        style={{
+                          marginLeft: "auto", fontSize: 11, fontWeight: 600,
+                          color: "#fff", background: "var(--primary)",
+                          border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
+                        }}
+                      >
+                        Retry remaining
+                      </button>
+                    )}
+                    </>
                   ) : (
                     <>
                   <span>
