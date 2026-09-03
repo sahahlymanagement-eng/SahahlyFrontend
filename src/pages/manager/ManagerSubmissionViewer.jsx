@@ -67,6 +67,9 @@ import {
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import MarkingQuestionSearchBar, {
+  filterMarkingQuestions,
+} from "../../components/MarkingQuestionSearchBar";
 import ClassroomPaperMetadataBar from "../../components/ClassroomPaperMetadataBar";
 import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
@@ -159,14 +162,6 @@ import {
   isBatchStopped,
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
-import {
-  remainingRunLabel,
-  remainingRunInProgress,
-  remainingRunIsStale,
-  remainingRunNeedsRetry,
-  watchRemainingRun,
-  retryRemainingRun,
-} from "../../utils/firstBatchRemaining";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 import { invalidateStudentPdf } from "../../utils/studentPdfCache";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
@@ -594,6 +589,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   }, []);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [questionSearch, setQuestionSearch] = useState("");
   const [editingCriteriaGrade, setEditingCriteriaGrade] = useState(null);
   const [editingAnnotations, setEditingAnnotations] = useState([]);
   const [editingSummary, setEditingSummary] = useState("");
@@ -791,6 +787,11 @@ const resolvePdfSummary = (submissionId, result) =>
     const filtered = withIdx.filter((q) => !pendingRemovedIndices.has(q._placementIndex));
     return sortQuestionsByPlacement(filtered);
   }, [editingQuestions, pendingRemovedIndices]);
+
+  const questionsForSearch = useMemo(
+    () => filterMarkingQuestions(questionsForDisplay, questionSearch),
+    [questionsForDisplay, questionSearch]
+  );
 
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
@@ -1515,113 +1516,7 @@ useEffect(() => {
     }
   };
 
-  // Confirms a capped first batch (see backend firstBatchGate.js) and waits
-  // for the server's auto-triggered "mark the rest" run to create its batch
-  // job, then hands off to the normal poll — reuses the same active-job
-  // discovery this page already runs on mount.
-  const followRemainingRun = async (assignId, engine = "v1") => {
-    const base = engineBasePath(engine);
-    const result = await watchRemainingRun({
-      statusUrl: `${base}/first-batch/status/${assignId}`,
-      onStatus: (run, firstBatch) => {
-        patchBatchJob(assignId, (prev) => ({
-          ...prev,
-          firstBatch: {
-            ...(prev?.firstBatch || firstBatch || {}),
-            status: run?.status === "failed" ? "remaining_failed" : "confirming",
-            remainingRun: run || prev?.firstBatch?.remainingRun || firstBatch?.remainingRun,
-          },
-        }));
-      },
-    });
 
-    if (result.state === "processing") {
-      await checkForActiveJob();
-      return;
-    }
-    if (result.state === "done") {
-      patchBatchJob(assignId, (prev) => ({
-        ...prev,
-        firstBatch: {
-          ...(prev?.firstBatch || {}),
-          status: "confirmed",
-          remainingRun: result.run,
-        },
-      }));
-      toast.success("Remaining submissions marked");
-      fetchStudentPage(studentPage);
-      return;
-    }
-    if (result.state === "failed") {
-      patchBatchJob(assignId, (prev) => ({
-        ...prev,
-        firstBatch: {
-          ...(prev?.firstBatch || {}),
-          status: "remaining_failed",
-          remainingRun: {
-            ...(result.run || prev?.firstBatch?.remainingRun || {}),
-            status: "failed",
-            error: result.error || result.run?.error || "Marking the rest failed",
-          },
-        },
-      }));
-      toast.error(result.error || "Marking the rest failed");
-    }
-  };
-
-  const confirmFirstBatch = async () => {
-    const assignId = selectedAssignment?._id;
-    if (!assignId || !batchJob?.firstBatch) return;
-    const ok = await confirmToast(
-      "This will mark the remaining submissions for this assignment now. Continue?",
-      { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
-    );
-    if (!ok) return;
-
-    const engine = batchJob.engine || "v1";
-    // Whatever model/pages-per-request is picked in the toolbar right now — the
-    // picker stays live while this banner is showing — is what marks the rest,
-    // not whatever the capped safety batch happened to run with.
-    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
-    try {
-      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignId}`, {
-        geminiModel: selectedModel,
-        chunkSize: resolveMarkingChunkSize(selectedModel),
-      });
-    } catch (err) {
-      toast.error(extractHumanError(err) || "Failed to confirm first batch");
-      return;
-    }
-
-    toast.info("Confirmed — marking the remaining submissions…");
-    patchBatchJob(assignId, (prev) => ({
-      ...prev,
-      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
-    }));
-    await followRemainingRun(assignId, engine);
-  };
-
-  const retryFirstBatchRemaining = async () => {
-    const assignId = selectedAssignment?._id;
-    if (!assignId) return;
-    const engine = batchJob?.engine || "v1";
-    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
-    try {
-      await retryRemainingRun(
-        `${engineBasePath(engine)}/first-batch/retry-remaining/${assignId}`,
-        { geminiModel: selectedModel, chunkSize: resolveMarkingChunkSize(selectedModel) }
-      );
-    } catch (err) {
-      toast.error(extractHumanError(err) || "Could not retry remaining marking");
-      return;
-    }
-    patchBatchJob(assignId, (prev) => ({
-      ...prev,
-      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
-    }));
-    toast.info("Retrying remaining submissions…");
-    await followRemainingRun(assignId, engine);
-  };
 
   const stopPriorityBulk = () => {
     priorityStopRef.current = true;
@@ -2658,54 +2553,7 @@ useEffect(() => {
     }
   };
 
-  useEffect(() => {
-    if (!selectedAssignment?._id) return;
-    checkForActiveJob();
-    const assignId = selectedAssignment._id;
-    (async () => {
-      try {
-        const { data } = await api.get(`/marking/first-batch/status/${assignId}`);
-        const fb = data?.firstBatch || { status: "none" };
-        const run = fb.remainingRun;
-        const engine = fb.engine === "v2" ? "v2" : "v1";
-        patchBatchJob(assignId, (prev) => ({
-          ...prev,
-          // Don't leave phase undefined — an empty phase blanks the Mark (Batch) button.
-          phase: prev?.phase || "done",
-          engine: prev?.engine || engine,
-          firstBatch: {
-            ...(prev?.firstBatch || {}),
-            ...fb,
-          },
-        }));
-        if (run?.status === "failed" || remainingRunIsStale(run)) {
-          patchBatchJob(assignId, (prev) => ({
-            ...prev,
-            phase: prev?.phase || "done",
-            engine: prev?.engine || engine,
-            firstBatch: {
-              ...(prev?.firstBatch || fb || {}),
-              status: "remaining_failed",
-              remainingRun: run,
-            },
-          }));
-        } else if (remainingRunInProgress(run) && !getBatchJob(assignId)?.jobId) {
-          patchBatchJob(assignId, (prev) => ({
-            ...prev,
-            engine: prev?.engine || engine,
-            firstBatch: {
-              ...(prev?.firstBatch || fb || {}),
-              status: "confirming",
-              remainingRun: run,
-            },
-          }));
-          await followRemainingRun(assignId, engine);
-        }
-      } catch {
-        // Status endpoint is best-effort; active-job check above still runs.
-      }
-    })();
-  }, [selectedAssignment?._id]); // runs whenever selected assignment changes
+ // runs whenever selected assignment changes
 
 
 
@@ -3054,10 +2902,10 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
         const res = await api.post(`${base}/mark-batch/submit`, submitPayload, {
           timeout: 300_000,
         });
-        return { jobId: res.data.jobId, resumed: false, firstBatch: res.data.firstBatch };
+        return { jobId: res.data.jobId, resumed: false };
       } catch (err) {
         if (err.response?.data?.reason === "first_batch_pending") {
-          return { firstBatchBlocked: true, firstBatch: err.response.data.firstBatch };
+          throw err;
         }
         if (err.response?.status === 409) {
           return { jobId: err.response.data.jobId, resumed: true };
@@ -3086,17 +2934,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     return;
   }
 
-  if (submitResult.result.firstBatchBlocked) {
-    toast.info("This assignment's first batch is awaiting confirmation.");
-    patchBatchJob(assignId, (prev) => ({
-      ...prev,
-      phase: "done",
-      firstBatch: submitResult.result.firstBatch,
-    }));
-    return;
-  }
-
-  const { jobId, resumed, firstBatch } = submitResult.result;
+  const { jobId, resumed } = submitResult.result;
   if (resumed) {
     toast.info("Resuming existing batch job...");
   }
@@ -3105,7 +2943,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     ...prev,
     phase: "processing",
     jobId,
-    firstBatch,
     batchStudents: succeeded.map((r) => r.student),
   }));
 
@@ -3524,6 +3361,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     );
     setAnnotationsPanelOpen(false);
     setEditorSubmissionId(sid);
+    setQuestionSearch("");
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
@@ -4040,22 +3878,19 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     baselineQuestions: confirmedSnapshot?.questions ?? resultModal?.result?.questions,
     markingMode: isCriteria ? "criteria" : "normal",
     criteriaGrade: editingCriteriaGrade,
+    coverOverride: resultModal?.result?.coverOverride === true,
   });
-  const coverTotal =
-    isCriteria && editingCriteriaGrade
-      ? Number(editingCriteriaGrade.totalMarks) || 0
-      : Number(resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks);
-  const paperTotal =
-    isCriteria && editingCriteriaGrade
-      ? Number(editingCriteriaGrade.totalMarks) || 0
-      : sumQuestionMarks(questionsForDisplay);
+  const paperTotal = summedTotal;
+  const coverTotal = total;
   const totalMismatch =
     !hasPendingEdits &&
     !previewLoading &&
     questionsForDisplay.length > 0 &&
     Number.isFinite(coverTotal) &&
     Number.isFinite(paperTotal) &&
-    coverTotal !== paperTotal
+    coverTotal !== paperTotal &&
+    (resultModal?.result?.coverOverride === true ||
+      (editingTotal != null && editingTotal !== ""))
       ? {
           coverTotal,
           paperTotal,
@@ -4500,88 +4335,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                   </button>
                                 )}
 
-                                </div> )}
-                                {batchJob?.phase === "done" &&
-                                  (batchJob?.firstBatch?.status === "pending_confirmation" ||
-                                    batchJob?.firstBatch?.status === "confirming") && (
-                                  <div style={{
-                                    marginTop: 8, padding: "10px 14px", borderRadius: 10,
-                                    background: "color-mix(in srgb, var(--success, #16a34a) 10%, transparent)",
-                                    border: "1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent)",
-                                    fontSize: 12, color: "var(--text-secondary)",
-                                    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap"
-                                  }}>
-                                    {batchJob.firstBatch.status === "confirming" ? (
-                                      <>
-                                      <span>{remainingRunLabel(batchJob.firstBatch.remainingRun, "confirming")}</span>
-                                      {remainingRunNeedsRetry(batchJob.firstBatch) && (
-                                        <button
-                                          type="button"
-                                          onClick={retryFirstBatchRemaining}
-                                          style={{
-                                            marginLeft: "auto", fontSize: 11, fontWeight: 600,
-                                            color: "#fff", background: "var(--primary)",
-                                            border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                                          }}
-                                        >
-                                          Retry remaining
-                                        </button>
-                                      )}
-                                      </>
-                                    ) : (
-                                      <>
-                                    <span>
-                                      ✅ {batchJob.firstBatch.limit ?? 3} paper{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked as a safety
-                                      check on this new assignment. Review them, then confirm to mark the remaining{" "}
-                                      {batchJob.firstBatch.remainingCount ?? "the rest"} with{" "}
-                                      {geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))} (
-                                      {formatChunkSizeLabel(resolveMarkingChunkSize(pickValidGeminiModel(geminiModels, geminiModel)))}
-                                      ) — change the model{canPickChunkSizeIndependently ? "/pages-per-request" : ""} picker above to use different settings.
-                                    </span>
-                                    <button
-                                      onClick={confirmFirstBatch}
-                                      disabled={batchJob.firstBatch.status === "confirming"}
-                                      style={{
-                                        marginLeft: "auto", fontSize: 11, fontWeight: 600,
-                                        color: "#fff", background: "var(--success, #16a34a)",
-                                        border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                                        opacity: batchJob.firstBatch.status === "confirming" ? 0.6 : 1,
-                                      }}
-                                    >
-                                      {batchJob.firstBatch.status === "confirming" ? "Confirming…" : "Confirm & Mark Rest"}
-                                    </button>
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                                {(batchJob?.firstBatch?.status === "confirmed_pending" ||
-                                  batchJob?.firstBatch?.status === "remaining_failed") && (
-                                  <div style={{
-                                    marginTop: 8, padding: "10px 14px", borderRadius: 10,
-                                    background: "color-mix(in srgb, var(--primary) 8%, transparent)",
-                                    border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
-                                    fontSize: 12, color: "var(--text-secondary)",
-                                    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                                  }}>
-                                    <span>
-                                      {remainingRunLabel(
-                                        batchJob.firstBatch.remainingRun,
-                                        batchJob.firstBatch.status
-                                      )}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={retryFirstBatchRemaining}
-                                      style={{
-                                        marginLeft: "auto", fontSize: 11, fontWeight: 600,
-                                        color: "#fff", background: "var(--primary)",
-                                        border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                                      }}
-                                    >
-                                      Retry remaining
-                                    </button>
-                                  </div>
-                                )}
+                                                                </div>
+                              )}
                                           </div>
                   )}
 
@@ -5817,8 +5572,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   toast.success(`Added Q${q.questionNumber}`);
                 }}
               />
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                {questionsForDisplay.map((q) => (
+              <MarkingQuestionSearchBar
+                value={questionSearch}
+                onChange={setQuestionSearch}
+                matchCount={questionsForSearch.length}
+                totalCount={questionsForDisplay.length}
+              />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+                {questionsForSearch.map((q) => (
                   <MarkingQuestionCard
                     key={q._placementIndex}
                     question={q}

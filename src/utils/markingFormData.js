@@ -355,11 +355,10 @@ export function sumQuestionMarks(questions) {
 /**
  * Obtained marks shown in the submission viewer header and live PDF preview.
  *
- * Per-question rows are the source of truth. A stored final that differs from
- * the row sum is only honoured while the row set still matches the confirmed
- * baseline (cover-page override with no structural edits yet). Any add/remove
- * or mark change switches to the live row sum unless the teacher typed an
- * explicit override in `editingTotal`.
+ * Per-question rows are the source of truth. A stored Final Grade that differs
+ * from the row sum is only honoured when `coverOverride` was set (teacher typed
+ * an explicit obtained-marks override). Stale finals without that flag heal to
+ * the row sum so list / modal / cover stay in sync.
  */
 export function resolveEditorObtainedMarks({
   questions = [],
@@ -368,6 +367,7 @@ export function resolveEditorObtainedMarks({
   baselineQuestions = null,
   markingMode = "normal",
   criteriaGrade = null,
+  coverOverride = false,
 } = {}) {
   if (
     editingTotal != null &&
@@ -383,6 +383,7 @@ export function resolveEditorObtainedMarks({
   const summed = sumQuestionMarks(questions);
   const baseline = baselineQuestions ?? questions;
   if (
+    coverOverride &&
     storedFinal != null &&
     Number.isFinite(Number(storedFinal)) &&
     baseline &&
@@ -394,9 +395,9 @@ export function resolveEditorObtainedMarks({
   return summed;
 }
 
-/** When opening a paper, preserve a cover-page override in the grade input. */
+/** When opening a paper, only seed the grade input from an explicit cover override. */
 export function initialEditingTotalFromResult(result) {
-  if (!result) return null;
+  if (!result || result.coverOverride !== true) return null;
   const rowSum = sumQuestionMarks(result.questions || []);
   const stored = result.finalObtainedMarks;
   if (
@@ -479,7 +480,11 @@ export function resolveAnnotatePdfTotalMarks({
   markingMode = "normal",
   result = null,
 } = {}) {
-  if (result?.finalObtainedMarks != null && Number.isFinite(Number(result.finalObtainedMarks))) {
+  if (
+    result?.coverOverride === true &&
+    result?.finalObtainedMarks != null &&
+    Number.isFinite(Number(result.finalObtainedMarks))
+  ) {
     return Number(result.finalObtainedMarks);
   }
   if (markingMode === "criteria" && criteriaGrade) {
@@ -497,7 +502,11 @@ export function resolveAnnotatePdfTotalMarks({
 export function resolveTotalMarksFromResult(result) {
   if (!result) return null;
 
-  if (result.finalObtainedMarks != null && Number.isFinite(Number(result.finalObtainedMarks))) {
+  if (
+    result.coverOverride === true &&
+    result.finalObtainedMarks != null &&
+    Number.isFinite(Number(result.finalObtainedMarks))
+  ) {
     return Number(result.finalObtainedMarks);
   }
 
@@ -510,6 +519,10 @@ export function resolveTotalMarksFromResult(result) {
     return sumQuestionMarks(breakdown);
   }
 
+  if (result.finalObtainedMarks != null && Number.isFinite(Number(result.finalObtainedMarks))) {
+    return Number(result.finalObtainedMarks);
+  }
+
   const stored =
     result.criteriaGrade?.totalMarks ??
     result.totalMarks ??
@@ -519,6 +532,9 @@ export function resolveTotalMarksFromResult(result) {
 
 export function totalMarksMismatchInfo(result) {
   if (!result) return null;
+  // Without an explicit cover override, cover totals heal to the paper sum —
+  // a mismatch banner would only describe a bug we already fix on normalize.
+  if (result.coverOverride !== true) return null;
 
   const questions = Array.isArray(result.questions)
     ? result.questions
@@ -529,7 +545,7 @@ export function totalMarksMismatchInfo(result) {
   if (!questions?.length) return null;
 
   const paperTotal = sumQuestionMarks(questions);
-  const coverRaw = result.criteriaGrade?.totalMarks ?? result.totalMarks;
+  const coverRaw = result.finalObtainedMarks ?? result.criteriaGrade?.totalMarks ?? result.totalMarks;
   if (coverRaw == null || coverRaw === "") return null;
 
   const coverTotal = Number(coverRaw);
@@ -1143,6 +1159,7 @@ export function applyTeacherEditsToResult(
   ) {
     const override = Math.max(0, Math.min(max, Number(obtainedMarksOverride)));
     finalResult.totalMarks = override;
+    finalResult.coverOverride = true;
     if (finalResult.criteriaGrade) {
       finalResult.criteriaGrade = {
         ...finalResult.criteriaGrade,
@@ -1151,21 +1168,25 @@ export function applyTeacherEditsToResult(
     }
   } else {
     // Save / reopen with editingTotal=null must NOT wipe a stored final when
-    // per-question awarded marks did not change (cover≠paper override, or a
-    // teacher-confirmed total that differs from a later row-normalizer sum).
+    // the teacher explicitly overrode the cover and per-question marks did not
+    // change. Stale finals without coverOverride heal to the row sum.
     const prevFinal =
+      baseResult?.coverOverride === true &&
       baseResult?.finalObtainedMarks != null &&
       Number.isFinite(Number(baseResult.finalObtainedMarks))
         ? Number(baseResult.finalObtainedMarks)
         : null;
     if (prevFinal != null && questionSum === baseQuestionSum) {
       finalResult.totalMarks = prevFinal;
+      finalResult.coverOverride = true;
       if (finalResult.criteriaGrade) {
         finalResult.criteriaGrade = {
           ...finalResult.criteriaGrade,
           totalMarks: prevFinal,
         };
       }
+    } else {
+      delete finalResult.coverOverride;
     }
   }
 

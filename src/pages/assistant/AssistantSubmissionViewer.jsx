@@ -97,6 +97,9 @@ import {
 } from "../../utils/markingFormData";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import MarkingQuestionSearchBar, {
+  filterMarkingQuestions,
+} from "../../components/MarkingQuestionSearchBar";
 import ClassroomPaperMetadataBar from "../../components/ClassroomPaperMetadataBar";
 import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
@@ -168,14 +171,6 @@ import {
   isBatchStopped,
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
-import {
-  remainingRunLabel,
-  remainingRunInProgress,
-  remainingRunIsStale,
-  remainingRunNeedsRetry,
-  watchRemainingRun,
-  retryRemainingRun,
-} from "../../utils/firstBatchRemaining";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 import { invalidateStudentPdf } from "../../utils/studentPdfCache";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
@@ -305,6 +300,7 @@ export default function AssignmentSubmissionViewer() {
   }, []);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(false);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [questionSearch, setQuestionSearch] = useState("");
   const [editingCriteriaGrade, setEditingCriteriaGrade] = useState(null);
   const [editingAnnotations, setEditingAnnotations] = useState([]);
   const [editingSummary, setEditingSummary] = useState("");
@@ -867,6 +863,11 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     });
   }, [editingQuestions, pendingRemovedIndices, assignmentInventory, assignmentPrunedQuestions]);
 
+  const questionsForSearch = useMemo(
+    () => filterMarkingQuestions(questionsForDisplay, questionSearch),
+    [questionsForDisplay, questionSearch]
+  );
+
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
     [editingQuestions, pendingRemovedIndices]
@@ -1278,106 +1279,8 @@ window.open(url);
     }
   };
 
-  const followRemainingRun = async (assignId, engine = "v1") => {
-    const base = engineBasePath(engine);
-    const result = await watchRemainingRun({
-      statusUrl: `${base}/first-batch/status/${assignId}`,
-      onStatus: (run, firstBatch) => {
-        patchBatchJob(assignId, (prev) => ({
-          ...prev,
-          firstBatch: {
-            ...(prev?.firstBatch || firstBatch || {}),
-            status: run?.status === "failed" ? "remaining_failed" : "confirming",
-            remainingRun: run || prev?.firstBatch?.remainingRun || firstBatch?.remainingRun,
-          },
-        }));
-      },
-    });
 
-    if (result.state === "processing") {
-      await checkForActiveJob();
-      return;
-    }
-    if (result.state === "done") {
-      patchBatchJob(assignId, (prev) => ({
-        ...prev,
-        firstBatch: {
-          ...(prev?.firstBatch || {}),
-          status: "confirmed",
-          remainingRun: result.run,
-        },
-      }));
-      toast.success("Remaining submissions marked");
-      return;
-    }
-    if (result.state === "failed") {
-      patchBatchJob(assignId, (prev) => ({
-        ...prev,
-        firstBatch: {
-          ...(prev?.firstBatch || {}),
-          status: "remaining_failed",
-          remainingRun: {
-            ...(result.run || prev?.firstBatch?.remainingRun || {}),
-            status: "failed",
-            error: result.error || result.run?.error || "Marking the rest failed",
-          },
-        },
-      }));
-      toast.error(result.error || "Marking the rest failed");
-    }
-  };
 
-  const confirmFirstBatch = async () => {
-    if (!assignmentId || !batchJob?.firstBatch) return;
-    const ok = await confirmToast(
-      "This will mark the remaining submissions for this assignment now. Continue?",
-      { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
-    );
-    if (!ok) return;
-
-    const engine = batchJob.engine || "v1";
-    // Whatever model/pages-per-request is picked in the toolbar right now — the
-    // picker stays live while this banner is showing — is what marks the rest,
-    // not whatever the capped safety batch happened to run with.
-    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
-    try {
-      await api.post(`${engineBasePath(engine)}/first-batch/confirm/${assignmentId}`, {
-        geminiModel: selectedModel,
-        chunkSize: chunkSizeForGeminiModel(selectedModel),
-      });
-    } catch (err) {
-      toast.error(extractHumanError(err) || "Failed to confirm first batch");
-      return;
-    }
-
-    toast.info("Confirmed — marking the remaining submissions…");
-    patchBatchJob(assignmentId, (prev) => ({
-      ...prev,
-      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
-    }));
-    await followRemainingRun(assignmentId, engine);
-  };
-
-  const retryFirstBatchRemaining = async () => {
-    if (!assignmentId) return;
-    const engine = batchJob?.engine || "v1";
-    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
-    try {
-      await retryRemainingRun(
-        `${engineBasePath(engine)}/first-batch/retry-remaining/${assignmentId}`,
-        { geminiModel: selectedModel, chunkSize: chunkSizeForGeminiModel(selectedModel) }
-      );
-    } catch (err) {
-      toast.error(extractHumanError(err) || "Could not retry remaining marking");
-      return;
-    }
-    patchBatchJob(assignmentId, (prev) => ({
-      ...prev,
-      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
-    }));
-    toast.info("Retrying remaining submissions…");
-    await followRemainingRun(assignmentId, engine);
-  };
 
   const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
     if (expectedPages === null) {
@@ -2037,52 +1940,6 @@ window.open(url);
     }
   };
 
-  useEffect(() => {
-    if (!assignmentId) return;
-    checkForActiveJob();
-    (async () => {
-      try {
-        const { data } = await api.get(`/marking/first-batch/status/${assignmentId}`);
-        const fb = data?.firstBatch || { status: "none" };
-        const run = fb.remainingRun;
-        const engine = fb.engine === "v2" ? "v2" : "v1";
-        patchBatchJob(assignmentId, (prev) => ({
-          ...prev,
-          phase: prev?.phase || "done",
-          engine: prev?.engine || engine,
-          firstBatch: {
-            ...(prev?.firstBatch || {}),
-            ...fb,
-          },
-        }));
-        if (run?.status === "failed" || remainingRunIsStale(run)) {
-          patchBatchJob(assignmentId, (prev) => ({
-            ...prev,
-            phase: prev?.phase || "done",
-            engine: prev?.engine || engine,
-            firstBatch: {
-              ...(prev?.firstBatch || fb || {}),
-              status: "remaining_failed",
-              remainingRun: run,
-            },
-          }));
-        } else if (remainingRunInProgress(run) && !getBatchJob(assignmentId)?.jobId) {
-          patchBatchJob(assignmentId, (prev) => ({
-            ...prev,
-            engine: prev?.engine || engine,
-            firstBatch: {
-              ...(prev?.firstBatch || fb || {}),
-              status: "confirming",
-              remainingRun: run,
-            },
-          }));
-          await followRemainingRun(assignmentId, engine);
-        }
-      } catch {
-        // Status endpoint is best-effort; active-job check above still runs.
-      }
-    })();
-  }, [assignmentId]);
 
   const pollBatchJob = async (jobId, jobMeta = {}) => {
     const assignId = jobMeta.assignmentId || assignmentId;
@@ -2389,12 +2246,12 @@ window.open(url);
           const res = await api.post(`${base}/mark-batch/submit`, submitPayload, {
             timeout: 300_000,
           });
-          return { jobId: res.data.jobId, resumed: false, firstBatch: res.data.firstBatch };
+          return { jobId: res.data.jobId, resumed: false };
         } catch (err) {
           if (err.response?.data?.reason === "first_batch_pending") {
             // Not a job conflict — this assignment's first batch is already
             // capped and waiting on a human. Surface the banner, don't retry.
-            return { firstBatchBlocked: true, firstBatch: err.response.data.firstBatch };
+            throw err;
           }
           if (err.response?.status === 409) {
             return { jobId: err.response.data.jobId, resumed: true };
@@ -2423,17 +2280,7 @@ window.open(url);
       return;
     }
 
-    if (submitResult.result.firstBatchBlocked) {
-      toast.info("This assignment's first batch is awaiting confirmation.");
-      patchBatchJob(assignmentId, (prev) => ({
-        ...prev,
-        phase: "done",
-        firstBatch: submitResult.result.firstBatch,
-      }));
-      return;
-    }
-
-    const { jobId, resumed, firstBatch } = submitResult.result;
+    const { jobId, resumed } = submitResult.result;
     if (resumed) {
       toast.info("Resuming existing batch job...");
     }
@@ -2442,7 +2289,6 @@ window.open(url);
       ...prev,
       phase: "processing",
       jobId,
-      firstBatch,
       batchStudents: succeeded.map((r) => r.student),
     }));
 
@@ -2642,6 +2488,7 @@ window.open(url);
     );
     setAnnotationsPanelOpen(false);
     setEditorSubmissionId(sid);
+    setQuestionSearch("");
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
@@ -3133,27 +2980,21 @@ const isCriteria = resultModal?.result?.markingMode === "criteria";
     baselineQuestions: confirmedSnapshot?.questions ?? resultModal?.result?.questions,
     markingMode: isCriteria ? "criteria" : "normal",
     criteriaGrade: editingCriteriaGrade,
+    coverOverride: resultModal?.result?.coverOverride === true,
   });
-  // The cover page prints the result's own total; the body prints the sum of the
-  // question rows. Editing, adding or removing a row can pull them apart, and the
-  // paper then contradicts itself — so say so before it goes back to the student.
-  const coverTotal =
-    isCriteria && editingCriteriaGrade
-      ? Number(editingCriteriaGrade.totalMarks) || 0
-      : Number(
-          resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks
-        );
-  const paperTotal =
-    isCriteria && editingCriteriaGrade
-      ? Number(editingCriteriaGrade.totalMarks) || 0
-      : sumQuestionMarks(questionsForDisplay);
+  // Warn only for an explicit Final Grade override that differs from the row sum.
+  // Stale cover totals without coverOverride heal to the paper sum on normalize/save.
+  const paperTotal = summedTotal;
+  const coverTotal = total;
   const totalMismatch =
     !hasPendingEdits &&
     !previewLoading &&
     questionsForDisplay.length > 0 &&
     Number.isFinite(coverTotal) &&
     Number.isFinite(paperTotal) &&
-    coverTotal !== paperTotal
+    coverTotal !== paperTotal &&
+    (resultModal?.result?.coverOverride === true ||
+      (editingTotal != null && editingTotal !== ""))
       ? {
           coverTotal,
           paperTotal,
@@ -3417,87 +3258,6 @@ return (
                       <FiX size={11} style={{ verticalAlign: -1 }} /> Stop
                     </button>
                   )}
-                </div>
-              )}
-              {batchJob?.phase === "done" &&
-                (batchJob?.firstBatch?.status === "pending_confirmation" ||
-                  batchJob?.firstBatch?.status === "confirming") && (
-                <div style={{
-                  marginTop: 8, padding: "10px 14px", borderRadius: 10,
-                  background: "color-mix(in srgb, var(--success, #16a34a) 10%, transparent)",
-                  border: "1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent)",
-                  fontSize: 12, color: "var(--text-secondary)",
-                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap"
-                }}>
-                  {batchJob.firstBatch.status === "confirming" ? (
-                    <>
-                    <span>{remainingRunLabel(batchJob.firstBatch.remainingRun, "confirming")}</span>
-                    {remainingRunNeedsRetry(batchJob.firstBatch) && (
-                      <button
-                        type="button"
-                        onClick={retryFirstBatchRemaining}
-                        style={{
-                          marginLeft: "auto", fontSize: 11, fontWeight: 600,
-                          color: "#fff", background: "var(--primary)",
-                          border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                        }}
-                      >
-                        Retry remaining
-                      </button>
-                    )}
-                    </>
-                  ) : (
-                    <>
-                  <span>
-                    ✅ {batchJob.firstBatch.limit ?? 3} paper{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked as a safety
-                    check on this new assignment. Review them, then confirm to mark the remaining{" "}
-                    {batchJob.firstBatch.remainingCount ?? "the rest"} with{" "}
-                    {geminiModelLabel(geminiModels, pickValidGeminiModel(geminiModels, geminiModel))} (
-                    {formatChunkSizeLabel(chunkSizeForGeminiModel(pickValidGeminiModel(geminiModels, geminiModel)))}
-                    ) — change the model dropdown above to use a different one.
-                  </span>
-                  <button
-                    onClick={confirmFirstBatch}
-                    disabled={batchJob.firstBatch.status === "confirming"}
-                    style={{
-                      marginLeft: "auto", fontSize: 11, fontWeight: 600,
-                      color: "#fff", background: "var(--success, #16a34a)",
-                      border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                      opacity: batchJob.firstBatch.status === "confirming" ? 0.6 : 1,
-                    }}
-                  >
-                    Confirm & Mark Rest
-                  </button>
-                    </>
-                  )}
-                </div>
-              )}
-              {(batchJob?.firstBatch?.status === "confirmed_pending" ||
-                batchJob?.firstBatch?.status === "remaining_failed") && (
-                <div style={{
-                  marginTop: 8, padding: "10px 14px", borderRadius: 10,
-                  background: "color-mix(in srgb, var(--primary) 8%, transparent)",
-                  border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
-                  fontSize: 12, color: "var(--text-secondary)",
-                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                }}>
-                  <span>
-                    {remainingRunLabel(
-                      batchJob.firstBatch.remainingRun,
-                      batchJob.firstBatch.status
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={retryFirstBatchRemaining}
-                    style={{
-                      marginLeft: "auto", fontSize: 11, fontWeight: 600,
-                      color: "#fff", background: "var(--primary)",
-                      border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                    }}
-                  >
-                    Retry remaining
-                  </button>
                 </div>
               )}
 
@@ -4591,8 +4351,14 @@ return (
                         toast.success(`Added Q${q.questionNumber}`);
                       }}
                     />
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                      {questionsForDisplay.map((q) => (
+                    <MarkingQuestionSearchBar
+                      value={questionSearch}
+                      onChange={setQuestionSearch}
+                      matchCount={questionsForSearch.length}
+                      totalCount={questionsForDisplay.length}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+                      {questionsForSearch.map((q) => (
                         <MarkingQuestionCard
                           key={q._placementIndex}
                           question={q}

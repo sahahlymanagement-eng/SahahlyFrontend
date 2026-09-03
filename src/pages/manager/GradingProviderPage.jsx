@@ -50,6 +50,9 @@ import PdfCompressionStats from "../../components/PdfCompressionStats";
 import TokenUsageStats from "../../components/TokenUsageStats";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
+import MarkingQuestionSearchBar, {
+  filterMarkingQuestions,
+} from "../../components/MarkingQuestionSearchBar";
 import OutOfScopeNotesPanel from "../../components/OutOfScopeNotesPanel";
 import CriteriaGradeEditor from "../../components/CriteriaGradeEditor";
 import {
@@ -78,13 +81,6 @@ import {
   isBatchStopped,
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
-import {
-  remainingRunLabel,
-  remainingRunInProgress,
-  remainingRunIsStale,
-  watchRemainingRun,
-  retryRemainingRun,
-} from "../../utils/firstBatchRemaining";
 import "./ManagerSubmissionViewer.css";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
@@ -286,6 +282,7 @@ export default function GradingProviderPage({ slug, label }) {
 
   const [resultModal, setResultModal] = useState(null);
   const [editingQuestions, setEditingQuestions] = useState([]);
+  const [questionSearch, setQuestionSearch] = useState("");
   // Criteria-mode grade is edited in place like the question rows, so it lives
   // in editor state rather than being read straight off the marking result.
   const [editingCriteriaGrade, setEditingCriteriaGrade] = useState(null);
@@ -675,6 +672,11 @@ export default function GradingProviderPage({ slug, label }) {
     return sortQuestionsByPlacement(filtered);
   }, [editingQuestions, pendingRemovedIndices]);
 
+  const questionsForSearch = useMemo(
+    () => filterMarkingQuestions(questionsForDisplay, questionSearch),
+    [questionsForDisplay, questionSearch]
+  );
+
   const placementQuestions = useMemo(
     () => buildPlacementQuestions(editingQuestions, pendingRemovedIndices),
     [editingQuestions, pendingRemovedIndices]
@@ -1054,6 +1056,7 @@ export default function GradingProviderPage({ slug, label }) {
     setEditingMaxTotal(null);
     setEditingTotal(initialEditingTotalFromResult(result));
     setEditorSubmissionId(student.submissionId);
+    setQuestionSearch("");
   };
 
   const handleCorrectionPatch = useCallback(({ questions, summary }) => {
@@ -1101,12 +1104,7 @@ export default function GradingProviderPage({ slug, label }) {
     if (guidanceValue) fd.append("guidance", guidanceValue);
     examBoardGuidance.appendExamBoardFields(fd);
     if (selectedAssignment?.id != null) {
-      appendMarkingContext(fd, {
-        assignmentId: String(selectedAssignment.id),
-        gradingPartnerSlug: slug,
-        partnerAssignmentId: selectedAssignment.id,
-        assignmentTitle: selectedAssignment.name || selectedAssignment.title,
-      });
+      appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
     fd.append("chunkSize", String(resolveMarkingChunkSize(selectedModel)));
@@ -1345,13 +1343,7 @@ export default function GradingProviderPage({ slug, label }) {
             toast.success("Batch complete — results loaded.");
           }
 
-          // Keep the job around (instead of clearing it) when this batch was
-          // capped by the first-ever-grading safety gate — otherwise the
-          // "awaiting confirmation" banner would vanish the moment this poll
-          // completes, even though nothing has been confirmed yet.
-          patchBatchJob(assignId, (prev) =>
-            prev?.firstBatch?.status === "pending_confirmation" ? { ...prev, phase: "done" } : null
-          );
+          patchBatchJob(assignId, () => null);
         } catch (err) {
           clearBatchPoll(jobId);
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "error" }));
@@ -1448,7 +1440,6 @@ export default function GradingProviderPage({ slug, label }) {
     patchBatchJob(assignId, (prev) => ({ ...prev, phase: "submitting" }));
 
     let jobId;
-    let firstBatch;
     try {
       const res = await api.post(`${BASE}/mark-batch/submit`, {
         assignmentId: selectedAssignment.id,
@@ -1469,14 +1460,12 @@ export default function GradingProviderPage({ slug, label }) {
         chunkSize: resolveMarkingChunkSize(selectedModel),
       }, { timeout: 300_000 });
       jobId = res.data?.jobId;
-      firstBatch = res.data?.firstBatch;
     } catch (err) {
       if (err.response?.data?.reason === "first_batch_pending") {
         toast.info("This assignment's first batch is awaiting confirmation.");
         patchBatchJob(assignId, (prev) => ({
           ...prev,
           phase: "done",
-          firstBatch: err.response.data.firstBatch,
         }));
         return;
       }
@@ -1497,105 +1486,12 @@ export default function GradingProviderPage({ slug, label }) {
       return;
     }
 
-    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId, firstBatch }));
+    patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
     pollBatchJob(jobId, { assignmentId: assignId, mode, geminiModel: selectedModel });
   };
 
-  const followRemainingRun = async (assignId, assignmentNumericId) => {
-    const result = await watchRemainingRun({
-      statusUrl: `${BASE}/first-batch/status/${assignmentNumericId}`,
-      onStatus: (run, firstBatch) => {
-        patchBatchJob(assignId, (prev) => ({
-          ...prev,
-          firstBatch: {
-            ...(prev?.firstBatch || firstBatch || {}),
-            status: run?.status === "failed" ? "remaining_failed" : "confirming",
-            remainingRun: run || prev?.firstBatch?.remainingRun || firstBatch?.remainingRun,
-          },
-        }));
-      },
-    });
 
-    if (result.state === "processing") {
-      await checkForActiveJob();
-      return;
-    }
-    if (result.state === "done") {
-      patchBatchJob(assignId, (prev) => ({
-        ...prev,
-        firstBatch: { ...(prev?.firstBatch || {}), status: "confirmed", remainingRun: result.run },
-      }));
-      toast.success("Remaining submissions marked");
-      return;
-    }
-    if (result.state === "failed") {
-      patchBatchJob(assignId, (prev) => ({
-        ...prev,
-        firstBatch: {
-          ...(prev?.firstBatch || {}),
-          status: "remaining_failed",
-          remainingRun: {
-            ...(result.run || prev?.firstBatch?.remainingRun || {}),
-            status: "failed",
-            error: result.error || result.run?.error || "Marking the rest failed",
-          },
-        },
-      }));
-      toast.error(result.error || "Marking the rest failed");
-    }
-  };
 
-  const confirmFirstBatch = async () => {
-    if (!selectedAssignment || selectedAssignment.id == null || !batchJob?.firstBatch) return;
-    const assignId = batchKey(selectedAssignment.id);
-    const ok = await confirmToast(
-      "This will mark the remaining submissions for this assignment now. Continue?",
-      { title: "Confirm & Mark Rest", confirmLabel: "Confirm & Mark Rest" }
-    );
-    if (!ok) return;
-
-    // Whatever model/pages-per-request is picked in the toolbar right now — the
-    // picker stays live while this banner is showing — is what marks the rest,
-    // not whatever the capped safety batch happened to run with.
-    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
-    try {
-      await api.post(`${BASE}/first-batch/confirm/${selectedAssignment.id}`, {
-        geminiModel: selectedModel,
-        chunkSize: resolveMarkingChunkSize(selectedModel),
-      });
-    } catch (err) {
-      toast.error((await getApiErrorMessage(err)) || "Failed to confirm first batch");
-      return;
-    }
-
-    toast.info("Confirmed — marking the remaining submissions…");
-    patchBatchJob(assignId, (prev) => ({
-      ...prev,
-      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
-    }));
-    await followRemainingRun(assignId, selectedAssignment.id);
-  };
-
-  const retryFirstBatchRemaining = async () => {
-    if (!selectedAssignment || selectedAssignment.id == null) return;
-    const assignId = batchKey(selectedAssignment.id);
-    const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
-    try {
-      await retryRemainingRun(
-        `${BASE}/first-batch/retry-remaining/${selectedAssignment.id}`,
-        { geminiModel: selectedModel, chunkSize: resolveMarkingChunkSize(selectedModel) }
-      );
-    } catch (err) {
-      toast.error((await getApiErrorMessage(err)) || "Could not retry remaining marking");
-      return;
-    }
-    patchBatchJob(assignId, (prev) => ({
-      ...prev,
-      firstBatch: { ...(prev?.firstBatch || {}), status: "confirming" },
-    }));
-    toast.info("Retrying remaining submissions…");
-    await followRemainingRun(assignId, selectedAssignment.id);
-  };
 
   const stopBatchMark = async () => {
     if (!selectedAssignment || selectedAssignment.id == null) return;
@@ -1653,52 +1549,6 @@ export default function GradingProviderPage({ slug, label }) {
   }, [selectedAssignment?.id, batchKey]);
 
   // Resume polling a running job whenever an assignment is selected.
-  useEffect(() => {
-    if (selectedAssignment?.id == null) return;
-    checkForActiveJob();
-    const numericId = selectedAssignment.id;
-    const assignId = batchKey(numericId);
-    (async () => {
-      try {
-        const { data } = await api.get(`${BASE}/first-batch/status/${numericId}`);
-        const fb = data?.firstBatch || { status: "none" };
-        const run = fb.remainingRun;
-        // Always hydrate firstBatch (including pending_confirmation / none after
-        // a reconcile) so the safety banner matches the server after refresh.
-        patchBatchJob(assignId, (prev) => ({
-          ...prev,
-          phase: prev?.phase || "done",
-          firstBatch: {
-            ...(prev?.firstBatch || {}),
-            ...fb,
-          },
-        }));
-        if (run?.status === "failed" || remainingRunIsStale(run)) {
-          patchBatchJob(assignId, (prev) => ({
-            ...prev,
-            phase: prev?.phase || "done",
-            firstBatch: {
-              ...(prev?.firstBatch || fb || {}),
-              status: "remaining_failed",
-              remainingRun: run,
-            },
-          }));
-        } else if (remainingRunInProgress(run) && !getBatchJob(assignId)?.jobId) {
-          patchBatchJob(assignId, (prev) => ({
-            ...prev,
-            firstBatch: {
-              ...(prev?.firstBatch || fb || {}),
-              status: "confirming",
-              remainingRun: run,
-            },
-          }));
-          await followRemainingRun(assignId, numericId);
-        }
-      } catch {
-        // Status endpoint is best-effort.
-      }
-    })();
-  }, [selectedAssignment?.id, checkForActiveJob]);
 
   // The list no longer carries the marking JSON (it dominated the payload), so a
   // result that isn't already in memory is fetched on demand here. `hasDraft` on
@@ -1770,23 +1620,7 @@ export default function GradingProviderPage({ slug, label }) {
           : s
       )
     );
-
-    // Refresh safety-batch gate — deleting the last safety draft unlocks re-mark.
-    if (selectedAssignment?.id != null) {
-      const assignId = batchKey(selectedAssignment.id);
-      try {
-        const { data } = await api.get(`${BASE}/first-batch/status/${selectedAssignment.id}`);
-        const fb = data?.firstBatch || { status: "none" };
-        patchBatchJob(assignId, (prev) => ({
-          ...prev,
-          firstBatch: fb,
-        }));
-      } catch {
-        // best-effort
-      }
-    }
-
-    toast.success("Result cleared — you can mark again");
+toast.success("Result cleared — you can mark again");
   };
 
   // ── Edit / annotate / upload ──
@@ -2298,27 +2132,19 @@ export default function GradingProviderPage({ slug, label }) {
     baselineQuestions: confirmedSnapshot?.questions ?? resultModal?.result?.questions,
     markingMode: isCriteria ? "criteria" : "normal",
     criteriaGrade: editingCriteriaGrade,
+    coverOverride: resultModal?.result?.coverOverride === true,
   });
-  // The cover page prints the result's own total; the body prints the sum of the
-  // question rows. Editing, adding or removing a row can pull them apart, and the
-  // paper then contradicts itself — so say so before it is uploaded to the partner.
-  const coverTotal =
-    isCriteria && editingCriteriaGrade
-      ? Number(editingCriteriaGrade.totalMarks) || 0
-      : Number(
-          resultModal?.result?.criteriaGrade?.totalMarks ?? resultModal?.result?.totalMarks
-        );
-  const paperTotal =
-    isCriteria && editingCriteriaGrade
-      ? Number(editingCriteriaGrade.totalMarks) || 0
-      : sumQuestionMarks(questionsForDisplay);
+  const paperTotal = summedTotal;
+  const coverTotal = total;
   const totalMismatch =
     !hasPendingEdits &&
     !previewLoading &&
     questionsForDisplay.length > 0 &&
     Number.isFinite(coverTotal) &&
     Number.isFinite(paperTotal) &&
-    coverTotal !== paperTotal
+    coverTotal !== paperTotal &&
+    (resultModal?.result?.coverOverride === true ||
+      (editingTotal != null && editingTotal !== ""))
       ? {
           coverTotal,
           paperTotal,
@@ -2719,98 +2545,7 @@ export default function GradingProviderPage({ slug, label }) {
                   </div>
                 )}
 
-                {canMark &&
-                  batchJob?.phase === "done" &&
-                  (batchJob?.firstBatch?.status === "pending_confirmation" ||
-                    batchJob?.firstBatch?.status === "confirming") && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        background: "color-mix(in srgb, var(--success, #16a34a) 10%, transparent)",
-                        border: "1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent)",
-                        fontSize: 12,
-                        color: "var(--muted)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span>
-                        ✅ {batchJob.firstBatch.limit ?? 3} submission{(batchJob.firstBatch.limit ?? 3) === 1 ? "" : "s"} marked
-                        as a safety check on this new assignment. Review them, then confirm to mark the remaining{" "}
-                        {batchJob.firstBatch.remainingCount ?? "the rest"} with{" "}
-                        {sahahlyModelLabel(pickValidGeminiModel(geminiModels, geminiModel))} (
-                        {formatChunkSizeLabel(resolveMarkingChunkSize(pickValidGeminiModel(geminiModels, geminiModel)))}
-                        ) — change the model{canPickChunkSizeIndependently ? "/pages-per-request" : ""} picker above to use different settings.
-                      </span>
-                      <button
-                        onClick={confirmFirstBatch}
-                        disabled={batchJob.firstBatch.status === "confirming"}
-                        style={{
-                          marginLeft: "auto",
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: "#fff",
-                          background: "var(--success, #16a34a)",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 12px",
-                          cursor: "pointer",
-                          opacity: batchJob.firstBatch.status === "confirming" ? 0.6 : 1,
-                        }}
-                      >
-                        {batchJob.firstBatch.status === "confirming" ? "Confirming…" : "Confirm & Mark Rest"}
-                      </button>
-                    </div>
-                  )}
-
-                {(batchJob?.firstBatch?.status === "confirmed_pending" ||
-                  batchJob?.firstBatch?.status === "remaining_failed") && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      background: "color-mix(in srgb, var(--primary) 8%, transparent)",
-                      border: "1px solid color-mix(in srgb, var(--primary) 20%, transparent)",
-                      fontSize: 12,
-                      color: "var(--muted)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span>
-                      {remainingRunLabel(
-                        batchJob.firstBatch.remainingRun,
-                        batchJob.firstBatch.status
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={retryFirstBatchRemaining}
-                      style={{
-                        marginLeft: "auto",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#fff",
-                        background: "var(--primary)",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Retry remaining
-                    </button>
-                  </div>
-                )}
-
-                {loadingList && <p className="ma-loading-msg">Loading submissions…</p>}
+{loadingList && <p className="ma-loading-msg">Loading submissions…</p>}
                 {!loadingList && loadingSearchRoster && visibleSubmissions.length === 0 && (
                   <p className="ma-loading-msg">Searching all submissions…</p>
                 )}
@@ -3695,7 +3430,6 @@ export default function GradingProviderPage({ slug, label }) {
 
                 {(resultModal.student?.assignment?.id ?? selectedAssignment?.id) && (
                   <MarkingCorrectionChat
-                    gradingPartnerSlug={slug}
                     assignmentId={
                       resultModal.student?.assignment?.id ?? selectedAssignment?.id
                     }
@@ -3820,8 +3554,14 @@ export default function GradingProviderPage({ slug, label }) {
                     toast.success(`Added Q${q.questionNumber}`);
                   }}
                 />
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-                  {questionsForDisplay.map((q) => (
+                <MarkingQuestionSearchBar
+                  value={questionSearch}
+                  onChange={setQuestionSearch}
+                  matchCount={questionsForSearch.length}
+                  totalCount={questionsForDisplay.length}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+                  {questionsForSearch.map((q) => (
                     <MarkingQuestionCard
                       key={q._placementIndex}
                       question={q}

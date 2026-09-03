@@ -24,7 +24,16 @@ export function gradeFromPercent(percent, maxPoints) {
   return Math.round((pct / 100) * max);
 }
 
-/** Grade shown in the submission table (override → synced Classroom → saved AI → Classroom). */
+/**
+ * Grade shown in the submission table.
+ *
+ * Priority: table override → current AI/teacher marking draft → Classroom
+ * (synced or last-returned) → roster fields.
+ *
+ * Classroom must not win over a saved marking result: after rematch the draft
+ * is the live total, while classroomAssignedGrade can still hold the previous
+ * return (e.g. list 20/56 while Results shows 45/56).
+ */
 export function resolveTableGrade(
   submissionId,
   student,
@@ -40,20 +49,22 @@ export function resolveTableGrade(
     gradeOverrides[submissionId] !== ""
   ) {
     grade = gradeOverrides[submissionId];
-  } else if (
-    submissionId &&
-    classroomSyncedGrades?.[submissionId] != null &&
-    classroomSyncedGrades[submissionId] !== ""
-  ) {
-    grade = classroomSyncedGrades[submissionId];
   } else {
-    const persistedClassroom = savedResults?.[submissionId]?.classroomAssignedGrade;
-    if (persistedClassroom != null && persistedClassroom !== "") {
-      grade = Number(persistedClassroom);
+    const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
+    if (fromSaved != null) {
+      grade = fromSaved;
+    } else if (
+      submissionId &&
+      classroomSyncedGrades?.[submissionId] != null &&
+      classroomSyncedGrades[submissionId] !== ""
+    ) {
+      grade = classroomSyncedGrades[submissionId];
     } else {
-      const fromSaved = resolveSavedMarkingGrade(savedResults?.[submissionId]);
-      if (fromSaved != null) grade = fromSaved;
-      else if (student?.aiGrade != null && student.aiGrade !== "") {
+      const persistedClassroom =
+        savedResults?.[submissionId]?.classroomAssignedGrade;
+      if (persistedClassroom != null && persistedClassroom !== "") {
+        grade = Number(persistedClassroom);
+      } else if (student?.aiGrade != null && student.aiGrade !== "") {
         grade = Number(student.aiGrade);
       } else if (student?.assignedGrade != null) {
         grade = student.assignedGrade;
