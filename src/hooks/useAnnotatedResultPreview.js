@@ -20,6 +20,27 @@ function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
 }
 
+const teacherLogoCache = new Map();
+
+async function loadAssignmentTeacherLogo(api, assignmentId) {
+  if (!assignmentId) return null;
+  if (!teacherLogoCache.has(assignmentId)) {
+    teacherLogoCache.set(
+      assignmentId,
+      api
+        .get(`/report-logos/assignment/${assignmentId}`, { responseType: "arraybuffer" })
+        .then((r) => r.data)
+        .catch((err) => {
+          if (err?.response?.status !== 404) {
+            console.warn("Unable to load teacher PDF logo", err);
+          }
+          return null;
+        })
+    );
+  }
+  return teacherLogoCache.get(assignmentId);
+}
+
 const PREVIEW_TIMEOUT_MS = 120_000;
 
 function withTimeout(promise, ms, label) {
@@ -183,6 +204,7 @@ export function useAnnotatedResultPreview({
         if (requestId !== previewRequestRef.current) return;
 
         const markingMode = resultModalRef.current?.result?.markingMode || "normal";
+        const teacherLogoBytes = await loadAssignmentTeacherLogo(api, assignmentId);
         const pdfBytes = await withTimeout(
           annotatePdf({
             studentFile,
@@ -197,6 +219,7 @@ export function useAnnotatedResultPreview({
             finalMaximumMarks: snapshot.finalMaximumMarks ?? snapshot.maxTotal,
             skipCompress: true,
             lockPlacement,
+            teacherLogoBytes,
           }),
           PREVIEW_TIMEOUT_MS,
           "Building annotated preview"

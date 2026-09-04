@@ -1,9 +1,9 @@
-import { resolveSavedMarkingGrade } from "./markingFormData";
+import { resolveSavedMarkingGrade } from "./markingFormData.js";
 import {
   computeGradePercent,
   normalizeAssignedGrade,
   parsePercentInput,
-} from "./reportGradePercent";
+} from "./reportGradePercent.js";
 
 export function parseGradeInput(value, maxPoints) {
   const raw = String(value ?? "").trim();
@@ -90,6 +90,42 @@ export function resolveClassroomReturnGrade(
   classroomSyncedGrades = {},
   maxPoints = null
 ) {
+  // A deliberate grade typed in the table is the only value allowed to beat
+  // the corrected marking result being returned.
+  if (
+    submissionId &&
+    gradeOverrides?.[submissionId] != null &&
+    gradeOverrides[submissionId] !== ""
+  ) {
+    const override = Number(gradeOverrides[submissionId]);
+    if (Number.isFinite(override)) {
+      return maxPoints != null && Number(maxPoints) > 0
+        ? normalizeAssignedGrade(override, maxPoints)
+        : override;
+    }
+  }
+
+  // Prefer the canonical saved marking when this live submission id maps
+  // directly to it. This is the teacher-confirmed result, not Classroom's old
+  // assignedGrade from the student roster.
+  const savedGrade = resolveSavedMarkingGrade(savedResults?.[submissionId]);
+  if (savedGrade != null && Number.isFinite(Number(savedGrade))) {
+    return maxPoints != null && Number(maxPoints) > 0
+      ? normalizeAssignedGrade(savedGrade, maxPoints)
+      : Number(savedGrade);
+  }
+
+  // Return All can re-key a stale Classroom submission id to a live one. In
+  // that case savedResults[liveId] is absent, but fallbackTotal is computed
+  // from the exact corrected result/PDF currently being returned. It must win
+  // over student.assignedGrade and classroomAssignedGrade, which describe the
+  // previous return (e.g. edited 22 -> 28 must post 28, not the old 22).
+  if (fallbackTotal != null && Number.isFinite(Number(fallbackTotal))) {
+    return maxPoints != null && Number(maxPoints) > 0
+      ? normalizeAssignedGrade(fallbackTotal, maxPoints)
+      : Number(fallbackTotal);
+  }
+
   const fromTable = resolveTableGrade(
     submissionId,
     student,
@@ -99,12 +135,6 @@ export function resolveClassroomReturnGrade(
     maxPoints
   );
   if (fromTable != null) return fromTable;
-  if (fallbackTotal != null) {
-    if (maxPoints != null && Number(maxPoints) > 0) {
-      return normalizeAssignedGrade(fallbackTotal, maxPoints);
-    }
-    return Number(fallbackTotal);
-  }
   return null;
 }
 

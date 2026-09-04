@@ -29,6 +29,9 @@ function friendlyPdfLoadError(err) {
   if (/^network error$/i.test(raw) || err?.name === "NetworkError") {
     return "Could not load this PDF preview (network blip or stale file). Click Retry.";
   }
+  if (/invalid root reference|invalid xref|xref.*(invalid|missing)|trailer.*root/i.test(raw)) {
+    return "The generated preview was incomplete. Sahahly is rebuilding it automatically.";
+  }
   // A raw JS crash ("Cannot access 'x' before initialization", "x is not
   // defined") almost always means this tab is still running old code after a
   // deploy — the fix is a hard refresh, not a Retry of the same stale bundle.
@@ -425,6 +428,7 @@ export default function AnnotatedPdfPreview({
   onQuestionLabelChange = null,
   labelGuidance = "",
   openExternalLabel = "Open in browser",
+  onStructuralError = null,
 }) {
   const rootRef = useRef(null);
   const scrollRef = useRef(null);
@@ -455,6 +459,7 @@ export default function AnnotatedPdfPreview({
   const zoomRef = useRef(DEFAULT_ZOOM);
   const pdfSessionRef = useRef(null);
   const currentPageRef = useRef(1);
+  const structuralRetryUrlRef = useRef(null);
 
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
@@ -631,7 +636,16 @@ export default function AnnotatedPdfPreview({
       } catch (err) {
         if (!cancelled) {
           console.error("[AnnotatedPdfPreview] load:", err);
-          setError(friendlyPdfLoadError(err));
+          const structural = /invalid root reference|invalid xref|xref.*(invalid|missing)|trailer.*root/i.test(
+            String(err?.message || err || "")
+          );
+          if (structural && onStructuralError && structuralRetryUrlRef.current !== url) {
+            structuralRetryUrlRef.current = url;
+            setError("The generated preview was incomplete. Sahahly is rebuilding it automatically.");
+            onStructuralError();
+          } else {
+            setError(friendlyPdfLoadError(err));
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -645,7 +659,7 @@ export default function AnnotatedPdfPreview({
         return null;
       });
     };
-  }, [url, loadNonce, pdfSessionKey]);
+  }, [url, loadNonce, pdfSessionKey, onStructuralError]);
 
   const effectiveQuestions = useMemo(() => {
     if (!placementEnabled) return [];

@@ -27,6 +27,29 @@ import {
   syncSummaryScoreLine,
 } from "./markingFormData";
 import { normalizeMathSymbols } from "./normalizeMathSymbols";
+import sahahlyLogoUrl from "../assets/images/Logo-removebg-preview.png";
+
+let sahahlyLogoBytesPromise = null;
+
+async function loadSahahlyLogoBytes() {
+  if (!sahahlyLogoBytesPromise) {
+    sahahlyLogoBytesPromise = fetch(sahahlyLogoUrl)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Logo request failed (${response.status})`);
+        return response.arrayBuffer();
+      })
+      .catch((err) => {
+        console.warn("Unable to load Sahahly PDF logo", err);
+        return null;
+      });
+  }
+  return sahahlyLogoBytesPromise;
+}
+
+function fitPdfImage(image, maxWidth, maxHeight) {
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
+  return { width: image.width * scale, height: image.height * scale };
+}
 
 // ── Colours ───────────────────────────────────────────────────────────────────
 const GREEN = rgb(0.04, 0.60, 0.25);
@@ -945,7 +968,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
   }
 
 /** Prepend all grading report pages (1, 2, 3…) before the student work. */
-function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary, studentFacing = true }) {
+function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTotalMarks, summary, studentFacing = true, sahahlyLogo = null, teacherLogo = null }) {
   // Caller (annotatePdf) already drops inventeds / 4a- twins; keep stubs out of
   // the student-facing QUESTION BREAKDOWN table — they get their own front box.
   const allQuestions = questions || [];
@@ -990,8 +1013,35 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
 
   summaryPage.drawRectangle({ x: 0, y: sh - 62, width: sw, height: 62, color: NAVY });
 
+  if (sahahlyLogo) {
+    const fitted = fitPdfImage(sahahlyLogo, 64, 30);
+    summaryPage.drawImage(sahahlyLogo, {
+      x: 18,
+      y: sh - 38,
+      width: fitted.width,
+      height: fitted.height,
+    });
+    summaryPage.drawText("@sahahlyteam", {
+      x: 18,
+      y: sh - 51,
+      size: 6.5,
+      font: reg,
+      color: rgb(0.72, 0.82, 1),
+    });
+  }
+
+  if (teacherLogo) {
+    const fitted = fitPdfImage(teacherLogo, 60, 34);
+    summaryPage.drawImage(teacherLogo, {
+      x: sw - 18 - fitted.width,
+      y: sh - 48 + (34 - fitted.height) / 2,
+      width: fitted.width,
+      height: fitted.height,
+    });
+  }
+
   summaryPage.drawText("GRADING REPORT", {
-    x: M,
+    x: sahahlyLogo ? 94 : M,
     y: sh - 28,
     size: 18,
     font: bold,
@@ -999,7 +1049,7 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   });
 
   summaryPage.drawText("Sahahly • Performance Report", {
-    x: M,
+    x: sahahlyLogo ? 94 : M,
     y: sh - 44,
     size: 8,
     font: reg,
@@ -1013,7 +1063,7 @@ function prependGradingReport(pdfDoc, { bold, reg, questions, totalMarks, maxTot
   });
 
   summaryPage.drawText(dateStr, {
-    x: sw - M - reg.widthOfTextAtSize(dateStr, 8),
+    x: sw - (teacherLogo ? 92 : M) - reg.widthOfTextAtSize(dateStr, 8),
     y: sh - 44,
     size: 8,
     font: reg,
@@ -1722,6 +1772,7 @@ export async function annotatePdf({
   finalMaximumMarks = null,
   // Legacy callers may still pass totalMarks; cover totals are always recomputed.
   totalMarks: _totalMarksInput,
+  teacherLogoBytes = null,
 }) {
   const cleanedInput = dropGhostDuplicateQuestions(
     clearImplausiblePrintedQuestionNumbers(
@@ -1752,6 +1803,19 @@ export async function annotatePdf({
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const sahahlyLogoBytes = await loadSahahlyLogoBytes();
+  let sahahlyLogo = null;
+  let teacherLogo = null;
+  try {
+    if (sahahlyLogoBytes) sahahlyLogo = await pdfDoc.embedPng(sahahlyLogoBytes);
+  } catch (err) {
+    console.warn("Unable to embed Sahahly PDF logo", err);
+  }
+  try {
+    if (teacherLogoBytes) teacherLogo = await pdfDoc.embedPng(teacherLogoBytes);
+  } catch (err) {
+    console.warn("Unable to embed teacher PDF logo", err);
+  }
 
   const studentPageCount = pdfDoc.getPageCount();
   // Backfilled / not-on-script questions stay off the exam pages — report only.
@@ -1793,6 +1857,8 @@ export async function annotatePdf({
     totalMarks,
     maxTotalMarks: resolvedMax,
     summary,
+    sahahlyLogo,
+    teacherLogo,
     studentFacing,
   });
 
@@ -1945,7 +2011,13 @@ export async function annotatePdf({
     }
   }
 
-  const rawBytes = await pdfDoc.save();
+  // Classic cross-reference tables are a little larger than PDF object streams,
+  // but substantially more tolerant across the PDF.js versions embedded in
+  // Chromium/Edge. Object-stream output occasionally surfaced as "Invalid Root
+  // reference" in the submission viewer even though the in-memory document was
+  // otherwise valid. The final-return path still runs Ghostscript compression;
+  // previews favor reliable parsing over a temporary blob being a few KB smaller.
+  const rawBytes = await pdfDoc.save({ useObjectStreams: false });
   const bytes = skipCompress
     ? rawBytes
     : await compressAnnotatedPdf(rawBytes);

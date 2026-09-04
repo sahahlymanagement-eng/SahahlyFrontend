@@ -4470,6 +4470,7 @@ return (
                           <AnnotatedPdfPreview
                             key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                             url={annotatedPreviewUrl}
+                            onStructuralError={retryPreview}
                             pdfSessionKey={resultModalSubmissionId}
                             placementQuestions={placementQuestions}
                             reportPageCount={reportPageCount}
