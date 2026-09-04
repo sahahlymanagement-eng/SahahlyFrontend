@@ -30,6 +30,7 @@
 import assert from "assert";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 import { build } from "esbuild";
 
 let passed = 0;
@@ -40,7 +41,7 @@ function test(name, fn) {
   catch (err) { console.log("  FAIL " + name + "\n       " + err.message); failed += 1; }
 }
 
-const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 const entry = path.join(here, "_entry.generated.mjs");
 const bundle = path.join(here, "_bundle.generated.mjs");
@@ -70,7 +71,7 @@ const {
   annotatePdf,
   PDFDocument,
   StandardFonts,
-} = await import("file://" + bundle.replace(/\\/g, "/"));
+} = await import(pathToFileURL(bundle).href);
 
 /** A written question the AI marked down. */
 const marked = (over = {}) => ({

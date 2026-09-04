@@ -34,6 +34,7 @@ import assert from "assert";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 import { build } from "esbuild";
 
 let passed = 0;
@@ -45,7 +46,7 @@ function test(name, fn) {
 }
 
 // ---------------------------------------------------------------- load source
-const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 // Both live inside the project: esbuild resolves bare imports (pdf-lib)
 // relative to the importing FILE, so an entry in the system temp directory
@@ -84,7 +85,7 @@ const {
   annotatePdf,
   PDFDocument,
   StandardFonts,
-} = await import("file://" + bundle.replace(/\\/g, "/"));
+} = await import(pathToFileURL(bundle).href);
 
 /** What the Add-question form hands to createManualQuestion. */
 const typedByTeacher = {

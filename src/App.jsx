@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import SessionRefresher from "./components/SessionRefresher";
 import { ToastContainer } from "react-toastify";
@@ -25,9 +25,9 @@ import QualityManagerAssignmentDelegationTest from "./pages/QualityManagerAssign
 import QualityTeamAssignmentsTest from "./pages/QualityTeamAssignmentsTest";
 import QualityChecklistItemsTest from "./pages/QualityChecklistItemsTest";
 import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
-import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
-import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
-import ManagerDrPeter from "./pages/manager/ManagerDrPeter";
+const ManagerLoginCss = lazy(() => import("./pages/manager/ManagerLoginCss"));
+const ManagerMariamGabalawy = lazy(() => import("./pages/manager/ManagerMariamGabalawy"));
+const ManagerDrPeter = lazy(() => import("./pages/manager/ManagerDrPeter"));
 import Login from "./pages/Login";
 import PrivacySecurityPolicy from "./pages/PrivacySecurityPolicy";
 import ZoomDocumentation from "./pages/ZoomDocumentation";
@@ -35,82 +35,82 @@ import Support from "./pages/Support";
 import TermsOfUse from "./pages/TermsOfUse";
 import ForgotPassword from "./pages/ForgotPassword";
 import SetupPassword from "./pages/SetupPassword";
-import AssistantDashboard from "./pages/assistant/Dashboard";
+const AssistantDashboard = lazy(() => import("./pages/assistant/Dashboard"));
 import ResetPassword from "./pages/ResetPassword";
-import AssistantAssignments from "./pages/assistant/AssistantAssignments";
-import ManagerDashboard from "./pages/manager/ManagerDashboard";
-import ManagerDelegations from "./pages/manager/ManagerDelegations";
+const AssistantAssignments = lazy(() => import("./pages/assistant/AssistantAssignments"));
+const ManagerDashboard = lazy(() => import("./pages/manager/ManagerDashboard"));
+const ManagerDelegations = lazy(() => import("./pages/manager/ManagerDelegations"));
 // import TeacherManager from "./pages/director/TeacherManager";
-import TeacherManager from "./pages/director/TeacherCreation";
+const TeacherManager = lazy(() => import("./pages/director/TeacherCreation"));
 import QualityTeamDashboard from "./pages/quality team/QualityTeamDashboard";
 import QualityManagerDashboard from "./pages/quality manager/QualityManagerDashboard";
-import DirectorDashboard from "./pages/director/DirectorDashboard";
-import DirectorPeople from "./pages/director/DirectorPeople";
+const DirectorDashboard = lazy(() => import("./pages/director/DirectorDashboard"));
+const DirectorPeople = lazy(() => import("./pages/director/DirectorPeople"));
 import DirectorLayout from "./pages/director/DirectorLayout";
 // import DirectorSubjects from "./pages/director/DirectorSubjects";
-import DirectorClassroomManagers from "./pages/director/DirectorClassroomManagers";
-import DirectorGradingDelegations from "./pages/director/DirectorGradingDelegations";
-import DirectorManagerWorkload from "./pages/director/DirectorManagerWorkload";
-import DirectorManagerAnalytics from "./pages/director/DirectorManagerAnalytics";
-import DirectorTokenUsage from "./pages/director/DirectorTokenUsage";
-import DirectorAssistantPerformance from "./pages/director/DirectorAssistantPerformance";
-import DirectorAccuracyMetrics from "./pages/director/DirectorAccuracyMetrics";
-import DirectorManualCorrection from "./pages/director/DirectorManualCorrection";
-import DirectorTeachers from "./pages/director/DirectorTeachers";
-import DirectorFeedback from "./pages/director/DirectorFeedback";
-import DirectorReports from "./pages/director/DirectorReports";
-import DirectorAssignments from "./pages/director/DirectorAssignments";
+const DirectorClassroomManagers = lazy(() => import("./pages/director/DirectorClassroomManagers"));
+const DirectorGradingDelegations = lazy(() => import("./pages/director/DirectorGradingDelegations"));
+const DirectorManagerWorkload = lazy(() => import("./pages/director/DirectorManagerWorkload"));
+const DirectorManagerAnalytics = lazy(() => import("./pages/director/DirectorManagerAnalytics"));
+const DirectorTokenUsage = lazy(() => import("./pages/director/DirectorTokenUsage"));
+const DirectorAssistantPerformance = lazy(() => import("./pages/director/DirectorAssistantPerformance"));
+const DirectorAccuracyMetrics = lazy(() => import("./pages/director/DirectorAccuracyMetrics"));
+const DirectorManualCorrection = lazy(() => import("./pages/director/DirectorManualCorrection"));
+const DirectorTeachers = lazy(() => import("./pages/director/DirectorTeachers"));
+const DirectorFeedback = lazy(() => import("./pages/director/DirectorFeedback"));
+const DirectorReports = lazy(() => import("./pages/director/DirectorReports"));
+const DirectorAssignments = lazy(() => import("./pages/director/DirectorAssignments"));
 import BackupLayout from "./pages/backup/BackupLayout";
-import BackupAssignments from "./pages/backup/BackupAssignments";
-import OperationMetrics from "./pages/manager/operation-metrics";
-import ManagerTokenUsage from "./pages/manager/ManagerTokenUsage";
-import ManagerFeedback from "./pages/manager/ManagerFeedback";
-import ManagerAssignments from "./pages/manager/ManagerAssignments";
-import ManagerStudents from "./pages/manager/ManagerStudents";
-import DirectorGoogleAccount from "./pages/director/DirectorGoogleAccount";
-import DirectorChatbot from "./pages/director/DirectorChatbot";
-import DirectorActionsChatbot from "./pages/director/DirectorActionsChatbot";
-import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
-import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
-import WhatsAppBroadcast from "./pages/manager/WhatsAppBroadcast";
-import ManagerAutomation from "./pages/manager/ManagerAutomation";
-import ManagerChatbot from "./pages/manager/ManagerChatbot";
-import ManagerActionsChatbot from "./pages/manager/ManagerActionsChatbot";
-import PaperMarking from "./pages/manager/PaperMarking";
-import PaperMarkingClaude from "./pages/manager/PaperMarkingClaude";
-import QBManage from "./pages/questionbank/QBManage";
-import QBUpload from "./pages/questionbank/QBUpload";
-import QBBrowse from "./pages/questionbank/QBBrowse";
-import QBClassify from "./pages/questionbank/QBClassify";
+const BackupAssignments = lazy(() => import("./pages/backup/BackupAssignments"));
+const OperationMetrics = lazy(() => import("./pages/manager/operation-metrics"));
+const ManagerTokenUsage = lazy(() => import("./pages/manager/ManagerTokenUsage"));
+const ManagerFeedback = lazy(() => import("./pages/manager/ManagerFeedback"));
+const ManagerAssignments = lazy(() => import("./pages/manager/ManagerAssignments"));
+const ManagerStudents = lazy(() => import("./pages/manager/ManagerStudents"));
+const DirectorGoogleAccount = lazy(() => import("./pages/director/DirectorGoogleAccount"));
+const DirectorChatbot = lazy(() => import("./pages/director/DirectorChatbot"));
+const DirectorActionsChatbot = lazy(() => import("./pages/director/DirectorActionsChatbot"));
+const ManagerSubmissionViewer = lazy(() => import("./pages/manager/ManagerSubmissionViewer"));
+const ManagerWhatsAppScheduler = lazy(() => import("./pages/manager/ManagerWhatsAppScheduler"));
+const WhatsAppBroadcast = lazy(() => import("./pages/manager/WhatsAppBroadcast"));
+const ManagerAutomation = lazy(() => import("./pages/manager/ManagerAutomation"));
+const ManagerChatbot = lazy(() => import("./pages/manager/ManagerChatbot"));
+const ManagerActionsChatbot = lazy(() => import("./pages/manager/ManagerActionsChatbot"));
+const PaperMarking = lazy(() => import("./pages/manager/PaperMarking"));
+const PaperMarkingClaude = lazy(() => import("./pages/manager/PaperMarkingClaude"));
+const QBManage = lazy(() => import("./pages/questionbank/QBManage"));
+const QBUpload = lazy(() => import("./pages/questionbank/QBUpload"));
+const QBBrowse = lazy(() => import("./pages/questionbank/QBBrowse"));
+const QBClassify = lazy(() => import("./pages/questionbank/QBClassify"));
 import ExamPositionMapper from "./pages/admin/ExamPositionMapper";
 
 // import GoogleClassroom from "./pages/manager/CourseManagment/Courses";
 // import CoursesList from "./pages/manager/CourseManagment/CourseList";
 // import CourseWork from "./pages/manager/CourseManagment/CourseWork";
 // import SubmissionActions from "./pages/manager/CourseManagment/SubmissionActions";
-import GoogleClassroom from "./components/CourseManagment/Courses"
-import CoursesList from "./components/CourseManagment/CourseList";
-import CourseWork from "./components/CourseManagment/CourseWork";
-import SubmissionActions from "./components/CourseManagment/SubmissionActions";
-import AssistantSubmissionViewer from "./pages/assistant/AssistantSubmissionViewer";
-import AssistantStudents from "./pages/assistant/AssistantStudents";
-import AssistantReports from "./pages/assistant/AssistantReports";
-import AssistantPerformance from "./pages/assistant/AssistantPerformance";
-import AssistantChatbot from "./pages/assistant/AssistantChatbot";
+const GoogleClassroom = lazy(() => import("./components/CourseManagment/Courses"));
+const CoursesList = lazy(() => import("./components/CourseManagment/CourseList"));
+const CourseWork = lazy(() => import("./components/CourseManagment/CourseWork"));
+const SubmissionActions = lazy(() => import("./components/CourseManagment/SubmissionActions"));
+const AssistantSubmissionViewer = lazy(() => import("./pages/assistant/AssistantSubmissionViewer"));
+const AssistantStudents = lazy(() => import("./pages/assistant/AssistantStudents"));
+const AssistantReports = lazy(() => import("./pages/assistant/AssistantReports"));
+const AssistantPerformance = lazy(() => import("./pages/assistant/AssistantPerformance"));
+const AssistantChatbot = lazy(() => import("./pages/assistant/AssistantChatbot"));
 import AssistantLayout from "./pages/assistant/AssistantLayout";
 import ManagerLayout from "./pages/manager/ManagerLayout";
 import QualityManagerLayout from "./pages/quality manager/QualityManagerLayout";
 import QualityTeamLayout from "./pages/quality team/QualityTeamLayout";
 
-import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
 import TeacherLayout from "./pages/teacher/TeacherLayout";
-import TeacherCourses from "./pages/teacher/TeacherCourses";
-import TeacherReports from "./pages/teacher/TeacherReports";
-import TeacherChatbot from "./pages/teacher/TeacherChatbot";
-import TeacherActionsChatbot from "./pages/teacher/TeacherActionsChatbot";
-import TeacherStudentsParents from "./pages/teacher/TeacherStudentsParents";
-import TeacherSessionsCalendar from "./pages/teacher/TeacherSessionsCalendar";
-import ViewCoursework from "./components/CourseManagment/ViewCourseWork";
+const TeacherCourses = lazy(() => import("./pages/teacher/TeacherCourses"));
+const TeacherReports = lazy(() => import("./pages/teacher/TeacherReports"));
+const TeacherChatbot = lazy(() => import("./pages/teacher/TeacherChatbot"));
+const TeacherActionsChatbot = lazy(() => import("./pages/teacher/TeacherActionsChatbot"));
+const TeacherStudentsParents = lazy(() => import("./pages/teacher/TeacherStudentsParents"));
+const TeacherSessionsCalendar = lazy(() => import("./pages/teacher/TeacherSessionsCalendar"));
+const ViewCoursework = lazy(() => import("./components/CourseManagment/ViewCourseWork"));
 
 function ThemedToaster() {
   const { theme } = useTheme();
@@ -126,6 +126,10 @@ function ThemedToaster() {
       theme={theme}
     />
   );
+}
+
+function PageLoader() {
+  return <div role="status" style={{ padding: "2rem", textAlign: "center" }}>Loading…</div>;
 }
 
 function HomeToLanding() {
@@ -145,6 +149,7 @@ function App() {
       {/* Keeps the access token rolling while the app is open, and pulls role /
           delegation changes into this browser without a re-login. */}
       <SessionRefresher />
+      <Suspense fallback={<PageLoader />}>
       <Routes>
         
         <Route path="/" element={<HomeToLanding />} />
@@ -411,6 +416,7 @@ function App() {
 
     
       </Routes>
+      </Suspense>
     </BrowserRouter>
     </ThemeProvider>
   );

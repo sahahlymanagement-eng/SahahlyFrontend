@@ -92,9 +92,9 @@ import {
   resolveSavedMarkingGrade,
   getOutOfScopeNotes,
   getTeacherAnnotations,
-  prepareEditingQuestions,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { prepareEditingQuestions } from "../../utils/recoverMisassignedAnswers";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
 import MarkingQuestionSearchBar, {
@@ -1288,6 +1288,8 @@ window.open(url);
       setShowExpectedPagesEdit(true);
       return;
     }
+    const preferV2ForClassified =
+      canMarkV2 && /classified|compiled|workbook/i.test(selectedAssignment?.title || "");
     setGuidanceModal(
       intent === "v2"
         ? { v2: true, student }
@@ -1296,7 +1298,7 @@ window.open(url);
         : intent === "normalBulk"
         ? { bulk: true, normalBulk: true }
         : isBatch
-        ? { batch: true }
+        ? { batch: true, ...(preferV2ForClassified ? { engine: "v2" } : {}) }
         : student
         ? { student }
         : { bulk: true }
@@ -2000,8 +2002,13 @@ window.open(url);
           const originalAiResult = enrichedResult
             ? JSON.parse(JSON.stringify(enrichedResult))
             : null;
+          const integrityIncomplete = Boolean(
+            enrichedResult?.markingFailed || enrichedResult?.markingIncomplete ||
+            enrichedResult?.markingCompleteness?.markingFailed ||
+            enrichedResult?.markingCompleteness?.markingIncomplete
+          );
           resultMap[student.submissionId] = success
-            ? { status: "done", result: enrichedResult, originalAiResult }
+            ? { status: integrityIncomplete ? "needs_review" : "done", result: enrichedResult, originalAiResult }
             : { status: "error", error };
 
           if (!success && isViewingThisAssignment()) {
@@ -2028,7 +2035,7 @@ window.open(url);
               setSavedResults((prev) => ({
                 ...prev,
                 [student.submissionId]: {
-                  status: "done",
+                  status: integrityIncomplete ? "needs_review" : "done",
                   result: enrichedResult,
                   aiOriginalResult: originalAiResult,
                   totalMarks: resolveTotalMarksFromResult(enrichedResult),
@@ -2036,7 +2043,8 @@ window.open(url);
               }));
             }
 
-            await api.post("/submission-files/save-results", {
+            try {
+              await api.post("/submission-files/save-results", {
               assignmentId: assignId,
               submissionId: student.submissionId,
               studentId: student.studentId,
@@ -2045,7 +2053,15 @@ window.open(url);
               mode: saveMode,
               provider: isV2(jobEngine) ? "gemini-v2-batch" : "gemini-batch",
               result: enrichedResult,
-            }).catch((e) => console.error("save-results:", e.message));
+              });
+            } catch (e) {
+              const message = e?.response?.data?.message || e.message || "Failed to save marking result";
+              resultMap[student.submissionId] = { status: "save_failed", result: enrichedResult, originalAiResult, error: message };
+              if (isViewingThisAssignment()) {
+                setSavedResults((prev) => ({ ...prev, [student.submissionId]: { ...prev[student.submissionId], status: "save_failed", error: message } }));
+                recordStudentMarkingError(student.submissionId, message, e);
+              }
+            }
           }
         }
 
@@ -2572,7 +2588,9 @@ window.open(url);
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         const sid = resultModal.student.submissionId || submissionId;
-        const { canonical, saved } = await persistMarkingResult(finalResult, sid);
+        const { canonical, saved } = await persistMarkingResult(finalResult, sid, {
+          origin: "confirm",
+        });
         setResultModal((prev) => ({
           ...prev,
           result: canonical,

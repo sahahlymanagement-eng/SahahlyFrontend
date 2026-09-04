@@ -36,9 +36,9 @@ import {
   resolveDisplayMaxTotal,
   buildPriorityMarkingResult,
   appendMarkingContext,
-  prepareEditingQuestions,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { prepareEditingQuestions } from "../../utils/recoverMisassignedAnswers";
 import { resolvePartnerAssignmentMax } from "../../utils/partnerExamTotal";
 import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import { parseGeminiModelsResponse, pickValidGeminiModel, sahahlyModelLabel } from "../../utils/markingCost";

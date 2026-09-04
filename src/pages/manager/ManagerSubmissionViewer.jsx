@@ -61,10 +61,10 @@ import {
   resolveDisplayMaxTotal,
   getOutOfScopeNotes,
   getTeacherAnnotations,
-  prepareEditingQuestions,
   totalMarksMismatchInfo,
   isSameSubmissionModal,
 } from "../../utils/markingFormData";
+import { prepareEditingQuestions } from "../../utils/recoverMisassignedAnswers";
 import TeacherAnnotationsEditor from "../../components/TeacherAnnotationsEditor";
 import MarkingQuestionCard from "../../components/MarkingQuestionCard";
 import MarkingQuestionSearchBar, {
@@ -338,6 +338,28 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   // Mark scheme
   const [msInfo,      setMsInfo]      = useState(null);
   const [uploadingMs, setUploadingMs] = useState(false);
+  const [qpInfo, setQpInfo] = useState(null);
+  const [scopeLockedAt, setScopeLockedAt] = useState(null);
+  const [prunedQuestions, setPrunedQuestions] = useState([]);
+  const [excludedQuestions, setExcludedQuestions] = useState([]);
+
+  const applyQuestionPaperStateFrom = (assignment) => {
+    setQpInfo(assignment?.questionPaperFileId
+      ? { fileId: assignment.questionPaperFileId, webLink: assignment.questionPaperWebLink || null }
+      : null);
+    setScopeLockedAt(assignment?.assignmentScopeLockedAt || null);
+    setPrunedQuestions(assignment?.assignmentInventoryPrunedQuestions || []);
+    setExcludedQuestions(
+      (assignment?.assignmentInventory?.includedItems || []).filter((item) => item?.excluded === true)
+    );
+  };
+
+  const resetQuestionPaperState = () => {
+    setQpInfo(null);
+    setScopeLockedAt(null);
+    setPrunedQuestions([]);
+    setExcludedQuestions([]);
+  };
 
   // Guidance modal
   const [guidanceModal,      setGuidanceModal]      = useState(null);
@@ -1227,6 +1249,7 @@ useEffect(() => {
       setMsInfo(a.markSchemeFileId ? { fileId: a.markSchemeFileId, webLink: a.markSchemeWebLink } : null);
       setExpectedPages(a.expectedPages ?? null);
       setExpectedPagesInput(a.expectedPages != null ? String(a.expectedPages) : "");
+      applyQuestionPaperStateFrom(a);
     }
   }, [studentExtra.assignment]);
 
@@ -1257,11 +1280,13 @@ useEffect(() => {
     setSelectedClassroom(classroom);
     setSelectedAssignment(null);
     setMsInfo(null);
+    resetQuestionPaperState();
   };
 
   const selectAssignment = async (assignment) => {
     setSelectedAssignment(assignment);
     setMsInfo(null);
+    resetQuestionPaperState();
     setBulkProgress({});
     setExpectedPages(null);
     setExpectedPagesInput("");
@@ -1276,12 +1301,14 @@ useEffect(() => {
     setSelectedClassroom(null);
     setSelectedAssignment(null);
     setMsInfo(null);
+    resetQuestionPaperState();
     setBulkProgress({});
   };
 
   const expandAssignmentSection = () => {
     setSelectedAssignment(null);
     setMsInfo(null);
+    resetQuestionPaperState();
     setBulkProgress({});
     setExpectedPages(null);
     setExpectedPagesInput("");
@@ -1330,6 +1357,7 @@ useEffect(() => {
         setSelectedClassroom(classroom);
         setSelectedAssignment(assignment);
         setMsInfo(null);
+        applyQuestionPaperStateFrom(assignment);
         setBulkProgress({});
         setExpectedPages(assignment.expectedPages ?? null);
         setExpectedPagesInput(
@@ -1343,7 +1371,10 @@ useEffect(() => {
             setMsInfo(msRes.data.fileId ? msRes.data : null);
           }
         } catch {
-          if (!cancelled) setMsInfo(null);
+          if (!cancelled) {
+            setMsInfo(null);
+            applyQuestionPaperStateFrom(assignment);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -1432,6 +1463,8 @@ useEffect(() => {
       setShowExpectedPagesEdit(true);
       return;
     }
+    const preferV2ForClassified =
+      canMarkV2 && /classified|compiled|workbook/i.test(selectedAssignment?.title || "");
     setGuidanceModal(
       intent === "priority"
         ? { priority: true, student }
@@ -1444,7 +1477,7 @@ useEffect(() => {
         : intent === "normalBulk"
         ? { bulk: true, normalBulk: true }
         : isBatch
-        ? { batch: true }
+        ? { batch: true, ...(preferV2ForClassified ? { engine: "v2" } : {}) }
         : student
         ? { student }
         : { bulk: true }
@@ -2616,8 +2649,13 @@ useEffect(() => {
           const originalAiResult = enrichedResult
             ? JSON.parse(JSON.stringify(enrichedResult))
             : null;
+          const integrityIncomplete = Boolean(
+            enrichedResult?.markingFailed || enrichedResult?.markingIncomplete ||
+            enrichedResult?.markingCompleteness?.markingFailed ||
+            enrichedResult?.markingCompleteness?.markingIncomplete
+          );
           resultMap[student.submissionId] = success
-            ? { status: "done", result: enrichedResult, originalAiResult }
+            ? { status: integrityIncomplete ? "needs_review" : "done", result: enrichedResult, originalAiResult }
             : { status: "error", error };
 
           if (!success && isViewingThisAssignment()) {
@@ -2644,7 +2682,7 @@ useEffect(() => {
               setSavedResults((prev) => ({
                 ...prev,
                 [student.submissionId]: {
-                  status: "done",
+                  status: integrityIncomplete ? "needs_review" : "done",
                   result: enrichedResult,
                   aiOriginalResult: originalAiResult,
                   totalMarks: resolveTotalMarksFromResult(enrichedResult),
@@ -2652,7 +2690,8 @@ useEffect(() => {
               }));
             }
 
-            await api.post("/submission-files/save-results", {
+            try {
+              await api.post("/submission-files/save-results", {
               assignmentId: assignId,
               submissionId: student.submissionId,
               studentId: student.studentId,
@@ -2661,7 +2700,15 @@ useEffect(() => {
               mode: saveMode,
               provider: isV2(jobEngine) ? "gemini-v2-batch" : "gemini-batch",
               result: enrichedResult,
-            }).catch((e) => console.error("save-results:", e.message));
+              });
+            } catch (e) {
+              const message = e?.response?.data?.message || e.message || "Failed to save marking result";
+              resultMap[student.submissionId] = { status: "save_failed", result: enrichedResult, originalAiResult, error: message };
+              if (isViewingThisAssignment()) {
+                setSavedResults((prev) => ({ ...prev, [student.submissionId]: { ...prev[student.submissionId], status: "save_failed", error: message } }));
+                recordStudentMarkingError(student.submissionId, message, e);
+              }
+            }
           }
         }
 
@@ -3447,7 +3494,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     try {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         const sid = resultModal.student.submissionId || submissionId;
-        const { canonical, saved } = await persistMarkingResult(finalResult, sid);
+        const { canonical, saved } = await persistMarkingResult(finalResult, sid, {
+          origin: "confirm",
+        });
         setResultModal((prev) => ({
           ...prev,
           result: canonical,
