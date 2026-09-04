@@ -2714,7 +2714,11 @@ window.open(url);
         savedResults,
         classroomSyncedGrades,
         fallbackTotal: total,
-        maxPoints: selectedAssignment?.maxPoints ?? effectiveMaxTotal,
+        // AssistantSubmissionViewer has no `selectedAssignment` object (that is
+        // manager-viewer state). Referencing it crashed every single-paper
+        // return with a ReferenceError, which the generic UI mislabeled as a
+        // stale-browser/ hard-refresh problem.
+        maxPoints: maxGrade ?? effectiveMaxTotal,
       });
       
       const pdfSummary = resolvePdfSummary(resultModal.student.submissionId, resultModal.result);
