@@ -69,7 +69,6 @@ import AddMarkingQuestionBar, {
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
 import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
-import { base64ToFile } from "../../utils/base64ToFile";
 import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
 import {
@@ -423,17 +422,20 @@ export default function ManagerLoginCss() {
       // does; retry transient blips instead of falling straight to the
       // pre-signed-URL fallback (which itself calls the same flaky endpoint).
       entry = await withPdfFetchRetry(async () => {
-        const res = await api.get(`/external-grading/submissions/${submissionId}/pdfs`, { timeout: 120000 });
-        const data = res.data || {};
-        if (!data.submission?.available || !data.submission?.base64) {
-          throw new Error("Student submission PDF is not available for this entry");
-        }
-        if (!data.markScheme?.available || !data.markScheme?.base64) {
-          throw new Error("Mark scheme PDF is not available for this entry");
-        }
-        const studentFile = base64ToFile(data.submission.base64, `submission_${submissionId}.pdf`);
-        const msFile = base64ToFile(data.markScheme.base64, `markscheme_${submissionId}.pdf`);
-        return { studentFile, msFile };
+        const [studentRes, msRes] = await Promise.all([
+          api.get(`/external-grading/submissions/${submissionId}/pdfs/submission`, {
+            responseType: "blob",
+            timeout: 120000,
+          }),
+          api.get(`/external-grading/submissions/${submissionId}/pdfs/markScheme`, {
+            responseType: "blob",
+            timeout: 120000,
+          }),
+        ]);
+        return {
+          studentFile: new File([studentRes.data], `submission_${submissionId}.pdf`, { type: "application/pdf" }),
+          msFile: new File([msRes.data], `markscheme_${submissionId}.pdf`, { type: "application/pdf" }),
+        };
       });
     } catch (primaryErr) {
       // /pdfs blocked (e.g. already marked) — try fresh pre-signed URLs instead.
@@ -1859,19 +1861,15 @@ export default function ManagerLoginCss() {
   };
 
   // Re-view the annotated feedback PDF that was published to LoginCSS (any device).
-  // Mirrors the /pdfs envelope: { feedback: { available, base64 } } — base64-only
-  // (no presigned URL) to avoid the R2 CORS problem of fetching the URL in-browser.
+  // Fetch through Sahahly as a binary stream, avoiding both R2 CORS and base64's
+  // extra memory/transfer overhead.
   const viewFeedback = async (student) => {
     try {
-      const res = await api.get(
-        `/external-grading/submissions/${student.submissionId}/feedback`,
-        { timeout: 120000 }
-      );
-      const feedback = res.data?.feedback || {};
-      if (!feedback.available || !feedback.base64) {
-        return toast.error("No feedback PDF available for this submission");
-      }
-      const file = base64ToFile(feedback.base64, `feedback_${student.submissionId}.pdf`);
+      const res = await api.get(`/external-grading/submissions/${student.submissionId}/feedback/file`, {
+        responseType: "blob",
+        timeout: 120000,
+      });
+      const file = new File([res.data], `feedback_${student.submissionId}.pdf`, { type: "application/pdf" });
       await assertPdfBlob(file, "Feedback");
       window.open(URL.createObjectURL(file), "_blank", "noopener,noreferrer");
     } catch (err) {
