@@ -172,7 +172,7 @@ function RequestUsageBar({ used, limit, rangeLabel }) {
     <div className="tu-request-panel">
       <div className="tu-request-panel-header">
         <div>
-          <h3>AI marking requests</h3>
+          <h3>Recorded AI operations</h3>
           <p>
             {cap
               ? `${formatNum(count)} of ${formatNum(cap)} requests used · ${rangeLabel}`
@@ -200,8 +200,8 @@ function RequestUsageBar({ used, limit, rangeLabel }) {
       </div>
       {cap ? (
         <p className="tu-request-panel-foot">
-          Monthly VPS budget from <code>AI_REQUEST_MONTHLY_LIMIT</code>. Each mark, batch job, or
-          priority run counts as one request.
+          Monthly dashboard budget from <code>AI_REQUEST_MONTHLY_LIMIT</code>. This counts saved
+          marking, correction, and edit usage records; it is not Gemini's raw HTTP request count.
         </p>
       ) : (
         <p className="tu-request-panel-foot">
@@ -255,11 +255,16 @@ const DATE_COLUMN = {
 
 const TOKEN_COLUMNS = [
   { key: "input", label: "Input", numeric: true, render: (r) => formatNum(r.inputTokens) },
-  { key: "output", label: "Output", numeric: true, render: (r) => formatNum(r.outputTokens) },
+  { key: "freshInput", label: "Fresh input", numeric: true, render: (r) => formatNum(r.freshInputTokens || Math.max(0, (r.inputTokens || 0) - (r.cachedContentTokens || 0))) },
+  { key: "cached", label: "Cached input", numeric: true, render: (r) => formatNum(r.cachedContentTokens) },
+  { key: "answer", label: "Answer output", numeric: true, render: (r) => formatNum(r.candidatesTokens || Math.max(0, (r.outputTokens || 0) - (r.thoughtsTokens || 0))) },
+  { key: "thinking", label: "Thinking", numeric: true, render: (r) => formatNum(r.thoughtsTokens) },
+  { key: "tools", label: "Tool input", numeric: true, render: (r) => formatNum(r.toolUseTokens) },
+  { key: "output", label: "Billable output", numeric: true, render: (r) => formatNum(r.outputTokens) },
   { key: "total", label: "Total", numeric: true, render: (r) => formatNum(r.totalTokens) },
   { key: "costUsd", label: "Cost (USD)", numeric: true, money: true, render: (r) => formatCostUsd(r.costUsd) },
   { key: "costEgp", label: "Cost (EGP)", numeric: true, money: true, render: (r) => formatCostEgp(r.costEgp) },
-  { key: "requests", label: "Requests", numeric: true, render: (r) => r.requestCount },
+  { key: "requests", label: "AI operations", numeric: true, render: (r) => r.requestCount },
 ];
 
 function tokenColumns(showCosts) {
@@ -825,7 +830,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         )}
         <div className="tu-summary-card">
           <h3 className="tu-num">{formatNum(grandRequestCount)}</h3>
-          <span>{tab === "reports" ? "Report deliveries" : "Marking requests"}</span>
+          <span>{tab === "reports" ? "Report deliveries" : "AI operations"}</span>
         </div>
       </div>
 

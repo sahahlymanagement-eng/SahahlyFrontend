@@ -436,7 +436,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     }
   };
 
-  const resolveEligibleForMarking = async (requireSubmitted = false) => {
+  const resolveEligibleForMarking = async (requireSubmitted = false, ignoreSelection = false) => {
     toast.info(
       markingSelection.selectedCount
         ? `Preparing ${markingSelection.selectedCount} selected student(s)…`
@@ -445,7 +445,7 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
     const result = await loadEligibleStudentsForMarking(api, {
       assignmentId: selectedAssignment._id,
       studentsUrl: studentsMarkingUrl,
-      selectedIds: markingSelection.selectedIds,
+      selectedIds: ignoreSelection ? new Set() : markingSelection.selectedIds,
       requireSubmitted,
     });
 
@@ -1440,8 +1440,10 @@ useEffect(() => {
         ? { priorityBulk: true }
         : intent === "v2"
         ? { v2: true, student }
-        : intent === "batchV2"
+      : intent === "batchV2"
         ? { batch: true, engine: "v2" }
+        : intent === "automaticBatch"
+        ? { batch: true, automaticBatch: true }
         : intent === "normalBulk"
         ? { bulk: true, normalBulk: true }
         : isBatch
@@ -2731,7 +2733,20 @@ useEffect(() => {
 
 
 // ── Submit batch — memory setup + upload + submit, then hand off to pollBatchJob
-const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null, engine = "v1") => {
+const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null, engine = "v1", automaticBatch = false) => {
+  if (automaticBatch && (expectedPages == null || Number(expectedPages) <= 0)) {
+    toast.warn("Set the expected page count before submitting automatic marking.");
+    setShowExpectedPagesEdit(true);
+    return;
+  }
+  if (automaticBatch && (!examBoardGuidance.board || !examBoardGuidance.subjectKey)) {
+    toast.warn("Select the exam board and subject before submitting automatic marking.");
+    return;
+  }
+  if (automaticBatch && !msInfo?.fileId) {
+    toast.warn("Attach the mark scheme before submitting automatic marking.");
+    return;
+  }
   const base = engineBasePath(engine);
   const selectedModel = pickValidGeminiModel(
     geminiModels,
@@ -2746,7 +2761,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
   // 00b30c1: fetch students (all or selected) across pages
   let eligible;
   try {
-    const loaded = await resolveEligibleForMarking(true);
+    const loaded = await resolveEligibleForMarking(true, automaticBatch);
     if (!loaded) return;
     eligible = loaded.eligible;
   } catch (err) {
@@ -2771,6 +2786,33 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
 
   const guidanceValue = guidanceForForm(guidanceText);
   const assignId = selectedAssignment._id;
+
+  if (automaticBatch) {
+    try {
+      const { data } = await api.post("/automatic-batch-queue", {
+        flow: "classroom",
+        assignmentId: assignId,
+        assignmentName: selectedAssignment.title,
+        classroomId: selectedClassroom?._id ?? selectedAssignment.classroomId,
+        classroomName: selectedClassroom?.name,
+        submissions: eligible.map((s) => ({ submissionId: s.submissionId, studentId: s.studentId, name: s.name, studentName: s.name, state: s.state })),
+        config: {
+          markingMode: mode,
+          guidance: guidanceValue,
+          geminiModel: selectedModel,
+          chunkSize: resolveMarkingChunkSize(selectedModel),
+          totalGrade: selectedAssignment.maxPoints,
+          subjectId: selectedAssignment.subjectId,
+          ...examBoardGuidance.getExamBoardFields(),
+        },
+      });
+      const ahead = Number(data?.ahead || 0);
+      toast.success(ahead ? `Auto batch running, ${ahead} assignment${ahead === 1 ? "" : "s"} in queue in front of this one.` : "Automatic batch queued — it will start next.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Could not queue automatic batch");
+    }
+    return;
+  }
 
   setBatchStopped(assignId, false);
 
@@ -2950,6 +2992,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     jobId,
     batchStudents: succeeded.map((r) => r.student),
   }));
+  toast.success("Batch submitted successfully.");
 
   // Step 3 — hand off to standalone poller
   pollBatchJob(jobId, {
@@ -3193,7 +3236,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     } else if (guidanceModal.batch) {
       const engine = guidanceModal.engine || "v1";
       setGuidanceModal(null);
-      runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel), engine);
+      runBatchMark(g, mode, pickValidGeminiModel(geminiModels, geminiModel), engine, !!guidanceModal.automaticBatch);
     } else if (guidanceModal.v2) {
       setGuidanceModal(null);
       runMarkStudentV2(guidanceModal.student, g, mode);
@@ -4191,7 +4234,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             }
                           }}
                           disabled={bulkMarking || batchStarting}
-                          style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
+                          title="Submit one batch job using the existing batch-marking flow"
                         >
                           {batchJob?.phase === "uploading"  && <><span className="pm-spinner" /> {isV2(batchJob.engine) ? "Indexing + uploading…" : "Uploading…"}</>}
                           {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
@@ -4200,6 +4243,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
                             <><FiLayers size={13} /> {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}</>
                           )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="msv-btn-ai"
+                          onClick={() => openGuidanceModal(null, false, "automaticBatch")}
+                          disabled={bulkMarking || batchStarting || ["uploading", "submitting", "processing"].includes(batchJob?.phase)}
+                          title="Queue the whole assignment for background marking; the tab and laptop may be closed"
+                          style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)", minHeight: 46, minWidth: 230, padding: "10px 18px", fontSize: 14, fontWeight: 800 }}
+                        >
+                          <FiLayers size={16} /> Submit Automatic Batch
                         </button>
 
                         <button

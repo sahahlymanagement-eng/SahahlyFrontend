@@ -87,7 +87,7 @@ export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 export let USD_TO_EGP_RATE = 50;
 export let CACHED_INPUT_RATE_FACTOR = 0.25;
 export let BATCH_RATE_FACTOR = 0.5;
-export let PRIORITY_RATE_FACTOR = 1.85;
+export let PRIORITY_RATE_FACTOR = 1.8;
 
 export function setUsdToEgpRate(rate) {
   const n = Number(rate);
@@ -160,7 +160,6 @@ export function estimateMarkingCost(modelId, tokenUsage, options = {}) {
 
   const prompt = Number(tokenUsage.inputTokens) || 0;
   const cached = Number(tokenUsage.cachedContentTokens) || 0;
-  const toolUse = Number(tokenUsage.toolUseTokens) || 0;
   const candidates =
     tokenUsage.candidatesTokens != null
       ? Number(tokenUsage.candidatesTokens) || 0
@@ -170,7 +169,7 @@ export function estimateMarkingCost(modelId, tokenUsage, options = {}) {
   const freshInput =
     tokenUsage.freshInputTokens != null
       ? Number(tokenUsage.freshInputTokens) || 0
-      : Math.max(0, prompt - cached) + toolUse;
+      : Math.max(0, prompt - cached);
 
   // Thinking tokens bill at the same rate as visible output.
   const billableOutput = candidates + thoughts;

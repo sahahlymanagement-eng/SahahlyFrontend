@@ -62,6 +62,7 @@ function buildNavSections(counts) {
         { icon: <FiUsers />, label: "Google Accounts", path: "/director/google-accounts" },
         { icon: <FiBookOpen />, label: "Course Management", path: "/director/courses" },
         { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
+        { icon: <FiLayers />, label: "Automatic Batch Queue", path: "/director/automatic-batch-queue" },
         {
           icon: <FiUploadCloud />,
           label: "Mariam Gabalawy",

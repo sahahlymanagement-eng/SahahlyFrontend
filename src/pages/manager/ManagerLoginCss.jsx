@@ -881,8 +881,8 @@ export default function ManagerLoginCss() {
   // Narrow a roster to the ticked rows (an empty selection means the whole
   // assignment) and drop anything already marked or published. Returns null —
   // after explaining why — when nothing is left to mark.
-  const resolveEligibleForMarking = (roster) => {
-    const selectedIds = markingSelection.selectedIds;
+  const resolveEligibleForMarking = (roster, ignoreSelection = false) => {
+    const selectedIds = ignoreSelection ? new Set() : markingSelection.selectedIds;
     const pool = selectedIds.size
       ? roster.filter((s) => s.submissionId != null && selectedIds.has(s.submissionId))
       : roster;
@@ -1008,7 +1008,7 @@ export default function ManagerLoginCss() {
     );
     setGuidanceModal(null);
     if (!gm) return;
-    if (gm.batch) runBatchMark(resolvedGuidance, markingModeModal);
+    if (gm.batch) runBatchMark(resolvedGuidance, markingModeModal, !!gm.automaticBatch);
     else if (gm.priorityBulk) runBulkMark(resolvedGuidance, markingModeModal, "priority");
     else if (gm.bulk) runBulkMark(resolvedGuidance, markingModeModal, provider);
     else if (gm.priority) runMarkSubmission(gm.student, resolvedGuidance, markingModeModal, "priority");
@@ -1032,7 +1032,11 @@ export default function ManagerLoginCss() {
     if (guidanceValue) fd.append("guidance", guidanceValue);
     examBoardGuidance.appendExamBoardFields(fd);
     if (selectedAssignment?.id != null) {
-      appendMarkingContext(fd, { assignmentId: String(selectedAssignment.id) });
+      appendMarkingContext(fd, {
+        gradingPartnerSlug: "logincss",
+        partnerAssignmentId: String(selectedAssignment.id),
+        assignmentTitle: selectedAssignment.name || selectedAssignment.title,
+      });
     }
     if (provider !== "claude") fd.append("geminiModel", selectedModel);
     fd.append("chunkSize", String(chunkSizeForGeminiModel(selectedModel)));
@@ -1288,9 +1292,26 @@ export default function ManagerLoginCss() {
     [selectedAssignment?.id, loadAll]
   );
 
-  const runBatchMark = async (guidanceText, mode = "normal") => {
+  const runBatchMark = async (guidanceText, mode = "normal", automaticBatch = false) => {
     if (!selectedAssignment || selectedAssignment.id == null) {
       toast.warn("Batch marking needs a real assignment — pick an assignment with a LoginCSS id.");
+      return;
+    }
+    if (automaticBatch && (assignmentSettings.settings.expectedPages == null || Number(assignmentSettings.settings.expectedPages) <= 0)) {
+      toast.warn("Set the expected page count before submitting automatic marking.");
+      return;
+    }
+    if (automaticBatch && (!examBoardGuidance.board || !examBoardGuidance.subjectKey)) {
+      toast.warn("Select the exam board and subject before submitting automatic marking.");
+      return;
+    }
+    const configuredTotal = resolvePartnerAssignmentMax({
+      maxGrade: assignmentSettings.settings.maxGrade,
+      inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+      partnerGrade: selectedAssignment.grade,
+    });
+    if (automaticBatch && (configuredTotal == null || Number(configuredTotal) <= 0)) {
+      toast.warn("Set the assignment total marks before submitting automatic marking.");
       return;
     }
     const assignId = String(selectedAssignment.id);
@@ -1298,7 +1319,7 @@ export default function ManagerLoginCss() {
     // The whole assignment, not the page on screen — `submissions` only holds
     // the current page now. Ticked rows narrow it further.
     const roster = await fetchAssignmentRoster(selectedAssignment);
-    const candidates = resolveEligibleForMarking(roster);
+    const candidates = resolveEligibleForMarking(roster, automaticBatch);
     if (!candidates) return;
 
     // Advisory page-count / orientation review before any tokens are spent.
@@ -1318,6 +1339,24 @@ export default function ManagerLoginCss() {
 
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
     if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
+
+    if (automaticBatch) {
+      try {
+        const { data } = await api.post("/automatic-batch-queue", {
+          flow: "external",
+          assignmentId: String(selectedAssignment.id),
+          assignmentName: selectedAssignment.name || selectedAssignment.title,
+          classroomName: selectedAssignment.classroomName || selectedAssignment.classroom || null,
+          submissions: eligible.map((s) => ({ submissionId: s.submissionId, studentId: s.studentId, name: s.name, studentName: s.name, state: s.state })),
+          config: { markingMode: mode, guidance: guidanceForForm(guidanceText), geminiModel: selectedModel, chunkSize: chunkSizeForGeminiModel(selectedModel), totalGrade: configuredTotal, ...examBoardGuidance.getExamBoardFields() },
+        });
+        const ahead = Number(data?.ahead || 0);
+        toast.success(ahead ? `Auto batch running, ${ahead} assignment${ahead === 1 ? "" : "s"} in queue in front of this one.` : "Automatic batch queued — it will start next.");
+      } catch (err) {
+        toast.error(err.response?.data?.message || "Could not queue automatic batch");
+      }
+      return;
+    }
 
     setBatchStopped(assignId, false);
     patchBatchJob(assignId, {
@@ -1420,6 +1459,7 @@ export default function ManagerLoginCss() {
     }
 
     patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
+    toast.success("Batch submitted successfully.");
     pollBatchJob(jobId, { assignmentId: assignId, mode, geminiModel: selectedModel });
   };
 
@@ -2289,7 +2329,6 @@ export default function ManagerLoginCss() {
                             ? "Submit one Sahahly batch job for the selected submissions"
                             : "Submit one Sahahly batch job for all unmarked submissions"
                       }
-                      style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                     >
                       {batchJob?.phase === "uploading" && <><span className="pm-spinner" /> Uploading…</>}
                       {batchJob?.phase === "submitting" && <><span className="pm-spinner" /> Submitting…</>}
@@ -2298,10 +2337,17 @@ export default function ManagerLoginCss() {
                       {(!batchJob || !["uploading", "submitting", "processing", "error"].includes(batchJob.phase)) && (
                         <>
                           <FiLayers size={13} />{" "}
-                          {markingActionLabel("Mark batch", "Mark Selected (Batch)", markingSelection.selectedCount)}
+                          {markingActionLabel("Mark All (Batch)", "Mark Selected (Batch)", markingSelection.selectedCount)}
                         </>
                       )}
                     </button>
+                    <button
+                      className="msv-btn-ai"
+                      onClick={() => openGuidanceModal(null, { batch: true, automaticBatch: true })}
+                      disabled={selectedAssignment.id == null || bulkMarking || priorityBulkRunning || ["uploading", "submitting", "processing"].includes(batchJob?.phase)}
+                      title="Queue the whole assignment for background marking; the tab and laptop may be closed"
+                      style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)", minHeight: 46, minWidth: 230, padding: "10px 18px", fontSize: 14, fontWeight: 800 }}
+                    ><FiLayers size={16} /> Submit Automatic Batch</button>
                     </>
                     )}
                     {/* Reviewers publish too, so this sits outside the canMark
