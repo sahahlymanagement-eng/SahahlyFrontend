@@ -8,7 +8,7 @@ import { downloadBlob } from "../../utils/downloadBlob";
 import { withPdfFetchRetry } from "../../utils/studentPdfCache";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
-  FiEdit3, FiDownloadCloud, FiRotateCcw, FiRotateCw,
+  FiEdit3, FiDownloadCloud, FiRotateCcw, FiRotateCw, FiUsers,
 } from "react-icons/fi";
 import Pagination from "../../components/Pagination";
 import usePersistedState from "../../hooks/usePersistedState";
@@ -233,6 +233,17 @@ export default function GradingProviderPage({ slug, label }) {
   const [loadingSearchRoster, setLoadingSearchRoster] = useState(false);
   const searchRosterRef = useRef(null);
   const [assignmentSearch, setAssignmentSearch] = useState("");
+  // Classes/groups from IGSpaces' discovery feed (docs/sahahly.md) — empty for
+  // a provider with no external-integrations platform behind it (LoginCSS) or
+  // nothing synced yet, in which case the class step below is skipped
+  // entirely and the assignment list behaves exactly as it did before.
+  const [classes, setClasses] = useState([]);
+  const [classSearch, setClassSearch] = useState("");
+  // { groupId, groupName } — groupId is null for the synthetic "No class"
+  // bucket (assignments predating the classroom field, or never assigned to
+  // one). Two-step drill-down mirroring ManagerSubmissionViewer's
+  // classroom -> assignment flow, not a filter you can clear.
+  const [selectedClass, setSelectedClass] = usePersistedState(`${slug}:class`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`${slug}:assignment`, null);
   // Read by loadAll and the mount effect so neither has to re-create itself
   // every time the selection changes. Seeded with the persisted value, then
@@ -748,6 +759,7 @@ export default function GradingProviderPage({ slug, label }) {
           name: a.name || "Unassigned",
           grade: a.grade ?? null,
           dueDate: a.due_date || null,
+          classroom: a.classroom || null,
           count: a.count ?? 0,
           graded: a.graded ?? 0,
           marked: a.marked ?? 0,
@@ -768,6 +780,23 @@ export default function GradingProviderPage({ slug, label }) {
       }
     } finally {
       setLoadingAssignments(false);
+    }
+  }, [BASE]);
+
+  // Distinct classes for the drill-down step ahead of the assignment picker —
+  // a no-op (empty array) for a provider with nothing synced, so this never
+  // surfaces an error to the user. `loadingClasses` gates the first paint so
+  // the assignment list (shown when there turn out to be no classes) doesn't
+  // flash on screen for a moment before the class step replaces it.
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const loadClasses = useCallback(async () => {
+    try {
+      const { data } = await api.get(`${BASE}/classes`);
+      setClasses(data?.classes || []);
+    } catch (err) {
+      console.error("Failed to load classes", err);
+    } finally {
+      setLoadingClasses(false);
     }
   }, [BASE]);
 
@@ -834,6 +863,7 @@ export default function GradingProviderPage({ slug, label }) {
   // Reload whatever the manager is currently looking at.
   const loadAll = useCallback(async () => {
     await loadAssignments();
+    loadClasses();
     if (selectedAssignmentRef.current) {
       await loadAssignmentSubmissions(selectedAssignmentRef.current, pageRef.current);
       // A cached search roster would otherwise keep serving pre-refresh rows.
@@ -845,7 +875,7 @@ export default function GradingProviderPage({ slug, label }) {
         }
       }
     }
-  }, [loadAssignments, loadAssignmentSubmissions, fetchAssignmentRoster, applySearchRoster]);
+  }, [loadAssignments, loadClasses, loadAssignmentSubmissions, fetchAssignmentRoster, applySearchRoster]);
 
   // ── Reconcile our copy against the provider ──
   // The list above is served from our own database, which the webhook keeps in
@@ -994,12 +1024,13 @@ export default function GradingProviderPage({ slug, label }) {
 
   useEffect(() => {
     loadAssignments();
+    loadClasses();
     // An assignment persisted from a previous visit is still open on mount, so
     // its submissions need fetching too.
     if (selectedAssignmentRef.current) {
       loadAssignmentSubmissions(selectedAssignmentRef.current, pageRef.current);
     }
-  }, [loadAssignments, loadAssignmentSubmissions]);
+  }, [loadAssignments, loadClasses, loadAssignmentSubmissions]);
 
   // Saved prompts and the model list only feed the marking controls.
   useEffect(() => {
@@ -2005,6 +2036,24 @@ toast.success("Result cleared — you can mark again");
     setSubmissions([]);
   };
 
+  const selectClass = (c) => {
+    setSelectedClass(c);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+  };
+
+  const backToClasses = () => {
+    setSelectedClass(null);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+    setSearch("");
+    setPage(1);
+    applySearchRoster(null);
+    setSubmissions([]);
+  };
+
   const sendTeamAlert = async (delegationId) => {
     try {
       setSendingAlertId(delegationId);
@@ -2028,10 +2077,75 @@ toast.success("Result cleared — you can mark again");
     );
   }, [assignmentIndex, selectedAssignment]);
 
+  // Assignments with no classroom at all (predate the field, or the partner
+  // never assigned one) still need a way in — a synthetic bucket rather than
+  // dropping them from the picker entirely.
+  // Per class: how many of its assignments actually have a submission, and how
+  // many submissions that adds up to — both from `assignments` (grouped from
+  // real submission docs, so every row here is inherently "active" already),
+  // NOT the class's own `assignmentCount` (from the discovery sync index,
+  // which lists every assignment IGSpaces knows about, including ones nobody
+  // has submitted to yet). A class whose only known assignments are all still
+  // empty would otherwise show up in the picker with a nonzero-looking
+  // assignment count and then drill down to nothing. `null` is the "No class"
+  // bucket for assignments with no classroom at all.
+  const statsByClass = useMemo(() => {
+    const map = new Map();
+    for (const a of assignments) {
+      const groupId = a.classroom?.group_id ?? null;
+      const entry = map.get(groupId) || { assignmentCount: 0, submissionCount: 0 };
+      entry.assignmentCount += 1;
+      entry.submissionCount += a.count ?? 0;
+      map.set(groupId, entry);
+    }
+    return map;
+  }, [assignments]);
+
+  const classOptions = useMemo(() => {
+    const opts = classes
+      .filter((c) => (statsByClass.get(c.groupId)?.assignmentCount || 0) > 0)
+      .map((c) => ({
+        groupId: c.groupId,
+        groupName: c.groupName,
+        assignmentCount: statsByClass.get(c.groupId)?.assignmentCount || 0,
+        submissionCount: statsByClass.get(c.groupId)?.submissionCount || 0,
+      }));
+    const unclassed = statsByClass.get(null);
+    if (unclassed?.assignmentCount > 0) {
+      opts.push({
+        groupId: null,
+        groupName: "No class",
+        assignmentCount: unclassed.assignmentCount,
+        submissionCount: unclassed.submissionCount,
+      });
+    }
+    return opts;
+  }, [classes, statsByClass]);
+  const cq = classSearch.trim().toLowerCase();
+  const filteredClassOptions = cq
+    ? classOptions.filter((c) => c.groupName.toLowerCase().includes(cq))
+    : classOptions;
+
+  // 'loading' avoids flashing the assignment list before classes are known to
+  // exist at all (see the mount effect); 'skip' means nothing to group by —
+  // no synced classes and every assignment is classless — so the picker
+  // behaves exactly as it did before this feature existed.
+  //
+  // classOptions now also depends on `assignments` (to know which classes have
+  // an active assignment, not just a synced one) — so this must wait on BOTH
+  // loads, or a class list that resolves before the assignment list would
+  // read as "no active classes" for a moment and flash the ungrouped list.
+  const classStepStatus =
+    loadingClasses || loadingAssignments ? "loading" : classOptions.length > 0 ? "show" : "skip";
+  const showClassStep = classStepStatus === "show";
+
   const aq = assignmentSearch.trim().toLowerCase();
+  const classFiltered = !showClassStep
+    ? assignments
+    : assignments.filter((a) => (a.classroom?.group_id ?? null) === selectedClass?.groupId);
   const filteredAssignments = aq
-    ? assignments.filter((a) => (a.name || "").toLowerCase().includes(aq))
-    : assignments;
+    ? classFiltered.filter((a) => (a.name || "").toLowerCase().includes(aq))
+    : classFiltered;
 
   // Client-side pagination of the assignment selection list (search filters the
   // whole list first, then we slice into pages).
@@ -2198,96 +2312,178 @@ toast.success("Result cleared — you can mark again");
         <div className="ma-content">
           <div className="ma-layout msv-collapsible-layout">
 
-            {/* ── ASSIGNMENT SELECTION ── */}
-            {!selectedAssignment ? (
+            {/* Neither list is known yet — avoids flashing the assignment
+                picker for an instant before the class step (once loaded)
+                turns out to apply and replaces it. */}
+            {classStepStatus === "loading" && !selectedClass && !selectedAssignment ? (
               <div className="ma-column">
-                <p className="ma-section-label msv-section-header-expanded">
-                  ▼ Select Assignment
-                  <span className="ma-panel-count" style={{ marginLeft: 8 }}>
-                    {assignments.length} assignment{assignments.length === 1 ? "" : "s"} · {listTotal} submissions
-                  </span>
-                </p>
-                <input
-                  className="ma-search-input"
-                  placeholder="Search assignments..."
-                  value={assignmentSearch}
-                  onChange={(e) => { setAssignmentSearch(e.target.value); setAssignmentPage(1); }}
-                />
-                <div className="ma-scroll-list">
-                  {loadingAssignments ? (
-                    <p className="ma-loading-msg">Loading…</p>
-                  ) : sessionError ? (
-                    <p className="ma-empty-msg" style={{ color: "var(--danger)" }}>
-                      {sessionError}
-                    </p>
-                  ) : filteredAssignments.length === 0 ? (
-                    <p className="ma-empty-msg">
-                      {assignmentSearch ? "No assignments match your search." : "No assignments found."}
-                    </p>
-                  ) : (
-                    visibleAssignments.map((a) => (
-                      <div
-                        key={a.key}
-                        className="ma-assignment-card"
-                        onClick={() => selectAssignment(a)}
-                      >
-                        <div className="ma-assignment-icon"><FiLayers size={14} /></div>
-                        <div className="ma-assignment-info">
-                          <span className="ma-assignment-title">{a.name}</span>
-                          <span className="ma-assignment-due">
-                            {a.id != null ? `#${a.id} · ` : ""}
-                            {a.count} submission{a.count === 1 ? "" : "s"}
-                            {a.grade != null ? ` · /${a.grade}` : ""}
-                            {a.dueDate ? (
-                              <>
-                                {" · "}
-                                <FiCalendar size={10} /> {new Date(a.dueDate).toLocaleDateString()}
-                              </>
-                            ) : ""}
-                          </span>
-                          {/* Renders only when the director delegated this
-                              assignment to the signed-in account. */}
-                          <GradingDeadlineBadge delegation={a.myDelegation} />
-                          {/* Renders only when the caller is the delegated
-                              manager on this assignment. */}
-                          <GradingTeamAlert
-                            teamDelegations={a.teamDelegations}
-                            onSendAlert={sendTeamAlert}
-                            sendingId={sendingAlertId}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                {!loadingAssignments && filteredAssignments.length > ASSIGNMENTS_PER_PAGE && (
-                  <Pagination
-                    page={safeAssignmentPage}
-                    totalPages={assignmentTotalPages}
-                    onPageChange={(p) => setAssignmentPage(p)}
-                  />
-                )}
+                <p className="ma-section-label msv-section-header-expanded">▼ Select Class</p>
+                <p className="ma-loading-msg">Loading…</p>
               </div>
             ) : (
-              <div
-                className="msv-section-collapsed"
-                onClick={backToAssignments}
-                onKeyDown={(e) => e.key === "Enter" && backToAssignments()}
-                role="button"
-                tabIndex={0}
-              >
-                <span className="msv-section-collapsed-chevron">▶</span>
-                <span className="msv-section-collapsed-text">
-                  Assignment: {selectedAssignment.name}
-                </span>
-                <button
-                  type="button"
-                  className="msv-section-change"
-                  onClick={(e) => { e.stopPropagation(); backToAssignments(); }}
+              <>
+            {/* ── CLASS SELECTION ──
+                IGSpaces-connected providers only (mariamgabalawy, drpeter) —
+                skipped entirely when there is nothing to group by (LoginCSS,
+                or a provider whose discovery sync hasn't run yet). */}
+            {showClassStep && (
+              !selectedClass ? (
+                <div className="ma-column">
+                  <p className="ma-section-label msv-section-header-expanded">▼ Select Class</p>
+                  <input
+                    className="ma-search-input"
+                    placeholder="Search classes..."
+                    value={classSearch}
+                    onChange={(e) => setClassSearch(e.target.value)}
+                  />
+                  <div className="ma-scroll-list">
+                    {loadingAssignments && !classOptions.length ? (
+                      <p className="ma-loading-msg">Loading…</p>
+                    ) : filteredClassOptions.length === 0 ? (
+                      <p className="ma-empty-msg">
+                        {classSearch ? "No classes match your search." : "No classes found."}
+                      </p>
+                    ) : (
+                      filteredClassOptions.map((c) => (
+                        <div
+                          key={c.groupId ?? "__none__"}
+                          className="ma-classroom-card"
+                          onClick={() => selectClass(c)}
+                        >
+                          <div className="ma-classroom-icon"><FiUsers size={15} /></div>
+                          <div className="ma-classroom-info">
+                            <span className="ma-classroom-name">{c.groupName}</span>
+                            <span className="ma-classroom-section">
+                              {c.assignmentCount} assignment{c.assignmentCount === 1 ? "" : "s"}
+                              {" · "}
+                              {c.submissionCount} submission{c.submissionCount === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="msv-section-collapsed"
+                  onClick={backToClasses}
+                  onKeyDown={(e) => e.key === "Enter" && backToClasses()}
+                  role="button"
+                  tabIndex={0}
                 >
-                  [change]
-                </button>
-              </div>
+                  <span className="msv-section-collapsed-chevron">▶</span>
+                  <span className="msv-section-collapsed-text">Class: {selectedClass.groupName}</span>
+                  <button
+                    type="button"
+                    className="msv-section-change"
+                    onClick={(e) => { e.stopPropagation(); backToClasses(); }}
+                  >
+                    [change]
+                  </button>
+                </div>
+              )
+            )}
+
+            {/* ── ASSIGNMENT SELECTION ── */}
+            {(!showClassStep || selectedClass) && (
+              !selectedAssignment ? (
+                <div className="ma-column">
+                  <p className="ma-section-label msv-section-header-expanded">
+                    ▼ Select Assignment
+                    <span className="ma-panel-count" style={{ marginLeft: 8 }}>
+                      {filteredAssignments.length} assignment{filteredAssignments.length === 1 ? "" : "s"}
+                      {" · "}
+                      {showClassStep
+                        ? statsByClass.get(selectedClass?.groupId ?? null)?.submissionCount ?? 0
+                        : listTotal}{" "}
+                      submissions
+                    </span>
+                  </p>
+                  <input
+                    className="ma-search-input"
+                    placeholder="Search assignments..."
+                    value={assignmentSearch}
+                    onChange={(e) => { setAssignmentSearch(e.target.value); setAssignmentPage(1); }}
+                  />
+                  <div className="ma-scroll-list">
+                    {loadingAssignments ? (
+                      <p className="ma-loading-msg">Loading…</p>
+                    ) : sessionError ? (
+                      <p className="ma-empty-msg" style={{ color: "var(--danger)" }}>
+                        {sessionError}
+                      </p>
+                    ) : filteredAssignments.length === 0 ? (
+                      <p className="ma-empty-msg">
+                        {assignmentSearch ? "No assignments match your search." : "No assignments in this class."}
+                      </p>
+                    ) : (
+                      visibleAssignments.map((a) => (
+                        <div
+                          key={a.key}
+                          className="ma-assignment-card"
+                          onClick={() => selectAssignment(a)}
+                        >
+                          <div className="ma-assignment-icon"><FiLayers size={14} /></div>
+                          <div className="ma-assignment-info">
+                            <span className="ma-assignment-title">{a.name}</span>
+                            <span className="ma-assignment-due">
+                              {a.id != null ? `#${a.id} · ` : ""}
+                              {a.count} submission{a.count === 1 ? "" : "s"}
+                              {a.grade != null ? ` · /${a.grade}` : ""}
+                              {a.dueDate ? (
+                                <>
+                                  {" · "}
+                                  <FiCalendar size={10} /> {new Date(a.dueDate).toLocaleDateString()}
+                                </>
+                              ) : ""}
+                            </span>
+                            {/* Renders only when the director delegated this
+                                assignment to the signed-in account. */}
+                            <GradingDeadlineBadge delegation={a.myDelegation} />
+                            {/* Renders only when the caller is the delegated
+                                manager on this assignment. */}
+                            <GradingTeamAlert
+                              teamDelegations={a.teamDelegations}
+                              onSendAlert={sendTeamAlert}
+                              sendingId={sendingAlertId}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {!loadingAssignments && filteredAssignments.length > ASSIGNMENTS_PER_PAGE && (
+                    <Pagination
+                      page={safeAssignmentPage}
+                      totalPages={assignmentTotalPages}
+                      onPageChange={(p) => setAssignmentPage(p)}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div
+                  className="msv-section-collapsed"
+                  onClick={backToAssignments}
+                  onKeyDown={(e) => e.key === "Enter" && backToAssignments()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="msv-section-collapsed-chevron">▶</span>
+                  <span className="msv-section-collapsed-text">
+                    Assignment: {selectedAssignment.name}
+                  </span>
+                  <button
+                    type="button"
+                    className="msv-section-change"
+                    onClick={(e) => { e.stopPropagation(); backToAssignments(); }}
+                  >
+                    [change]
+                  </button>
+                </div>
+              )
+            )}
+              </>
             )}
 
             {/* ── SUBMISSIONS FOR SELECTED ASSIGNMENT ── */}

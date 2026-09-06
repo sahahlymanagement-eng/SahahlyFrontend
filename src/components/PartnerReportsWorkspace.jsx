@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import {
   FiArrowLeft,
@@ -12,6 +12,7 @@ import {
   FiInfo,
   FiRefreshCw,
   FiSend,
+  FiUploadCloud,
   FiUsers,
   FiX,
 } from "react-icons/fi";
@@ -19,17 +20,22 @@ import {
   downloadPartnerCollectivePdf,
   downloadPartnerExecutivePdf,
   downloadPartnerMonthlyPdf,
+  getPartnerSubmissionStatusRows,
   listPartnerAssignments,
+  listPartnerClasses,
   listPartnerMonths,
   listPartnerSentHistory,
   listPartnerStudents,
   partnerReportErr,
   previewPartnerAssignmentReports,
   previewPartnerExecutiveReport,
+  publishPartnerAssignmentReportsToIgspaces,
+  publishPartnerMonthlyReportsToIgspaces,
   sendPartnerAssignmentReports,
   sendPartnerCollectiveReport,
   sendPartnerExecutiveReport,
   sendPartnerMonthlyReports,
+  sendPartnerSubmissionStatusReport,
 } from "../api/partnerReports";
 import { canManageReportLogos, canReportOnPartner } from "../utils/gradingAccess";
 import { useGradingDelegations } from "../context/GradingNotificationContext";
@@ -61,17 +67,24 @@ import "./PartnerReports.css";
  * with how many of the students it is about are actually reachable.
  */
 
+// `igspacesConnected` mirrors src/config/gradingProviders.js on the backend —
+// mariamgabalawy and drpeter publish assignment/monthly reports THROUGH
+// IGSpaces (R2 upload + payload with a URL) instead of WhatsApp, and only
+// they have a live roster for the Submission Status view. LoginCSS has no
+// IGSpaces platform behind it, so it keeps using WhatsApp for every report
+// kind exactly as before.
 const PARTNERS = [
-  { slug: "logincss", label: "LoginCSS" },
-  { slug: "mariamgabalawy", label: "Mariam Gabalawy" },
-  { slug: "drpeter", label: "Dr Peter" },
+  { slug: "logincss", label: "LoginCSS", igspacesConnected: false },
+  { slug: "mariamgabalawy", label: "Mariam Gabalawy", igspacesConnected: true },
+  { slug: "drpeter", label: "Dr Peter", igspacesConnected: true },
 ];
 
-const VIEWS = [
+const BASE_VIEWS = [
   { key: "assignment", label: "Assignment Reports", icon: FiClipboard },
   { key: "collective", label: "Collective Reports", icon: FiUsers },
   { key: "monthly", label: "Monthly Parent Reports", icon: FiCalendar },
   { key: "executive", label: "Executive Analysis", icon: FiBarChart2 },
+  { key: "submission_status", label: "Submission Status", icon: FiCheckSquare, igspacesOnly: true },
   { key: "contacts", label: "Contacts & Logo", icon: FiUsers },
   { key: "sent", label: "Reports Sent", icon: FiSend },
 ];
@@ -116,7 +129,13 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const [view, setView] = usePersistedState(`partnerReports:${variant}:view`, "assignment");
   const [showAutoSend, setShowAutoSend] = useState(false);
 
-  // ── Shared: assignments + students for the selected partner ──
+  // ── Shared: classes + assignments + students for the selected partner ──
+  // Classes are the IGSpaces "which group is this assignment in" half of the
+  // class → assignment feed (docs/sahahly.md) — a filter on the assignment
+  // picker, not a separate view, since every other view already reuses that
+  // picker unchanged.
+  const [classes, setClasses] = useState([]);
+  const [classFilter, setClassFilter] = useState(null); // group_id, or null = all
   const [assignments, setAssignments] = useState([]);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
   const [assignmentId, setAssignmentId] = useState(null);
@@ -126,10 +145,15 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const [selected, setSelected] = useState({});
   const [sending, setSending] = useState(false);
 
-  // Assignment-report preview state.
+  // Assignment-report preview state (WhatsApp-only partners).
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [edited, setEdited] = useState({});
+
+  // IGSpaces-publish result state (assignment + monthly, IGSpaces-connected
+  // partners only) — no preview/edit step, since the published content is
+  // fixed text or a fixed PDF, not a WhatsApp message a human can tweak.
+  const [publishResults, setPublishResults] = useState(null);
 
   // Once the grant resolves, settle on a partner this account may actually open —
   // including when a persisted choice is no longer permitted.
@@ -144,29 +168,110 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     () => PARTNERS.find((p) => p.slug === slug)?.label || slug || "Partner",
     [slug]
   );
+  const isIgspacesConnected = useMemo(
+    () => Boolean(PARTNERS.find((p) => p.slug === slug)?.igspacesConnected),
+    [slug]
+  );
+  const VIEWS = useMemo(
+    () => BASE_VIEWS.filter((v) => !v.igspacesOnly || isIgspacesConnected),
+    [isIgspacesConnected]
+  );
+
+  // Guards both fetches below against a fast partner switch: without it, an
+  // in-flight request for the PREVIOUS partner can resolve after the next
+  // one starts and overwrite its state with stale data — which is exactly
+  // what made the class chips (and their counts, computed from `assignments`)
+  // appear, disappear or show wrong numbers depending on which of the two
+  // independent requests happened to land last.
+  const assignmentsRequestRef = useRef(0);
 
   const loadAssignments = useCallback(async () => {
     if (!slug) return;
+    const requestId = ++assignmentsRequestRef.current;
     setLoadingAssignments(true);
     try {
       const data = await listPartnerAssignments(slug);
-      setAssignments(data.assignments || []);
+      if (assignmentsRequestRef.current !== requestId) return; // superseded
+      // "Active" only — an assignment with zero submissions has nothing to
+      // report on and is just noise here (it still exists for the Grading
+      // tab's picker and the automation cron, neither of which read this).
+      setAssignments((data.assignments || []).filter((a) => a.submissionCount > 0));
     } catch (err) {
+      if (assignmentsRequestRef.current !== requestId) return;
       toast.error(partnerReportErr(err, "Failed to load partner assignments"));
       setAssignments([]);
     } finally {
-      setLoadingAssignments(false);
+      if (assignmentsRequestRef.current === requestId) setLoadingAssignments(false);
     }
   }, [slug]);
 
   useEffect(() => {
-    // A new partner invalidates everything downstream of it.
+    if (!slug || !isIgspacesConnected) {
+      setClasses([]);
+      return undefined;
+    }
+    let cancelled = false;
+    listPartnerClasses(slug)
+      .then((rows) => {
+        if (!cancelled) setClasses(rows);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        toast.error(partnerReportErr(err, "Failed to load classes"));
+        setClasses([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, isIgspacesConnected]);
+
+  const filteredAssignments = useMemo(
+    () =>
+      classFilter == null
+        ? assignments
+        : assignments.filter((a) => a.classroom?.group_id === classFilter),
+    [assignments, classFilter]
+  );
+
+  // How many of THIS list's (already active-only) assignments fall in each
+  // class — not the class's own assignmentCount, which also counts
+  // zero-submission assignments this tab never shows.
+  const activeCountByClass = useMemo(() => {
+    const counts = new Map();
+    for (const a of assignments) {
+      const groupId = a.classroom?.group_id;
+      if (groupId == null) continue;
+      counts.set(groupId, (counts.get(groupId) || 0) + 1);
+    }
+    return counts;
+  }, [assignments]);
+  const classesWithActiveAssignments = useMemo(
+    () => classes.filter((c) => activeCountByClass.get(c.groupId) > 0),
+    [classes, activeCountByClass]
+  );
+
+  useEffect(() => {
+    // A new partner invalidates everything downstream of it — cleared
+    // immediately, not left to whichever fetch happens to resolve first, so
+    // the class chips can never be computed against one partner's classes
+    // and another partner's assignments for the brief window before both
+    // requests land.
     setAssignmentId(null);
     setStudents([]);
     setSelected({});
     setPreview(null);
+    setPublishResults(null);
+    setClassFilter(null);
+    setAssignments([]);
     loadAssignments();
   }, [slug, loadAssignments]);
+
+  // Submission Status only exists for IGSpaces-connected partners — bounce
+  // back to the assignment view if a persisted choice no longer applies
+  // (e.g. switching from Mariam Gabalawy to LoginCSS).
+  useEffect(() => {
+    if (!VIEWS.some((v) => v.key === view)) setView("assignment");
+  }, [VIEWS, view, setView]);
 
   const loadStudents = useCallback(
     async (forAssignmentId) => {
@@ -179,10 +284,12 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         );
         setStudents(data.students || []);
         setUnnamed(data.unnamed || 0);
-        // Preselect only the students a report can actually reach.
+        // A WhatsApp send can only reach a student with a saved number; an
+        // IGSpaces publish has no such requirement, so every student starts
+        // selected there.
         const next = {};
         for (const s of data.students || []) {
-          if (s.hasContact) next[s.studentKey] = true;
+          if (isIgspacesConnected || s.hasContact) next[s.studentKey] = true;
         }
         setSelected(next);
       } catch (err) {
@@ -192,7 +299,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         setLoadingStudents(false);
       }
     },
-    [slug]
+    [slug, isIgspacesConnected]
   );
 
   const selectedKeys = useMemo(
@@ -200,12 +307,16 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     [selected]
   );
   const reachableCount = students.filter((s) => s.hasContact).length;
+  // How many students a report can actually go to in the CURRENT view's
+  // channel — all of them via IGSpaces, only the WhatsApp-reachable ones
+  // otherwise.
+  const eligibleCount = isIgspacesConnected ? students.length : reachableCount;
 
   const toggleStudent = (key) => setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const selectAllReachable = () => {
     const next = {};
-    for (const s of students) if (s.hasContact) next[s.studentKey] = true;
+    for (const s of students) if (isIgspacesConnected || s.hasContact) next[s.studentKey] = true;
     setSelected(next);
   };
 
@@ -217,6 +328,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const pickAssignment = (id) => {
     setAssignmentId(id);
     setPreview(null);
+    setPublishResults(null);
   };
 
   /**
@@ -294,6 +406,36 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
       setPreview(null);
     } catch (err) {
       toast.error(partnerReportErr(err, "Send failed"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const publishAssignmentToIgspaces = async () => {
+    if (!assignmentId || !selectedKeys.length) {
+      toast.warn("Select at least one student");
+      return;
+    }
+    const ok = await confirmToast(
+      `Publish ${selectedKeys.length} report(s) to IGSpaces for ${providerLabel}?`
+    );
+    if (!ok) return;
+
+    setSending(true);
+    setPublishResults(null);
+    try {
+      const summary = await publishPartnerAssignmentReportsToIgspaces(slug, {
+        assignmentId,
+        studentKeys: selectedKeys,
+      });
+      setPublishResults(summary);
+      toast.success(
+        `Published ${summary.sent}${summary.skipped ? `, skipped ${summary.skipped}` : ""}${
+          summary.failed ? `, failed ${summary.failed}` : ""
+        }`
+      );
+    } catch (err) {
+      toast.error(partnerReportErr(err, "Publish to IGSpaces failed"));
     } finally {
       setSending(false);
     }
@@ -422,6 +564,41 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     }
   };
 
+  const publishMonthlyToIgspaces = async () => {
+    if (!period) {
+      toast.warn("Pick a month first");
+      return;
+    }
+    if (!selectedKeys.length) {
+      toast.warn("Select at least one student");
+      return;
+    }
+    const ok = await confirmToast(
+      `Publish the ${period.label} monthly report to IGSpaces for ${selectedKeys.length} student(s)?`
+    );
+    if (!ok) return;
+
+    setSending(true);
+    setPublishResults(null);
+    try {
+      const summary = await publishPartnerMonthlyReportsToIgspaces(slug, {
+        studentKeys: selectedKeys,
+        year: period.year,
+        month: period.month,
+      });
+      setPublishResults(summary);
+      toast.success(
+        `Published ${summary.sent}${summary.skipped ? `, skipped ${summary.skipped}` : ""}${
+          summary.failed ? `, failed ${summary.failed}` : ""
+        }`
+      );
+    } catch (err) {
+      toast.error(partnerReportErr(err, "Publish to IGSpaces failed"));
+    } finally {
+      setSending(false);
+    }
+  };
+
   // ── 4. Executive ──
   const [execReport, setExecReport] = useState(null);
   const [loadingExec, setLoadingExec] = useState(false);
@@ -469,6 +646,52 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         clientSendId: newSendId([slug, "executive", assignmentId]),
       });
       if (result.sent) toast.success("Executive analysis sent");
+      else toast.info(`Not sent — ${result.reason || "already sent recently"}`);
+    } catch (err) {
+      toast.error(partnerReportErr(err, "Send failed"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // ── Submission status (IGSpaces-connected partners only) ──
+  const [statusData, setStatusData] = useState(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+
+  const loadSubmissionStatus = async (id) => {
+    setLoadingStatus(true);
+    setStatusData(null);
+    try {
+      setStatusData(await getPartnerSubmissionStatusRows(slug, id));
+    } catch (err) {
+      toast.error(partnerReportErr(err, "Failed to load submission status"));
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
+
+  const sendSubmissionStatus = async () => {
+    if (!assignmentId) return;
+    if (!destinationValue.trim()) {
+      toast.warn(
+        destinationType === "group"
+          ? "Enter the WhatsApp group id (ends in @g.us)"
+          : "Enter a phone number"
+      );
+      return;
+    }
+    const ok = await confirmToast(`Send the submission status report to ${destinationValue.trim()}?`);
+    if (!ok) return;
+
+    setSending(true);
+    try {
+      const result = await sendPartnerSubmissionStatusReport(slug, {
+        assignmentId,
+        destinationType,
+        destinationValue: destinationValue.trim(),
+        clientSendId: newSendId([slug, "submission-status", assignmentId]),
+      });
+      if (result.sent) toast.success("Submission status report sent");
       else toast.info(`Not sent — ${result.reason || "already sent recently"}`);
     } catch (err) {
       toast.error(partnerReportErr(err, "Send failed"));
@@ -554,13 +777,40 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         </button>
       </div>
 
+      {isIgspacesConnected && classesWithActiveAssignments.length > 0 && (
+        <div className="prw-chip-row">
+          <button
+            type="button"
+            className={`prw-chip ${classFilter == null ? "prw-chip--active" : ""}`}
+            onClick={() => setClassFilter(null)}
+          >
+            All classes
+          </button>
+          {classesWithActiveAssignments.map((c) => (
+            <button
+              key={c.groupId}
+              type="button"
+              className={`prw-chip ${classFilter === c.groupId ? "prw-chip--active" : ""}`}
+              onClick={() => setClassFilter(c.groupId)}
+              title={c.schoolName || undefined}
+            >
+              {c.groupName} ({activeCountByClass.get(c.groupId)})
+            </button>
+          ))}
+        </div>
+      )}
+
       {loadingAssignments && !assignments.length ? (
         <p className="prw-empty">Loading assignments…</p>
-      ) : !assignments.length ? (
-        <p className="prw-empty">No assignments found for {providerLabel}.</p>
+      ) : !filteredAssignments.length ? (
+        <p className="prw-empty">
+          {assignments.length
+            ? "No assignments in this class."
+            : `No assignments found for ${providerLabel}.`}
+        </p>
       ) : (
         <div className="prw-card-grid">
-          {assignments.map((a) => (
+          {filteredAssignments.map((a) => (
             <button
               key={a.id}
               type="button"
@@ -568,6 +818,9 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
               onClick={() => onPick(a.id)}
             >
               <span className="prw-card-title">{a.name}</span>
+              {a.classroom?.group_name && (
+                <span className="prw-card-meta">{a.classroom.group_name}</span>
+              )}
               <span className="prw-card-meta">
                 Due {formatDate(a.dueDate)} · {a.submissionCount} submitted · {a.gradedCount}{" "}
                 marked
@@ -591,14 +844,17 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
             </span>
           </h2>
           <p className="prw-panel-sub">
-            {reachableCount} of {students.length} have a saved WhatsApp number.
-            {reachableCount < students.length &&
+            {isIgspacesConnected
+              ? `${eligibleCount} of ${students.length} students are on this assignment.`
+              : `${reachableCount} of ${students.length} have a saved WhatsApp number.`}
+            {!isIgspacesConnected &&
+              reachableCount < students.length &&
               " The rest cannot be sent to — add their numbers under Contacts."}
           </p>
         </div>
         <div className="prw-panel-actions">
           <button type="button" className="prw-btn prw-btn--ghost" onClick={selectAllReachable}>
-            <FiCheckSquare size={13} /> Select all reachable
+            <FiCheckSquare size={13} /> {isIgspacesConnected ? "Select all" : "Select all reachable"}
           </button>
           <button type="button" className="prw-btn prw-btn--ghost" onClick={() => setSelected({})}>
             <FiX size={13} /> Clear
@@ -635,12 +891,15 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
             </thead>
             <tbody>
               {students.map((s) => (
-                <tr key={s.studentKey} className={!s.hasContact ? "prw-row--missing" : undefined}>
+                <tr
+                  key={s.studentKey}
+                  className={!isIgspacesConnected && !s.hasContact ? "prw-row--missing" : undefined}
+                >
                   <td data-label="Select">
                     <input
                       type="checkbox"
                       checked={!!selected[s.studentKey]}
-                      disabled={!s.hasContact}
+                      disabled={!isIgspacesConnected && !s.hasContact}
                       onChange={() => toggleStudent(s.studentKey)}
                     />
                   </td>
@@ -654,7 +913,9 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                         {s.studentCode.toUpperCase()}
                       </span>
                     )}
-                    {!s.hasContact && <span className="prw-pill prw-pill--warn">No number</span>}
+                    {!isIgspacesConnected && !s.hasContact && (
+                      <span className="prw-pill prw-pill--warn">No number</span>
+                    )}
                   </td>
                   <td data-label="Parent">{s.parentName || "—"}</td>
                   <td data-label="WhatsApp">{s.parentPhone || s.phone || "—"}</td>
@@ -707,6 +968,48 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         />
       </label>
     </div>
+  );
+
+  const publishResultsPanel = publishResults && (
+    <section className="prw-panel">
+      <div className="prw-panel-head">
+        <div>
+          <h2 className="prw-panel-title">Published to IGSpaces</h2>
+          <p className="prw-panel-sub">
+            {publishResults.sent} sent
+            {publishResults.skipped ? `, ${publishResults.skipped} skipped` : ""}
+            {publishResults.failed ? `, ${publishResults.failed} failed` : ""}.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="prw-icon-btn"
+          onClick={() => setPublishResults(null)}
+          aria-label="Close"
+        >
+          <FiX size={14} />
+        </button>
+      </div>
+      {(publishResults.results || []).some((r) => r.status !== "sent") && (
+        <ul className="prw-preview-list">
+          {(publishResults.results || [])
+            .filter((r) => r.status !== "sent")
+            .map((r) => (
+              <li key={r.studentKey} className="prw-preview">
+                <div className="prw-preview-head">
+                  <strong>{r.studentName || r.studentKey}</strong>
+                  <span
+                    className={`prw-pill ${r.status === "skipped" ? "prw-pill--muted" : "prw-pill--warn"}`}
+                  >
+                    {r.status}
+                  </span>
+                </div>
+                {r.reason && <p className="prw-rule-help">{r.reason}</p>}
+              </li>
+            ))}
+        </ul>
+      )}
+    </section>
   );
 
   return (
@@ -813,21 +1116,40 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
             {assignmentPicker(pickAssignment)}
             {assignmentId && (
               <>
-                {studentTable({
-                  showWork: true,
-                  actions: (
-                    <button
-                      type="button"
-                      className="prw-btn prw-btn--primary"
-                      onClick={runPreview}
-                      disabled={previewing || !selectedKeys.length}
-                    >
-                      <FiEye size={13} /> {previewing ? "Building…" : "Preview messages"}
-                    </button>
-                  ),
-                })}
+                {isIgspacesConnected ? (
+                  <>
+                    {studentTable({
+                      showWork: true,
+                      actions: (
+                        <button
+                          type="button"
+                          className="prw-btn prw-btn--primary"
+                          onClick={publishAssignmentToIgspaces}
+                          disabled={sending || !selectedKeys.length}
+                        >
+                          <FiUploadCloud size={13} /> {sending ? "Publishing…" : "Publish to IGSpaces"}
+                        </button>
+                      ),
+                    })}
+                    {publishResultsPanel}
+                  </>
+                ) : (
+                  studentTable({
+                    showWork: true,
+                    actions: (
+                      <button
+                        type="button"
+                        className="prw-btn prw-btn--primary"
+                        onClick={runPreview}
+                        disabled={previewing || !selectedKeys.length}
+                      >
+                        <FiEye size={13} /> {previewing ? "Building…" : "Preview messages"}
+                      </button>
+                    ),
+                  })
+                )}
 
-                {preview && (
+                {!isIgspacesConnected && preview && (
                   <section className="prw-panel">
                     <div className="prw-panel-head">
                       <div>
@@ -978,7 +1300,10 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                           ? "prw-chip--active"
                           : ""
                       }`}
-                      onClick={() => setPeriod(m)}
+                      onClick={() => {
+                        setPeriod(m);
+                        setPublishResults(null);
+                      }}
                     >
                       {m.label}
                     </button>
@@ -996,7 +1321,16 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
             {period &&
               studentTable({
                 showWork: true,
-                actions: (
+                actions: isIgspacesConnected ? (
+                  <button
+                    type="button"
+                    className="prw-btn prw-btn--primary"
+                    onClick={publishMonthlyToIgspaces}
+                    disabled={sending || !selectedKeys.length}
+                  >
+                    <FiUploadCloud size={13} /> {sending ? "Publishing…" : `Publish ${period.label} to IGSpaces`}
+                  </button>
+                ) : (
                   <button
                     type="button"
                     className="prw-btn prw-btn--primary"
@@ -1007,6 +1341,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                   </button>
                 ),
               })}
+            {isIgspacesConnected && publishResultsPanel}
           </>
         )}
 
@@ -1096,6 +1431,91 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
           </>
         )}
 
+        {view === "submission_status" && (
+          <>
+            {assignmentPicker((id) => {
+              pickAssignment(id);
+              loadSubmissionStatus(id);
+            })}
+
+            {assignmentId && (
+              <section className="prw-panel">
+                <div className="prw-panel-head">
+                  <div>
+                    <h2 className="prw-panel-title">
+                      Submission status — {currentAssignment?.name}
+                    </h2>
+                    <p className="prw-panel-sub">
+                      Who has and hasn&apos;t submitted, read live from {providerLabel}&apos;s
+                      roster.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="prw-btn prw-btn--ghost"
+                    onClick={() => loadSubmissionStatus(assignmentId)}
+                    disabled={loadingStatus}
+                  >
+                    <FiRefreshCw size={13} /> {loadingStatus ? "Loading…" : "Refresh"}
+                  </button>
+                </div>
+
+                {loadingStatus ? (
+                  <p className="prw-empty">Loading the live roster…</p>
+                ) : statusData ? (
+                  <>
+                    <div className="prw-table-wrap">
+                      <table className="prw-table">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Submitted at</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {statusData.rows.map((row, i) => (
+                            <tr key={`${row.name}-${i}`}>
+                              <td data-label="Name">{row.name}</td>
+                              <td data-label="Status">
+                                <span
+                                  className={`prw-pill ${
+                                    row.status === "Didn't Submit"
+                                      ? "prw-pill--warn"
+                                      : "prw-pill--ok"
+                                  }`}
+                                >
+                                  {row.status}
+                                </span>
+                              </td>
+                              <td data-label="Submitted at">{row.submittedAt}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {destinationFields}
+
+                    <div className="prw-panel-actions prw-panel-actions--end">
+                      <button
+                        type="button"
+                        className="prw-btn prw-btn--primary"
+                        onClick={sendSubmissionStatus}
+                        disabled={sending}
+                      >
+                        <FiSend size={13} /> {sending ? "Sending…" : "Send on WhatsApp"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="prw-empty">No roster data available for this assignment.</p>
+                )}
+              </section>
+            )}
+          </>
+        )}
+
         {view === "sent" && (
           <section className="prw-panel">
             <div className="prw-panel-head">
@@ -1141,6 +1561,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                         { value: "custom_collective", label: "Custom collective PDF" },
                         { value: "monthly_parent", label: "Monthly parent report" },
                         { value: "executive_teacher", label: "Executive analysis to teacher" },
+                        { value: "submission_status", label: "Submission status (partner)" },
                       ]
                   ).map((t) => (
                     <option key={t.value} value={t.value}>
@@ -1231,6 +1652,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         <PartnerReportAutoSendModal
           slug={slug}
           providerLabel={providerLabel}
+          igspacesConnected={isIgspacesConnected}
           onClose={() => setShowAutoSend(false)}
         />
       )}
