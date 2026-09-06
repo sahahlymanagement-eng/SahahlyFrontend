@@ -22,6 +22,10 @@ export const listReportPartners = () =>
 export const listPartnerAssignments = (slug) =>
   api.get(`${BASE}/${slug}/assignments`).then((r) => r.data ?? { assignments: [] });
 
+/** IGSpaces-connected partners only — empty array for LoginCSS or an unsynced partner. */
+export const listPartnerClasses = (slug) =>
+  api.get(`${BASE}/${slug}/classes`).then((r) => r.data?.classes ?? []);
+
 /** @param {{ assignmentId?: number }} [params] omit to list every student. */
 export const listPartnerStudents = (slug, params) =>
   api.get(`${BASE}/${slug}/students`, { params }).then((r) => r.data ?? { students: [] });
@@ -56,6 +60,10 @@ export const previewPartnerAssignmentReports = (slug, payload) =>
 export const sendPartnerAssignmentReports = (slug, payload) =>
   api.post(`${BASE}/${slug}/assignment-reports/send`, payload).then((r) => r.data);
 
+/** IGSpaces-connected partners only — publishes text reports through IGSpaces instead of WhatsApp. */
+export const publishPartnerAssignmentReportsToIgspaces = (slug, payload) =>
+  api.post(`${BASE}/${slug}/assignment-reports/publish-igspaces`, payload).then((r) => r.data);
+
 // ── 2. Collective report → group / phone ───────────────────────────────────
 
 export const getPartnerCollectiveRows = (slug, assignmentId) =>
@@ -86,6 +94,10 @@ export const downloadPartnerMonthlyPdf = (slug, params) =>
 export const sendPartnerMonthlyReports = (slug, payload) =>
   api.post(`${BASE}/${slug}/monthly/send`, payload).then((r) => r.data);
 
+/** IGSpaces-connected partners only — publishes the PDF (via R2) through IGSpaces instead of WhatsApp. */
+export const publishPartnerMonthlyReportsToIgspaces = (slug, payload) =>
+  api.post(`${BASE}/${slug}/monthly/publish-igspaces`, payload).then((r) => r.data);
+
 // ── 4. Teacher executive analysis → group / phone ──────────────────────────
 
 export const previewPartnerExecutiveReport = (slug, assignmentId) =>
@@ -104,12 +116,24 @@ export const downloadPartnerExecutivePdf = (slug, assignmentId) =>
 export const sendPartnerExecutiveReport = (slug, payload) =>
   api.post(`${BASE}/${slug}/executive/send`, payload).then((r) => r.data);
 
-// ── 5. Reports sent ────────────────────────────────────────────────────────
+// ── 5. Submission status → group / phone (IGSpaces-connected partners only) ─
+
+export const getPartnerSubmissionStatusRows = (slug, assignmentId) =>
+  api.get(`${BASE}/${slug}/submission-status/rows`, { params: { assignmentId } }).then((r) => r.data);
+
+export const sendPartnerSubmissionStatusReport = (slug, payload) =>
+  api.post(`${BASE}/${slug}/submission-status/send`, payload).then((r) => r.data);
+
+/** Live roster (submitted + not-submitted) straight from IGSpaces, not cached. */
+export const getPartnerAssignmentRosterLive = (slug, assignmentId) =>
+  api.get(`${BASE}/${slug}/assignments/${assignmentId}/roster-live`).then((r) => r.data);
+
+// ── 6. Reports sent ────────────────────────────────────────────────────────
 
 export const listPartnerSentHistory = (slug, params) =>
   api.get(`${BASE}/${slug}/sent-history`, { params }).then((r) => r.data);
 
-// ── 6. Auto-send rules ─────────────────────────────────────────────────────
+// ── 7. Auto-send rules ─────────────────────────────────────────────────────
 
 export const listPartnerAutomationRules = (slug) =>
   api.get(`${BASE}/${slug}/automation-rules`).then((r) => r.data?.rules ?? []);

@@ -15,45 +15,71 @@ import { confirmToast } from "../utils/confirmToast";
  *
  * One standing rule per report type per partner. The two parent-facing types
  * need no destination (each report goes to that student's own saved contact), so
- * their editor shows only the trigger; the three staff-facing types need a
+ * their editor shows only the trigger; the staff-facing types need a
  * WhatsApp group or phone to send to.
+ *
+ * On an IGSpaces-connected partner (mariamgabalawy, drpeter — `igspacesConnected`
+ * prop), assignment_parent/monthly_parent no longer go over WhatsApp: they
+ * publish through IGSpaces or not at all, so "Enabled" is the only switch that
+ * matters there and `publishToIgspaces` is always saved as `true` alongside it.
+ * Submission status only exists for IGSpaces-connected partners, since it reads
+ * IGSpaces' live roster.
  */
 
 const REPORT_TYPES = [
   {
     key: "assignment_parent",
     label: "Assignment reports → parents",
-    help: "One report per student, sent to their saved parent number once the assignment's due date has passed.",
+    help: {
+      whatsapp:
+        "One report per student, sent to their saved parent number once the assignment's due date has passed.",
+      igspaces:
+        "One report per student, published through IGSpaces once the assignment's due date has passed. Not sent over WhatsApp.",
+    },
     needsDestination: false,
     trigger: "delay",
   },
   {
     key: "monthly_parent",
     label: "Monthly parent reports → parents",
-    help: "The full monthly PDF for every student with a saved number, once a month.",
+    help: {
+      whatsapp: "The full monthly PDF for every student with a saved number, once a month.",
+      igspaces: "The full monthly PDF, published through IGSpaces for every student, once a month. Not sent over WhatsApp.",
+    },
     needsDestination: false,
     trigger: "monthly",
   },
   {
     key: "teacher_collective",
     label: "Teacher collective PDF",
-    help: "One PDF listing every student's mark on the assignment.",
+    help: { whatsapp: "One PDF listing every student's mark on the assignment." },
     needsDestination: true,
     trigger: "delay",
   },
   {
     key: "custom_collective",
     label: "Custom collective PDF",
-    help: "One PDF listing who submitted, without marks.",
+    help: { whatsapp: "One PDF listing who submitted, without marks." },
     needsDestination: true,
     trigger: "delay",
   },
   {
     key: "executive_teacher",
     label: "Executive analysis",
-    help: "The full class-level analysis PDF. Held back until at least one paper on the assignment has been marked.",
+    help: {
+      whatsapp:
+        "The full class-level analysis PDF. Held back until at least one paper on the assignment has been marked.",
+    },
     needsDestination: true,
     trigger: "delay",
+  },
+  {
+    key: "submission_status",
+    label: "Submission status",
+    help: { whatsapp: "Who has and hasn't submitted, read live from the partner's roster, as a branded Excel file." },
+    needsDestination: true,
+    trigger: "delay",
+    igspacesOnly: true,
   },
 ];
 
@@ -78,12 +104,23 @@ function draftFromRule(rule) {
   };
 }
 
-export default function PartnerReportAutoSendModal({ slug, providerLabel, onClose }) {
+export default function PartnerReportAutoSendModal({
+  slug,
+  providerLabel,
+  igspacesConnected = false,
+  onClose,
+}) {
   const [loading, setLoading] = useState(true);
   const [rules, setRules] = useState([]);
   const [openType, setOpenType] = useState(null);
   const [draft, setDraft] = useState({ ...emptyDraft });
   const [saving, setSaving] = useState(false);
+
+  const reportTypes = REPORT_TYPES.filter((t) => !t.igspacesOnly || igspacesConnected);
+  /** publishToIgspaces means "the only channel", not "in addition to WhatsApp". */
+  const isIgspacesOnlyType = (type) =>
+    igspacesConnected && (type.key === "assignment_parent" || type.key === "monthly_parent");
+  const helpFor = (type) => (isIgspacesOnlyType(type) ? type.help.igspaces : type.help.whatsapp);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,6 +156,7 @@ export default function PartnerReportAutoSendModal({ slug, providerLabel, onClos
       await savePartnerAutomationRule(slug, {
         reportType: type.key,
         enabled: draft.enabled,
+        ...(isIgspacesOnlyType(type) ? { publishToIgspaces: true } : {}),
         ...(type.needsDestination
           ? {
               destinationType: draft.destinationType,
@@ -185,7 +223,7 @@ export default function PartnerReportAutoSendModal({ slug, providerLabel, onClos
             <p className="prw-empty">Loading rules…</p>
           ) : (
             <ul className="prw-rule-list">
-              {REPORT_TYPES.map((type) => {
+              {reportTypes.map((type) => {
                 const rule = ruleFor(type.key);
                 const isOpen = openType === type.key;
                 const active = rule && rule.enabled !== false;
@@ -222,7 +260,7 @@ export default function PartnerReportAutoSendModal({ slug, providerLabel, onClos
                       </div>
                     </div>
 
-                    <p className="prw-rule-help">{type.help}</p>
+                    <p className="prw-rule-help">{helpFor(type)}</p>
 
                     {rule && !isOpen && (
                       <p className="prw-rule-summary">

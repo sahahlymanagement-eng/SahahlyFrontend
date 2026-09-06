@@ -51,6 +51,14 @@ function resolveQueuedMarks(result, questions) {
   return questions.reduce((sum, q) => sum + (Number(q.marksAwarded) || 0), 0);
 }
 
+// How many submissions to have in flight at once. Each one is a real chain
+// of work (fetch the draft, render the annotated PDF, upload it, wait on R2 +
+// the partner's own API on the far end), and running them one-at-a-time meant
+// a 100-submission assignment paid every one of those round trips serially.
+// Most of that chain is waiting on the network, not the browser's CPU, so a
+// handful running together overlaps the waiting instead of the rendering.
+const PUBLISH_CONCURRENCY = 3;
+
 /**
  * Publish every submission in `queue`.
  *
@@ -62,8 +70,11 @@ function resolveQueuedMarks(result, questions) {
  * @param {function} opts.getStudentFile   (submissionId) => Promise<File>
  * @param {function} [opts.releaseStudentFile] drop a published submission's cached
  *        PDFs — without it a long run keeps every downloaded PDF in memory
- * @param {function} [opts.onProgress]     ({ done, total, current }) per item
- * @param {function} [opts.shouldStop]     () => boolean, checked between items
+ * @param {function} [opts.onProgress]     ({ done, total, current }) per item —
+ *        `current` is a " · "-free, comma-joined label of whatever is in
+ *        flight right now (there may be more than one)
+ * @param {function} [opts.shouldStop]     () => boolean, checked before each
+ *        item starts — items already in flight are left to finish
  * @returns {Promise<{successCount:number, failures:Array, publishedIds:Array, stopped:boolean}>}
  */
 export async function runGradingPublishAll({
@@ -80,18 +91,23 @@ export async function runGradingPublishAll({
   const publishedIds = [];
   let successCount = 0;
   let stopped = false;
+  let nextIndex = 0;
+  let doneCount = 0;
+  const inFlight = new Map();
 
-  for (let i = 0; i < queue.length; i += 1) {
-    const row = queue[i];
+  const reportProgress = () => {
+    onProgress?.({
+      done: doneCount,
+      total: queue.length,
+      current: [...inFlight.values()].join(", ") || null,
+    });
+  };
+
+  async function publishOne(row) {
     const submissionId = row.submissionId;
     const label = row.name || `Submission #${submissionId}`;
-
-    if (shouldStop?.()) {
-      stopped = true;
-      break;
-    }
-
-    onProgress?.({ done: i, total: queue.length, current: label, submissionId });
+    inFlight.set(submissionId, label);
+    reportProgress();
 
     try {
       // The draft is the saved marking result — the same content the results
@@ -161,10 +177,27 @@ export async function runGradingPublishAll({
       });
     } finally {
       releaseStudentFile?.(submissionId);
+      inFlight.delete(submissionId);
+      doneCount += 1;
+      reportProgress();
     }
-
-    onProgress?.({ done: i + 1, total: queue.length, current: null, submissionId });
   }
+
+  async function worker() {
+    for (;;) {
+      if (shouldStop?.()) {
+        stopped = true;
+        return;
+      }
+      const i = nextIndex;
+      if (i >= queue.length) return;
+      nextIndex = i + 1;
+      await publishOne(queue[i]);
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(PUBLISH_CONCURRENCY, queue.length));
+  await Promise.all(Array.from({ length: workerCount }, worker));
 
   return { successCount, failures, publishedIds, stopped };
 }
