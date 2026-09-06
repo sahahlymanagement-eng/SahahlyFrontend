@@ -11,6 +11,7 @@ import "./DirectorManualCorrection.css";
 const MANUAL_MODELS = [
   { id: "gemini-3-flash-preview", label: "Sahahly 3" },
   { id: "gemini-3.5-flash", label: "Sahahly 3.5" },
+  { id: "gemini-3.8-flash", label: "Sahahly 3.8" },
 ];
 
 const CHUNK_SIZE_OPTIONS = [0, 1, 2, 3, 5, 8, 10];

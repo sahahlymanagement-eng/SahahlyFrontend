@@ -4,6 +4,7 @@ export const MARKING_GEMINI_PRICING = [
   { id: "gemini-2.5-flash", inputPer1M: 0.3, outputPer1M: 2.5 },
   { id: "gemini-3-flash-preview", inputPer1M: 0.5, outputPer1M: 3.0 },
   { id: "gemini-3.5-flash", inputPer1M: 1.5, outputPer1M: 9.0, cachedInputPer1M: 0.15 },
+  { id: "gemini-3.8-flash", inputPer1M: 0.75, outputPer1M: 3.75, cachedInputPer1M: 0.075 },
 ];
 
 /** Display names for marking model dropdowns (ids stay Gemini under the hood). */
@@ -12,6 +13,7 @@ export const SAHAHLY_MODEL_LABELS = {
   "gemini-2.5-flash": "Sahahly 2.5 Flash",
   "gemini-3-flash-preview": "Sahahly 3 Flash Preview",
   "gemini-3.5-flash": "Sahahly 3.5 Flash",
+  "gemini-3.8-flash": "Sahahly 3.8 Flash",
 };
 
 /**
