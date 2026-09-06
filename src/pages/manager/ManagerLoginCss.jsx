@@ -1353,7 +1353,7 @@ export default function ManagerLoginCss() {
         const ahead = Number(data?.ahead || 0);
         toast.success(ahead ? `Auto batch running, ${ahead} assignment${ahead === 1 ? "" : "s"} in queue in front of this one.` : "Automatic batch queued — it will start next.");
       } catch (err) {
-        toast.error(err.response?.data?.message || "Could not queue automatic batch");
+        toast.error(err.response?.data?.message || err.message || "Could not queue automatic batch");
       }
       return;
     }
