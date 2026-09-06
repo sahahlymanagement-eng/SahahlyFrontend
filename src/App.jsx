@@ -28,6 +28,7 @@ import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
 import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
 import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
 import ManagerDrPeter from "./pages/manager/ManagerDrPeter";
+import ManagerGradingAssistants from "./pages/manager/ManagerGradingAssistants";
 import Login from "./pages/Login";
 import PrivacySecurityPolicy from "./pages/PrivacySecurityPolicy";
 import ZoomDocumentation from "./pages/ZoomDocumentation";
@@ -300,6 +301,21 @@ function App() {
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="drpeter" element={<ManagerDrPeter />} />
+          {/* A provider-manager's own "assign assistants to a class" tab —
+              separate from the assignment view itself, mirroring the
+              director's Assign Grading Partner Assignments page. Deliberately
+              a SIBLING path (not nested under mariamgabalawy/drpeter) — the
+              sidebar's active-tab check treats "/manager/drpeter/x" as a
+              sub-page of "/manager/drpeter" and highlights both, which is
+              wrong here since these are two independent top-level tabs. */}
+          <Route
+            path="mariamgabalawy-assign-assistants"
+            element={<ManagerGradingAssistants slug="mariamgabalawy" label="Mariam Gabalawy" />}
+          />
+          <Route
+            path="drpeter-assign-assistants"
+            element={<ManagerGradingAssistants slug="drpeter" label="Dr Peter" />}
+          />
           <Route path="markingclaude" element={<PaperMarkingClaude />} />
           <Route path="google-classroom" element={<GoogleClassroom />} />
           <Route path="courses" element={<CoursesList />} />

@@ -221,6 +221,22 @@ export function canGradeProvider(slug, grant = delegatedProviders) {
   return providers === null || providers.includes(slug);
 }
 
+/**
+ * Is this account specifically the dedicated "Manager - <slug>" role — not
+ * merely someone who canGradeProvider(slug) (which is also true for
+ * manager01 and any director-delegated manager). Used to gate UI that only
+ * makes sense for the dedicated role, like the "assign assistants to a
+ * class" tab: manager01 has no whole-assignment delegation concept to hang
+ * that page off of the way a dedicated provider-manager does.
+ *
+ * @param {string} slug
+ * @param {object} [forUser] see currentGradingAccount.
+ */
+export function isDedicatedProviderManager(slug, forUser = null) {
+  const user = resolveUser(forUser);
+  return user?.gradingRole === "manager" && user?.gradingProvider === slug;
+}
+
 /** Director/admin get the partner tabs (backup does not — separate portal). */
 function isDirectorPartnerOverseer(forUser = null) {
   const role = currentRoleName(forUser);

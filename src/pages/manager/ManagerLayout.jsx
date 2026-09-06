@@ -14,8 +14,16 @@ export default function ManagerLayout() {
   // nothing is redirected for them.
   const allowedTabs = gradingOnlyProviders();
   if (allowedTabs.length) {
+    // The provider tab itself, and its sibling "assign assistants to a
+    // class" tab (ManagerGradingAssistants) — the one other page a confined
+    // provider-manager may reach. A genuinely nested path here would also
+    // make the sidebar highlight both tabs at once (see ManagerSidebar /
+    // RoleSidebar's prefix-based active check), which is why the route is a
+    // sibling ("drpeter-assign-assistants"), not "/drpeter/assign-assistants".
     const onAllowedTab = allowedTabs.some(
-      (slug) => pathname === `/manager/${slug}`
+      (slug) =>
+        pathname === `/manager/${slug}` ||
+        pathname === `/manager/${slug}-assign-assistants`
     );
     if (!onAllowedTab) {
       return <Navigate to={`/manager/${allowedTabs[0]}`} replace />;

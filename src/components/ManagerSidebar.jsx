@@ -8,7 +8,11 @@ import {
   useGradingNotifications,
   useGradingDelegations,
 } from "../context/GradingNotificationContext";
-import { canGradeProvider, isGradingOnlyAccount } from "../utils/gradingAccess";
+import {
+  canGradeProvider,
+  isGradingOnlyAccount,
+  isDedicatedProviderManager,
+} from "../utils/gradingAccess";
 
 // External grading company tabs — each visible only to the accounts allowed to
 // grade for that particular partner, and badged with its own unread count. Keyed
@@ -17,6 +21,15 @@ const GRADING_NAV_PATHS = {
   "/manager/logincss": "logincss",
   "/manager/mariamgabalawy": "mariamgabalawy",
   "/manager/drpeter": "drpeter",
+};
+
+// A provider-manager's own "assign assistants to a class" tab — shown only
+// to the dedicated "Manager - <Provider>" role (see isDedicatedProviderManager),
+// not to every account that canGradeProvider (e.g. manager01 has no
+// whole-assignment delegation to hang this page off of).
+const ASSIGN_ASSISTANTS_NAV_PATHS = {
+  "/manager/mariamgabalawy-assign-assistants": "mariamgabalawy",
+  "/manager/drpeter-assign-assistants": "drpeter",
 };
 
 const NAV_ITEMS = [
@@ -37,6 +50,8 @@ const NAV_ITEMS = [
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },
   { icon: <FiUploadCloud />, label: "Mariam Gabalawy",  path: "/manager/mariamgabalawy" },
   { icon: <FiUploadCloud />, label: "Dr Peter",         path: "/manager/drpeter"        },
+  { icon: <FiUser />,      label: "Assign Assistants — Mariam Gabalawy", path: "/manager/mariamgabalawy-assign-assistants" },
+  { icon: <FiUser />,      label: "Assign Assistants — Dr Peter",        path: "/manager/drpeter-assign-assistants" },
   { icon: <FiZap />,       label: "Question Bank",      path: "/questionbank/manage"    },
   { icon: <FiBookOpen />,  label: "Course Management",  path: "/manager/courses" },
 ];
@@ -54,6 +69,8 @@ export default function ManagerSidebar() {
   const gradingOnly = isGradingOnlyAccount();
 
   const navItems = NAV_ITEMS.filter((item) => {
+    const assignSlug = ASSIGN_ASSISTANTS_NAV_PATHS[item.path];
+    if (assignSlug) return isDedicatedProviderManager(assignSlug);
     const slug = GRADING_NAV_PATHS[item.path];
     if (!slug) return !gradingOnly;
     return canGradeProvider(slug, delegations);
