@@ -7,7 +7,15 @@ import { getStoredUser } from "../../utils/session";
 
 const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
 
-function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown }) {
+function elapsedText(value, now) {
+  if (!value) return "—";
+  const seconds = Math.max(0, Math.floor((now - new Date(value).getTime()) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, now = Date.now() }) {
   if (!item) return null;
   const running = item.status === "running";
   return (
@@ -24,6 +32,14 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown })
         <span><FiClock /> Added {dateText(item.createdAt)}</span>
         <span>{item.flow === "provider" ? item.providerSlug : item.flow}</span>
       </div>
+      {running && (
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+          <span>Elapsed: <strong>{elapsedText(item.startedAt || item.createdAt, now)}</strong></span>
+          <span>Gemini state: <strong>{item.lastProviderState || "Waiting for first status check"}</strong></span>
+          <span>Last checked: <strong>{dateText(item.lastCheckedAt)}</strong></span>
+          {item.geminiJobId && <span title={item.geminiJobId}>Job: <strong>{item.geminiJobId.slice(0, 12)}…</strong></span>}
+        </div>
+      )}
       {item.studentCount === 1 && item.lateStudentName && (
         <div><FiUser /> Late submission: <strong>{item.lateStudentName}</strong></div>
       )}
@@ -42,6 +58,7 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown })
 export default function AutomaticBatchQueue() {
   const [data, setData] = useState({ running: null, queued: [], history: [] });
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(Date.now());
   const role = getRoleName(getStoredUser());
   const canEdit = role === "director" || role === "admin";
 
@@ -64,6 +81,11 @@ export default function AutomaticBatchQueue() {
       clearInterval(timer);
     };
   }, [load]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const cancel = async (id) => {
     try {
@@ -100,7 +122,7 @@ export default function AutomaticBatchQueue() {
       <section style={{ padding: 24, display: "grid", gap: 18 }}>
         {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : <>
           <h2 style={{ margin: 0 }}>Running</h2>
-          {data.running ? <QueueCard item={data.running} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
+          {data.running ? <QueueCard item={data.running} now={now} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
           <h2 style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
           {data.queued?.length ? data.queued.map((item, index) => <QueueCard key={item._id} item={item} position={index + 1} onCancel={canEdit ? cancel : null} onMove={move} canMoveUp={index > 0} canMoveDown={index < data.queued.length - 1} />) : <div className="ma-card" style={{ padding: 18 }}>Nothing is waiting.</div>}
           <h2 style={{ margin: 0 }}>Recent history</h2>
