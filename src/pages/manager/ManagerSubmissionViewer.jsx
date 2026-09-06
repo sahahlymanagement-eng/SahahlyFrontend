@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/api";
+import { checkReviewGate, confirmRelease } from "../../utils/reviewGate";
 import { toast } from "react-toastify";
 import { promptToast, confirmToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
@@ -3545,6 +3546,28 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
+      // Pre-release safety gate. Runs on the server so the browser and the
+      // backend cannot drift apart about what counts as unreleasable - see
+      // utils/reviewGate.js. Asked BEFORE the PDF is built: there is no point
+      // rendering a paper the reviewer is about to be warned off.
+      const gate = await checkReviewGate({
+        questions: editingQuestions,
+        result: resultModal.result,
+        expectedStudentName: resultModal.student?.name,
+        fileName: studentFile?.name,
+        // Header text catches a mark scheme whose filename gives nothing away.
+        studentFile,
+        // Lets the server resolve this paper's printed code from the
+        // assignment, so a wrong variant can be caught.
+        assignmentId: selectedAssignment?._id,
+        // Computed at marking time against the locked page count.
+        pageCountFlag: pageCountFlags[resultModal.student?.submissionId] || null,
+      });
+      if (gate.blocked && !confirmRelease(gate.blockers)) {
+        // The reviewer read the reasons and declined. Not an error.
+        return;
+      }
+
       const pdfBytes = gradeOnly
         ? null
         : await annotatePdf({
