@@ -95,15 +95,27 @@ export default function DirectorGradingDelegations() {
     setRowDeadline({});
   };
 
+  // "Our" managers/assistants (literal role name "manager"/"assistant") PLUS
+  // whoever holds the dedicated "Manager - <this partner>" / "Assistant -
+  // <this partner>" role for the partner tab currently open — those roles
+  // carry a different literal name (gradingProvider/gradingRole instead),
+  // so the plain name check alone would never surface them here.
   const { managers, assistants } = useMemo(() => {
     const byRole = { managers: [], assistants: [] };
     for (const person of people) {
-      const role = String(person.roleId?.name || "").trim().toLowerCase();
-      if (role === "manager") byRole.managers.push(person);
-      else if (role === "assistant") byRole.assistants.push(person);
+      const roleName = String(person.roleId?.name || "").trim().toLowerCase();
+      const gradingRole = person.roleId?.gradingRole || null;
+      const isDedicatedForThisPartner =
+        gradingRole && person.roleId?.gradingProvider === partner;
+
+      if (roleName === "manager" || (isDedicatedForThisPartner && gradingRole === "manager")) {
+        byRole.managers.push(person);
+      } else if (roleName === "assistant" || (isDedicatedForThisPartner && gradingRole === "assistant")) {
+        byRole.assistants.push(person);
+      }
     }
     return byRole;
-  }, [people]);
+  }, [people, partner]);
 
   const filteredAssignments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -348,7 +360,10 @@ export default function DirectorGradingDelegations() {
                           >
                             <option value="">Select manager…</option>
                             {managers.map((m) => (
-                              <option key={m._id} value={m._id}>{m.name}</option>
+                              <option key={m._id} value={m._id}>
+                                {m.name}
+                                {m.roleId?.gradingRole ? ` (${m.roleId.name})` : ""}
+                              </option>
                             ))}
                           </select>
 
@@ -363,7 +378,10 @@ export default function DirectorGradingDelegations() {
                           >
                             <option value="">Select assistant…</option>
                             {assistants.map((p) => (
-                              <option key={p._id} value={p._id}>{p.name}</option>
+                              <option key={p._id} value={p._id}>
+                                {p.name}
+                                {p.roleId?.gradingRole ? ` (${p.roleId.name})` : ""}
+                              </option>
                             ))}
                           </select>
 
