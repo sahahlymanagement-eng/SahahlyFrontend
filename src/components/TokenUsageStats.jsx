@@ -106,11 +106,9 @@ export default function TokenUsageStats({
         }}
       >
         {title}
-        {result?.geminiModel ? (
-          <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, marginLeft: 8 }}>
-            ({sahahlyModelLabel(result.geminiModel)})
-          </span>
-        ) : null}
+        <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, marginLeft: 8 }}>
+          ({result?.geminiModel ? sahahlyModelLabel(result.geminiModel) : "Model unavailable"})
+        </span>
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

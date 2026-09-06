@@ -1389,7 +1389,11 @@ export default function GradingProviderPage({ slug, label }) {
         try {
           const { data } = await api.get(`${BASE}/mark-batch/status/${jobId}`);
 
-          if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+          if (
+            data.state === "JOB_STATE_PENDING" ||
+            data.state === "JOB_STATE_RUNNING" ||
+            data.state === "JOB_STATE_QUEUED"
+          ) {
             patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
             // Wait for this response before scheduling the next one — a bare
             // setInterval would fire again even while this request is still
@@ -1632,9 +1636,13 @@ export default function GradingProviderPage({ slug, label }) {
           phase: "processing",
           jobId,
           mode: active.markingMode || active.mode || "normal",
-          geminiModel: pickValidGeminiModel(geminiModels, active.geminiModel || geminiModel),
+          geminiModel: active.geminiModel || null,
         });
-        pollBatchJob(jobId, { assignmentId: assignId });
+        pollBatchJob(jobId, {
+          assignmentId: assignId,
+          mode: active.markingMode || active.mode || "normal",
+          geminiModel: active.geminiModel || null,
+        });
       }
     } catch (err) {
       console.error("checkForActiveJob:", err?.message);

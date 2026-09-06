@@ -29,6 +29,7 @@ function attachEstimatedCost(result, geminiModel, tokenUsage, options) {
   const cost = estimateMarkingCost(geminiModel, tokenUsage, options);
   if (!cost) return;
   result.estimatedCost = cost;
+  result.estimatedCostModelId = geminiModel;
   result.estimatedCostUsd = cost.usd;
   result.estimatedCostEgp = cost.egp;
   if (options?.batch) result.batchPricing = true;
@@ -1327,10 +1328,11 @@ export function buildNoSubmissionMarkingResult({
 
 
 export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, pdfCompression = null) {
+  const authoritativeModel = parsed?.geminiModel || geminiModel || null;
   const result = {
     ...parsed,
     provider: "gemini-batch",
-    geminiModel: geminiModel || null,
+    geminiModel: authoritativeModel,
     tokenUsage: tokenUsage || null,
   };
 
@@ -1338,7 +1340,7 @@ export function buildBatchMarkingResult(parsed, tokenUsage, geminiModel, pdfComp
     result.pdfCompression = pdfCompression;
   }
 
-  attachEstimatedCost(result, geminiModel, tokenUsage, { batch: true });
+  attachEstimatedCost(result, authoritativeModel, tokenUsage, { batch: true });
 
   return result;
 }
@@ -1360,18 +1362,19 @@ export function buildV2MarkingResult(
   geminiModel,
   { batch = false, pdfCompression = null, diagnostics = null } = {}
 ) {
+  const authoritativeModel = parsed?.geminiModel || geminiModel || null;
   const result = {
     ...parsed,
     provider: batch ? "gemini-v2-batch" : "gemini-v2",
     markingEngine: "v2",
-    geminiModel: geminiModel || null,
+    geminiModel: authoritativeModel,
     tokenUsage: tokenUsage || null,
   };
 
   if (pdfCompression) result.pdfCompression = pdfCompression;
   if (diagnostics) result.gradingV2Diagnostics = diagnostics;
 
-  attachEstimatedCost(result, geminiModel, tokenUsage, { batch });
+  attachEstimatedCost(result, authoritativeModel, tokenUsage, { batch });
 
   return result;
 }
@@ -1392,4 +1395,3 @@ export function buildPriorityMarkingResult(parsed, tokenUsage, geminiModel, serv
 
   return result;
 }
-

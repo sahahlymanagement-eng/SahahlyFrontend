@@ -141,7 +141,7 @@ export function pickValidGeminiModel(models, current) {
 export function geminiModelLabel(models, modelId) {
   const match = models?.find((m) => m.id === modelId);
   if (match) return sahahlyModelLabel(match);
-  return sahahlyModelLabel(modelId || DEFAULT_GEMINI_MODEL);
+  return modelId ? sahahlyModelLabel(modelId) : "Model unavailable";
 }
 
 function cachedInputPer1M(meta) {
@@ -152,9 +152,7 @@ function cachedInputPer1M(meta) {
 
 export function estimateMarkingCost(modelId, tokenUsage, options = {}) {
   if (!tokenUsage) return null;
-  const meta =
-    MARKING_GEMINI_PRICING.find((m) => m.id === modelId) ||
-    MARKING_GEMINI_PRICING.find((m) => m.id === DEFAULT_GEMINI_MODEL);
+  const meta = MARKING_GEMINI_PRICING.find((m) => m.id === modelId);
   if (!meta) return null;
 
   const batch = Boolean(options.batch || tokenUsage.batch);
@@ -186,14 +184,32 @@ export function estimateMarkingCost(modelId, tokenUsage, options = {}) {
 
   usd = Math.round(usd * 1_000_000) / 1_000_000;
   const egp = Math.round(usd * USD_TO_EGP_RATE * 100) / 100;
-  return { usd, egp, batchPricing: batch || undefined, priorityPricing: priority || undefined };
+  return {
+    modelId,
+    usd,
+    egp,
+    batchPricing: batch || undefined,
+    priorityPricing: priority || undefined,
+  };
 }
 
 export function resolveMarkingCost(result) {
   if (!result) return null;
-  if (result.estimatedCost?.usd != null) return result.estimatedCost;
-  if (result.estimatedCostUsd != null) {
+  const modelId = result.geminiModel || null;
+  if (!modelId) return null;
+
+  // New records carry cost provenance. Never show a stored amount calculated
+  // for a different model. Legacy records are recomputed from token usage when
+  // possible instead of trusting an untraceable number.
+  if (
+    result.estimatedCost?.usd != null &&
+    result.estimatedCost.modelId === modelId
+  ) {
+    return result.estimatedCost;
+  }
+  if (result.estimatedCostUsd != null && result.estimatedCostModelId === modelId) {
     return {
+      modelId,
       usd: result.estimatedCostUsd,
       egp: result.estimatedCostEgp ?? result.estimatedCostUsd * USD_TO_EGP_RATE,
       batchPricing: result.batchPricing || result.estimatedCost?.batchPricing,
@@ -210,7 +226,7 @@ export function resolveMarkingCost(result) {
     (result.priorityPricing ||
       result.servedServiceTier === "priority");
   return estimateMarkingCost(
-    result.geminiModel || DEFAULT_GEMINI_MODEL,
+    modelId,
     result.tokenUsage,
     { batch, priority }
   );

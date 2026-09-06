@@ -2578,7 +2578,11 @@ useEffect(() => {
         const { data } = await api.get(`${jobBase}/mark-batch/status/${jobId}`);
         pollFailStreak = 0;
 
-        if (data.state === "JOB_STATE_PENDING" || data.state === "JOB_STATE_RUNNING") {
+        if (
+          data.state === "JOB_STATE_PENDING" ||
+          data.state === "JOB_STATE_RUNNING" ||
+          data.state === "JOB_STATE_QUEUED"
+        ) {
           patchBatchJob(assignId, (prev) => ({ ...prev, phase: "processing", jobId }));
           // Wait for this response before scheduling the next one — a bare
           // setInterval would fire again even while this request is still in
@@ -2601,8 +2605,8 @@ useEffect(() => {
         }
 
         const resultMap = {};
-        const saveMode = jobMeta.mode || "normal";
-        const modelForResult = jobMeta.geminiModel || geminiModel;
+        const saveMode = data.markingMode || jobMeta.mode || "normal";
+        const modelForResult = data.geminiModel || jobMeta.geminiModel || null;
         for (const { student, result, success, error, tokenUsage, compression, diagnostics } of data.results) {
           const enrichedResult = success
             ? isV2(jobEngine)

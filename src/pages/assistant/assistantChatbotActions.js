@@ -375,7 +375,11 @@ async function pollBatchUntilDone(jobId, { assignmentId, geminiModel, mode, onPr
     const { data } = await api.get(`/marking/mark-batch/status/${jobId}`);
     const state = data.state;
 
-    if (state === "JOB_STATE_PENDING" || state === "JOB_STATE_RUNNING") {
+    if (
+      state === "JOB_STATE_PENDING" ||
+      state === "JOB_STATE_RUNNING" ||
+      state === "JOB_STATE_QUEUED"
+    ) {
       if (attempt > 0 && attempt % 4 === 0) {
         onProgress?.(`Still marking… (check ${attempt + 1})`);
       }
@@ -398,7 +402,7 @@ async function pollBatchUntilDone(jobId, { assignmentId, geminiModel, mode, onPr
       const enriched = buildBatchMarkingResult(
         result,
         tokenUsage,
-        geminiModel,
+        result?.geminiModel || data.geminiModel || geminiModel || null,
         compression
       );
       await api
