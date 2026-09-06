@@ -547,6 +547,7 @@ export default function ManagerLoginCss() {
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
+    handlePreviewDocumentLoaded,
     reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
@@ -3536,6 +3537,7 @@ export default function ManagerLoginCss() {
                     <AnnotatedPdfPreview
                       key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                       url={annotatedPreviewUrl}
+                      onDocumentLoaded={handlePreviewDocumentLoaded}
                       pdfSessionKey={resultModalSubmissionId}
                       placementQuestions={placementQuestions}
                       reportPageCount={reportPageCount}

@@ -15,7 +15,11 @@
 import { assertPdfBlob } from "./markingFormData";
 
 const MAX_ENTRIES = 4;
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 5;
+// Drive/proxy interruptions during busy marking periods commonly last longer
+// than a second. Keep retrying the one PDF with a useful backoff instead of
+// surfacing an error (or making the user reopen the paper) immediately.
+const RETRY_DELAYS_MS = [1_000, 3_000, 7_000, 15_000];
 
 /** key -> Blob */
 const blobs = new Map();
@@ -36,7 +40,7 @@ function cacheKey(assignmentId, submissionId) {
 export function isRetryablePdfFetchError(err) {
   if (!err) return false;
   const status = err?.response?.status;
-  if (status === 502 || status === 503 || status === 504) return true;
+  if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
   if (err?.code === "ECONNABORTED") return true;
   if (err?.code === "ERR_NETWORK") return true;
   // Axios surfaces dropped Drive/proxy connections as a bare "Network Error"
@@ -62,7 +66,8 @@ export async function withPdfFetchRetry(fn, { attempts = MAX_ATTEMPTS } = {}) {
     } catch (err) {
       lastErr = err;
       if (!isRetryablePdfFetchError(err) || attempt === attempts) throw err;
-      await new Promise((r) => setTimeout(r, 400 * attempt));
+      const delay = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)];
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
   throw lastErr;

@@ -429,6 +429,7 @@ export default function AnnotatedPdfPreview({
   labelGuidance = "",
   openExternalLabel = "Open in browser",
   onStructuralError = null,
+  onDocumentLoaded = null,
 }) {
   const rootRef = useRef(null);
   const scrollRef = useRef(null);
@@ -625,6 +626,7 @@ export default function AnnotatedPdfPreview({
         }
         setPdf(doc);
         setNumPages(doc.numPages);
+        onDocumentLoaded?.(url);
         if (sameSession) {
           const restore = Math.min(
             Math.max(1, currentPageRef.current),
@@ -659,7 +661,7 @@ export default function AnnotatedPdfPreview({
         return null;
       });
     };
-  }, [url, loadNonce, pdfSessionKey, onStructuralError]);
+  }, [url, loadNonce, pdfSessionKey, onStructuralError, onDocumentLoaded]);
 
   const effectiveQuestions = useMemo(() => {
     if (!placementEnabled) return [];

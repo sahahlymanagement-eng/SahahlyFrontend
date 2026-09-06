@@ -790,6 +790,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
+    handlePreviewDocumentLoaded,
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
@@ -4479,6 +4480,7 @@ return (
                             key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                             url={annotatedPreviewUrl}
                             onStructuralError={retryPreview}
+                            onDocumentLoaded={handlePreviewDocumentLoaded}
                             pdfSessionKey={resultModalSubmissionId}
                             placementQuestions={placementQuestions}
                             reportPageCount={reportPageCount}

@@ -725,6 +725,7 @@ const resolvePdfSummary = (submissionId, result) =>
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
+    handlePreviewDocumentLoaded,
     reportPageCount,
   } = useAnnotatedResultPreview({
     api,
@@ -5694,6 +5695,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                             url={annotatedPreviewUrl}
                             onStructuralError={retryPreview}
+                            onDocumentLoaded={handlePreviewDocumentLoaded}
                             pdfSessionKey={resultModalSubmissionId}
                             placementQuestions={placementQuestions}
                             reportPageCount={reportPageCount}

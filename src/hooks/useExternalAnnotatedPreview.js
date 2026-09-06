@@ -73,6 +73,7 @@ export function useExternalAnnotatedPreview({
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
+  const retiredPreviewUrlsRef = useRef(new Set());
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
   resolvePdfSummaryRef.current = resolvePdfSummary;
   const getStudentFileRef = useRef(getStudentFile);
@@ -113,7 +114,15 @@ export function useExternalAnnotatedPreview({
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
+    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    retiredPreviewUrlsRef.current.clear();
     setAnnotatedPreviewUrl(null);
+  }, []);
+
+  const handlePreviewDocumentLoaded = useCallback((loadedUrl) => {
+    if (loadedUrl !== previewUrlRef.current) return;
+    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    retiredPreviewUrlsRef.current.clear();
   }, []);
 
   const buildSnapshotFromModal = useCallback((modal) => {
@@ -209,9 +218,7 @@ export function useExternalAnnotatedPreview({
       setAnnotatedPreviewUrl(url);
       setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
       if (previousUrl && previousUrl !== url) {
-        requestAnimationFrame(() => {
-          setTimeout(() => URL.revokeObjectURL(previousUrl), 0);
-        });
+        retiredPreviewUrlsRef.current.add(previousUrl);
       }
     } catch (err) {
       if (requestId === previewRequestRef.current) {
@@ -564,6 +571,7 @@ export function useExternalAnnotatedPreview({
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
+    handlePreviewDocumentLoaded,
     reportPageCount,
     refreshPreviewFromQuestions,
   };

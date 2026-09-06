@@ -691,6 +691,7 @@ export default function GradingProviderPage({ slug, label }) {
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
+    handlePreviewDocumentLoaded,
     reportPageCount,
   } = useExternalAnnotatedPreview({
     resultModal,
@@ -4123,6 +4124,7 @@ toast.success("Result cleared — you can mark again");
                     <AnnotatedPdfPreview
                       key={resultModal?.submissionId || resultModal?.student?.submissionId || "preview"}
                       url={annotatedPreviewUrl}
+                      onDocumentLoaded={handlePreviewDocumentLoaded}
                       pdfSessionKey={resultModalSubmissionId}
                       placementQuestions={canEdit ? placementQuestions : null}
                       reportPageCount={reportPageCount}

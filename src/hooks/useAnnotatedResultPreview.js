@@ -92,6 +92,7 @@ export function useAnnotatedResultPreview({
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
+  const retiredPreviewUrlsRef = useRef(new Set());
   // Which submission the preview currently on screen was built from. Needed to
   // tell "a preview for this paper is already up" from "that is the previous
   // student's PDF still showing while this one loads".
@@ -136,8 +137,19 @@ export function useAnnotatedResultPreview({
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
+    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    retiredPreviewUrlsRef.current.clear();
     previewSubmissionIdRef.current = null;
     setAnnotatedPreviewUrl(null);
+  }, []);
+
+  // A blob URL cannot be revoked merely on the next animation frame: the child
+  // PDF viewer starts its fetch in an effect, which can run later. Revoke old
+  // URLs only after pdf.js confirms it has fully copied the replacement bytes.
+  const handlePreviewDocumentLoaded = useCallback((loadedUrl) => {
+    if (loadedUrl !== previewUrlRef.current) return;
+    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    retiredPreviewUrlsRef.current.clear();
   }, []);
 
   const buildSnapshotFromModal = useCallback((modal, annotationOverride = null) => {
@@ -197,8 +209,11 @@ export function useAnnotatedResultPreview({
             assignmentId,
             submissionId: snapshot.submissionId,
             googleUserId: googleUserId || undefined,
+            // A dead proxy request should release quickly enough for the retry
+            // ladder to help; the outer timeout still allows the full ladder.
+            timeout: 30_000,
           }),
-          90_000,
+          150_000,
           "Loading student PDF"
         );
         if (requestId !== previewRequestRef.current) return;
@@ -239,9 +254,7 @@ export function useAnnotatedResultPreview({
         setAnnotatedPreviewUrl(url);
         setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
         if (previousUrl && previousUrl !== url) {
-          requestAnimationFrame(() => {
-            setTimeout(() => URL.revokeObjectURL(previousUrl), 0);
-          });
+          retiredPreviewUrlsRef.current.add(previousUrl);
         }
       } catch (err) {
         if (requestId === previewRequestRef.current) {
@@ -604,6 +617,7 @@ export function useAnnotatedResultPreview({
     resetToConfirmed,
     revertPreviewToConfirmed,
     retryPreview,
+    handlePreviewDocumentLoaded,
     reportPageCount,
     refreshPreviewFromQuestions,
   };
