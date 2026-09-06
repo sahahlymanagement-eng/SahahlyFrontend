@@ -8,7 +8,7 @@ import {
   useGradingNotifications,
   useGradingDelegations,
 } from "../context/GradingNotificationContext";
-import { canGradeProvider } from "../utils/gradingAccess";
+import { canGradeProvider, isGradingOnlyAccount } from "../utils/gradingAccess";
 
 // External grading company tabs — each visible only to the accounts allowed to
 // grade for that particular partner, and badged with its own unread count. Keyed
@@ -48,9 +48,15 @@ export default function ManagerSidebar() {
   const { counts } = useGradingNotifications();
   const { delegations } = useGradingDelegations();
 
+  // A dedicated per-provider Manager role (Manager - <Provider>) is confined
+  // entirely to its one provider tab — no dashboard, students, reports, etc.
+  // Every other manager keeps the full list, unaffected.
+  const gradingOnly = isGradingOnlyAccount();
+
   const navItems = NAV_ITEMS.filter((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
-    return !slug || canGradeProvider(slug, delegations);
+    if (!slug) return !gradingOnly;
+    return canGradeProvider(slug, delegations);
   }).map((item) => {
     const slug = GRADING_NAV_PATHS[item.path];
     const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;

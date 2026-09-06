@@ -207,6 +207,13 @@ export function canGradeProvider(slug, grant = delegatedProviders) {
   ) {
     return true;
   }
+  // A dedicated per-provider role always opens its own tab, even before the
+  // director has delegated it a first assignment — the backend already
+  // scopes such an account to an empty list in that case (see
+  // gradingDelegationScope.js resolveGradingScope), so the tab correctly
+  // shows "nothing yet" rather than being unreachable.
+  const user = resolveUser();
+  if (user?.gradingRole && user?.gradingProvider === slug) return true;
   if (grant?.[slug]) return true;
   const account = currentGradingAccount();
   if (!account) return false;
@@ -319,14 +326,29 @@ export function canEditGradingResults() {
   return !isGradingReviewOnly();
 }
 
+/** The signed-in user object, or the one explicitly passed in. */
+function resolveUser(forUser) {
+  if (forUser) return forUser;
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Is this account confined to its grading tab(s), with the rest of its portal
- * hidden? Set per-account by `gradingOnly` on the allow-list entry.
+ * hidden? True for the static allow-list's `gradingOnly` accounts, AND for
+ * anyone holding one of the two dedicated per-provider roles (Manager/
+ * Assistant - <Provider>, see routes/auth.js publicUser() `gradingRole`) —
+ * that confinement is total by design (see gradingOnlyProviders below), not
+ * opt-in per account the way the static list is.
  *
  * @param {object} [forUser] see currentGradingAccount.
  */
 export function isGradingOnlyAccount(forUser = null) {
-  return currentGradingAccount(forUser)?.gradingOnly === true;
+  if (currentGradingAccount(forUser)?.gradingOnly === true) return true;
+  return !!resolveUser(forUser)?.gradingRole;
 }
 
 /**
@@ -334,10 +356,22 @@ export function isGradingOnlyAccount(forUser = null) {
  * landing tab first. Empty for every other account, which is what callers use to
  * tell "confine this login" from "leave it alone".
  *
+ * A dedicated per-provider role sees ONLY its own provider — deliberately no
+ * `withPairedProviders` expansion (unlike the static allow-list's Mariam
+ * Gabalawy ↔ Dr Peter pairing): that pairing exists because those two
+ * teachers historically shared one login pattern, which doesn't apply to a
+ * role that was created for exactly one named provider.
+ *
  * @param {object} [forUser] see currentGradingAccount.
  */
 export function gradingOnlyProviders(forUser = null) {
   const account = currentGradingAccount(forUser);
-  if (account?.gradingOnly !== true) return [];
-  return withPairedProviders(account.providers) || [];
+  if (account?.gradingOnly === true) {
+    return withPairedProviders(account.providers) || [];
+  }
+  const user = resolveUser(forUser);
+  if (user?.gradingRole && user?.gradingProvider) {
+    return [user.gradingProvider];
+  }
+  return [];
 }

@@ -37,7 +37,12 @@ export function getDashboardPathForRole(roleName) {
  * a grading-only login cannot be bounced to a page its sidebar does not show.
  */
 export function getDashboardPathForUser(user) {
-  const home = getDashboardPathForRole(getRoleName(user));
+  // A dedicated per-provider role's literal name ("manager - dr peter") never
+  // matches ROLE_HOME — fall back to its family (`gradingRole`: "manager" /
+  // "assistant") so a fresh login lands somewhere instead of nowhere.
+  const home =
+    getDashboardPathForRole(getRoleName(user)) ||
+    getDashboardPathForRole(user?.gradingRole);
   if (!home) return null;
 
   const [landingTab] = gradingOnlyProviders(user);

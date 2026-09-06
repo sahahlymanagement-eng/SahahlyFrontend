@@ -200,6 +200,15 @@ export default function GradingProviderPage({ slug, label }) {
     return String(raw).trim().toLowerCase();
   }, [user]);
 
+  // The dedicated "Manager - <this provider>" role — permanently locked to
+  // one Gemini model at chunkSize 10 (routes/grading.js enforces this
+  // server-side regardless of what's sent, this is just the matching UI),
+  // and additionally gated by a director-controlled on/off switch.
+  const isProviderManagerLocked =
+    user?.gradingRole === "manager" && user?.gradingProvider === slug;
+  const PROVIDER_MANAGER_MODEL_ID = "gemini-3-flash-preview";
+  const markingUnlocked = !!user?.gradingMarkingUnlocked;
+
   // Same free chunk-size picker as the director classroom Submission Viewer.
   const canPickChunkSizeIndependently =
     roleName === "director" || roleName === "admin";
@@ -239,6 +248,19 @@ export default function GradingProviderPage({ slug, label }) {
   // entirely and the assignment list behaves exactly as it did before.
   const [classes, setClasses] = useState([]);
   const [classSearch, setClassSearch] = useState("");
+
+  // ── "Assign Assistant to Class" (a provider-manager sub-delegating an
+  // Assistant - <this provider> to one class within an assignment they
+  // themselves manage) ──
+  const [assignAssistantModal, setAssignAssistantModal] = useState(null); // { assignmentId } | null
+  const [assignAssistantClasses, setAssignAssistantClasses] = useState([]);
+  const [assistantPool, setAssistantPool] = useState([]);
+  const [assignAssistantForm, setAssignAssistantForm] = useState({
+    personId: "",
+    classroomGroupId: "",
+    deadline: "",
+  });
+  const [savingAssistantAssignment, setSavingAssistantAssignment] = useState(false);
   // { groupId, groupName } — groupId is null for the synthetic "No class"
   // bucket (assignments predating the classroom field, or never assigned to
   // one). Two-step drill-down mirroring ManagerSubmissionViewer's
@@ -259,6 +281,44 @@ export default function GradingProviderPage({ slug, label }) {
   const [listTotal, setListTotal] = useState(0);
   const [sessionError, setSessionError] = useState(null);
 
+  const openAssignAssistantModal = useCallback(async () => {
+    if (selectedAssignment?.id == null) return;
+    setAssignAssistantForm({ personId: "", classroomGroupId: "", deadline: "" });
+    setAssignAssistantModal({ assignmentId: selectedAssignment.id });
+    try {
+      const [classesRes, poolRes] = await Promise.all([
+        api.get(`${BASE}/classes`, { params: { assignmentId: selectedAssignment.id } }),
+        api.get(`/grading-delegations/${slug}/assistants-pool`),
+      ]);
+      setAssignAssistantClasses(classesRes.data?.classes || []);
+      setAssistantPool(poolRes.data?.data || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load classes/assistants");
+    }
+  }, [selectedAssignment, BASE, slug]);
+
+  const submitAssignAssistant = useCallback(async () => {
+    if (!assignAssistantModal) return;
+    const { personId, classroomGroupId, deadline } = assignAssistantForm;
+    if (!personId || !classroomGroupId || !deadline) {
+      toast.error("Pick an assistant, a class, and a deadline");
+      return;
+    }
+    setSavingAssistantAssignment(true);
+    try {
+      await api.post(
+        `/grading-delegations/${slug}/assignments/${assignAssistantModal.assignmentId}/assistants`,
+        { personId, classroomGroupId: Number(classroomGroupId), deadline }
+      );
+      toast.success("Assistant assigned to class");
+      setAssignAssistantModal(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to assign assistant");
+    } finally {
+      setSavingAssistantAssignment(false);
+    }
+  }, [assignAssistantModal, assignAssistantForm, slug]);
+
   // ── Guidance modal / marking config ──
   const [guidanceModal, setGuidanceModal] = useState(null);
   const [guidance, setGuidance] = useState("");
@@ -267,6 +327,15 @@ export default function GradingProviderPage({ slug, label }) {
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
+
+  // A dedicated provider-manager is always forced onto one model — snap the
+  // selector back if it's ever seeded from something else (e.g. a stale
+  // batchJob.geminiModel, see the effect that seeds it from a running job).
+  useEffect(() => {
+    if (isProviderManagerLocked && geminiModel !== PROVIDER_MANAGER_MODEL_ID) {
+      setGeminiModel(PROVIDER_MANAGER_MODEL_ID);
+    }
+  }, [isProviderManagerLocked, geminiModel]);
 
   // ── Marking progress / results ──
   const [markingStudentId, setMarkingStudentId] = useState(null);
@@ -2494,6 +2563,28 @@ toast.success("Result cleared — you can mark again");
                   <div className="ma-panel-title-wrap">
                     <div className="ma-panel-dot" />
                     <h2 className="ma-panel-title">{selectedAssignment.name}</h2>
+                    {selectedAssignmentStats?.myDelegation?.role === "manager" && (
+                      <button
+                        type="button"
+                        onClick={openAssignAssistantModal}
+                        title="Assign an Assistant to one class within this assignment"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          border: "1px solid var(--border)",
+                          background: "var(--surface-2)",
+                          color: "var(--text-primary)",
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <FiUsers size={14} />
+                        Assign Assistant to Class
+                      </button>
+                    )}
                     <span className="ma-panel-count">
                       {isSearching
                         ? `${filteredSubmissions.length} of ${listMeta.total} match`
@@ -2551,14 +2642,26 @@ toast.success("Result cleared — you can mark again");
                     <select
                       className="msv-gemini-select"
                       value={pickValidGeminiModel(geminiModels, geminiModel)}
-                      onChange={(e) => setGeminiModel(e.target.value)}
+                      onChange={(e) => {
+                        if (isProviderManagerLocked) return;
+                        setGeminiModel(e.target.value);
+                      }}
                       disabled={bulkMarking || priorityBulkRunning}
-                      title="Sahahly model for marking"
+                      title={
+                        isProviderManagerLocked
+                          ? "Locked to Sahahly 3 Flash Preview for this account"
+                          : "Sahahly model for marking"
+                      }
                       style={{ minWidth: 180, maxWidth: 260 }}
                     >
                       {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map((m) => (
-                        <option key={m.id} value={m.id}>
+                        <option
+                          key={m.id}
+                          value={m.id}
+                          disabled={isProviderManagerLocked && m.id !== PROVIDER_MANAGER_MODEL_ID}
+                        >
                           {sahahlyModelLabel(m)}
+                          {isProviderManagerLocked && m.id !== PROVIDER_MANAGER_MODEL_ID ? " (locked)" : ""}
                         </option>
                       ))}
                     </select>
@@ -2582,14 +2685,17 @@ toast.success("Result cleared — you can mark again");
                         bulkMarking ||
                         priorityBulkRunning ||
                         batchJob?.phase === "uploading" ||
-                        batchJob?.phase === "submitting"
+                        batchJob?.phase === "submitting" ||
+                        (isProviderManagerLocked && !markingUnlocked)
                       }
                       title={
-                        selectedAssignment.id == null
-                          ? `Batch marking needs an assignment with a ${label} id`
-                          : markingSelection.selectedCount
-                            ? "Submit one Sahahly batch job for the selected submissions"
-                            : "Submit one Sahahly batch job for all unmarked submissions"
+                        isProviderManagerLocked && !markingUnlocked
+                          ? "Marking is not enabled for your account yet — ask a director to enable it."
+                          : selectedAssignment.id == null
+                            ? `Batch marking needs an assignment with a ${label} id`
+                            : markingSelection.selectedCount
+                              ? "Submit one Sahahly batch job for the selected submissions"
+                              : "Submit one Sahahly batch job for all unmarked submissions"
                       }
                       style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
                     >
@@ -3046,6 +3152,96 @@ toast.success("Result cleared — you can mark again");
         </div>
       )}
 
+      {/* ── ASSIGN ASSISTANT TO CLASS ── */}
+      {assignAssistantModal && (
+        <div className="msv-overlay" onClick={() => setAssignAssistantModal(null)}>
+          <div
+            className="msv-results-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 460 }}
+          >
+            <div className="msv-modal-header">
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Assign Assistant to Class</div>
+              <button className="msv-icon-btn" onClick={() => setAssignAssistantModal(null)}>
+                <FiX size={16} />
+              </button>
+            </div>
+            <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                  Class
+                </label>
+                <select
+                  className="msv-gemini-select"
+                  style={{ width: "100%" }}
+                  value={assignAssistantForm.classroomGroupId}
+                  onChange={(e) =>
+                    setAssignAssistantForm((f) => ({ ...f, classroomGroupId: e.target.value }))
+                  }
+                >
+                  <option value="">Select a class…</option>
+                  {assignAssistantClasses.map((c) => (
+                    <option key={c.groupId} value={c.groupId}>
+                      {c.groupName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                  Assistant
+                </label>
+                <select
+                  className="msv-gemini-select"
+                  style={{ width: "100%" }}
+                  value={assignAssistantForm.personId}
+                  onChange={(e) =>
+                    setAssignAssistantForm((f) => ({ ...f, personId: e.target.value }))
+                  }
+                >
+                  <option value="">Select an assistant…</option>
+                  {assistantPool.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.name} {p.email ? `(${p.email})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                  Deadline
+                </label>
+                <input
+                  type="datetime-local"
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--text-primary)",
+                    fontSize: 13,
+                    boxSizing: "border-box",
+                  }}
+                  value={assignAssistantForm.deadline}
+                  onChange={(e) =>
+                    setAssignAssistantForm((f) => ({ ...f, deadline: e.target.value }))
+                  }
+                />
+              </div>
+              <button
+                className="ma-send-btn"
+                onClick={submitAssignAssistant}
+                disabled={savingAssistantAssignment}
+                style={{ justifyContent: "center" }}
+              >
+                {savingAssistantAssignment ? "Assigning…" : "Assign"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── GUIDANCE MODAL ── */}
       {canMark && guidanceModal && (
         <div className="msv-overlay" onClick={() => setGuidanceModal(null)}>
@@ -3112,11 +3308,24 @@ toast.success("Result cleared — you can mark again");
                 <select
                   className="msv-gemini-select"
                   value={pickValidGeminiModel(geminiModels, geminiModel)}
-                  onChange={(e) => setGeminiModel(e.target.value)}
+                  onChange={(e) => {
+                    if (isProviderManagerLocked) return;
+                    setGeminiModel(e.target.value);
+                  }}
+                  title={
+                    isProviderManagerLocked
+                      ? "Locked to Sahahly 3 Flash Preview for this account"
+                      : undefined
+                  }
                 >
                   {(geminiModels.length ? geminiModels : [{ id: geminiModel, label: geminiModel }]).map((m) => (
-                    <option key={m.id} value={m.id}>
+                    <option
+                      key={m.id}
+                      value={m.id}
+                      disabled={isProviderManagerLocked && m.id !== PROVIDER_MANAGER_MODEL_ID}
+                    >
                       {sahahlyModelLabel(m)}
+                      {isProviderManagerLocked && m.id !== PROVIDER_MANAGER_MODEL_ID ? " (locked)" : ""}
                     </option>
                   ))}
                 </select>
@@ -3286,11 +3495,23 @@ toast.success("Result cleared — you can mark again");
                   <button
                     className="ma-send-btn"
                     onClick={() => handleGuidanceConfirm("gemini")}
-                    disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                    disabled={
+                      (markingModeModal === "criteria" && !normalizeGuidance(guidance)) ||
+                      (isProviderManagerLocked && !markingUnlocked)
+                    }
+                    title={
+                      isProviderManagerLocked && !markingUnlocked
+                        ? "Marking is not enabled for your account yet — ask a director to enable it."
+                        : undefined
+                    }
                     style={{
                       flex: 1,
                       justifyContent: "center",
-                      opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
+                      opacity:
+                        (markingModeModal === "criteria" && !normalizeGuidance(guidance)) ||
+                        (isProviderManagerLocked && !markingUnlocked)
+                          ? 0.4
+                          : 1,
                     }}
                   >
                     <FiLayers size={14} />
@@ -3300,11 +3521,23 @@ toast.success("Result cleared — you can mark again");
                   <button
                     className="ma-send-btn"
                     onClick={() => handleGuidanceConfirm("gemini")}
-                    disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                    disabled={
+                      (markingModeModal === "criteria" && !normalizeGuidance(guidance)) ||
+                      (isProviderManagerLocked && !markingUnlocked)
+                    }
+                    title={
+                      isProviderManagerLocked && !markingUnlocked
+                        ? "Marking is not enabled for your account yet — ask a director to enable it."
+                        : undefined
+                    }
                     style={{
                       flex: 1,
                       justifyContent: "center",
-                      opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
+                      opacity:
+                        (markingModeModal === "criteria" && !normalizeGuidance(guidance)) ||
+                        (isProviderManagerLocked && !markingUnlocked)
+                          ? 0.4
+                          : 1,
                       background: "var(--warning)",
                       borderColor: "var(--warning)",
                       color: "#fff",
@@ -3318,20 +3551,36 @@ toast.success("Result cleared — you can mark again");
                     <button
                       className="ma-send-btn"
                       onClick={() => handleGuidanceConfirm("gemini")}
-                      disabled={markingModeModal === "criteria" && !normalizeGuidance(guidance)}
+                      disabled={
+                        (markingModeModal === "criteria" && !normalizeGuidance(guidance)) ||
+                        (isProviderManagerLocked && !markingUnlocked)
+                      }
+                      title={
+                        isProviderManagerLocked && !markingUnlocked
+                          ? "Marking is not enabled for your account yet — ask a director to enable it."
+                          : undefined
+                      }
                       style={{
                         flex: 1,
                         justifyContent: "center",
-                        opacity: markingModeModal === "criteria" && !normalizeGuidance(guidance) ? 0.4 : 1,
+                        opacity:
+                          (markingModeModal === "criteria" && !normalizeGuidance(guidance)) ||
+                          (isProviderManagerLocked && !markingUnlocked)
+                            ? 0.4
+                            : 1,
                       }}
                     >
                       <FiCpu size={14} />
                       {guidanceModal.bulk ? "Start Marking All with Sahahly" : "Start Marking with Sahahly"}
                     </button>
-                    <button className="ma-send-btn" onClick={() => handleGuidanceConfirm("claude")}>
-                      <FiCpu size={14} />
-                      {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
-                    </button>
+                    {/* Claude isn't the one Gemini model this role is locked to —
+                        "all other models are closed" applies here too. */}
+                    {!isProviderManagerLocked && (
+                      <button className="ma-send-btn" onClick={() => handleGuidanceConfirm("claude")}>
+                        <FiCpu size={14} />
+                        {guidanceModal.bulk ? "Start Marking All with Claude" : "Start Marking with Claude"}
+                      </button>
+                    )}
                   </>
                 )}
                 <button className="msv-cancel-btn" onClick={() => setGuidanceModal(null)}>

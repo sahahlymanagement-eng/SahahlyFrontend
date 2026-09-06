@@ -358,8 +358,18 @@ export default function DirectorPeople() {
               ? {
                   ...p,
                   roleId: roleObj
-                    ? { _id: roleObj._id, name: roleObj.name, isActive: roleObj.isActive }
+                    ? {
+                        _id: roleObj._id,
+                        name: roleObj.name,
+                        isActive: roleObj.isActive,
+                        gradingProvider: roleObj.gradingProvider ?? null,
+                        gradingRole: roleObj.gradingRole ?? null,
+                      }
                     : { _id: roleId },
+                  // A role change resets marking-unlocked server-side (see
+                  // people.js assign-role) — mirror that locally so the toggle
+                  // doesn't show a stale "on" state until the next reload.
+                  gradingMarkingUnlocked: false,
                 }
               : p
           )
@@ -384,6 +394,23 @@ export default function DirectorPeople() {
       toast.error(err.response?.data?.message || "Failed to assign role");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Director-controlled on/off switch for a provider-manager's marking
+  // rights (routes/grading.js enforces this server-side on every mark-batch
+  // request — this just flips it). Only ever shown for a person whose role
+  // is one of the dedicated "Manager - <Provider>" roles.
+  const toggleGradingMarkingUnlocked = async (person) => {
+    const next = !person.gradingMarkingUnlocked;
+    try {
+      await api.patch(`/people/${person._id}/assign-role`, { gradingMarkingUnlocked: next });
+      setPeople((prev) =>
+        prev.map((p) => (p._id === person._id ? { ...p, gradingMarkingUnlocked: next } : p))
+      );
+      toast.success(next ? "Marking enabled" : "Marking disabled");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update marking access");
     }
   };
 
@@ -623,6 +650,27 @@ export default function DirectorPeople() {
                       ))}
                     </select>
                   </div>
+
+                  {p.roleId?.gradingRole === "manager" && (
+                    <div className="roleBox">
+                      <label>Marking</label>
+                      <button
+                        type="button"
+                        className={`actionBtn toggleBtn ${p.gradingMarkingUnlocked ? "disableBtn" : "enableBtn"}`}
+                        onClick={() => toggleGradingMarkingUnlocked(p)}
+                        title={
+                          p.gradingMarkingUnlocked
+                            ? "Marking is enabled for this account — click to disable"
+                            : "Marking is disabled for this account — click to enable"
+                        }
+                      >
+                        {p.gradingMarkingUnlocked
+                          ? <><FiToggleRight size={14} /> Unlocked</>
+                          : <><FiToggleLeft size={14} /> Locked</>
+                        }
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* ACTION BUTTONS — hidden for admin */}

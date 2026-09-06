@@ -24,7 +24,16 @@ export default function RoleProtectedRoute({ children, allowedRole }) {
     ? allowedRole.map(role => role.toLowerCase())
     : [allowedRole?.toLowerCase()];
 
-  if (!allowedRoles.includes(roleName)) {
+  // A dedicated per-provider grading role ("Manager - Dr Peter") carries its
+  // own literal role name, which never matches the fixed allowedRole lists
+  // below — but it also carries `gradingRole: "manager"|"assistant"` (see
+  // routes/auth.js publicUser()), the stable family every such role belongs
+  // to. Checking that too is what lets /manager and /assistant accept any
+  // current or future provider's dedicated roles with zero further changes
+  // here — onboarding a new provider never needs to touch this file again.
+  const familyMatch = user?.gradingRole && allowedRoles.includes(user.gradingRole);
+
+  if (!allowedRoles.includes(roleName) && !familyMatch) {
     return <Navigate to="/login" replace />;
   }
 
