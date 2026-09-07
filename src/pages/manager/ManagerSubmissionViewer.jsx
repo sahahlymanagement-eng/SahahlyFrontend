@@ -2807,7 +2807,12 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
         },
       });
       const ahead = Number(data?.ahead || 0);
-      toast.success(ahead ? `Auto batch running, ${ahead} assignment${ahead === 1 ? "" : "s"} in queue in front of this one.` : "Automatic batch queued — it will start next.");
+      const queuedModel = data?.requestedGeminiModel || selectedModel;
+      toast.success(
+        ahead
+          ? `Automatic batch queued with ${geminiModelLabel(geminiModels, queuedModel)}; ${ahead} assignment${ahead === 1 ? "" : "s"} in front.`
+          : `Automatic batch queued with ${geminiModelLabel(geminiModels, queuedModel)} — it will start next.`
+      );
     } catch (err) {
       toast.error(extractHumanError(err) || "Could not queue automatic batch");
     }
@@ -2949,13 +2954,23 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
         const res = await api.post(`${base}/mark-batch/submit`, submitPayload, {
           timeout: 300_000,
         });
-        return { jobId: res.data.jobId, resumed: false };
+        return {
+          jobId: res.data.jobId,
+          resumed: false,
+          // The backend has validated this exact id and submitted it to Gemini.
+          // Do not later infer the job model from mutable dropdown state.
+          geminiModel: res.data.requestedGeminiModel || res.data.geminiModel || null,
+        };
       } catch (err) {
         if (err.response?.data?.reason === "first_batch_pending") {
           throw err;
         }
         if (err.response?.status === 409) {
-          return { jobId: err.response.data.jobId, resumed: true };
+          return {
+            jobId: err.response.data.jobId,
+            resumed: true,
+            geminiModel: err.response.data.geminiModel || null,
+          };
         }
         throw err;
       }
@@ -2981,7 +2996,13 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     return;
   }
 
-  const { jobId, resumed } = submitResult.result;
+  const { jobId, resumed, geminiModel: acceptedModel } = submitResult.result;
+  const submittedModel = acceptedModel || selectedModel;
+  if (!resumed && acceptedModel && acceptedModel !== selectedModel) {
+    toast.error(
+      `Model mismatch: selected ${selectedModel}, but the server accepted ${acceptedModel}.`
+    );
+  }
   if (resumed) {
     toast.info("Resuming existing batch job...");
   }
@@ -2990,16 +3011,17 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     ...prev,
     phase: "processing",
     jobId,
+    geminiModel: submittedModel,
     batchStudents: succeeded.map((r) => r.student),
   }));
-  toast.success("Batch submitted successfully.");
+  toast.success(`Batch submitted with ${geminiModelLabel(geminiModels, submittedModel)}.`);
 
   // Step 3 — hand off to standalone poller
   pollBatchJob(jobId, {
     assignmentId: assignId,
     mode,
     engine,
-    geminiModel: selectedModel,
+    geminiModel: submittedModel,
     batchStudents: succeeded.map((r) => r.student),
   });
 };

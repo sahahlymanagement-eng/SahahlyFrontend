@@ -107,9 +107,29 @@ export default function TokenUsageStats({
       >
         {title}
         <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, marginLeft: 8 }}>
-          ({result?.geminiModel ? sahahlyModelLabel(result.geminiModel) : "Model unavailable"})
+          ({result?.requestedGeminiModel || result?.geminiModel
+            ? sahahlyModelLabel(result.requestedGeminiModel || result.geminiModel)
+            : "Model unavailable"})
         </span>
       </div>
+
+      {result?.providerModelVersion && (
+        <div
+          style={{
+            marginTop: -2,
+            marginBottom: 8,
+            fontSize: 11,
+            color: result?.modelProvenanceStatus === "provider_mismatch"
+              ? "var(--danger)"
+              : "var(--muted)",
+          }}
+        >
+          Gemini reported: {result.providerModelVersion}
+          {result?.modelProvenanceStatus === "provider_mismatch"
+            ? " — does not match the selected model"
+            : ""}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         {lines.map((line) => (

@@ -248,10 +248,14 @@ function LazyPdfPage({
     if (!pdf || !wrapRef.current || !scrollRoot) return;
 
     const el = wrapRef.current;
+    let disposed = false;
+    let rendering = false;
+    let retryCount = 0;
+    let retryTimer = null;
 
     const renderPage = async () => {
-      if (renderedRef.current) return;
-      renderedRef.current = true;
+      if (disposed || renderedRef.current || rendering) return;
+      rendering = true;
 
       try {
         const page = await pdf.getPage(pageNumber);
@@ -263,15 +267,13 @@ function LazyPdfPage({
         const dpr = Math.min(window.devicePixelRatio || 1, 3);
 
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas || disposed) return;
 
         const ctx = canvas.getContext("2d", { alpha: false });
         canvas.width = Math.floor(viewport.width * dpr);
         canvas.height = Math.floor(viewport.height * dpr);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
-        setRendered(true);
-
         if (renderTaskRef.current) {
           try {
             renderTaskRef.current.cancel();
@@ -284,12 +286,26 @@ function LazyPdfPage({
         const task = page.render({ canvasContext: ctx, viewport });
         renderTaskRef.current = task;
         await task.promise;
+        if (disposed) return;
+        renderedRef.current = true;
+        setRendered(true);
       } catch (err) {
-        if (err?.name !== "RenderingCancelledException") {
+        if (!disposed && err?.name !== "RenderingCancelledException") {
           console.warn("[AnnotatedPdfPreview] page render:", err);
         }
-        renderedRef.current = false;
-        setRendered(false);
+        if (!disposed) {
+          renderedRef.current = false;
+          setRendered(false);
+          // Width/layout changes and React effect cleanup can cancel an
+          // otherwise-valid first render. Retry visible pages automatically so
+          // the report pages cannot remain as permanent white canvases.
+          if (retryCount < 2) {
+            retryCount += 1;
+            retryTimer = setTimeout(renderPage, 100 * retryCount);
+          }
+        }
+      } finally {
+        rendering = false;
       }
     };
 
@@ -304,7 +320,9 @@ function LazyPdfPage({
 
     observer.observe(el);
     return () => {
+      disposed = true;
       observer.disconnect();
+      if (retryTimer) clearTimeout(retryTimer);
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();

@@ -18,11 +18,25 @@ function elapsedText(value, now) {
 function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, now = Date.now() }) {
   if (!item) return null;
   const running = item.status === "running";
+  const singleStudentName = item.studentCount === 1
+    ? item.lateStudentName || item.submissions?.[0]?.name || item.submissions?.[0]?.studentName || null
+    : null;
+  const cardLabel = running
+    ? "Running now"
+    : position != null
+      ? `Queue position ${position}`
+      : item.status === "done"
+        ? "Completed"
+        : item.status === "failed"
+          ? "Failed"
+          : item.status === "cancelled"
+            ? "Cancelled"
+            : "Queue item";
   return (
     <div className="ma-card" style={{ padding: 18, display: "grid", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div>
-          <strong>{running ? "Running now" : `Queue position ${position}`}: {item.assignmentName || item.assignmentId}</strong>
+          <strong>{cardLabel}: {item.assignmentName || item.assignmentId}</strong>
           <div className="ma-muted">{item.classroomName || "Classroom not provided"}</div>
         </div>
         <span className={`ma-badge ${running ? "ma-badge--info" : "ma-badge--pending"}`}>{item.stage || item.status}</span>
@@ -40,8 +54,10 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           {item.geminiJobId && <span title={item.geminiJobId}>Job: <strong>{item.geminiJobId.slice(0, 12)}…</strong></span>}
         </div>
       )}
-      {item.studentCount === 1 && item.lateStudentName && (
-        <div><FiUser /> Late submission: <strong>{item.lateStudentName}</strong></div>
+      {singleStudentName && (
+        <div>
+          <FiUser /> {item.isLateSubmission ? "Late submission" : "Student"}: <strong>{singleStudentName}</strong>
+        </div>
       )}
       {item.error && <div style={{ color: "var(--danger)" }}>{item.error}</div>}
       {!running && onCancel && (

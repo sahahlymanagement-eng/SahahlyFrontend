@@ -196,17 +196,28 @@ export function resolveMarkingCost(result) {
   if (!result) return null;
   const modelId = result.geminiModel || null;
   if (!modelId) return null;
+  const batch = Boolean(
+    result.batchPricing ||
+    result.provider === "gemini-batch" ||
+    result.provider === "gemini-v2-batch" ||
+    result.provider === "claude-batch"
+  );
 
   // New records carry cost provenance. Never show a stored amount calculated
   // for a different model. Legacy records are recomputed from token usage when
   // possible instead of trusting an untraceable number.
   if (
     result.estimatedCost?.usd != null &&
-    result.estimatedCost.modelId === modelId
+    result.estimatedCost.modelId === modelId &&
+    Boolean(result.estimatedCost.batchPricing) === batch
   ) {
     return result.estimatedCost;
   }
-  if (result.estimatedCostUsd != null && result.estimatedCostModelId === modelId) {
+  if (
+    result.estimatedCostUsd != null &&
+    result.estimatedCostModelId === modelId &&
+    Boolean(result.batchPricing) === batch
+  ) {
     return {
       modelId,
       usd: result.estimatedCostUsd,
@@ -216,9 +227,6 @@ export function resolveMarkingCost(result) {
         result.priorityPricing || result.estimatedCost?.priorityPricing,
     };
   }
-  const batch =
-    result.batchPricing ||
-    result.provider === "gemini-batch";
   // Premium only applies when Gemini actually served the request at priority tier.
   const priority =
     !batch &&
