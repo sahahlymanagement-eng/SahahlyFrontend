@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FiArrowDown, FiArrowUp, FiClock, FiRefreshCw, FiTrash2, FiUser, FiUsers } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../../api/api";
@@ -124,17 +124,21 @@ export default function AutomaticBatchQueue() {
   const [data, setData] = useState({ running: null, queued: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const latestLoadRef = useRef(0);
   const role = getRoleName(getStoredUser());
   const canEdit = role === "director" || role === "admin";
 
   const load = useCallback(async (quiet = false) => {
+    const loadId = ++latestLoadRef.current;
     try {
       const response = await api.get("/automatic-batch-queue");
+      if (loadId !== latestLoadRef.current) return;
       setData(response.data || { running: null, queued: [], history: [] });
     } catch (err) {
+      if (loadId !== latestLoadRef.current) return;
       if (!quiet) toast.error(err.response?.data?.message || "Could not load automatic batch queue");
     } finally {
-      setLoading(false);
+      if (loadId === latestLoadRef.current) setLoading(false);
     }
   }, []);
 
@@ -156,6 +160,27 @@ export default function AutomaticBatchQueue() {
     if (isRunning && !window.confirm("Cancel this running automatic batch? Its current upload step will stop safely before Gemini submission.")) return;
     try {
       const response = await api.delete(`/automatic-batch-queue/${id}`);
+      // Invalidate any refresh that started before the delete completed, then
+      // reflect the mutation immediately instead of waiting for another GET.
+      latestLoadRef.current += 1;
+      const updatedItem = response.data?.item;
+      setData((current) => {
+        const wasRunning = String(current.running?._id || "") === String(id);
+        const next = {
+          ...current,
+          running: wasRunning
+            ? (updatedItem?.status === "running" ? updatedItem : null)
+            : current.running,
+          queued: (current.queued || []).filter((item) => String(item._id) !== String(id)),
+        };
+        if (updatedItem?.status === "cancelled") {
+          next.history = [
+            updatedItem,
+            ...(current.history || []).filter((item) => String(item._id) !== String(id)),
+          ];
+        }
+        return next;
+      });
       toast.success(response.data?.message || (isRunning ? "Cancellation requested" : "Removed from automatic queue"));
       load(true);
     } catch (err) {
