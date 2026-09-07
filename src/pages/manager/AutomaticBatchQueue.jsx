@@ -48,8 +48,17 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
       </div>
       {running && (
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-          <span>Elapsed: <strong>{elapsedText(item.startedAt || item.createdAt, now)}</strong></span>
-          <span>Gemini state: <strong>{item.lastProviderState || "Waiting for first status check"}</strong></span>
+          <span>Total elapsed: <strong>{elapsedText(item.createdAt, now)}</strong></span>
+          {item.startedAt && (
+            <span>Running: <strong>{elapsedText(item.startedAt, now)}</strong></span>
+          )}
+          <span>Gemini state: <strong>{item.lastProviderState || (
+            item.stage === "uploading"
+              ? "Uploading PDFs (batch not submitted yet)"
+              : item.stage === "submitting"
+                ? "Submitting batch"
+                : "Waiting for first status check"
+          )}</strong></span>
           <span>Last checked: <strong>{dateText(item.lastCheckedAt)}</strong></span>
           {item.geminiJobId && <span title={item.geminiJobId}>Job: <strong>{item.geminiJobId.slice(0, 12)}…</strong></span>}
         </div>
