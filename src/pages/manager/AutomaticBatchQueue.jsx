@@ -210,7 +210,20 @@ export default function AutomaticBatchQueue() {
         <h1 className="ma-topbar-title">Automatic Batch Queue</h1>
         <span className="ma-topbar-sub">One automatic assignment runs at a time. {canEdit ? "Directors can reorder or remove waiting jobs." : "Queue controls are read-only for managers."}</span>
       </div><button className="msv-btn-ai" onClick={() => load()}><FiRefreshCw /> Refresh</button></header>
-      <section style={{ padding: 24, display: "grid", gap: 18 }}>
+      <section
+        style={{
+          padding: 24,
+          paddingBottom: 64,
+          display: "grid",
+          gap: 18,
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          alignContent: "start",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
         {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : <>
           <h2 style={{ margin: 0 }}>Running</h2>
           {data.running ? <QueueCard item={data.running} now={now} onCancel={canEdit ? cancel : null} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
