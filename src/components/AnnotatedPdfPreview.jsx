@@ -15,6 +15,13 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mj
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey, normalizeQuestionLabelInput } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
+import {
+  clampExaminerColumnWidthPercent,
+  clampNoteBoxHeightPercent,
+  examinerColumnWidthPercentFromQuestions,
+  estimateNoteBoxHeightPercent,
+  MIN_NOTE_BOX_HEIGHT_PCT,
+} from "../utils/examinerColumnLayout";
 
 // Stable public URL (see vite-plugin-pdf-worker.js). Hashed /assets/*.mjs workers
 // fail on production ("Setting up fake worker failed: Failed to fetch…mjs").
@@ -81,11 +88,6 @@ function pointerDistance(a, b) {
   return Math.hypot(dx, dy);
 }
 
-/** Examiner column is ~178pt on ~595pt paper → ~23% of annotated page width. */
-const RIGHT_COL_LEFT_PCT = 76;
-const LEFT_COL_WIDTH_PCT = 11;
-const RIGHT_COL_WIDTH_PCT = 23;
-
 function clampYPercent(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return 30;
@@ -129,9 +131,14 @@ function PlacementHandle({
   displayNumber,
   column,
   yPercent,
+  heightPct,
+  columnLeftPct,
+  columnWidthPct,
   active,
+  resizing,
   editing,
   onPointerDown,
+  onResizePointerDown,
   onStartLabelEdit,
   onCommitLabel,
   onCancelLabelEdit,
@@ -142,16 +149,20 @@ function PlacementHandle({
   const labelNum = displayNumber || q?.questionNumber;
   const marks = `${q.marksAwarded ?? "?"}/${q.maxMarks ?? "?"}`;
   const canRename = typeof onStartLabelEdit === "function";
+  const isRight = column === "right";
+  const leftPct = isRight ? columnLeftPct : 0.6;
+  const widthPct = isRight ? columnWidthPct : 11;
 
   return (
     <div
       className={`pdf-place-handle pdf-place-handle--${column}${active ? " pdf-place-handle--active" : ""}${
-        editing ? " pdf-place-handle--editing" : ""
-      }`}
+        resizing ? " pdf-place-handle--resizing" : ""
+      }${editing ? " pdf-place-handle--editing" : ""}${isRight ? " pdf-place-handle--box" : ""}`}
       style={{
         top: `${yPercent}%`,
-        left: column === "left" ? "0.6%" : `${RIGHT_COL_LEFT_PCT}%`,
-        width: column === "left" ? `${LEFT_COL_WIDTH_PCT}%` : `${RIGHT_COL_WIDTH_PCT}%`,
+        left: `${leftPct}%`,
+        width: `${widthPct}%`,
+        height: isRight && heightPct ? `${heightPct}%` : undefined,
         zIndex: zIndex ?? undefined,
       }}
       onPointerDown={(e) => {
@@ -159,14 +170,30 @@ function PlacementHandle({
           e.stopPropagation();
           return;
         }
+        if (e.target.closest(".pdf-place-handle__resize")) return;
         onPointerDown(e, q, column, yPercent);
       }}
       title={
-        canRename
-          ? "Drag to move. Double-click the label to rename. Positions apply on Save & regenerate PDF."
-          : "Drag to move this marking box (any page). Positions apply on Save & regenerate PDF."
+        isRight
+          ? "Drag to move. Use the top/bottom edges to resize this correction box. Positions apply on Save & regenerate PDF."
+          : canRename
+            ? "Drag to move. Double-click the label to rename. Positions apply on Save & regenerate PDF."
+            : "Drag to move this marking box (any page). Positions apply on Save & regenerate PDF."
       }
     >
+      {isRight && (
+        <button
+          type="button"
+          className="pdf-place-handle__resize pdf-place-handle__resize--top"
+          title="Resize correction box"
+          aria-label={`Resize question ${labelNum} box from the top`}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onResizePointerDown?.(e, q, yPercent, heightPct, "top");
+          }}
+        />
+      )}
       {showRemove && column === "left" && (
         <button
           type="button"
@@ -211,6 +238,19 @@ function PlacementHandle({
           {column === "left" ? `Q${labelNum} ${marks}` : `Q${labelNum}`}
         </span>
       )}
+      {isRight && (
+        <button
+          type="button"
+          className="pdf-place-handle__resize pdf-place-handle__resize--bottom"
+          title="Resize correction box"
+          aria-label={`Resize question ${labelNum} box from the bottom`}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onResizePointerDown?.(e, q, yPercent, heightPct, "bottom");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -226,7 +266,12 @@ function LazyPdfPage({
   duplicateQuestionNumbers,
   dragKey,
   editingLabelIndex,
+  columnLeftPct,
+  columnWidthPct,
+  showColumnResize,
   onHandlePointerDown,
+  onBoxResizePointerDown,
+  onColumnResizePointerDown,
   onStartLabelEdit,
   onCommitLabel,
   onCancelLabelEdit,
@@ -343,6 +388,25 @@ function LazyPdfPage({
       data-student-page={studentPageNumber > 0 ? studentPageNumber : undefined}
     >
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
+      {showColumnResize && (
+        <div
+          className={`pdf-examiner-col-rail${dragKey === "column" ? " pdf-examiner-col-rail--active" : ""}`}
+          style={{ left: `${columnLeftPct}%`, width: `${columnWidthPct}%` }}
+        >
+          <div
+            className="pdf-examiner-col-resize"
+            title="Drag to resize the examiner notes column. Applies on Save & regenerate PDF."
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize examiner notes column"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onColumnResizePointerDown?.(e);
+            }}
+          />
+        </div>
+      )}
       {showHandles && (
         <div className="pdf-place-layer">
           {pageQuestions.map((item) => {
@@ -354,6 +418,7 @@ function LazyPdfPage({
               duplicateQuestionNumbers
             );
             const stackZ = 3 + (Number(item.placementIndex) || 0) * 2;
+            const heightPct = estimateNoteBoxHeightPercent(q);
             return (
               <div key={`place-${item.placementIndex ?? key}`} className="pdf-place-handle-group">
                 <PlacementHandle
@@ -376,10 +441,15 @@ function LazyPdfPage({
                   displayNumber={displayNumber}
                   column="right"
                   yPercent={yPercent}
+                  heightPct={heightPct}
+                  columnLeftPct={columnLeftPct}
+                  columnWidthPct={columnWidthPct}
                   zIndex={stackZ + 1}
                   active={dragKey === `${key}:right`}
+                  resizing={dragKey === `${key}:height`}
                   editing={false}
                   onPointerDown={onHandlePointerDown}
+                  onResizePointerDown={onBoxResizePointerDown}
                   onStartLabelEdit={onStartLabelEdit}
                   onCommitLabel={onCommitLabel}
                   onCancelLabelEdit={onCancelLabelEdit}
@@ -432,8 +502,10 @@ function resolveStudentPageUnderPointer(scrollRoot, clientY, reportOffset) {
 
 /**
  * Lazy page-by-page PDF preview with native-resolution zoom (re-renders at zoom level).
- * Optional placementQuestions + onPlacementChange: drag boxes across pages;
- * parent should apply pageNumber/yPercent and only regenerate on Confirm Edits.
+ * Optional placementQuestions + onPlacementChange: drag boxes across pages,
+ * resize correction boxes and the examiner-notes column; parent should apply
+ * pageNumber/yPercent/noteBoxHeightPercent/examinerColumnWidthPercent and only
+ * regenerate on Confirm Edits.
  * Optional onQuestionLabelChange: double-click a handle label to rename Q1a etc.
  */
 export default function AnnotatedPdfPreview({
@@ -468,6 +540,7 @@ export default function AnnotatedPdfPreview({
   const [fitMenuOpen, setFitMenuOpen] = useState(false);
   /** Local drag overrides keyed by placementKey (row index), not questionNumber alone. */
   const [localPlacement, setLocalPlacement] = useState({});
+  const [localColumnWidthPct, setLocalColumnWidthPct] = useState(null);
   const [dragKey, setDragKey] = useState(null);
   const [editingLabelIndex, setEditingLabelIndex] = useState(null);
   const fitMenuRef = useRef(null);
@@ -554,6 +627,7 @@ export default function AnnotatedPdfPreview({
 
   useEffect(() => {
     setLocalPlacement({});
+    setLocalColumnWidthPct(null);
     setZoomLevel(DEFAULT_ZOOM);
     setRenderZoom(DEFAULT_ZOOM);
     setEditingLabelIndex(null);
@@ -694,9 +768,18 @@ export default function AnnotatedPdfPreview({
           Number(override?.pageNumber ?? q.pageNumber) || 1
         ),
         yPercent: clampYPercent(override?.yPercent ?? q.yPercent),
+        noteBoxHeightPercent:
+          override?.noteBoxHeightPercent ?? q.noteBoxHeightPercent,
+        examinerColumnWidthPercent:
+          localColumnWidthPct ?? q.examinerColumnWidthPercent,
       };
     });
-  }, [placementEnabled, placementQuestions, localPlacement]);
+  }, [placementEnabled, placementQuestions, localPlacement, localColumnWidthPct]);
+
+  const columnWidthPct = clampExaminerColumnWidthPercent(
+    localColumnWidthPct ?? examinerColumnWidthPercentFromQuestions(effectiveQuestions)
+  );
+  const columnLeftPct = 100 - columnWidthPct;
 
   const duplicateQuestionNumbers = useMemo(
     () => buildDuplicateQuestionNumberSet(effectiveQuestions),
@@ -744,6 +827,7 @@ export default function AnnotatedPdfPreview({
       const grabOffsetY = e.clientY - (rect.top + rect.height / 2);
 
       dragRef.current = {
+        mode: "move",
         key,
         column,
         placementIndex: q._placementIndex,
@@ -759,12 +843,101 @@ export default function AnnotatedPdfPreview({
     [placementEnabled]
   );
 
+  const handleBoxResizePointerDown = useCallback(
+    (e, q, displayedYPercent, heightPct, edge) => {
+      if (!placementEnabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const key = placementKey(q);
+      const pageEl = e.currentTarget.closest(".pdf-preview-page");
+      const rect = pageEl?.getBoundingClientRect();
+      dragRef.current = {
+        mode: "height",
+        edge: edge === "top" ? "top" : "bottom",
+        key,
+        placementIndex: q._placementIndex,
+        questionNumber: q.questionNumber,
+        pageNumber: Math.max(1, Number(q.pageNumber) || 1),
+        startY: clampYPercent(displayedYPercent ?? q.yPercent),
+        startHeight: clampNoteBoxHeightPercent(heightPct) ?? MIN_NOTE_BOX_HEIGHT_PCT,
+        startClientY: e.clientY,
+        pageHeight: rect?.height || 1,
+      };
+      setDragKey(`${key}:height`);
+      setEditingLabelIndex(null);
+    },
+    [placementEnabled]
+  );
+
+  const handleColumnResizePointerDown = useCallback(
+    (e) => {
+      if (!placementEnabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const pageEl = e.currentTarget.closest(".pdf-preview-page");
+      const rect = pageEl?.getBoundingClientRect();
+      dragRef.current = {
+        mode: "column",
+        startWidth: columnWidthPct,
+        startX: e.clientX,
+        pageWidth: rect?.width || 1,
+      };
+      setDragKey("column");
+      setEditingLabelIndex(null);
+    },
+    [placementEnabled, columnWidthPct]
+  );
+
   useEffect(() => {
     if (!dragKey) return;
 
     const onMove = (e) => {
       const drag = dragRef.current;
       if (!drag) return;
+
+      if (drag.mode === "column") {
+        e.preventDefault();
+        const dx = e.clientX - drag.startX;
+        const next = clampExaminerColumnWidthPercent(
+          drag.startWidth - (dx / Math.max(1, drag.pageWidth)) * 100
+        );
+        setLocalColumnWidthPct(next);
+        drag.currentWidth = next;
+        return;
+      }
+
+      if (drag.mode === "height") {
+        e.preventDefault();
+        const dyPct = ((e.clientY - drag.startClientY) / Math.max(1, drag.pageHeight)) * 100;
+        let newHeight;
+        let newY;
+        if (drag.edge === "top") {
+          newHeight =
+            clampNoteBoxHeightPercent(drag.startHeight - dyPct) ?? MIN_NOTE_BOX_HEIGHT_PCT;
+          const bottom = drag.startY + drag.startHeight / 2;
+          newY = clampYPercent(bottom - newHeight / 2);
+        } else {
+          newHeight =
+            clampNoteBoxHeightPercent(drag.startHeight + dyPct) ?? MIN_NOTE_BOX_HEIGHT_PCT;
+          const top = drag.startY - drag.startHeight / 2;
+          newY = clampYPercent(top + newHeight / 2);
+        }
+        setLocalPlacement((prev) => ({
+          ...prev,
+          [drag.key]: {
+            ...prev[drag.key],
+            pageNumber: drag.pageNumber,
+            yPercent: newY,
+            noteBoxHeightPercent: newHeight,
+          },
+        }));
+        drag.currentY = newY;
+        drag.currentHeight = newHeight;
+        return;
+      }
+
       const anchorY = e.clientY - (drag.grabOffsetY || 0);
       const hit = resolveStudentPageUnderPointer(
         scrollRef.current,
@@ -787,6 +960,7 @@ export default function AnnotatedPdfPreview({
       setLocalPlacement((prev) => ({
         ...prev,
         [drag.key]: {
+          ...prev[drag.key],
           pageNumber: hit.studentPage,
           yPercent: hit.yPercent,
         },
@@ -798,6 +972,32 @@ export default function AnnotatedPdfPreview({
     const onUp = (e) => {
       const drag = dragRef.current;
       if (!drag) return;
+
+      if (drag.mode === "column") {
+        const width = clampExaminerColumnWidthPercent(
+          drag.currentWidth ?? drag.startWidth
+        );
+        dragRef.current = null;
+        setDragKey(null);
+        onPlacementChange?.({ examinerColumnWidthPercent: width });
+        return;
+      }
+
+      if (drag.mode === "height") {
+        const yPercent = drag.currentY ?? drag.startY;
+        const noteBoxHeightPercent = drag.currentHeight ?? drag.startHeight;
+        dragRef.current = null;
+        setDragKey(null);
+        onPlacementChange?.({
+          placementIndex: drag.placementIndex,
+          questionNumber: drag.questionNumber,
+          pageNumber: drag.pageNumber,
+          yPercent,
+          noteBoxHeightPercent,
+        });
+        return;
+      }
+
       const anchorY = e.clientY - (drag.grabOffsetY || 0);
       const hit = resolveStudentPageUnderPointer(
         scrollRef.current,
@@ -809,7 +1009,7 @@ export default function AnnotatedPdfPreview({
 
       setLocalPlacement((prev) => ({
         ...prev,
-        [drag.key]: { pageNumber, yPercent },
+        [drag.key]: { ...prev[drag.key], pageNumber, yPercent },
       }));
       dragRef.current = null;
       setDragKey(null);
@@ -1024,7 +1224,7 @@ export default function AnnotatedPdfPreview({
   }, [handlePreviewWheel, scrollRoot]);
 
   const handleScrollAreaPointerDown = useCallback((e) => {
-    if (e.target.closest(".pdf-place-handle")) return;
+    if (e.target.closest(".pdf-place-handle") || e.target.closest(".pdf-examiner-col-resize")) return;
 
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -1256,7 +1456,7 @@ export default function AnnotatedPdfPreview({
         className="pdf-preview-scroll"
         title={
           placementEnabled
-            ? "Scroll to pan · Ctrl/⌘/Alt + wheel or pinch to zoom · double-click to zoom · drag boxes to reposition"
+            ? "Scroll to pan · Ctrl/⌘/Alt + wheel or pinch to zoom · drag boxes to move · drag box edges to resize · drag the notes column edge to widen it"
             : "Scroll to pan · Ctrl/⌘/Alt + wheel or pinch to zoom · double-click to zoom"
         }
         onPointerDown={handleScrollAreaPointerDown}
@@ -1315,7 +1515,12 @@ export default function AnnotatedPdfPreview({
                   duplicateQuestionNumbers={duplicateQuestionNumbers}
                   dragKey={dragKey}
                   editingLabelIndex={labelEditEnabled ? editingLabelIndex : null}
+                  columnLeftPct={columnLeftPct}
+                  columnWidthPct={columnWidthPct}
+                  showColumnResize={placementEnabled && studentPageNumber > 0}
                   onHandlePointerDown={handlePointerDown}
+                  onBoxResizePointerDown={handleBoxResizePointerDown}
+                  onColumnResizePointerDown={handleColumnResizePointerDown}
                   onStartLabelEdit={labelEditEnabled ? handleStartLabelEdit : null}
                   onCommitLabel={handleCommitLabel}
                   onCancelLabelEdit={handleCancelLabelEdit}

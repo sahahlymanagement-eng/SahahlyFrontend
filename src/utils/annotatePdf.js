@@ -28,6 +28,12 @@ import {
 } from "./markingFormData";
 import { normalizeMathSymbols } from "./normalizeMathSymbols";
 import sahahlyLogoUrl from "../assets/images/Logo-removebg-preview.png";
+import {
+  DEFAULT_EXAMINER_COL_WIDTH_PCT,
+  examinerColumnWidthPercentFromQuestions,
+  examinerColumnWidthPt,
+  noteBoxHeightPt,
+} from "./examinerColumnLayout";
 
 let sahahlyLogoBytesPromise = null;
 
@@ -64,8 +70,8 @@ const COL_BORDER = rgb(0.72, 0.78, 0.92);
 const TEACHER_COL = rgb(0.30, 0.42, 0.90);
 const TEACHER_BG = rgb(0.93, 0.95, 1.0);
 
-/** Fixed-width examiner notes column appended to the right of each page. */
-const EXAMINER_COL_W = 178;
+/** Default examiner notes column width in points (~23% of an annotated A4 page). */
+const EXAMINER_COL_W = examinerColumnWidthPt(595, DEFAULT_EXAMINER_COL_WIDTH_PCT);
 const COL_PAD = 8;
 
 function scoreCol(awarded, max) {
@@ -321,7 +327,10 @@ function openNextReportPage(pdfDoc, reportPageCount, currentPage, sw, sh, M, bol
   return { page, yPos: sh - 52, reportPageCount: reportPageCount + 1 };
 }
 
+let examinerClipY = null;
+
 function drawBoldText(page, text, { x, y, size, font, color }) {
+  if (examinerClipY != null && y < examinerClipY) return;
   const line = san(text);
   page.drawText(line, { x, y, size, font, color });
   page.drawText(line, { x: x + 0.35, y, size, font, color });
@@ -418,11 +427,12 @@ function markingIntegrityFlags(questions, notOnPaper) {
 }
 
 /** Widen page: student paper on the left, dedicated examiner column on the right. */
-function appendExaminerColumn(page, stripH) {
+function appendExaminerColumn(page, stripH, colW = EXAMINER_COL_W) {
   const { width: paperW, height } = page.getSize();
+  const colWidthPt = Math.max(96, Math.min(480, Number(colW) || EXAMINER_COL_W));
 
   // setSize keeps existing student content at (0,0); only extends width to the right.
-  page.setSize(paperW + EXAMINER_COL_W, height);
+  page.setSize(paperW + colWidthPt, height);
 
   const colLeft = paperW;
   const colTop = height - stripH - 4;
@@ -430,7 +440,7 @@ function appendExaminerColumn(page, stripH) {
   page.drawRectangle({
     x: colLeft,
     y: stripH,
-    width: EXAMINER_COL_W,
+    width: colWidthPt,
     height: height - stripH,
     color: COL_BG,
   });
@@ -444,17 +454,17 @@ function appendExaminerColumn(page, stripH) {
   });
 
   page.drawLine({
-    start: { x: colLeft + EXAMINER_COL_W, y: stripH },
-    end: { x: colLeft + EXAMINER_COL_W, y: height },
+    start: { x: colLeft + colWidthPt, y: stripH },
+    end: { x: colLeft + colWidthPt, y: height },
     thickness: 0.6,
     color: COL_BORDER,
   });
 
   return {
     paperW,
-    totalW: paperW + EXAMINER_COL_W,
+    totalW: paperW + colWidthPt,
     colX: colLeft + COL_PAD,
-    colWidth: EXAMINER_COL_W - COL_PAD * 2,
+    colWidth: colWidthPt - COL_PAD * 2,
     colLeft,
     colTop,
     colBottom: stripH + 6,
@@ -649,9 +659,11 @@ function pickColumnFontSize(blocks, headerBottom, colBottom, colWidth, font) {
   return { noteSize: 4.75, gap: 2, ...m };
 }
 
-function drawWrappedLines(page, lines, { x, y, size, font, color, lineH }) {
+function drawWrappedLines(page, lines, { x, y, size, font, color, lineH, minY }) {
+  const floor = minY ?? examinerClipY;
   let cy = y;
   for (const line of lines) {
+    if (floor != null && cy < floor) break;
     page.drawText(line, { x, y: cy, size, font, color });
     cy -= lineH;
   }
@@ -676,8 +688,11 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
   const built = sorted.map((q) => {
     const paperY = paperAnchorY(q, pageHeight);
+    const block = buildColumnBlock(q, bold, noteSize, layout.colWidth);
+    const overrideH = noteBoxHeightPt(pageHeight, q.noteBoxHeightPercent);
     return {
-      ...buildColumnBlock(q, bold, noteSize, layout.colWidth),
+      ...block,
+      height: overrideH != null ? overrideH : block.height,
       targetCenter: paperY,
       paperY,
     };
@@ -716,6 +731,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
     const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
     const blockTop = center + blockH / 2;
+    examinerClipY = blockTop - blockH + blockPad + 3;
 
           page.drawRectangle({
       x: layout.colX - 2,
@@ -964,6 +980,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       dashArray: [2, 2],
       dashPhase: 0,
       });
+    examinerClipY = null;
     }
   }
 
@@ -1866,12 +1883,15 @@ export async function annotatePdf({
   const STRIP_H = 22;
   const LM = 50;
 
+  const colWidthPct = examinerColumnWidthPercentFromQuestions(enrichedQuestions);
+
   for (let i = reportPageCount; i < pages.length; i++) {
     const page = pages[i];
     const pageNum = i - reportPageCount + 1;
     const qs = byPage[pageNum] || [];
 
-    const layout = appendExaminerColumn(page, STRIP_H);
+    const colW = examinerColumnWidthPt(page.getSize().width, colWidthPct);
+    const layout = appendExaminerColumn(page, STRIP_H, colW);
     const { paperW, totalW, height } = { paperW: layout.paperW, totalW: layout.totalW, height: page.getSize().height };
 
     const PAGE_BOTTOM = STRIP_H + 6;

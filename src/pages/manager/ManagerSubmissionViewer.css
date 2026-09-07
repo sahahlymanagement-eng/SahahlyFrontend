@@ -1031,6 +1031,16 @@
   cursor: move;
 }
 
+.pdf-preview-root--placeable .pdf-place-handle__resize,
+.pdf-preview-root--placeable .pdf-place-handle__resize * {
+  cursor: ns-resize;
+}
+
+.pdf-preview-root--placeable .pdf-examiner-col-resize,
+.pdf-preview-root--placeable .pdf-examiner-col-resize * {
+  cursor: col-resize;
+}
+
 .pdf-preview-root--placeable .pdf-place-handle__label-input,
 .pdf-preview-root--placeable .pdf-place-handle--editing,
 .pdf-preview-root--placeable .pdf-place-handle--editing * {
@@ -1106,6 +1116,97 @@
   justify-content: flex-start;
   border-color: rgba(251, 146, 60, 0.9);
   background: rgba(15, 23, 42, 0.62);
+}
+
+.pdf-place-handle--box {
+  align-items: flex-start;
+  background: rgba(251, 146, 60, 0.12);
+  border-color: rgba(251, 146, 60, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.15), 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.pdf-place-handle--box .pdf-place-handle__label,
+.pdf-place-handle--box .pdf-place-handle__grip {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.85);
+}
+
+.pdf-place-handle--resizing,
+.pdf-place-handle--right.pdf-place-handle--resizing {
+  border-style: solid;
+  background: rgba(251, 146, 60, 0.22);
+}
+
+.pdf-place-handle__resize {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  z-index: 4;
+  touch-action: none;
+}
+
+.pdf-place-handle__resize--top {
+  top: 0;
+}
+
+.pdf-place-handle__resize--bottom {
+  bottom: 0;
+}
+
+.pdf-place-handle__resize::after {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 3px;
+  margin: 4px auto 0;
+  border-radius: 2px;
+  background: rgba(248, 250, 252, 0.9);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+}
+
+.pdf-examiner-col-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 5;
+  border-left: 2px solid rgba(251, 146, 60, 0.55);
+  background: rgba(251, 146, 60, 0.04);
+}
+
+.pdf-examiner-col-rail--active {
+  background: rgba(251, 146, 60, 0.1);
+  border-left-color: rgba(251, 146, 60, 0.95);
+}
+
+.pdf-examiner-col-resize {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 12px;
+  height: 100%;
+  pointer-events: auto;
+  z-index: 6;
+  touch-action: none;
+  background: transparent;
+}
+
+.pdf-examiner-col-resize::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 4px;
+  height: 42px;
+  margin-top: -21px;
+  border-radius: 999px;
+  background: rgba(251, 146, 60, 0.95);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.35);
 }
 
 .pdf-place-handle--active {

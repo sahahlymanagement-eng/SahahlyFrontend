@@ -11,6 +11,10 @@ import {
   alignExaminerFeedbackToMarks,
   syncQuestionsExaminerFeedback,
 } from "./syncExaminerFeedback";
+import {
+  clampExaminerColumnWidthPercent,
+  clampNoteBoxHeightPercent,
+} from "./examinerColumnLayout";
 
 export { prepareEditingQuestions } from "./recoverMisassignedAnswers";
 
@@ -992,19 +996,30 @@ export function placementKey(q) {
   return id ? `${id}::p${page}::y${yBucket}` : `anon::p${page}::y${yBucket}`;
 }
 
-/** Apply a drag placement update to one row (by index, not questionNumber). */
-export function applyPlacementChange(questions, { placementIndex, pageNumber, yPercent }) {
-  const idx = Number(placementIndex);
+/** Apply a drag/resize placement update (by index, not questionNumber). */
+export function applyPlacementChange(questions, change = {}) {
+  const colPct = Number(change.examinerColumnWidthPercent);
+  if (Number.isFinite(colPct) && change.placementIndex == null) {
+    const width = clampExaminerColumnWidthPercent(colPct);
+    return (questions || []).map((q) => ({
+      ...q,
+      examinerColumnWidthPercent: width,
+    }));
+  }
+
+  const idx = Number(change.placementIndex);
   if (!Number.isFinite(idx) || idx < 0) return questions;
-  return (questions || []).map((q, i) =>
-    i === idx
-      ? {
-          ...q,
-          pageNumber: Math.max(1, Number(pageNumber) || 1),
-          yPercent,
-        }
-      : q
-  );
+  return (questions || []).map((q, i) => {
+    if (i !== idx) return q;
+    const next = {
+      ...q,
+      pageNumber: Math.max(1, Number(change.pageNumber) || 1),
+      yPercent: change.yPercent,
+    };
+    const heightPct = clampNoteBoxHeightPercent(change.noteBoxHeightPercent);
+    if (heightPct != null) next.noteBoxHeightPercent = heightPct;
+    return next;
+  });
 }
 
 /** Normalize a typed preview label ("Q1a", "1 a") into a question id ("1a"). */

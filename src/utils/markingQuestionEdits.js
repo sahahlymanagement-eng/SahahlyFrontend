@@ -67,6 +67,8 @@ export function questionRowHasEdits(current, confirmed) {
     String(current.mistakeAdvice ?? "") !== String(confirmed.mistakeAdvice ?? "") ||
     numChanged(current.pageNumber, confirmed.pageNumber) ||
     numChanged(current.yPercent, confirmed.yPercent) ||
+    numChanged(current.noteBoxHeightPercent, confirmed.noteBoxHeightPercent) ||
+    numChanged(current.examinerColumnWidthPercent, confirmed.examinerColumnWidthPercent) ||
     normKeywords(current.markedKeywords) !== normKeywords(confirmed.markedKeywords) ||
     normKeywords(current.missingKeywords) !== normKeywords(confirmed.missingKeywords) ||
     normChecklist(current.checklist) !== normChecklist(confirmed.checklist) ||
