@@ -264,6 +264,25 @@ export async function runReturnAllQueue({
   return { successCount, failures, outcomes, total: bulkQueue.length + batchQueue.length };
 }
 
+export function emptyReturnAllMessage(savedResults = {}) {
+  const rows = Object.values(savedResults || {});
+  const withBlob = rows.filter((s) => s?.result).length;
+  const marked = rows.filter((s) => s?.hasResult || s?.result).length;
+  if (withBlob > 0) {
+    return {
+      type: "warn",
+      text: "All graded papers were already returned. Re-mark or edit a student to return updated papers.",
+    };
+  }
+  if (marked > 0) {
+    return {
+      type: "error",
+      text: "Could not load the marked papers to return. Check your connection and try again.",
+    };
+  }
+  return { type: "warn", text: "No graded papers to return" };
+}
+
 /** Human-readable summary when some Return All items fail. */
 export function formatReturnFailuresMessage(successCount, failures = []) {
   if (!failures.length) {

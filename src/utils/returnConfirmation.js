@@ -29,6 +29,7 @@ export function confirmReturnAll(count) {
       confirmLabel: n === 1 ? "Return" : `Return all (${n})`,
       cancelLabel: "Cancel",
       danger: true,
+      toastId: "return-all-confirm",
     }
   );
 }

@@ -53,35 +53,53 @@ export async function fetchSavedResultDetail(api, assignmentId, submissionId) {
   return mapSavedResultRow(res.data?.data || null);
 }
 
+function savedNeedsReturnHydration(saved) {
+  if (saved?.result?.questions?.length) return false;
+  if (saved?.result?.criteriaGrade) return false;
+  return Boolean(saved?.hasResult || saved?.result);
+}
+
+async function mapPool(items, limit, fn) {
+  const ret = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex;
+      nextIndex += 1;
+      ret[idx] = await fn(items[idx], idx);
+    }
+  }
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return ret;
+}
+
 /** Load full marking blobs only for rows Return All needs from the DB. */
 export async function hydrateSavedResultsForReturn(
   api,
   assignmentId,
   savedMap = {}
 ) {
-  const entries = Object.entries(savedMap);
-  const needs = entries.filter(
-    ([, saved]) =>
-      (saved?.hasResult || saved?.status === "done") &&
-      !saved?.result?.questions?.length
+  const needs = Object.entries(savedMap).filter(([, saved]) =>
+    savedNeedsReturnHydration(saved)
   );
   if (!needs.length) return savedMap;
 
   const next = { ...savedMap };
-  await Promise.all(
-    needs.map(async ([submissionId]) => {
-      try {
-        const row = await fetchSavedResultDetail(api, assignmentId, submissionId);
-        if (!row) return;
-        next[submissionId] = { ...next[submissionId], ...row };
-      } catch (err) {
-        console.error(
-          `Failed to hydrate saved result for ${submissionId}:`,
-          err?.message || err
-        );
-      }
-    })
-  );
+  // Unbounded parallel GETs used to 429/timeout on larger classes, leaving
+  // Return All with empty blobs and a silent "nothing to return".
+  await mapPool(needs, 4, async ([submissionId]) => {
+    try {
+      const row = await fetchSavedResultDetail(api, assignmentId, submissionId);
+      if (!row) return;
+      next[submissionId] = { ...next[submissionId], ...row };
+    } catch (err) {
+      console.error(
+        `Failed to hydrate saved result for ${submissionId}:`,
+        err?.message || err
+      );
+    }
+  });
   return next;
 }
 

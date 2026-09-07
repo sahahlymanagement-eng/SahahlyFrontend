@@ -173,7 +173,9 @@ export function buildReturnAllQueue({
     const student = resolveStudent(submissionId, saved);
     const liveId = student?.submissionId || submissionId;
     if (!liveId || seen.has(liveId)) continue;
-    if (!saved?.result && !saved?.hasResult) continue;
+    // hasResult without a blob means hydration failed — skip rather than
+    // queue a paper that Return All will immediately fail as "Missing marking".
+    if (!saved?.result) continue;
     if (isSubmissionAlreadyReturned({ saved })) continue;
 
     bulkQueue.push({

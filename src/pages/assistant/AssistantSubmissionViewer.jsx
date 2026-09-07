@@ -138,6 +138,7 @@ import {
   runReturnAllQueue,
   saveReturnSummaries,
   formatReturnFailuresMessage,
+  emptyReturnAllMessage,
   studentGoogleUserId,
   isNoAttachmentError,
 } from "../../utils/returnAllExecution";
@@ -307,6 +308,7 @@ export default function AssignmentSubmissionViewer() {
   const [summaryTouched, setSummaryTouched] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [returning,        setReturning]        = useState(false);
+  const returningLockRef = useRef(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
@@ -2905,15 +2907,20 @@ window.open(url);
   };
 
   const handleReturnAll = async () => {
+    if (returningLockRef.current || returning) return;
+
     if (!studentsMarkingUrl || !assignmentId) {
       toast.error("Assignment not loaded");
       return;
     }
 
-    if (hasPendingEdits) {
+    if (resultModal && hasPendingEdits) {
       toast.warn("Save & regenerate PDF first so returned PDFs match the preview");
       return;
     }
+
+    returningLockRef.current = true;
+    setReturning(true);
 
     try {
       const { queue, savedResults: freshSaved } = await buildFreshReturnAllQueue({
@@ -2929,21 +2936,15 @@ window.open(url);
 
       const returnCount = queue.bulkQueue.length + queue.batchQueue.length;
       if (returnCount === 0) {
-        const gradedCount = Object.values(freshSaved).filter((s) => s?.result).length;
-        if (gradedCount > 0) {
-          toast.warn(
-            "All graded papers were already returned. Re-mark or edit a student to return updated papers."
-          );
-        } else {
-          toast.warn("No graded papers to return");
-        }
+        const empty = emptyReturnAllMessage(freshSaved);
+        if (empty.type === "error") toast.error(empty.text);
+        else toast.warn(empty.text);
         return;
       }
 
       const confirmed = await confirmReturnAll(returnCount);
       if (!confirmed) return;
 
-      setReturning(true);
       setSavedResults((prev) => ({ ...prev, ...freshSaved }));
 
       await saveReturnSummaries(api, assignmentId, queue, resolvePdfSummary);
@@ -2967,6 +2968,7 @@ window.open(url);
       console.error("Return all failed:", err);
       toast.error((await getApiErrorMessage(err)) || "Return all failed");
     } finally {
+      returningLockRef.current = false;
       setReturning(false);
     }
   };

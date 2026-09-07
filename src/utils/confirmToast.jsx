@@ -77,8 +77,9 @@ export function confirmToast(message, options = {}) {
 
   return new Promise((resolve) => {
     if (toastId && toast.isActive(toastId)) {
-      resolve(false);
-      return;
+      // A leftover confirm with this id (limit/queue, unmount) used to resolve
+      // false immediately — Return All looked like a dead click. Replace it.
+      toast.dismiss(toastId);
     }
 
     toast(
