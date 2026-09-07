@@ -234,6 +234,7 @@ export default function GradingProviderPage({ slug, label }) {
   // Server-side pagination for the open assignment's submissions.
   const [listMeta, setListMeta] = useState({ total: 0, lastPage: 1 });
   const [syncing, setSyncing] = useState(false);
+  const [syncingClasses, setSyncingClasses] = useState(false);
   const [search, setSearch] = useState("");
   // Search spans the whole assignment, not the page on screen: the first
   // keystroke pulls the full roster once and later keystrokes filter it in
@@ -975,6 +976,30 @@ export default function GradingProviderPage({ slug, label }) {
       setSyncing(false);
     }
   }, [loadAll, BASE]);
+
+  // ── Reconcile the class/group picker against the provider ──
+  // Separate from syncFromProvider above: that one pulls SUBMISSIONS (what
+  // work exists to grade); this pulls the provider's class -> assignment
+  // discovery feed into IGSpacesAssignmentIndex, which is the only thing that
+  // populates the "Select class" step (and picks up assignments with zero
+  // submissions, which the submissions sync never sees at all). That feed
+  // otherwise only refreshes on an hourly cron tick.
+  const syncClassesFromProvider = useCallback(async () => {
+    setSyncingClasses(true);
+    try {
+      const { data } = await api.post(`${BASE}/sync-classes`, null, { timeout: 120000 });
+      toast.success(
+        `Synced classes — ${data?.classes ?? 0} classes, ${data?.assignments ?? 0} assignments` +
+          (data?.failedClasses ? ` (${data.failedClasses} classes failed, will retry next sync)` : "")
+      );
+      await loadClasses();
+    } catch (err) {
+      console.error("Failed to sync classes from provider", err);
+      toast.error((await getApiErrorMessage(err)) || "Failed to sync classes from provider");
+    } finally {
+      setSyncingClasses(false);
+    }
+  }, [loadClasses, BASE]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -2424,6 +2449,17 @@ toast.success("Result cleared — you can mark again");
             >
               <FiDownloadCloud size={13} className={syncing ? "msv-spin" : ""} />
               {syncing ? "Syncing…" : "Sync from provider"}
+            </button>
+            <button
+              type="button"
+              className="msv-refresh-btn"
+              onClick={syncClassesFromProvider}
+              disabled={loadingList || loadingAssignments || syncingClasses}
+              style={{ marginLeft: 8 }}
+              title="Refresh the class/group list from the provider (fixes a stale or empty class picker)"
+            >
+              <FiLayers size={13} className={syncingClasses ? "msv-spin" : ""} />
+              {syncingClasses ? "Syncing classes…" : "Sync classes"}
             </button>
           </div>
         </header>
