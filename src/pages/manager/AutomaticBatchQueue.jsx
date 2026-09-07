@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import api from "../../api/api";
 import { getRoleName } from "../../utils/authRoutes";
 import { getStoredUser } from "../../utils/session";
+import { sahahlyModelLabel } from "../../utils/markingCost";
 
 const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
 
@@ -32,6 +33,19 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           : item.status === "cancelled"
             ? "Cancelled"
             : "Queue item";
+  const modelId = item.requestedGeminiModel || item.config?.geminiModel;
+  const rawChunkSize = item.config?.chunkSize;
+  const chunkText = Number(rawChunkSize) === 0
+    ? "Full PDF per request"
+    : Number(rawChunkSize) > 0
+      ? `${Number(rawChunkSize)} pages per chunk`
+      : "Server-default pages per chunk";
+  const progress = item.providerProgress || null;
+  const progressTotal = Number(progress?.total) || 0;
+  const progressCompleted = Number(progress?.completed) || 0;
+  const progressPercent = progressTotal > 0
+    ? Math.min(100, Math.round((progressCompleted / progressTotal) * 100))
+    : null;
   return (
     <div className="ma-card" style={{ padding: 18, display: "grid", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -45,6 +59,8 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
         <span><FiUsers /> {item.studentCount || 0} student{item.studentCount === 1 ? "" : "s"}</span>
         <span><FiClock /> Added {dateText(item.createdAt)}</span>
         <span>{item.flow === "provider" ? item.providerSlug : item.flow}</span>
+        <span>Model: <strong>{sahahlyModelLabel(modelId)}</strong></span>
+        <span>Chunks: <strong>{chunkText}</strong></span>
       </div>
       {running && (
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
@@ -63,17 +79,41 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           {item.geminiJobId && <span title={item.geminiJobId}>Job: <strong>{item.geminiJobId.slice(0, 12)}…</strong></span>}
         </div>
       )}
+      {running && progress && progressTotal > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <span>Gemini progress: <strong>{progressCompleted}/{progressTotal} ({progressPercent}%)</strong></span>
+            <span>Successful: <strong>{Number(progress.successful) || 0}</strong></span>
+            <span>Pending: <strong>{Number(progress.pending) || 0}</strong></span>
+            <span>Failed: <strong>{Number(progress.failed) || 0}</strong></span>
+          </div>
+          <div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "var(--surface-muted, #dbe6f5)" }}>
+            <div style={{ height: "100%", width: `${progressPercent}%`, background: "var(--primary, #2f8df4)", transition: "width .3s ease" }} />
+          </div>
+        </div>
+      )}
       {singleStudentName && (
         <div>
           <FiUser /> {item.isLateSubmission ? "Late submission" : "Student"}: <strong>{singleStudentName}</strong>
         </div>
       )}
       {item.error && <div style={{ color: "var(--danger)" }}>{item.error}</div>}
+      {running && onCancel && (
+        <div>
+          <button
+            className="msv-btn-ai"
+            disabled={Boolean(item.cancelRequestedAt)}
+            onClick={() => onCancel(item._id, true)}
+          >
+            <FiTrash2 /> {item.cancelRequestedAt ? "Cancellation requested" : "Cancel running batch"}
+          </button>
+        </div>
+      )}
       {!running && onCancel && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="msv-btn-ai" disabled={!canMoveUp} onClick={() => onMove(item._id, -1)} title="Move earlier"><FiArrowUp /> Move up</button>
           <button className="msv-btn-ai" disabled={!canMoveDown} onClick={() => onMove(item._id, 1)} title="Move later"><FiArrowDown /> Move down</button>
-          <button className="msv-btn-ai" onClick={() => onCancel(item._id)}><FiTrash2 /> Remove from queue</button>
+          <button className="msv-btn-ai" onClick={() => onCancel(item._id, false)}><FiTrash2 /> Remove from queue</button>
         </div>
       )}
     </div>
@@ -112,10 +152,11 @@ export default function AutomaticBatchQueue() {
     return () => clearInterval(timer);
   }, []);
 
-  const cancel = async (id) => {
+  const cancel = async (id, isRunning = false) => {
+    if (isRunning && !window.confirm("Cancel this running automatic batch? Its current upload step will stop safely before Gemini submission.")) return;
     try {
-      await api.delete(`/automatic-batch-queue/${id}`);
-      toast.success("Removed from automatic queue");
+      const response = await api.delete(`/automatic-batch-queue/${id}`);
+      toast.success(response.data?.message || (isRunning ? "Cancellation requested" : "Removed from automatic queue"));
       load(true);
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not remove queued batch");
@@ -147,7 +188,7 @@ export default function AutomaticBatchQueue() {
       <section style={{ padding: 24, display: "grid", gap: 18 }}>
         {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : <>
           <h2 style={{ margin: 0 }}>Running</h2>
-          {data.running ? <QueueCard item={data.running} now={now} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
+          {data.running ? <QueueCard item={data.running} now={now} onCancel={canEdit ? cancel : null} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
           <h2 style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
           {data.queued?.length ? data.queued.map((item, index) => <QueueCard key={item._id} item={item} position={index + 1} onCancel={canEdit ? cancel : null} onMove={move} canMoveUp={index > 0} canMoveDown={index < data.queued.length - 1} />) : <div className="ma-card" style={{ padding: 18 }}>Nothing is waiting.</div>}
           <h2 style={{ margin: 0 }}>Recent history</h2>
