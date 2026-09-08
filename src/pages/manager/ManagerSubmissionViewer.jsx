@@ -2834,6 +2834,28 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     setGeminiModel(selectedModel);
   }
 
+  // Some non-IGCSE Google Classroom coursework is created as ungraded, so it
+  // has no maxPoints even though the uploaded mark scheme has a clear total.
+  // Automatic queue items are immutable snapshots: collect that total here
+  // instead of failing later with the unhelpful "Set total marks first" toast.
+  let resolvedTotalGrade = Number(selectedAssignment?.maxPoints);
+  if (automaticBatch && (!Number.isFinite(resolvedTotalGrade) || resolvedTotalGrade <= 0)) {
+    const rawTotal = await promptToast(
+      "This assignment has no total marks set in Google Classroom. Enter the total shown by the mark scheme:",
+      {
+        title: "Set total marks for this batch",
+        placeholder: "e.g. 60",
+        confirmLabel: "Continue",
+      }
+    );
+    if (rawTotal == null) return;
+    resolvedTotalGrade = Number(String(rawTotal).trim());
+    if (!Number.isFinite(resolvedTotalGrade) || resolvedTotalGrade <= 0) {
+      toast.error("Enter a valid total greater than 0");
+      return;
+    }
+  }
+
   // 00b30c1: fetch students (all or selected) across pages
   let eligible;
   try {
@@ -2877,7 +2899,7 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
           guidance: guidanceValue,
           geminiModel: selectedModel,
           chunkSize: resolveMarkingChunkSize(selectedModel),
-          totalGrade: selectedAssignment.maxPoints,
+          totalGrade: resolvedTotalGrade,
           subjectId: selectedAssignment.subjectId,
           ...examBoardGuidance.getExamBoardFields(),
         },
