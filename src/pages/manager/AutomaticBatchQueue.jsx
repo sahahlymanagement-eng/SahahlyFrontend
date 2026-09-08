@@ -16,6 +16,20 @@ function elapsedText(value, now) {
   return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
+function durationText(from, to) {
+  if (!from || !to) return "Not recorded";
+  const seconds = Math.max(
+    0,
+    Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 1000)
+  );
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${remainingSeconds}s`;
+  return `${remainingSeconds}s`;
+}
+
 function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, now = Date.now() }) {
   if (!item) return null;
   const running = item.status === "running";
@@ -77,6 +91,19 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           )}</strong></span>
           <span>Last checked: <strong>{dateText(item.lastCheckedAt)}</strong></span>
           {item.geminiJobId && <span title={item.geminiJobId}>Job: <strong>{item.geminiJobId.slice(0, 12)}…</strong></span>}
+        </div>
+      )}
+      {!running && ["done", "failed", "cancelled"].includes(item.status) && (
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+          <span>
+            Processing time: <strong>{durationText(item.startedAt, item.finishedAt)}</strong>
+          </span>
+          {item.createdAt && item.finishedAt && (
+            <span title="Includes time spent waiting in the automatic queue">
+              Total time since queued: <strong>{durationText(item.createdAt, item.finishedAt)}</strong>
+            </span>
+          )}
+          {item.finishedAt && <span>Finished: <strong>{dateText(item.finishedAt)}</strong></span>}
         </div>
       )}
       {running && progress && progressTotal > 0 && (
