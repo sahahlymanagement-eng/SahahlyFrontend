@@ -30,7 +30,21 @@ function durationText(from, to) {
   return `${remainingSeconds}s`;
 }
 
-function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, now = Date.now() }) {
+function providerStateLabel(state) {
+  if (!state) return null;
+  if (state === "Saving results") return "Saving results";
+  return String(state).replace(/^JOB_STATE_/, "").replace(/_/g, " ").toLowerCase();
+}
+
+function stageLabel(stage) {
+  if (stage === "saving_results") return "Saving results";
+  if (stage === "waiting_for_gemini") return "Waiting for Gemini";
+  if (stage === "uploading") return "Uploading PDFs";
+  if (stage === "submitting") return "Submitting batch";
+  return stage || "queued";
+}
+
+function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, now }) {
   if (!item) return null;
   const running = item.status === "running";
   const singleStudentName = item.studentCount === 1
@@ -67,7 +81,7 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           <strong>{cardLabel}: {item.assignmentName || item.assignmentId}</strong>
           <div className="ma-muted">{item.classroomName || "Classroom not provided"}</div>
         </div>
-        <span className={`ma-badge ${running ? "ma-badge--info" : "ma-badge--pending"}`}>{item.stage || item.status}</span>
+        <span className={`ma-badge ${running ? "ma-badge--info" : "ma-badge--pending"}`}>{stageLabel(item.stage || item.status)}</span>
       </div>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
         <span><FiUsers /> {item.studentCount || 0} student{item.studentCount === 1 ? "" : "s"}</span>
@@ -82,12 +96,14 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           {item.startedAt && (
             <span>Running: <strong>{elapsedText(item.startedAt, now)}</strong></span>
           )}
-          <span>Gemini state: <strong>{item.lastProviderState || (
+          <span>Gemini state: <strong>{providerStateLabel(item.lastProviderState) || (
             item.stage === "uploading"
               ? "Uploading PDFs (batch not submitted yet)"
               : item.stage === "submitting"
                 ? "Submitting batch"
-                : "Waiting for first status check"
+                : item.stage === "saving_results"
+                  ? "Saving results"
+                  : "Waiting for first status check"
           )}</strong></span>
           <span>Last checked: <strong>{dateText(item.lastCheckedAt)}</strong></span>
           {item.geminiJobId && <span title={item.geminiJobId}>Job: <strong>{item.geminiJobId.slice(0, 12)}…</strong></span>}
@@ -151,28 +167,44 @@ export default function AutomaticBatchQueue() {
   const [data, setData] = useState({ running: null, queued: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const latestLoadRef = useRef(0);
+  const activeLoadRef = useRef(null);
   const role = getRoleName(getStoredUser());
   const canEdit = role === "director" || role === "admin";
 
-  const load = useCallback(async (quiet = false) => {
+  const load = useCallback(async (quiet = false, force = false) => {
+    // A slow response must finish before polling again, otherwise every poll
+    // invalidates it and the initial loading screen can remain forever.
+    if (activeLoadRef.current && !force) return;
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
     const loadId = ++latestLoadRef.current;
     if (!quiet) setRefreshing(true);
     try {
       const response = await api.get("/automatic-batch-queue", {
+        timeout: 30000,
+        signal: controller.signal,
         params: { _ts: Date.now() },
         headers: { "Cache-Control": "no-cache" },
       });
       if (loadId !== latestLoadRef.current) return;
       setData(response.data || { running: null, queued: [], history: [] });
+      setLoadError(null);
       setLastRefreshedAt(new Date());
     } catch (err) {
       if (loadId !== latestLoadRef.current) return;
-      if (!quiet) toast.error(err.response?.data?.message || "Could not load automatic batch queue");
+      const message = err.code === "ECONNABORTED" || err.code === "ETIMEDOUT"
+        ? "The queue took too long to respond. Please try refreshing."
+        : err.response?.data?.message || "Could not load automatic batch queue. Please try refreshing.";
+      setLoadError(message);
+      if (!quiet) toast.error(message);
     } finally {
       if (loadId === latestLoadRef.current) {
+        activeLoadRef.current = null;
         setLoading(false);
         setRefreshing(false);
       }
@@ -185,6 +217,9 @@ export default function AutomaticBatchQueue() {
     return () => {
       clearTimeout(initial);
       clearInterval(timer);
+      latestLoadRef.current += 1;
+      activeLoadRef.current?.abort();
+      activeLoadRef.current = null;
     };
   }, [load]);
 
@@ -219,7 +254,7 @@ export default function AutomaticBatchQueue() {
         return next;
       });
       toast.success(response.data?.message || (isRunning ? "Cancellation requested" : "Removed from automatic queue"));
-      load(true);
+      load(true, true);
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not remove queued batch");
     }
@@ -237,7 +272,7 @@ export default function AutomaticBatchQueue() {
       toast.success("Queue order updated");
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not change queue order");
-      load(true);
+      load(true, true);
     }
   };
 
@@ -262,7 +297,8 @@ export default function AutomaticBatchQueue() {
           WebkitOverflowScrolling: "touch",
         }}
       >
-        {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : <>
+        {loadError && <div className="ma-card" role="alert" style={{ padding: 18, color: "var(--danger)" }}>{loadError}{lastRefreshedAt && " Showing the last loaded queue."}</div>}
+        {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : (!loadError || lastRefreshedAt) && <>
           <h2 style={{ margin: 0 }}>Running</h2>
           {data.running ? <QueueCard item={data.running} now={now} onCancel={canEdit ? cancel : null} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
           <h2 style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
