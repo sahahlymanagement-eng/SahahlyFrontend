@@ -101,7 +101,7 @@ export async function runReturnAllQueue({
   // Classroom applies per-user/project quotas across patch, attachment and
   // return calls. A small gap prevents Return All from exhausting the short
   // burst quota even though papers are already processed sequentially.
-  const paceNextReturn = () => new Promise((resolve) => setTimeout(resolve, 1500));
+  const paceNextReturn = () => new Promise((resolve) => setTimeout(resolve, 4000));
   const computeReturnMarks = (result, editingQs) => ({
     total:
       resolveTotalMarksFromResult(result) ??
