@@ -15,6 +15,7 @@ import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { fetchStudentPdf } from "../utils/studentPdfCache";
 import { studentGoogleUserId } from "../utils/returnAllExecution";
 import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
+import { rememberLocalPdfPreview, forgetLocalPdfPreview } from "../utils/localPdfPreviewStore";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -134,10 +135,14 @@ export function useAnnotatedResultPreview({
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
+      forgetLocalPdfPreview(previewUrlRef.current);
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
-    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    for (const url of retiredPreviewUrlsRef.current) {
+      forgetLocalPdfPreview(url);
+      URL.revokeObjectURL(url);
+    }
     retiredPreviewUrlsRef.current.clear();
     previewSubmissionIdRef.current = null;
     setAnnotatedPreviewUrl(null);
@@ -148,7 +153,10 @@ export function useAnnotatedResultPreview({
   // URLs only after pdf.js confirms it has fully copied the replacement bytes.
   const handlePreviewDocumentLoaded = useCallback((loadedUrl) => {
     if (loadedUrl !== previewUrlRef.current) return;
-    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    for (const url of retiredPreviewUrlsRef.current) {
+      forgetLocalPdfPreview(url);
+      URL.revokeObjectURL(url);
+    }
     retiredPreviewUrlsRef.current.clear();
   }, []);
 
@@ -249,6 +257,7 @@ export function useAnnotatedResultPreview({
         const url = URL.createObjectURL(
           new Blob([pdfBytes], { type: "application/pdf" })
         );
+        rememberLocalPdfPreview(url, pdfBytes);
         previewUrlRef.current = url;
         previewSubmissionIdRef.current = snapshot.submissionId;
         setAnnotatedPreviewUrl(url);

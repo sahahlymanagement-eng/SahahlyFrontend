@@ -14,6 +14,7 @@ import {
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
+import { rememberLocalPdfPreview, forgetLocalPdfPreview } from "../utils/localPdfPreviewStore";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -111,17 +112,24 @@ export function useExternalAnnotatedPreview({
 
   const revokePreviewUrl = useCallback(() => {
     if (previewUrlRef.current) {
+      forgetLocalPdfPreview(previewUrlRef.current);
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
-    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    for (const url of retiredPreviewUrlsRef.current) {
+      forgetLocalPdfPreview(url);
+      URL.revokeObjectURL(url);
+    }
     retiredPreviewUrlsRef.current.clear();
     setAnnotatedPreviewUrl(null);
   }, []);
 
   const handlePreviewDocumentLoaded = useCallback((loadedUrl) => {
     if (loadedUrl !== previewUrlRef.current) return;
-    for (const url of retiredPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    for (const url of retiredPreviewUrlsRef.current) {
+      forgetLocalPdfPreview(url);
+      URL.revokeObjectURL(url);
+    }
     retiredPreviewUrlsRef.current.clear();
   }, []);
 
@@ -214,6 +222,7 @@ export function useExternalAnnotatedPreview({
       // URL while pdf.js may still be reading it ("Network Error" in the pane).
       const previousUrl = previewUrlRef.current;
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
+      rememberLocalPdfPreview(url, pdfBytes);
       previewUrlRef.current = url;
       setAnnotatedPreviewUrl(url);
       setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);

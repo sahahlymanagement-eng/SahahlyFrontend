@@ -15,6 +15,7 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mj
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey, normalizeQuestionLabelInput } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
+import { readLocalPdfPreview } from "../utils/localPdfPreviewStore";
 import {
   clampExaminerColumnWidthPercent,
   clampNoteBoxHeightPercent,
@@ -50,6 +51,15 @@ function friendlyPdfLoadError(err) {
 
 /** Read blob/object URLs into bytes so pdf.js never XHRs a revoked object URL. */
 async function loadPdfDocumentFromUrl(url) {
+  const retained = readLocalPdfPreview(url);
+  if (retained?.byteLength) {
+    const loadingTask = getDocument({
+      data: retained.slice(),
+      disableAutoFetch: true,
+      disableStream: true,
+    });
+    return loadingTask.promise;
+  }
   let res;
   let lastError;
   // Object/blob URLs are local, but a React preview swap can briefly race the
