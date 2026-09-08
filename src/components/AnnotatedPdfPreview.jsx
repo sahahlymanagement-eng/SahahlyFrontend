@@ -50,10 +50,23 @@ function friendlyPdfLoadError(err) {
 
 /** Read blob/object URLs into bytes so pdf.js never XHRs a revoked object URL. */
 async function loadPdfDocumentFromUrl(url) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to read preview PDF (${res.status})`);
+  let res;
+  let lastError;
+  // Object/blob URLs are local, but a React preview swap can briefly race the
+  // old URL's cleanup. Retry the local handoff before declaring the PDF dead.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to read preview PDF (${res.status})`);
+      break;
+    } catch (err) {
+      lastError = err;
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 250 : 1_000));
+      }
+    }
   }
+  if (!res?.ok) throw lastError || new Error("Failed to read preview PDF");
   const data = await res.arrayBuffer();
   if (data.byteLength < 100) {
     throw new Error("Preview PDF is empty");
@@ -733,9 +746,16 @@ export default function AnnotatedPdfPreview({
           const structural = /invalid root reference|invalid xref|xref.*(invalid|missing)|trailer.*root/i.test(
             String(err?.message || err || "")
           );
-          if (structural && onStructuralError && structuralRetryUrlRef.current !== url) {
+          const localHandoffFailure = /network error|failed to fetch|failed to read preview pdf/i.test(
+            String(err?.message || err || "")
+          );
+          if ((structural || localHandoffFailure) && onStructuralError && structuralRetryUrlRef.current !== url) {
             structuralRetryUrlRef.current = url;
-            setError("The generated preview was incomplete. Sahahly is rebuilding it automatically.");
+            setError(
+              structural
+                ? "The generated preview was incomplete. Sahahly is rebuilding it automatically."
+                : "The preview connection was interrupted. Sahahly is rebuilding it automatically."
+            );
             onStructuralError();
           } else {
             setError(friendlyPdfLoadError(err));
