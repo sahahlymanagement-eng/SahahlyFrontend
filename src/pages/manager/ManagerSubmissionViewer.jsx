@@ -3772,23 +3772,33 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     return "var(--danger)";
   };
 
-  const openPdf = (student) => {
+  const openPdf = async (student) => {
+    const googleUserId = studentGoogleUserId(student);
     api.get("/submission-files/pdf", {
-      params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
+      params: {
+        assignmentId: selectedAssignment._id,
+        submissionId: student.submissionId,
+        googleUserId: googleUserId || undefined,
+      },
       responseType: "blob"
     }).then(res => {
       const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       window.open(url, "_blank");
-    }).catch(() => toast.error("Failed to load PDF"));
+    }).catch(async (err) => toast.error((await getApiErrorMessage(err)) || "Failed to load PDF"));
   };
 
   const downloadPdf = (student) => {
+    const googleUserId = studentGoogleUserId(student);
     api.get("/submission-files/pdf", {
-      params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
+      params: {
+        assignmentId: selectedAssignment._id,
+        submissionId: student.submissionId,
+        googleUserId: googleUserId || undefined,
+      },
       responseType: "blob"
     }).then(res => {
       downloadBlob(new Blob([res.data], { type: "application/pdf" }), `${student.name || "submission"}.pdf`);
-    }).catch(() => toast.error("Failed to download PDF"));
+    }).catch(async (err) => toast.error((await getApiErrorMessage(err)) || "Failed to download PDF"));
   };
 
   const filteredAssignments = assignments;

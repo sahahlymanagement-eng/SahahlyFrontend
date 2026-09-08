@@ -123,6 +123,8 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
 export default function AutomaticBatchQueue() {
   const [data, setData] = useState({ running: null, queued: [], history: [] });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const [now, setNow] = useState(Date.now());
   const latestLoadRef = useRef(0);
   const role = getRoleName(getStoredUser());
@@ -130,15 +132,23 @@ export default function AutomaticBatchQueue() {
 
   const load = useCallback(async (quiet = false) => {
     const loadId = ++latestLoadRef.current;
+    if (!quiet) setRefreshing(true);
     try {
-      const response = await api.get("/automatic-batch-queue");
+      const response = await api.get("/automatic-batch-queue", {
+        params: { _ts: Date.now() },
+        headers: { "Cache-Control": "no-cache" },
+      });
       if (loadId !== latestLoadRef.current) return;
       setData(response.data || { running: null, queued: [], history: [] });
+      setLastRefreshedAt(new Date());
     } catch (err) {
       if (loadId !== latestLoadRef.current) return;
       if (!quiet) toast.error(err.response?.data?.message || "Could not load automatic batch queue");
     } finally {
-      if (loadId === latestLoadRef.current) setLoading(false);
+      if (loadId === latestLoadRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -209,7 +219,8 @@ export default function AutomaticBatchQueue() {
       <header className="ma-topbar"><div className="ma-topbar-left">
         <h1 className="ma-topbar-title">Automatic Batch Queue</h1>
         <span className="ma-topbar-sub">One automatic assignment runs at a time. {canEdit ? "Directors can reorder or remove waiting jobs." : "Queue controls are read-only for managers."}</span>
-      </div><button className="msv-btn-ai" onClick={() => load()}><FiRefreshCw /> Refresh</button></header>
+        {lastRefreshedAt && <span className="ma-topbar-sub">Last refreshed: {lastRefreshedAt.toLocaleTimeString()}</span>}
+      </div><button className="msv-btn-ai" disabled={refreshing} onClick={() => load()}><FiRefreshCw /> {refreshing ? "Refreshing…" : "Refresh"}</button></header>
       <section
         style={{
           padding: 24,
