@@ -8,7 +8,7 @@ import { downloadBlob } from "../../utils/downloadBlob";
 import {
   FiUsers, FiClipboard, FiDownload, FiEye, FiCpu,
   FiUploadCloud, FiX, FiCalendar, FiSend, FiLayers, FiAlertCircle, FiCheck, FiRefreshCw, FiEdit3,
-  FiRotateCcw, FiRotateCw
+  FiRotateCcw, FiRotateCw, FiUserPlus
 } from "react-icons/fi";
 import { usePagination } from "../../hooks/usePagination";
 import usePersistedState, { removePersisted } from "../../hooks/usePersistedState";
@@ -195,6 +195,80 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const isTeacherScope = scope === "teacher";
   const [directorChunkSize, setDirectorChunkSize] = useState(5);
   const showMarkingTools = !isTeacherScope;
+  const canAssignAssistants = scope === "manager" || scope === "director";
+  const [assistantModal, setAssistantModal] = useState(null);
+  const [assistantOptions, setAssistantOptions] = useState([]);
+  const [assignedAssistants, setAssignedAssistants] = useState([]);
+  const [selectedAssistantId, setSelectedAssistantId] = useState("");
+  const [assistantDeadline, setAssistantDeadline] = useState("");
+  const [assistantModalLoading, setAssistantModalLoading] = useState(false);
+  const [assigningAssistant, setAssigningAssistant] = useState(false);
+
+  const openAssignAssistant = async () => {
+    const assignmentId = selectedAssignment?._id;
+    const classroomId = selectedClassroom?._id || selectedAssignment?.classroomId;
+    if (!assignmentId || !classroomId) {
+      toast.error("Could not identify this assignment's classroom");
+      return;
+    }
+    setAssistantModal({ assignmentId, classroomId });
+    setSelectedAssistantId("");
+    setAssistantDeadline("");
+    setAssistantModalLoading(true);
+    try {
+      const [availableRes, delegatedRes] = await Promise.all([
+        api.get("/assignment-delegations/available-assistants", {
+          params: { classroomIds: String(classroomId) },
+        }),
+        api.post("/assignment-delegations/by-assignments", {
+          assignmentIds: [assignmentId],
+        }),
+      ]);
+      const current = (delegatedRes.data || []).filter(
+        (d) => d.role === "assistant" && String(d.assignmentId?._id || d.assignmentId) === String(assignmentId)
+      );
+      const currentIds = new Set(current.map((d) => String(d.personId?._id || d.personId)));
+      const available = availableRes.data?.[String(classroomId)]?.assistants || [];
+      setAssignedAssistants(current);
+      setAssistantOptions(
+        available.filter((entry) => {
+          const id = entry.personId?._id || entry.personId;
+          return id && !currentIds.has(String(id));
+        })
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load assistants");
+      setAssistantModal(null);
+    } finally {
+      setAssistantModalLoading(false);
+    }
+  };
+
+  const submitAssistantAssignment = async () => {
+    if (!assistantModal?.assignmentId || !selectedAssistantId) {
+      toast.error("Please select an assistant");
+      return;
+    }
+    setAssigningAssistant(true);
+    try {
+      await api.post("/assignment-delegations", {
+        assignmentId: assistantModal.assignmentId,
+        personId: selectedAssistantId,
+        role: "assistant",
+        assignedBy: user?._id || user?.id || currentUserId(),
+        ...(assistantDeadline ? { assistantDeadline } : {}),
+      });
+      const chosen = assistantOptions.find(
+        (entry) => String(entry.personId?._id || entry.personId) === String(selectedAssistantId)
+      );
+      toast.success(`${chosen?.personId?.name || "Assistant"} assigned successfully`);
+      setAssistantModal(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to assign assistant");
+    } finally {
+      setAssigningAssistant(false);
+    }
+  };
   // Only the director picks chunk size freely; backup + managers + others follow the model.
   const canPickChunkSizeIndependently = scope === "director";
   /** Director picks freely; everyone else locks pages/request to the model. */
@@ -4169,6 +4243,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </button>
 
                   {/* View Mark Scheme */}
+                    {canAssignAssistants && (
+                      <button
+                        type="button"
+                        className="msv-btn-ai"
+                        onClick={openAssignAssistant}
+                        style={{ marginLeft: 10 }}
+                        title="Assign an eligible assistant to this assignment"
+                      >
+                        <FiUserPlus size={14} /> Assign Assistant
+                      </button>
+                    )}
                     {msInfo && (
                       <button
                         className="msv-btn-ai"
@@ -4930,6 +5015,94 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           </div>
         </div>
       </main>
+
+      {assistantModal && (
+        <div className="msv-overlay" onClick={() => !assigningAssistant && setAssistantModal(null)}>
+          <div
+            className="msv-guidance-modal"
+            onClick={(event) => event.stopPropagation()}
+            style={{ maxWidth: 520 }}
+          >
+            <div className="msv-guidance-header">
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Assign Assistant</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
+                  {selectedAssignment?.title || selectedAssignment?.name || "Current assignment"}
+                </div>
+              </div>
+              <button className="msv-icon-btn" disabled={assigningAssistant} onClick={() => setAssistantModal(null)}>
+                <FiX size={16} />
+              </button>
+            </div>
+            <div style={{ padding: "20px 24px", display: "grid", gap: 16 }}>
+              {assistantModalLoading ? (
+                <div><span className="pm-spinner" /> Loading eligible assistants…</div>
+              ) : (
+                <>
+                  {assignedAssistants.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Currently assigned</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {assignedAssistants.map((delegation) => (
+                          <span key={delegation._id} className="ma-badge ma-badge--info">
+                            {delegation.personId?.name || "Assistant"}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>Assistant</span>
+                    <select
+                      className="msv-gemini-select"
+                      value={selectedAssistantId}
+                      onChange={(event) => setSelectedAssistantId(event.target.value)}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Select an assistant…</option>
+                      {assistantOptions.map((entry) => {
+                        const person = entry.personId || {};
+                        return <option key={person._id} value={person._id}>{person.name}</option>;
+                      })}
+                    </select>
+                  </label>
+                  {!assistantOptions.length && (
+                    <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                      No additional assistants are eligible for this classroom's subject.
+                    </div>
+                  )}
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>Deadline (optional)</span>
+                    <input
+                      type="datetime-local"
+                      className="msv-gemini-select"
+                      value={assistantDeadline}
+                      onChange={(event) => setAssistantDeadline(event.target.value)}
+                      style={{ width: "100%" }}
+                    />
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      If left empty, the deadline is the assignment due date plus one day.
+                    </span>
+                  </label>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                    <button className="msv-btn-ai" disabled={assigningAssistant} onClick={() => setAssistantModal(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="msv-btn-ai"
+                      disabled={assigningAssistant || !selectedAssistantId}
+                      onClick={submitAssistantAssignment}
+                      style={{ background: "var(--primary)", borderColor: "var(--primary)", color: "var(--primary-contrast)" }}
+                    >
+                      {assigningAssistant ? <><span className="pm-spinner" /> Assigning…</> : <><FiUserPlus /> Assign Assistant</>}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
 
                     {errorViewer.open && (
