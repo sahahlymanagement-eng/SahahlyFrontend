@@ -98,6 +98,10 @@ export async function runReturnAllQueue({
   appendClassroomGradeToFormData,
   resolveTotalMarksFromResult,
 }) {
+  // Classroom applies per-user/project quotas across patch, attachment and
+  // return calls. A small gap prevents Return All from exhausting the short
+  // burst quota even though papers are already processed sequentially.
+  const paceNextReturn = () => new Promise((resolve) => setTimeout(resolve, 1500));
   const computeReturnMarks = (result, editingQs) => ({
     total:
       resolveTotalMarksFromResult(result) ??
@@ -247,6 +251,7 @@ export async function runReturnAllQueue({
       bulk,
     });
     if (outcome) outcomes.push(outcome);
+    await paceNextReturn();
   }
 
   for (const { submissionId, storedSubmissionId, student, batch } of batchQueue) {
@@ -259,6 +264,7 @@ export async function runReturnAllQueue({
       batch,
     });
     if (outcome) outcomes.push(outcome);
+    await paceNextReturn();
   }
 
   return { successCount, failures, outcomes, total: bulkQueue.length + batchQueue.length };
