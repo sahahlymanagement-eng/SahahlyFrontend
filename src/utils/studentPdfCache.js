@@ -14,7 +14,10 @@
 
 import { assertPdfBlob } from "./markingFormData";
 
-const MAX_ENTRIES = 4;
+// Moving through a class commonly revisits more than four papers (and opening
+// the same paper can trigger a normalized-preview rebuild). Retain a modest
+// working set so those previews do not go back through Drive conversion.
+const MAX_ENTRIES = 10;
 const MAX_ATTEMPTS = 5;
 // Drive/proxy interruptions during busy marking periods commonly last longer
 // than a second. Keep retrying the one PDF with a useful backoff instead of
