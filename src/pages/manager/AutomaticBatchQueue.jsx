@@ -165,7 +165,7 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
 }
 
 export default function AutomaticBatchQueue() {
-  const [data, setData] = useState({ running: null, queued: [], history: [] });
+  const [data, setData] = useState({ running: [], queued: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -193,7 +193,7 @@ export default function AutomaticBatchQueue() {
         headers: { "Cache-Control": "no-cache" },
       });
       if (loadId !== latestLoadRef.current) return;
-      setData(response.data || { running: null, queued: [], history: [] });
+      setData(response.data || { running: [], queued: [], history: [] });
       setLoadError(null);
       setLastRefreshedAt(new Date());
     } catch (err) {
@@ -238,11 +238,13 @@ export default function AutomaticBatchQueue() {
       latestLoadRef.current += 1;
       const updatedItem = response.data?.item;
       setData((current) => {
-        const wasRunning = String(current.running?._id || "") === String(id);
+        const wasRunning = (current.running || []).some((item) => String(item._id) === String(id));
         const next = {
           ...current,
           running: wasRunning
-            ? (updatedItem?.status === "running" ? updatedItem : null)
+            ? updatedItem?.status === "running"
+              ? (current.running || []).map((item) => (String(item._id) === String(id) ? updatedItem : item))
+              : (current.running || []).filter((item) => String(item._id) !== String(id))
             : current.running,
           queued: (current.queued || []).filter((item) => String(item._id) !== String(id)),
         };
@@ -281,7 +283,7 @@ export default function AutomaticBatchQueue() {
     <div className="ma-root"><main className="ma-main">
       <header className="ma-topbar"><div className="ma-topbar-left">
         <h1 className="ma-topbar-title">Automatic Batch Queue</h1>
-        <span className="ma-topbar-sub">One automatic assignment runs at a time. {canEdit ? "Directors can reorder or remove waiting jobs." : "Queue controls are read-only for managers."}</span>
+        <span className="ma-topbar-sub">One assignment uploads/submits at a time; once submitted, several can be marked by Gemini at once. {canEdit ? "Directors can reorder or remove waiting jobs." : "Queue controls are read-only for managers."}</span>
         {lastRefreshedAt && <span className="ma-topbar-sub">Last refreshed: {lastRefreshedAt.toLocaleTimeString()}</span>}
       </div><button className="msv-btn-ai" disabled={refreshing} onClick={() => load()}><FiRefreshCw /> {refreshing ? "Refreshing…" : "Refresh"}</button></header>
       <section
@@ -300,8 +302,12 @@ export default function AutomaticBatchQueue() {
       >
         {loadError && <div className="ma-card" role="alert" style={{ padding: 18, color: "var(--danger)" }}>{loadError}{lastRefreshedAt && " Showing the last loaded queue."}</div>}
         {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : (!loadError || lastRefreshedAt) && <>
-          <h2 style={{ margin: 0 }}>Running</h2>
-          {data.running ? <QueueCard item={data.running} now={now} onCancel={canEdit ? cancel : null} /> : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
+          <h2 style={{ margin: 0 }}>Running ({data.running?.length || 0})</h2>
+          {data.running?.length
+            ? data.running.map((item) => (
+                <QueueCard key={item._id} item={item} now={now} onCancel={canEdit ? cancel : null} />
+              ))
+            : <div className="ma-card" style={{ padding: 18 }}>No automatic batch is running.</div>}
           <h2 style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
           {data.queued?.length ? data.queued.map((item, index) => <QueueCard key={item._id} item={item} position={index + 1} onCancel={canEdit ? cancel : null} onMove={move} canMoveUp={index > 0} canMoveDown={index < data.queued.length - 1} />) : <div className="ma-card" style={{ padding: 18 }}>Nothing is waiting.</div>}
           <h2 style={{ margin: 0 }}>Recent history</h2>
