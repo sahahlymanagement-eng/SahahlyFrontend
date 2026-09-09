@@ -42,7 +42,62 @@ async function loadAssignmentTeacherLogo(api, assignmentId) {
   return teacherLogoCache.get(assignmentId);
 }
 
-const PREVIEW_TIMEOUT_MS = 120_000;
+// Large scripts with many marking boxes can legitimately take several minutes
+// to serialize in pdf-lib on lower-powered browsers. Two minutes was causing
+// successful local builds to be abandoned before they completed.
+const PREVIEW_TIMEOUT_MS = 5 * 60_000;
+
+const completedPreviewCache = new Map();
+const MAX_CACHED_PREVIEWS = 6;
+const MAX_CACHED_PREVIEW_BYTES = 80 * 1024 * 1024;
+
+function previewSnapshotSignature(snapshot, markingMode, lockPlacement) {
+  return JSON.stringify({
+    markingMode,
+    lockPlacement: Boolean(lockPlacement),
+    questions: snapshot.questions,
+    maxTotal: snapshot.maxTotal,
+    summary: snapshot.summary,
+    outOfScopeNotes: snapshot.outOfScopeNotes,
+    teacherAnnotations: snapshot.teacherAnnotations,
+    criteriaGrade: snapshot.criteriaGrade,
+    finalObtainedMarks: snapshot.finalObtainedMarks,
+    finalMaximumMarks: snapshot.finalMaximumMarks,
+  });
+}
+
+function readCompletedPreview(cacheKey, signature) {
+  const cached = completedPreviewCache.get(cacheKey);
+  if (!cached || cached.signature !== signature || !cached.bytes?.byteLength) return null;
+  // Refresh insertion order so eviction behaves like a small LRU cache.
+  completedPreviewCache.delete(cacheKey);
+  completedPreviewCache.set(cacheKey, cached);
+  return cached;
+}
+
+function rememberCompletedPreview(cacheKey, signature, bytes) {
+  if (!bytes?.byteLength) return;
+  completedPreviewCache.delete(cacheKey);
+  completedPreviewCache.set(cacheKey, {
+    signature,
+    bytes,
+    reportPageCount: Number(bytes.reportPageCount) || 0,
+  });
+
+  const cachedBytes = () =>
+    Array.from(completedPreviewCache.values()).reduce(
+      (total, entry) => total + (entry.bytes?.byteLength || 0),
+      0
+    );
+  while (
+    completedPreviewCache.size > MAX_CACHED_PREVIEWS ||
+    cachedBytes() > MAX_CACHED_PREVIEW_BYTES
+  ) {
+    const oldestKey = completedPreviewCache.keys().next().value;
+    if (oldestKey == null) break;
+    completedPreviewCache.delete(oldestKey);
+  }
+}
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -93,6 +148,7 @@ export function useAnnotatedResultPreview({
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
   const previewUrlRef = useRef(null);
+  const previewSignatureRef = useRef(null);
   const retiredPreviewUrlsRef = useRef(new Set());
   // Which submission the preview currently on screen was built from. Needed to
   // tell "a preview for this paper is already up" from "that is the previous
@@ -145,6 +201,7 @@ export function useAnnotatedResultPreview({
     }
     retiredPreviewUrlsRef.current.clear();
     previewSubmissionIdRef.current = null;
+    previewSignatureRef.current = null;
     setAnnotatedPreviewUrl(null);
   }, []);
 
@@ -201,13 +258,41 @@ export function useAnnotatedResultPreview({
   }, []);
 
   const generatePreview = useCallback(
-    async (snapshot, { lockPlacement = false } = {}) => {
+    async (snapshot, { lockPlacement = false, force = false } = {}) => {
       if (!assignmentId || !snapshot?.submissionId) return;
       const requestId = ++previewRequestRef.current;
       setPreviewLoading(true);
       setPreviewError(null);
 
       try {
+        const markingMode = resultModalRef.current?.result?.markingMode || "normal";
+        const cacheKey = `${assignmentId}:${snapshot.submissionId}:${markingMode}:${Boolean(lockPlacement)}`;
+        const signature = previewSnapshotSignature(snapshot, markingMode, lockPlacement);
+
+        // The same paper can cause this hook to run more than once while editor
+        // state settles. Keep the already-rendered preview instead of rebuilding it.
+        if (!force && previewUrlRef.current && previewSignatureRef.current === signature) {
+          return;
+        }
+
+        const cached = !force ? readCompletedPreview(cacheKey, signature) : null;
+        if (cached) {
+          if (requestId !== previewRequestRef.current) return;
+          if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
+          const previousUrl = previewUrlRef.current;
+          const url = URL.createObjectURL(
+            new Blob([cached.bytes], { type: "application/pdf" })
+          );
+          rememberLocalPdfPreview(url, cached.bytes);
+          previewUrlRef.current = url;
+          previewSignatureRef.current = signature;
+          previewSubmissionIdRef.current = snapshot.submissionId;
+          setAnnotatedPreviewUrl(url);
+          setReportPageCount(cached.reportPageCount);
+          if (previousUrl && previousUrl !== url) retiredPreviewUrlsRef.current.add(previousUrl);
+          return;
+        }
+
         // Cached per paper for the session: a preview is rebuilt several times
         // while one modal is open, and the student's file cannot change under
         // it. See utils/studentPdfCache.js.
@@ -226,7 +311,6 @@ export function useAnnotatedResultPreview({
         );
         if (requestId !== previewRequestRef.current) return;
 
-        const markingMode = resultModalRef.current?.result?.markingMode || "normal";
         const teacherLogoBytes = await loadAssignmentTeacherLogo(api, assignmentId);
         const pdfBytes = await withTimeout(
           annotatePdf({
@@ -258,7 +342,9 @@ export function useAnnotatedResultPreview({
           new Blob([pdfBytes], { type: "application/pdf" })
         );
         rememberLocalPdfPreview(url, pdfBytes);
+        rememberCompletedPreview(cacheKey, signature, pdfBytes);
         previewUrlRef.current = url;
+        previewSignatureRef.current = signature;
         previewSubmissionIdRef.current = snapshot.submissionId;
         setAnnotatedPreviewUrl(url);
         setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
@@ -523,7 +609,7 @@ export function useAnnotatedResultPreview({
         if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
         if (!skipPreview) {
-          await generatePreview(snapshot, { lockPlacement: true });
+          await generatePreview(snapshot, { lockPlacement: true, force: true });
         }
         return finalResult;
       } finally {
@@ -570,7 +656,7 @@ export function useAnnotatedResultPreview({
     const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);
     if (!snapshot) return;
     if (!confirmedSnapshot) setConfirmedSnapshot(snapshot);
-    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot) });
+    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot), force: true });
   }, [confirmedSnapshot, buildSnapshotFromModal, generatePreview]);
 
   /** After user drags a marking box — regenerate preview with locked positions. */
