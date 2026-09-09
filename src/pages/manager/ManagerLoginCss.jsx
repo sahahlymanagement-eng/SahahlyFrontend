@@ -1,3 +1,5 @@
+import { fetchRemoteStudentPdf } from "../../utils/remoteStudentPdf";
+import { savedPreviewOptions } from "../../utils/savedPreviewOptions";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -423,10 +425,7 @@ export default function ManagerLoginCss() {
       // pre-signed-URL fallback (which itself calls the same flaky endpoint).
       entry = await withPdfFetchRetry(async () => {
         const [studentRes, msRes] = await Promise.all([
-          api.get(`/external-grading/submissions/${submissionId}/pdfs/submission`, {
-            responseType: "blob",
-            timeout: 120000,
-          }),
+          fetchRemoteStudentPdf(api, `/external-grading/submissions/${submissionId}/pdfs/submission`).then(data => ({ data })),
           api.get(`/external-grading/submissions/${submissionId}/pdfs/markScheme`, {
             responseType: "blob",
             timeout: 120000,
@@ -454,7 +453,7 @@ export default function ManagerLoginCss() {
   }, []);
 
   const getStudentFile = useCallback(
-    async (submissionId) => (await fetchPdfs(submissionId)).studentFile,
+    async (submissionId) => fetchRemoteStudentPdf(api, `/external-grading/submissions/${submissionId}/pdfs/submission`).catch(async () => (await fetchPdfs(submissionId)).studentFile),
     [fetchPdfs]
   );
 
@@ -1661,7 +1660,7 @@ export default function ManagerLoginCss() {
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first");
       return;
     }
@@ -1678,6 +1677,7 @@ export default function ManagerLoginCss() {
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        ...savedPreviewOptions(confirmedSnapshot, submissionId),
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
@@ -1690,7 +1690,7 @@ export default function ManagerLoginCss() {
 
   const uploadToLoginCss = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first so the uploaded PDF matches the preview");
       return;
     }
@@ -1720,9 +1720,9 @@ export default function ManagerLoginCss() {
     setReturning(true);
     try {
       const studentFile = await getStudentFile(submissionId);
-      const totalMarks = resolveAnnotatePdfTotalMarks({
-        questions: editingQuestions,
-        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+      const totalMarks = confirmedSnapshot.finalObtainedMarks ?? resolveAnnotatePdfTotalMarks({
+        questions: confirmedSnapshot.questions,
+        criteriaGrade: confirmedSnapshot.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
@@ -1735,6 +1735,7 @@ export default function ManagerLoginCss() {
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        ...savedPreviewOptions(confirmedSnapshot, submissionId),
       });
 
       const fd = new FormData();
@@ -3553,9 +3554,15 @@ export default function ManagerLoginCss() {
                   </div>
                 )}
 
-                {previewLoading ? (
+                {annotatedPreviewUrl && (previewLoading || previewError) && (
+                        <div role="status" style={{ fontSize: 12, padding: 6 }}>
+                          {previewError || "Updating preview…"}
+                          {previewError && <button type="button" onClick={retryPreview}>Retry</button>}
+                        </div>
+                      )}
+                      {previewLoading && !annotatedPreviewUrl ? (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
-                ) : previewError ? (
+                ) : previewError && !annotatedPreviewUrl ? (
                   <div
                     className="pdf-preview-status pdf-preview-status--error"
                     style={{ flexDirection: "column", gap: 10 }}

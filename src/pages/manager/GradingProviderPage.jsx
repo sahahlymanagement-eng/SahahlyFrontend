@@ -1,3 +1,5 @@
+import { fetchRemoteStudentPdf } from "../../utils/remoteStudentPdf";
+import { savedPreviewOptions } from "../../utils/savedPreviewOptions";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -566,10 +568,7 @@ export default function GradingProviderPage({ slug, label }) {
       // pre-signed-URL fallback (which itself calls the same flaky endpoint).
       entry = await withPdfFetchRetry(async () => {
         const [studentRes, msRes] = await Promise.all([
-          api.get(`${BASE}/submissions/${submissionId}/pdfs/submission`, {
-            responseType: "blob",
-            timeout: 120000,
-          }),
+          fetchRemoteStudentPdf(api, `${BASE}/submissions/${submissionId}/pdfs/submission`).then(data => ({ data })),
           api.get(`${BASE}/submissions/${submissionId}/pdfs/markScheme`, {
             responseType: "blob",
             timeout: 120000,
@@ -597,8 +596,8 @@ export default function GradingProviderPage({ slug, label }) {
   }, [BASE]);
 
   const getStudentFile = useCallback(
-    async (submissionId) => (await fetchPdfs(submissionId)).studentFile,
-    [fetchPdfs]
+    async (submissionId) => fetchRemoteStudentPdf(api, `${BASE}/submissions/${submissionId}/pdfs/submission`).catch(async () => (await fetchPdfs(submissionId)).studentFile),
+    [fetchPdfs, BASE]
   );
 
   // Read-only mark scheme preview (right column of the results modal).
@@ -1858,7 +1857,7 @@ toast.success("Result cleared — you can mark again");
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first");
       return;
     }
@@ -1875,6 +1874,7 @@ toast.success("Result cleared — you can mark again");
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        ...savedPreviewOptions(confirmedSnapshot, submissionId),
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
@@ -1887,7 +1887,7 @@ toast.success("Result cleared — you can mark again");
 
   const uploadToProvider = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first so the uploaded PDF matches the preview");
       return;
     }
@@ -1917,9 +1917,9 @@ toast.success("Result cleared — you can mark again");
     setReturning(true);
     try {
       const studentFile = await getStudentFile(submissionId);
-      const totalMarks = resolveAnnotatePdfTotalMarks({
-        questions: editingQuestions,
-        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+      const totalMarks = confirmedSnapshot.finalObtainedMarks ?? resolveAnnotatePdfTotalMarks({
+        questions: confirmedSnapshot.questions,
+        criteriaGrade: confirmedSnapshot.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
@@ -1932,6 +1932,7 @@ toast.success("Result cleared — you can mark again");
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        ...savedPreviewOptions(confirmedSnapshot, submissionId),
       });
 
       const fd = new FormData();
@@ -4173,9 +4174,15 @@ toast.success("Result cleared — you can mark again");
                   </div>
                 )}
 
-                {previewLoading ? (
+                {annotatedPreviewUrl && (previewLoading || previewError) && (
+                        <div role="status" style={{ fontSize: 12, padding: 6 }}>
+                          {previewError || "Updating preview…"}
+                          {previewError && <button type="button" onClick={retryPreview}>Retry</button>}
+                        </div>
+                      )}
+                      {previewLoading && !annotatedPreviewUrl ? (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
-                ) : previewError ? (
+                ) : previewError && !annotatedPreviewUrl ? (
                   <div
                     className="pdf-preview-status pdf-preview-status--error"
                     style={{ flexDirection: "column", gap: 10 }}

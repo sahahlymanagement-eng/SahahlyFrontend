@@ -1,3 +1,4 @@
+import { waitForPreview, previewTiming } from "../utils/previewJobs";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   FiChevronLeft,
@@ -50,43 +51,56 @@ function friendlyPdfLoadError(err) {
 }
 
 /** Read blob/object URLs into bytes so pdf.js never XHRs a revoked object URL. */
-async function loadPdfDocumentFromUrl(url) {
+async function loadPdfDocumentFromUrl(url, signal) {
+  const started = performance.now();
+  signal.throwIfAborted();
   const retained = readLocalPdfPreview(url);
+  let data;
   if (retained?.byteLength) {
-    const loadingTask = getDocument({
-      data: retained.slice(),
-      disableAutoFetch: true,
-      disableStream: true,
-    });
-    return loadingTask.promise;
-  }
-  let res;
-  let lastError;
-  // Object/blob URLs are local, but a React preview swap can briefly race the
-  // old URL's cleanup. Retry the local handoff before declaring the PDF dead.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      res = await fetch(url);
-      if (!res.ok) throw new Error(`Failed to read preview PDF (${res.status})`);
-      break;
-    } catch (err) {
-      lastError = err;
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 250 : 1_000));
+    data = retained.slice();
+  } else {
+    let res;
+    let lastError;
+    // Object/blob URLs are local, but a React preview swap can briefly race the
+    // old URL's cleanup. Retry the local handoff before declaring the PDF dead.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        res = await fetch(url, { signal });
+        if (!res.ok) throw new Error(`Failed to read preview PDF (${res.status})`);
+        break;
+      } catch (err) {
+        signal.throwIfAborted();
+        lastError = err;
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 250 : 1_000));
+        }
       }
     }
+    if (!res?.ok) throw lastError || new Error("Failed to read preview PDF");
+    data = new Uint8Array(await res.arrayBuffer());
   }
-  if (!res?.ok) throw lastError || new Error("Failed to read preview PDF");
-  const data = await res.arrayBuffer();
+  signal.throwIfAborted();
   if (data.byteLength < 100) {
     throw new Error("Preview PDF is empty");
   }
   const loadingTask = getDocument({
-    data: new Uint8Array(data),
+    data,
     disableAutoFetch: true,
     disableStream: true,
   });
-  return loadingTask.promise;
+  const abort = () => { void loadingTask.destroy().catch(() => {}); };
+  signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort();
+  try {
+    const doc = await waitForPreview(loadingTask.promise, signal, 60_000);
+    previewTiming('viewer_load', started, { pages: doc.numPages });
+    return doc;
+  } catch (err) {
+    abort();
+    throw err;
+  } finally {
+    signal.removeEventListener('abort', abort);
+  }
 }
 
 const MAX_RENDER_WIDTH = 720;
@@ -306,6 +320,8 @@ function LazyPdfPage({
   const renderTaskRef = useRef(null);
   const renderedRef = useRef(false);
   const [rendered, setRendered] = useState(false);
+  const [pageError, setPageError] = useState(null);
+  const [renderNonce, setRenderNonce] = useState(0);
 
   useEffect(() => {
     renderedRef.current = false;
@@ -320,13 +336,15 @@ function LazyPdfPage({
     let rendering = false;
     let retryCount = 0;
     let retryTimer = null;
+    const controller = new AbortController();
 
     const renderPage = async () => {
       if (disposed || renderedRef.current || rendering) return;
       rendering = true;
+      const started = performance.now();
 
       try {
-        const page = await pdf.getPage(pageNumber);
+        const page = await waitForPreview(pdf.getPage(pageNumber), controller.signal, 30_000);
         const baseViewport = page.getViewport({ scale: 1 });
         let scale = renderWidth / baseViewport.width;
         const maxScale = MAX_RENDER_PIXEL_WIDTH / baseViewport.width;
@@ -353,15 +371,18 @@ function LazyPdfPage({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         const task = page.render({ canvasContext: ctx, viewport });
         renderTaskRef.current = task;
-        await task.promise;
+        await waitForPreview(task.promise, controller.signal, 30_000);
         if (disposed) return;
         renderedRef.current = true;
         setRendered(true);
+        setPageError(null);
+        previewTiming('render_page', started);
       } catch (err) {
         if (!disposed && err?.name !== "RenderingCancelledException") {
           console.warn("[AnnotatedPdfPreview] page render:", err);
         }
         if (!disposed) {
+          try { renderTaskRef.current?.cancel(); } catch { /* already destroyed */ }
           renderedRef.current = false;
           setRendered(false);
           // Width/layout changes and React effect cleanup can cancel an
@@ -370,6 +391,8 @@ function LazyPdfPage({
           if (retryCount < 2) {
             retryCount += 1;
             retryTimer = setTimeout(renderPage, 100 * retryCount);
+          } else {
+            setPageError('This page could not be rendered.');
           }
         }
       } finally {
@@ -389,6 +412,7 @@ function LazyPdfPage({
     observer.observe(el);
     return () => {
       disposed = true;
+      controller.abort();
       observer.disconnect();
       if (retryTimer) clearTimeout(retryTimer);
       if (renderTaskRef.current) {
@@ -399,7 +423,7 @@ function LazyPdfPage({
         }
       }
     };
-  }, [pdf, pageNumber, renderWidth, scrollRoot]);
+  }, [pdf, pageNumber, renderWidth, scrollRoot, renderNonce]);
 
   const showHandles = Array.isArray(pageQuestions) && pageQuestions.length > 0;
 
@@ -410,6 +434,7 @@ function LazyPdfPage({
       data-page={pageNumber}
       data-student-page={studentPageNumber > 0 ? studentPageNumber : undefined}
     >
+      {pageError && <div role="alert">{pageError} <button type="button" onClick={() => { setPageError(null); setRenderNonce(n => n + 1); }}>Retry</button></div>}
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
       {showColumnResize && (
         <div
@@ -549,6 +574,10 @@ export default function AnnotatedPdfPreview({
   const contentRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
   const [pdf, setPdf] = useState(null);
+  const pdfRef = useRef(null);
+  const callbacksRef = useRef({ onDocumentLoaded, onStructuralError });
+  useEffect(() => { callbacksRef.current = { onDocumentLoaded, onStructuralError }; }, [onDocumentLoaded, onStructuralError]);
+  useEffect(() => () => { pdfRef.current?.destroy().catch(() => {}); pdfRef.current = null; }, []);
   const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -651,8 +680,6 @@ export default function AnnotatedPdfPreview({
   useEffect(() => {
     setLocalPlacement({});
     setLocalColumnWidthPct(null);
-    setZoomLevel(DEFAULT_ZOOM);
-    setRenderZoom(DEFAULT_ZOOM);
     setEditingLabelIndex(null);
   }, [url]);
 
@@ -712,6 +739,8 @@ export default function AnnotatedPdfPreview({
 
   useEffect(() => {
     if (!url) {
+      pdfRef.current?.destroy().catch(() => {});
+      pdfRef.current = null;
       setPdf(null);
       setNumPages(0);
       setLoading(false);
@@ -723,6 +752,14 @@ export default function AnnotatedPdfPreview({
     pdfSessionRef.current = pdfSessionKey ?? null;
 
     let cancelled = false;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(new Error('Loading preview timed out. Click Retry.')), 60_000);
+    if (!sameSession) {
+      pdfRef.current?.destroy().catch(() => {});
+      pdfRef.current = null;
+      setPdf(null);
+      structuralRetryUrlRef.current = null;
+    }
     setLoading(true);
     setError(null);
     if (!sameSession) {
@@ -734,14 +771,17 @@ export default function AnnotatedPdfPreview({
 
     (async () => {
       try {
-        const doc = await loadPdfDocumentFromUrl(url);
+        const doc = await loadPdfDocumentFromUrl(url, controller.signal);
         if (cancelled) {
           await doc.destroy();
           return;
         }
+        const previous = pdfRef.current;
+        pdfRef.current = doc;
         setPdf(doc);
+        if (previous) previous.destroy().catch(() => {});
         setNumPages(doc.numPages);
-        onDocumentLoaded?.(url);
+        callbacksRef.current.onDocumentLoaded?.(url);
         if (sameSession) {
           const restore = Math.min(
             Math.max(1, currentPageRef.current),
@@ -759,31 +799,30 @@ export default function AnnotatedPdfPreview({
           const localHandoffFailure = /network error|failed to fetch|failed to read preview pdf/i.test(
             String(err?.message || err || "")
           );
-          if ((structural || localHandoffFailure) && onStructuralError && structuralRetryUrlRef.current !== url) {
+          if ((structural || localHandoffFailure) && callbacksRef.current.onStructuralError && !structuralRetryUrlRef.current) {
             structuralRetryUrlRef.current = url;
             setError(
               structural
                 ? "The generated preview was incomplete. Sahahly is rebuilding it automatically."
                 : "The preview connection was interrupted. Sahahly is rebuilding it automatically."
             );
-            onStructuralError();
+            callbacksRef.current.onStructuralError();
           } else {
             setError(friendlyPdfLoadError(err));
           }
         }
       } finally {
+        clearTimeout(deadline);
         if (!cancelled) setLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
-      setPdf((prev) => {
-        if (prev) prev.destroy().catch(() => {});
-        return null;
-      });
+      clearTimeout(deadline);
+      controller.abort();
     };
-  }, [url, loadNonce, pdfSessionKey, onStructuralError, onDocumentLoaded]);
+  }, [url, loadNonce, pdfSessionKey]);
 
   const effectiveQuestions = useMemo(() => {
     if (!placementEnabled) return [];
@@ -1307,10 +1346,10 @@ export default function AnnotatedPdfPreview({
     }
   }, []);
 
-  if (loading) {
+  if (loading && !pdf) {
     return <div className="pdf-preview-status">Loading preview pages…</div>;
   }
-  if (error) {
+  if (error && !pdf) {
     return (
       <div className="pdf-preview-status pdf-preview-status--error">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, maxWidth: 360, textAlign: "center" }}>
@@ -1344,6 +1383,10 @@ export default function AnnotatedPdfPreview({
         .filter(Boolean)
         .join(" ")}
     >
+      {(loading || error) && <div role="status" style={{ padding: 6, fontSize: 12 }}>
+        {error || 'Updating preview…'}
+        {error && <button type="button" onClick={() => setLoadNonce(n => n + 1)}>Retry</button>}
+      </div>}
       <div className="pdf-preview-toolbar">
         <div className="pdf-preview-toolbar-section pdf-preview-toolbar-section--pages">
           <button
@@ -1534,7 +1577,7 @@ export default function AnnotatedPdfPreview({
                   : null;
               return (
                 <LazyPdfPage
-                  key={`${url}-p${pageNumber}-w${effectiveRenderWidth}`}
+                  key={`p${pageNumber}-w${effectiveRenderWidth}`}
                   pdf={pdf}
                   pageNumber={pageNumber}
                   renderWidth={effectiveRenderWidth}

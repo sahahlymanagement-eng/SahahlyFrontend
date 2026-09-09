@@ -1,3 +1,4 @@
+import { savedPreviewOptions } from "../../utils/savedPreviewOptions";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -173,7 +174,7 @@ import {
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
-import { invalidateStudentPdf } from "../../utils/studentPdfCache";
+import { fetchStudentPdf, invalidateStudentPdf } from "../../utils/studentPdfCache";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 
 export default function AssignmentSubmissionViewer() {
@@ -2338,7 +2339,7 @@ window.open(url);
 
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first");
       return;
     }
@@ -2352,19 +2353,7 @@ window.open(url);
         resultModal?.student?.submissionId ||
         db?.submissionId;
 
-      const pdfRes = await api.get("/submission-files/pdf", {
-        params: {
-          assignmentId,
-          submissionId: submissionId
-        },
-        responseType: "blob",
-        timeout: 120_000,
-      });
-      const studentFile = new File(
-        [pdfRes.data],
-        "student.pdf",
-        { type: "application/pdf" }
-      );
+      const studentFile = await fetchStudentPdf(api, { assignmentId, submissionId });
 
       const pdfBytes = await annotatePdf({
         studentFile,
@@ -2375,6 +2364,7 @@ window.open(url);
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        ...savedPreviewOptions(confirmedSnapshot, submissionId),
       });
 
       downloadBlob(new Blob([pdfBytes]), `${resultModal.student.name}_graded.pdf`);
@@ -2580,14 +2570,13 @@ window.open(url);
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         const sid = resultModal.student.submissionId || submissionId;
         const { canonical, saved } = await persistMarkingResult(finalResult, sid);
-        setResultModal((prev) => ({
-          ...prev,
-          result: canonical,
-        }));
-        setEditingSummary(canonical.summary || "");
-        setSummaryTouched(false);
-        setEditingMaxTotal(null);
-        setEditingTotal(null);
+        setResultModal(prev => isSameSubmissionModal(prev, sid) ? { ...prev, result: canonical } : prev);
+        if (openSubmissionIdRef.current === startedFor) {
+          setEditingSummary(canonical.summary || "");
+          setSummaryTouched(false);
+          setEditingMaxTotal(null);
+          setEditingTotal(null);
+        }
         patchSavedResult(sid, canonical, saved);
         syncSessionMarkingCaches(sid, canonical);
         return canonical;
@@ -2606,7 +2595,7 @@ window.open(url);
         );
         setEditingCriteriaGrade(cloneCriteriaGrade(finalResult.criteriaGrade));
         setPendingRemovedIndices(new Set());
-        toast.success("Edits confirmed — preview and grade updated");
+        toast.success("Edits saved — preview updating");
       }
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
@@ -2623,7 +2612,7 @@ window.open(url);
 
   const returnToStudent = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first so the returned PDF matches the preview");
       return;
     }
@@ -2646,9 +2635,9 @@ window.open(url);
 
     setReturning(true);
     try {
-      const total = resolveAnnotatePdfTotalMarks({
-        questions: editingQuestions,
-        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+      const total = confirmedSnapshot.finalObtainedMarks ?? resolveAnnotatePdfTotalMarks({
+        questions: confirmedSnapshot.questions,
+        criteriaGrade: confirmedSnapshot.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const db = savedResults[resultModal.student?.submissionId];
@@ -2668,19 +2657,9 @@ window.open(url);
 
       if (!gradeOnly) {
         try {
-          const pdfRes = await api.get("/submission-files/pdf", {
-            params: {
-              assignmentId,
-              submissionId: submissionId,
-              googleUserId: googleUserId || undefined,
-            },
-            responseType: "blob"
+          studentFile = await fetchStudentPdf(api, {
+            assignmentId, submissionId, googleUserId: googleUserId || undefined,
           });
-          studentFile = new File(
-            [pdfRes.data],
-            "student.pdf",
-            { type: "application/pdf" }
-          );
         } catch (err) {
           if (await isNoAttachmentError(err)) gradeOnly = true;
           else throw err;
@@ -2698,6 +2677,7 @@ window.open(url);
             teacherAnnotations: getTeacherAnnotations(resultModal.result),
             criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
             markingMode: resultModal.result?.markingMode || "normal",
+            ...savedPreviewOptions(confirmedSnapshot, submissionId),
           });
 
       const fd = new FormData();
@@ -2709,7 +2689,7 @@ window.open(url);
       fd.append("assignmentId",  assignmentId);
       fd.append("submissionId",  resultModal.student.submissionId || submissionId);
       fd.append("totalMarks", total);
-      fd.append("maxTotalMarks", effectiveMaxTotal);
+      fd.append("maxTotalMarks", confirmedSnapshot.finalMaximumMarks ?? confirmedSnapshot.maxTotal);
       fd.append("studentName",   resultModal.student.name || "Student");
       if (googleUserId) {
         fd.append("googleUserId", String(googleUserId));
@@ -4442,11 +4422,17 @@ return (
               </div>
             )}
 
-                      {previewLoading ? (
+                      {annotatedPreviewUrl && (previewLoading || previewError) && (
+                        <div role="status" style={{ fontSize: 12, padding: 6 }}>
+                          {previewError || "Updating preview…"}
+                          {previewError && <button type="button" onClick={retryPreview}>Retry</button>}
+                        </div>
+                      )}
+                      {previewLoading && !annotatedPreviewUrl ? (
                         <div style={{ color: "var(--muted)", fontSize: 13 }}>
                           Generating preview…
                         </div>
-                      ) : previewError ? (
+                      ) : previewError && !annotatedPreviewUrl ? (
                         <div
                           className="pdf-preview-status pdf-preview-status--error"
                           style={{ flexDirection: "column", gap: 10 }}
@@ -4550,4 +4536,3 @@ return (
           </div>
         );
       }
-

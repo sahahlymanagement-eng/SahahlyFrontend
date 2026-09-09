@@ -1,3 +1,4 @@
+import { savedPreviewOptions } from "../../utils/savedPreviewOptions";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/api";
@@ -164,7 +165,7 @@ import {
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
-import { invalidateStudentPdf } from "../../utils/studentPdfCache";
+import { fetchStudentPdf, invalidateStudentPdf } from "../../utils/studentPdfCache";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 import "./ManagerSubmissionViewer.css";
 
@@ -3375,7 +3376,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   const downloadGradedPdf = async () => {
     if (!resultModal) return;
     if (!selectedAssignment?._id) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first");
       return;
     }
@@ -3388,19 +3389,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         resultModal?.student?.submissionId ||
         db?.submissionId;
 
-      const pdfRes = await api.get("/submission-files/pdf", {
-        params: {
-          assignmentId: selectedAssignment._id,
-          submissionId: submissionId
-        },
-        responseType: "blob",
-        timeout: 120_000,
-      });
-      const studentFile = new File(
-        [pdfRes.data],
-        "student.pdf",
-        { type: "application/pdf" }
-      );
+      const studentFile = await fetchStudentPdf(api, { assignmentId: selectedAssignment._id, submissionId });
 
       const pdfBytes = await annotatePdf({
         studentFile,
@@ -3411,6 +3400,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        ...savedPreviewOptions(confirmedSnapshot, submissionId),
       });
 
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "student"}_graded.pdf`);
@@ -3616,14 +3606,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       const finalResult = await confirmEdits(async ({ finalResult, submissionId }) => {
         const sid = resultModal.student.submissionId || submissionId;
         const { canonical, saved } = await persistMarkingResult(finalResult, sid);
-        setResultModal((prev) => ({
-          ...prev,
-          result: canonical,
-        }));
-        setEditingSummary(canonical.summary || "");
-        setSummaryTouched(false);
-        setEditingMaxTotal(null);
-        setEditingTotal(null);
+        setResultModal(prev => isSameSubmissionModal(prev, sid) ? { ...prev, result: canonical } : prev);
+        if (openSubmissionIdRef.current === startedFor) {
+          setEditingSummary(canonical.summary || "");
+          setSummaryTouched(false);
+          setEditingMaxTotal(null);
+          setEditingTotal(null);
+        }
         patchSavedResult(sid, canonical, saved);
         syncSessionMarkingCaches(sid, canonical);
         return canonical;
@@ -3642,7 +3631,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         );
         setEditingCriteriaGrade(cloneCriteriaGrade(finalResult.criteriaGrade));
         setPendingRemovedIndices(new Set());
-        toast.success("Edits confirmed — preview and grade updated");
+        toast.success("Edits saved — preview updating");
       }
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to confirm edits");
@@ -3651,7 +3640,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const returnToStudent = async () => {
     if (!resultModal) return;
-    if (hasPendingEdits) {
+    if (hasPendingEdits || confirmingEdits || !confirmedSnapshot) {
       toast.warn("Save & regenerate PDF first so the returned PDF matches the preview");
       return;
     }
@@ -3689,28 +3678,18 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       if (!gradeOnly && !studentFile && submissionId) {
         try {
-          const pdfRes = await api.get("/submission-files/pdf", {
-            params: {
-              assignmentId: selectedAssignment._id,
-              submissionId,
-              googleUserId: googleUserId || undefined,
-            },
-            responseType: "blob",
+          studentFile = await fetchStudentPdf(api, {
+            assignmentId: selectedAssignment._id, submissionId, googleUserId: googleUserId || undefined,
           });
-          studentFile = new File(
-            [pdfRes.data],
-            `${resultModal.student?.name || "student"}.pdf`,
-            { type: "application/pdf" }
-          );
         } catch (err) {
           if (await isNoAttachmentError(err)) gradeOnly = true;
           else throw err;
         }
       }
 
-      const totalMarks = resolveAnnotatePdfTotalMarks({
-        questions: editingQuestions,
-        criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
+      const totalMarks = confirmedSnapshot.finalObtainedMarks ?? resolveAnnotatePdfTotalMarks({
+        questions: confirmedSnapshot.questions,
+        criteriaGrade: confirmedSnapshot.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const pdfBytes = gradeOnly
@@ -3724,6 +3703,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             teacherAnnotations: getTeacherAnnotations(resultModal.result),
             criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
             markingMode: resultModal.result?.markingMode || "normal",
+            ...savedPreviewOptions(confirmedSnapshot, submissionId),
           });
       const fd = new FormData();
       if (pdfBytes) {
@@ -3734,7 +3714,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       fd.append("assignmentId", selectedAssignment._id);
       fd.append("submissionId", resultModal.student.submissionId || submissionId);
       fd.append("totalMarks", totalMarks);
-      fd.append("maxTotalMarks", effectiveMaxTotal);
+      fd.append("maxTotalMarks", confirmedSnapshot.finalMaximumMarks ?? confirmedSnapshot.maxTotal);
       fd.append("studentName", resultModal.student.name || "Student");
       if (googleUserId) {
         fd.append("googleUserId", String(googleUserId));
@@ -5937,11 +5917,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         </div>
                       )}
 
-                      {previewLoading ? (
+                      {annotatedPreviewUrl && (previewLoading || previewError) && (
+                        <div role="status" style={{ fontSize: 12, padding: 6 }}>
+                          {previewError || "Updating preview…"}
+                          {previewError && <button type="button" onClick={retryPreview}>Retry</button>}
+                        </div>
+                      )}
+                      {previewLoading && !annotatedPreviewUrl ? (
                         <div style={{ color: "var(--muted)", fontSize: 13 }}>
                           Generating preview…
                         </div>
-                      ) : previewError ? (
+                      ) : previewError && !annotatedPreviewUrl ? (
                         <div
                           className="pdf-preview-status pdf-preview-status--error"
                           style={{ flexDirection: "column", gap: 10 }}

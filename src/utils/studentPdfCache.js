@@ -5,8 +5,9 @@
  * on open, again when the open-time auto-save confirms the normalised version,
  * and again after every Confirm Edits or box drag. Each rebuild used to
  * re-download the student's PDF through `GET /submission-files/pdf`, which goes
- * out to Drive every time (no cache headers, nothing memoised). The file itself
- * cannot change while the modal is open, so one download per paper is enough.
+ * out to Drive every time. Reuse downloads for one minute, invalidate explicitly
+ * after a return, and invalidate immediately when a caller supplies a new source
+ * version. Generated PDFs separately hash the actual downloaded bytes.
  *
  * Kept deliberately small: these are multi-megabyte blobs, and only the paper on
  * screen and the couple before it are ever wanted again.
@@ -24,15 +25,20 @@ const MAX_ATTEMPTS = 5;
 // surfacing an error (or making the user reopen the paper) immediately.
 const RETRY_DELAYS_MS = [1_000, 3_000, 7_000, 15_000];
 
-/** key -> Blob */
+/** key -> File */
 const blobs = new Map();
-/** key -> Promise<Blob>, so two previews starting at once share one download. */
+/** key -> Promise<File>, so two previews starting at once share one download. */
 const inflight = new Map();
+const versions = new Map();
+const fetchedAt = new Map();
+const MAX_AGE_MS = 60_000;
 
 function evictOldest() {
   while (blobs.size > MAX_ENTRIES) {
     const oldest = blobs.keys().next().value;
     blobs.delete(oldest);
+    versions.delete(oldest);
+    fetchedAt.delete(oldest);
   }
 }
 
@@ -89,9 +95,15 @@ export async function withPdfFetchRetry(fn, { attempts = MAX_ATTEMPTS } = {}) {
  */
 export async function fetchStudentPdf(
   api,
-  { assignmentId, submissionId, googleUserId, timeout = 90_000 }
+  { assignmentId, submissionId, googleUserId, sourceVersion = '', timeout = 30_000 }
 ) {
   const key = cacheKey(assignmentId, submissionId);
+  if (versions.get(key) !== sourceVersion || Date.now() - (fetchedAt.get(key) || 0) > MAX_AGE_MS) {
+    blobs.delete(key);
+    // A new version must not join or be overwritten by an older request.
+    if (versions.get(key) !== sourceVersion) inflight.delete(key);
+    versions.set(key, sourceVersion);
+  }
 
   const toFile = (blob) =>
     new File([blob], `${submissionId}.pdf`, { type: "application/pdf" });
@@ -102,11 +114,11 @@ export async function fetchStudentPdf(
     // to the end and keeps the eviction above honest.
     blobs.delete(key);
     blobs.set(key, cached);
-    return toFile(cached);
+    return cached;
   }
 
   const pending = inflight.get(key);
-  if (pending) return toFile(await pending);
+  if (pending) return pending;
 
   const request = withPdfFetchRetry(async () => {
     const res = await api.get("/submission-files/pdf", {
@@ -119,17 +131,20 @@ export async function fetchStudentPdf(
       timeout,
     });
     await assertPdfBlob(res.data, "Student submission");
-    return res.data;
+    return toFile(res.data);
   });
 
   inflight.set(key, request);
   try {
     const blob = await request;
-    blobs.set(key, blob);
-    evictOldest();
-    return toFile(blob);
+    if (inflight.get(key) === request) {
+      blobs.set(key, blob);
+      fetchedAt.set(key, Date.now());
+      evictOldest();
+    }
+    return blob;
   } finally {
-    inflight.delete(key);
+    if (inflight.get(key) === request) inflight.delete(key);
   }
 }
 
@@ -142,10 +157,14 @@ export function invalidateStudentPdf(assignmentId, submissionId) {
   const key = cacheKey(assignmentId, submissionId);
   blobs.delete(key);
   inflight.delete(key);
+  versions.delete(key);
+  fetchedAt.delete(key);
 }
 
 /** Drop everything — used when switching assignment. */
 export function clearStudentPdfCache() {
   blobs.clear();
   inflight.clear();
+  versions.clear();
+  fetchedAt.clear();
 }

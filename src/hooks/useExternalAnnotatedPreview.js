@@ -1,3 +1,4 @@
+import { previewDelay, waitForPreview, previewTiming, stableJson, clearGeneratedPdfCache } from "../utils/previewJobs";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { annotatePdf } from "../utils/annotatePdf";
 import {
@@ -22,23 +23,6 @@ function getSubmissionId(modal) {
 
 const PREVIEW_TIMEOUT_MS = 120_000;
 
-function withTimeout(promise, ms, label) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
-      ms
-    );
-    promise
-      .then((v) => {
-        clearTimeout(timer);
-        resolve(v);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-  });
-}
 
 /**
  * Annotated PDF preview for the LoginCSS results modal.
@@ -73,6 +57,9 @@ export function useExternalAnnotatedPreview({
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
+  const previewAbortRef = useRef(null);
+  const previewJobKeyRef = useRef(null);
+  const activeSubmissionRef = useRef(null);
   const previewUrlRef = useRef(null);
   const retiredPreviewUrlsRef = useRef(new Set());
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
@@ -180,25 +167,37 @@ export function useExternalAnnotatedPreview({
 
   const generatePreview = useCallback(async (snapshot, { lockPlacement = false } = {}) => {
     if (!snapshot?.submissionId) return;
+    const jobKey = stableJson({ snapshot, lockPlacement });
+    if (previewJobKeyRef.current === jobKey && !previewAbortRef.current?.signal.aborted) return;
+    previewJobKeyRef.current = jobKey;
+    previewAbortRef.current?.abort();
+    const controller = new AbortController();
+    previewAbortRef.current = controller;
+    const signal = controller.signal;
+    const deadline = setTimeout(() => controller.abort(new Error('Preview timed out. Please Retry.')), 120_000);
     const requestId = ++previewRequestRef.current;
+    const markingMode = resultModalRef.current?.result?.markingMode || "normal";
     setPreviewLoading(true);
     setPreviewError(null);
 
     try {
+      await previewDelay(signal);
+      const fetchStarted = performance.now();
       if (!getStudentFileRef.current) {
         throw new Error("Student PDF unavailable for preview");
       }
-      const studentFile = await withTimeout(
+      const studentFile = await waitForPreview(
         getStudentFileRef.current(snapshot.submissionId),
-        90_000,
-        "Loading student PDF"
+        signal, 90_000
       );
       if (requestId !== previewRequestRef.current) return;
       if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
-      const markingMode = resultModalRef.current?.result?.markingMode || "normal";
-      const pdfBytes = await withTimeout(
+      previewTiming("source_fetch", fetchStarted);
+      const pdfBytes = await waitForPreview(
         annotatePdf({
+          signal,
+          cacheScope: snapshot.submissionId,
           studentFile,
           questions: snapshot.questions,
           maxTotalMarks: snapshot.maxTotal,
@@ -212,8 +211,7 @@ export function useExternalAnnotatedPreview({
           skipCompress: true,
           lockPlacement,
         }),
-        PREVIEW_TIMEOUT_MS,
-        "Building annotated preview"
+        signal, PREVIEW_TIMEOUT_MS
       );
       if (requestId !== previewRequestRef.current) return;
       if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
@@ -231,20 +229,37 @@ export function useExternalAnnotatedPreview({
       }
     } catch (err) {
       if (requestId === previewRequestRef.current) {
+        if (signal.aborted && signal.reason?.name === "AbortError") return;
         const message = await getApiErrorMessage(err);
-        console.error("Failed to generate annotated preview", err);
+        console.error("[pdf-preview]", { stage: "preview_failed", code: err?.code || err?.name || "Error" });
         setPreviewError(message || "Failed to generate preview");
       }
     } finally {
+      clearTimeout(deadline);
       if (requestId === previewRequestRef.current) {
         setPreviewLoading(false);
+        previewJobKeyRef.current = null;
       }
     }
   }, []);
 
   const openSubmissionId = getSubmissionId(resultModal);
 
+  useEffect(() => () => {
+    previewRequestRef.current += 1;
+    previewAbortRef.current?.abort();
+    revokePreviewUrl();
+  }, [revokePreviewUrl]);
+
   useEffect(() => {
+    if (activeSubmissionRef.current !== openSubmissionId) {
+      activeSubmissionRef.current = openSubmissionId;
+      previewRequestRef.current += 1;
+      previewAbortRef.current?.abort();
+      revokePreviewUrl();
+      setPreviewLoading(false);
+      setConfirmingEdits(false);
+    }
     if (!openSubmissionId) {
       previewRequestRef.current += 1;
       revokePreviewUrl();
@@ -273,7 +288,7 @@ export function useExternalAnnotatedPreview({
     revokePreviewUrl,
   ]);
 
-  useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
+
 
   const hasPendingEdits = useMemo(() => {
     if (!confirmedSnapshot) return false;
@@ -385,7 +400,7 @@ export function useExternalAnnotatedPreview({
       const stillThisPaper = () => getSubmissionId(resultModalRef.current) === submissionId;
 
       if (!skipPreview) setConfirmingEdits(true);
-      if (!skipPreview) previewRequestRef.current += 1;
+      if (!skipPreview) { previewRequestRef.current += 1; previewAbortRef.current?.abort(); setPreviewLoading(false); }
       try {
         const questions = questionsForConfirmEdits(
           editingQuestions,
@@ -466,6 +481,7 @@ export function useExternalAnnotatedPreview({
               snapshot.finalMaximumMarks =
                 persisted.finalMaximumMarks ?? snapshot.maxTotal;
               snapshot.outOfScopeNotes = getOutOfScopeNotes(persisted);
+              snapshot.teacherAnnotations = getTeacherAnnotations(persisted).map(a => ({ ...a }));
             }
           } catch (err) {
             if (!skipPreview && stillThisPaper()) {
@@ -482,7 +498,7 @@ export function useExternalAnnotatedPreview({
         if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
         if (!skipPreview) {
-          await generatePreview(snapshot, { lockPlacement: true });
+          void generatePreview(snapshot, { lockPlacement: true });
         }
         return finalResult;
       } finally {
@@ -522,6 +538,7 @@ export function useExternalAnnotatedPreview({
   }, [confirmedSnapshot, generatePreview]);
 
   const retryPreview = useCallback(() => {
+    clearGeneratedPdfCache();
     const modal = resultModalRef.current;
     if (!modal) return;
     const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);

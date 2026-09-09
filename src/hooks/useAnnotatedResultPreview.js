@@ -1,3 +1,4 @@
+import { previewDelay, waitForPreview, previewTiming, stableJson, clearGeneratedPdfCache } from "../utils/previewJobs";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { annotatePdf } from "../utils/annotatePdf";
 import {
@@ -29,7 +30,7 @@ async function loadAssignmentTeacherLogo(api, assignmentId) {
     teacherLogoCache.set(
       assignmentId,
       api
-        .get(`/report-logos/assignment/${assignmentId}`, { responseType: "arraybuffer" })
+        .get(`/report-logos/assignment/${assignmentId}`, { responseType: "arraybuffer", timeout: 8000 })
         .then((r) => r.data)
         .catch((err) => {
           if (err?.response?.status !== 404) {
@@ -44,23 +45,6 @@ async function loadAssignmentTeacherLogo(api, assignmentId) {
 
 const PREVIEW_TIMEOUT_MS = 120_000;
 
-function withTimeout(promise, ms, label) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
-      ms
-    );
-    promise
-      .then((v) => {
-        clearTimeout(timer);
-        resolve(v);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-  });
-}
 
 /**
  * Annotated PDF preview for the results modal.
@@ -92,6 +76,9 @@ export function useAnnotatedResultPreview({
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
+  const previewAbortRef = useRef(null);
+  const previewJobKeyRef = useRef(null);
+  const activeSubmissionRef = useRef(null);
   const previewUrlRef = useRef(null);
   const retiredPreviewUrlsRef = useRef(new Set());
   // Which submission the preview currently on screen was built from. Needed to
@@ -203,16 +190,26 @@ export function useAnnotatedResultPreview({
   const generatePreview = useCallback(
     async (snapshot, { lockPlacement = false } = {}) => {
       if (!assignmentId || !snapshot?.submissionId) return;
+      const jobKey = stableJson({ assignmentId, snapshot, lockPlacement });
+      if (previewJobKeyRef.current === jobKey && !previewAbortRef.current?.signal.aborted) return;
+      previewJobKeyRef.current = jobKey;
+      previewAbortRef.current?.abort();
+      const controller = new AbortController();
+      previewAbortRef.current = controller;
+      const signal = controller.signal;
+      const deadline = setTimeout(() => controller.abort(new Error('Preview timed out. Please Retry.')), 120_000);
       const requestId = ++previewRequestRef.current;
+      const markingMode = resultModalRef.current?.result?.markingMode || "normal";
       setPreviewLoading(true);
       setPreviewError(null);
 
       try {
-        // Cached per paper for the session: a preview is rebuilt several times
-        // while one modal is open, and the student's file cannot change under
-        // it. See utils/studentPdfCache.js.
+        await previewDelay(signal);
+        const fetchStarted = performance.now();
+        // Share recent source downloads; generated output additionally uses a
+        // content hash so a replaced file never hits an older output entry.
         const googleUserId = studentGoogleUserId(resultModalRef.current?.student);
-        const studentFile = await withTimeout(
+        const studentFile = await waitForPreview(
           fetchStudentPdf(api, {
             assignmentId,
             submissionId: snapshot.submissionId,
@@ -221,15 +218,16 @@ export function useAnnotatedResultPreview({
             // ladder to help; the outer timeout still allows the full ladder.
             timeout: 30_000,
           }),
-          150_000,
-          "Loading student PDF"
+          signal, 90_000
         );
         if (requestId !== previewRequestRef.current) return;
 
-        const markingMode = resultModalRef.current?.result?.markingMode || "normal";
-        const teacherLogoBytes = await loadAssignmentTeacherLogo(api, assignmentId);
-        const pdfBytes = await withTimeout(
+        previewTiming("source_fetch", fetchStarted);
+        const teacherLogoBytes = await waitForPreview(loadAssignmentTeacherLogo(api, assignmentId), signal, 10_000);
+        const pdfBytes = await waitForPreview(
           annotatePdf({
+            signal,
+            cacheScope: snapshot.submissionId,
             studentFile,
             questions: snapshot.questions,
             maxTotalMarks: snapshot.maxTotal,
@@ -244,8 +242,7 @@ export function useAnnotatedResultPreview({
             lockPlacement,
             teacherLogoBytes,
           }),
-          PREVIEW_TIMEOUT_MS,
-          "Building annotated preview"
+          signal, PREVIEW_TIMEOUT_MS
         );
         if (requestId !== previewRequestRef.current) return;
         if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
@@ -267,12 +264,15 @@ export function useAnnotatedResultPreview({
         }
       } catch (err) {
         if (requestId === previewRequestRef.current) {
+          if (signal.aborted && signal.reason?.name === "AbortError") return;
           const message = await getApiErrorMessage(err);
-          console.error("Failed to generate annotated preview", err);
+          console.error("[pdf-preview]", { stage: "preview_failed", code: err?.code || err?.name || "Error" });
           setPreviewError(message || "Failed to generate preview");
         }
       } finally {
+        clearTimeout(deadline);
         if (requestId === previewRequestRef.current) {
+          previewJobKeyRef.current = null;
           setPreviewLoading(false);
         }
       }
@@ -283,7 +283,21 @@ export function useAnnotatedResultPreview({
   const openSubmissionId =
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
 
+  useEffect(() => () => {
+    previewRequestRef.current += 1;
+    previewAbortRef.current?.abort();
+    revokePreviewUrl();
+  }, [revokePreviewUrl]);
+
   useEffect(() => {
+    if (activeSubmissionRef.current !== openSubmissionId) {
+      activeSubmissionRef.current = openSubmissionId;
+      previewRequestRef.current += 1;
+      previewAbortRef.current?.abort();
+      revokePreviewUrl();
+      setPreviewLoading(false);
+      setConfirmingEdits(false);
+    }
     if (!openSubmissionId || !assignmentId) {
       previewRequestRef.current += 1;
       revokePreviewUrl();
@@ -315,7 +329,7 @@ export function useAnnotatedResultPreview({
     revokePreviewUrl,
   ]);
 
-  useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
+
 
   const hasPendingEdits = useMemo(() => {
     if (!confirmedSnapshot) return false;
@@ -429,7 +443,7 @@ export function useAnnotatedResultPreview({
       const stillThisPaper = () => getSubmissionId(resultModalRef.current) === submissionId;
 
       if (!skipPreview) setConfirmingEdits(true);
-      if (!skipPreview) previewRequestRef.current += 1;
+      if (!skipPreview) { previewRequestRef.current += 1; previewAbortRef.current?.abort(); setPreviewLoading(false); }
       try {
         const questions = questionsForConfirmEdits(
           editingQuestions,
@@ -507,6 +521,7 @@ export function useAnnotatedResultPreview({
               snapshot.finalMaximumMarks =
                 persisted.finalMaximumMarks ?? snapshot.maxTotal;
               snapshot.outOfScopeNotes = getOutOfScopeNotes(persisted);
+              snapshot.teacherAnnotations = getTeacherAnnotations(persisted).map(a => ({ ...a }));
             }
           } catch (err) {
             if (!skipPreview && stillThisPaper()) {
@@ -523,7 +538,7 @@ export function useAnnotatedResultPreview({
         if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
         if (!skipPreview) {
-          await generatePreview(snapshot, { lockPlacement: true });
+          void generatePreview(snapshot, { lockPlacement: true });
         }
         return finalResult;
       } finally {
@@ -565,6 +580,7 @@ export function useAnnotatedResultPreview({
 
   /** Re-fetch student PDF + rebuild preview after a transient Network Error. */
   const retryPreview = useCallback(() => {
+    clearGeneratedPdfCache();
     const modal = resultModalRef.current;
     if (!modal) return;
     const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);

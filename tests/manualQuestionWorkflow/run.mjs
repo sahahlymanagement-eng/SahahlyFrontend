@@ -62,6 +62,7 @@ fs.writeFileSync(entry, [
 await build({
   entryPoints: [entry],
   bundle: true,
+  loader: { '.png': 'dataurl' },
   platform: "node",
   format: "esm",
   outfile: bundle,

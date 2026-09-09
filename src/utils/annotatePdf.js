@@ -1,3 +1,4 @@
+import { cachedPdf, digest, stableJson, previewTiming } from "./previewJobs";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { compressAnnotatedPdf } from "./compressAnnotatedPdf";
 import { enrichMarkingQuestions, isBlankQuestion, summarizeUnansweredQuestions, overlayQuestionLabel, isPlaceableScriptQuestion, looksLikePageSplitDeferral } from "./blankQuestionFeedback";
@@ -39,7 +40,7 @@ let sahahlyLogoBytesPromise = null;
 
 async function loadSahahlyLogoBytes() {
   if (!sahahlyLogoBytesPromise) {
-    sahahlyLogoBytesPromise = fetch(sahahlyLogoUrl)
+    sahahlyLogoBytesPromise = fetch(sahahlyLogoUrl, { signal: AbortSignal.timeout(8000) })
       .then((response) => {
         if (!response.ok) throw new Error(`Logo request failed (${response.status})`);
         return response.arrayBuffer();
@@ -1772,8 +1773,29 @@ function drawTeacherAnnotationsInColumn(page, layout, notes, bold, reg) {
   }
 }
 
-export async function annotatePdf({
+const sourceVersions = new WeakMap();
+
+export async function annotatePdf(options) {
+  const { signal, studentFile, teacherLogoBytes, ...revision } = options;
+  signal?.throwIfAborted();
+  const started = performance.now();
+  if (!sourceVersions.has(studentFile)) {
+    const version = studentFile.arrayBuffer().then(async sourceBytes => ({ sourceBytes, sourceHash: await digest(sourceBytes) }));
+    sourceVersions.set(studentFile, version);
+    version.catch(() => sourceVersions.delete(studentFile));
+  }
+  const { sourceBytes, sourceHash } = await sourceVersions.get(studentFile);
+  const logoHash = teacherLogoBytes ? await digest(teacherLogoBytes) : null;
+  const key = await digest(new TextEncoder().encode(stableJson({ ...revision, sourceHash, logoHash, renderer: 1 })));
+  signal?.throwIfAborted();
+  previewTiming('source_hash', started, { bytes: sourceBytes.byteLength });
+  return cachedPdf(key, buildSignal => buildAnnotatedPdf({ ...options, signal: buildSignal, sourceBytes }), signal);
+}
+
+async function buildAnnotatedPdf({
   studentFile,
+  sourceBytes,
+  signal,
   questions,
   maxTotalMarks,
   summary,
@@ -1816,7 +1838,9 @@ export async function annotatePdf({
       ? Math.max(1, Number(finalMaximumMarks))
       : Math.max(1, Number(maxTotalMarks) || 1);
 
-  const buf = await studentFile.arrayBuffer();
+  const loadStarted = performance.now();
+  signal?.throwIfAborted();
+  const buf = sourceBytes || await studentFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -1834,6 +1858,9 @@ export async function annotatePdf({
     console.warn("Unable to embed teacher PDF logo", err);
   }
 
+  previewTiming("pdf_load", loadStarted);
+  signal?.throwIfAborted();
+  const drawStarted = performance.now();
   const studentPageCount = pdfDoc.getPageCount();
   // Backfilled / not-on-script questions stay off the exam pages — report only.
   const placeableQuestions = renderQuestions.filter((q) =>
@@ -1885,7 +1912,14 @@ export async function annotatePdf({
 
   const colWidthPct = examinerColumnWidthPercentFromQuestions(enrichedQuestions);
 
+  let lastYield = performance.now();
   for (let i = reportPageCount; i < pages.length; i++) {
+    if (performance.now() - lastYield >= 16) {
+      if (globalThis.scheduler?.yield) await globalThis.scheduler.yield();
+      else await new Promise(resolve => setTimeout(resolve, 0));
+      lastYield = performance.now();
+    }
+    signal?.throwIfAborted();
     const page = pages[i];
     const pageNum = i - reportPageCount + 1;
     const qs = byPage[pageNum] || [];
@@ -2037,7 +2071,12 @@ export async function annotatePdf({
   // reference" in the submission viewer even though the in-memory document was
   // otherwise valid. The final-return path still runs Ghostscript compression;
   // previews favor reliable parsing over a temporary blob being a few KB smaller.
+  signal?.throwIfAborted();
+  previewTiming("draw_annotations", drawStarted, { pages: studentPageCount });
+  const saveStarted = performance.now();
   const rawBytes = await pdfDoc.save({ useObjectStreams: false });
+  signal?.throwIfAborted();
+  previewTiming("serialize_pdf", saveStarted, { bytes: rawBytes.byteLength });
   const bytes = skipCompress
     ? rawBytes
     : await compressAnnotatedPdf(rawBytes);
