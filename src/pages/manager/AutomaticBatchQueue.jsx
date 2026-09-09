@@ -41,6 +41,7 @@ function stageLabel(stage) {
   if (stage === "waiting_for_gemini") return "Waiting for Gemini";
   if (stage === "uploading") return "Uploading PDFs";
   if (stage === "submitting") return "Submitting batch";
+  if (stage === "stall_retry_queued") return "Retrying after stall";
   return stage || "queued";
 }
 
