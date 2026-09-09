@@ -107,6 +107,37 @@
   margin-bottom: 12px;
 }
 
+.msv-groupby-toggle {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 12px;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.msv-groupby-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.msv-groupby-btn:hover { color: var(--text-primary); }
+
+.msv-groupby-btn.active {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  font-weight: 600;
+}
+
 .msv-section-collapsed {
   display: flex;
   align-items: center;

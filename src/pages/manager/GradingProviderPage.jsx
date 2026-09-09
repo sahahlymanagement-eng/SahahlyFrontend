@@ -268,6 +268,13 @@ export default function GradingProviderPage({ slug, label }) {
   // classroom -> assignment flow, not a filter you can clear.
   const [selectedClass, setSelectedClass] = usePersistedState(`${slug}:class`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`${slug}:assignment`, null);
+  // "class" (default) drills Class -> Assignment, as above. "assignment"
+  // skips the class step entirely and lists one row per assignment id,
+  // summed across every class it was given to — for a multi-class assignment
+  // (IGSpaces lets a teacher post one assignment to several classes at once)
+  // that's the whole thing to batch-mark in one go, rather than hunting it
+  // down class by class and marking each slice separately.
+  const [groupBy, setGroupBy] = usePersistedState(`${slug}:groupBy`, "class");
   // Read by loadAll and the mount effect so neither has to re-create itself
   // every time the selection changes. Seeded with the persisted value, then
   // kept in sync from an effect — assigning during render is not allowed.
@@ -825,7 +832,15 @@ export default function GradingProviderPage({ slug, label }) {
       setSessionError(null);
       setAssignmentIndex(
         (data?.assignments || []).map((a) => ({
-          key: a.id != null ? String(a.id) : "__none__",
+          // The backend now returns one row per (assignment, classroom) — an
+          // assignment given to several classes appears once per class, each
+          // with its own count/graded/marked (see gradingSubmissionQuery.js's
+          // listAssignmentSummary). `id` alone is no longer unique across
+          // rows, so the class's group_id joins the key too.
+          key:
+            a.id != null
+              ? `${a.id}:${a.classroom?.group_id ?? "none"}`
+              : "__none__",
           id: a.id ?? null,
           name: a.name || "Unassigned",
           grade: a.grade ?? null,
@@ -884,6 +899,13 @@ export default function GradingProviderPage({ slug, label }) {
       const { data } = await api.get(`${BASE}/submissions`, {
         params: {
           ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
+          // Only a "By Class" row carries a real classroom (the collapsed
+          // "By Assignment" row's is null by construction) — narrows the
+          // fetch to that one class instead of every class the assignment
+          // was given to.
+          ...(assignment.classroom?.group_id != null
+            ? { classroomGroupId: assignment.classroom.group_id }
+            : {}),
           page: pageNum,
           per_page: PER_PAGE,
         },
@@ -918,6 +940,11 @@ export default function GradingProviderPage({ slug, label }) {
     const { data } = await api.get(`${BASE}/submissions`, {
       params: {
         ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
+        // See loadAssignmentSubmissions — same class scoping, so bulk/batch
+        // marking from a "By Class" row only ever touches that class.
+        ...(assignment.classroom?.group_id != null
+          ? { classroomGroupId: assignment.classroom.group_id }
+          : {}),
         per_page: 1000,
       },
       timeout: 120000,
@@ -953,21 +980,27 @@ export default function GradingProviderPage({ slug, label }) {
   // step. This pulls the provider's full list to recover anything a delivery
   // missed (e.g. dropped while the server was restarting). Grading work is never
   // overwritten — only provider-owned fields are refreshed — so it is always
-  // safe to run. Reloads the list afterwards only when something actually moved.
+  // safe to run.
+  //
+  // The backend runs this in the BACKGROUND and responds immediately
+  // ({ started: true }) rather than waiting for the whole thing — a full
+  // history walk on mariamgabalawy/drpeter can now take several minutes
+  // (their true history turned out to run to many thousands of rows once
+  // IGSpaces' cursor pagination stopped silently capping it at ~979), which
+  // used to time out this very request while the server kept working anyway.
+  // There's no progress/completion signal to poll yet, so this just confirms
+  // the sync started — reload the assignments list yourself in a bit to see
+  // the result.
   const syncFromProvider = useCallback(async () => {
     setSyncing(true);
     try {
-      const { data } = await api.post(`${BASE}/sync`, null, { timeout: 120000 });
-      const inserted = data?.inserted ?? 0;
-      const updated = data?.updated ?? 0;
-
-      if (inserted || updated) {
-        toast.success(
-          `Synced — ${inserted} new, ${updated} updated of ${data?.fetched ?? 0}`
-        );
-        await loadAll();
+      const { data } = await api.post(`${BASE}/sync`, null, { timeout: 15000 });
+      if (data?.alreadyRunning) {
+        toast.info("A sync is already running for this provider — check back shortly.");
       } else {
-        toast.info(`Already up to date — ${data?.fetched ?? 0} submissions in sync`);
+        toast.success(
+          "Sync started in the background. A full history walk can take several minutes — reload this list afterward to see new submissions."
+        );
       }
     } catch (err) {
       console.error("Failed to sync from provider", err);
@@ -975,7 +1008,7 @@ export default function GradingProviderPage({ slug, label }) {
     } finally {
       setSyncing(false);
     }
-  }, [loadAll, BASE]);
+  }, [BASE]);
 
   // ── Reconcile the class/group picker against the provider ──
   // Separate from syncFromProvider above: that one pulls SUBMISSIONS (what
@@ -2198,6 +2231,21 @@ toast.success("Result cleared — you can mark again");
     setSubmissions([]);
   };
 
+  const switchGroupBy = (mode) => {
+    if (mode === groupBy) return;
+    setGroupBy(mode);
+    // A class/assignment picked under the old grouping doesn't carry over —
+    // "By Assignment" has no class step, and "By Class" needs one re-picked.
+    setSelectedClass(null);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+    setSearch("");
+    setPage(1);
+    applySearchRoster(null);
+    setSubmissions([]);
+  };
+
   const sendTeamAlert = async (delegationId) => {
     try {
       setSendingAlertId(delegationId);
@@ -2213,13 +2261,66 @@ toast.success("Result cleared — you can mark again");
   // Grouped by the server — see loadAssignments.
   const assignments = assignmentIndex;
 
+  // One row per assignment id, count/graded/marked summed across every class
+  // it was given to (assignmentIndex already carries one row per class — see
+  // gradingSubmissionQuery.js's listAssignmentSummary). Picking a row here
+  // opens the same cross-class submission set "By Class" would (the backend
+  // filters submissions by assignmentId alone, never by class), so this is
+  // purely a faster way to FIND the assignment when you want to work — or
+  // batch-mark — the whole thing rather than one class's slice of it.
+  const collapsedByAssignment = useMemo(() => {
+    const byId = new Map();
+    for (const a of assignments) {
+      const mapKey = a.id != null ? String(a.id) : "__none__";
+      const existing = byId.get(mapKey);
+      if (!existing) {
+        byId.set(mapKey, {
+          ...a,
+          key: a.id != null ? `${a.id}:__all__` : "__none__",
+          classroom: null,
+          classCount: 1,
+          count: a.count ?? 0,
+          graded: a.graded ?? 0,
+          marked: a.marked ?? 0,
+        });
+      } else {
+        existing.count += a.count ?? 0;
+        existing.graded += a.graded ?? 0;
+        existing.marked += a.marked ?? 0;
+        existing.classCount += 1;
+      }
+    }
+    return [...byId.values()];
+  }, [assignments]);
+
+  // A selection made in "By Assignment" mode carries the synthetic `:__all__`
+  // key — its stats need re-summing across every one of that assignment's
+  // class rows (fresh on each assignmentIndex reload), not a single-row
+  // lookup by key the way a "By Class" selection works.
+  const isCollapsedSelection = !!selectedAssignment?.key?.endsWith(":__all__");
+
   const selectedAssignmentStats = useMemo(() => {
     if (!selectedAssignment?.key) return selectedAssignment;
+
+    if (isCollapsedSelection) {
+      const rows = assignmentIndex.filter((a) => a.id === selectedAssignment.id);
+      if (!rows.length) return selectedAssignment;
+      return rows.reduce(
+        (acc, r) => ({
+          ...acc,
+          count: acc.count + (r.count ?? 0),
+          graded: acc.graded + (r.graded ?? 0),
+          marked: acc.marked + (r.marked ?? 0),
+        }),
+        { ...rows[0], key: selectedAssignment.key, classroom: null, count: 0, graded: 0, marked: 0 }
+      );
+    }
+
     return (
       assignmentIndex.find((a) => a.key === selectedAssignment.key) ||
       selectedAssignment
     );
-  }, [assignmentIndex, selectedAssignment]);
+  }, [assignmentIndex, selectedAssignment, isCollapsedSelection]);
 
   // Assignments with no classroom at all (predate the field, or the partner
   // never assigned one) still need a way in — a synthetic bucket rather than
@@ -2281,12 +2382,19 @@ toast.success("Result cleared — you can mark again");
   // read as "no active classes" for a moment and flash the ungrouped list.
   const classStepStatus =
     loadingClasses || loadingAssignments ? "loading" : classOptions.length > 0 ? "show" : "skip";
-  const showClassStep = classStepStatus === "show";
+  // The groupBy toggle only makes sense when there's actually a class
+  // dimension to switch away from ("skip" means every assignment is
+  // classless already, so "By Class"/"By Assignment" would be identical).
+  const canGroupByAssignment = classStepStatus !== "skip";
+  const showClassStep = classStepStatus === "show" && (groupBy !== "assignment" || !canGroupByAssignment);
 
   const aq = assignmentSearch.trim().toLowerCase();
-  const classFiltered = !showClassStep
-    ? assignments
-    : assignments.filter((a) => (a.classroom?.group_id ?? null) === selectedClass?.groupId);
+  const classFiltered =
+    groupBy === "assignment" && canGroupByAssignment
+      ? collapsedByAssignment
+      : showClassStep
+        ? assignments.filter((a) => (a.classroom?.group_id ?? null) === selectedClass?.groupId)
+        : assignments;
   const filteredAssignments = aq
     ? classFiltered.filter((a) => (a.name || "").toLowerCase().includes(aq))
     : classFiltered;
@@ -2477,10 +2585,35 @@ toast.success("Result cleared — you can mark again");
               </div>
             ) : (
               <>
+            {/* ── GROUP-BY TOGGLE ──
+                Hidden once nothing has a class dimension to begin with
+                (canGroupByAssignment false — LoginCSS, or a provider whose
+                discovery sync hasn't run) and once an assignment is open,
+                where switching it no longer changes anything on screen. */}
+            {canGroupByAssignment && !selectedAssignment && (
+              <div className="msv-groupby-toggle">
+                <button
+                  type="button"
+                  className={`msv-groupby-btn${groupBy === "class" ? " active" : ""}`}
+                  onClick={() => switchGroupBy("class")}
+                >
+                  By Class
+                </button>
+                <button
+                  type="button"
+                  className={`msv-groupby-btn${groupBy === "assignment" ? " active" : ""}`}
+                  onClick={() => switchGroupBy("assignment")}
+                  title="One row per assignment, summed across every class it was given to — for batch-marking the whole thing at once"
+                >
+                  By Assignment
+                </button>
+              </div>
+            )}
             {/* ── CLASS SELECTION ──
                 IGSpaces-connected providers only (mariamgabalawy, drpeter) —
                 skipped entirely when there is nothing to group by (LoginCSS,
-                or a provider whose discovery sync hasn't run yet). */}
+                or a provider whose discovery sync hasn't run yet), or when
+                groupBy is "assignment" (see canGroupByAssignment above). */}
             {showClassStep && (
               !selectedClass ? (
                 <div className="ma-column">
@@ -2585,6 +2718,7 @@ toast.success("Result cleared — you can mark again");
                             <span className="ma-assignment-due">
                               {a.id != null ? `#${a.id} · ` : ""}
                               {a.count} submission{a.count === 1 ? "" : "s"}
+                              {a.classCount > 1 ? ` across ${a.classCount} classes` : ""}
                               {a.grade != null ? ` · /${a.grade}` : ""}
                               {a.dueDate ? (
                                 <>
