@@ -1,5 +1,6 @@
 import { waitForPreview, previewTiming } from "../utils/previewJobs";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+// Ali Nassef Edits: Restore the PDF anchor after layout, before paint.
+import { useLayoutEffect, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -296,6 +297,8 @@ function LazyPdfPage({
   pdf,
   pageNumber,
   renderWidth,
+  // Ali Nassef Edits: Visual size is independent of debounced canvas resolution.
+  layoutWidth,
   scrollRoot,
   studentPageNumber,
   pageQuestions,
@@ -319,6 +322,8 @@ function LazyPdfPage({
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const renderedRef = useRef(false);
+  // Ali Nassef Edits: Retain page geometry while its canvas is being redrawn.
+  const [aspectRatio, setAspectRatio] = useState(1 / Math.SQRT2);
   const [rendered, setRendered] = useState(false);
   const [pageError, setPageError] = useState(null);
   const [renderNonce, setRenderNonce] = useState(0);
@@ -346,6 +351,8 @@ function LazyPdfPage({
       try {
         const page = await waitForPreview(pdf.getPage(pageNumber), controller.signal, 30_000);
         const baseViewport = page.getViewport({ scale: 1 });
+        // Ali Nassef Edits: Remember the real page shape, including landscape pages.
+        setAspectRatio(baseViewport.width / baseViewport.height);
         let scale = renderWidth / baseViewport.width;
         const maxScale = MAX_RENDER_PIXEL_WIDTH / baseViewport.width;
         scale = Math.min(scale, maxScale);
@@ -358,8 +365,7 @@ function LazyPdfPage({
         const ctx = canvas.getContext("2d", { alpha: false });
         canvas.width = Math.floor(viewport.width * dpr);
         canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        // Ali Nassef Edits: CSS owns display size; raster updates must not shift the layout.
         if (renderTaskRef.current) {
           try {
             renderTaskRef.current.cancel();
@@ -431,11 +437,14 @@ function LazyPdfPage({
     <div
       ref={wrapRef}
       className={`pdf-preview-page${rendered ? " pdf-preview-page--ready" : ""}`}
+      // Ali Nassef Edits: Reserve the page height even when rendering is pending.
+      style={{ width: layoutWidth, height: layoutWidth / aspectRatio }}
       data-page={pageNumber}
       data-student-page={studentPageNumber > 0 ? studentPageNumber : undefined}
     >
       {pageError && <div role="alert">{pageError} <button type="button" onClick={() => { setPageError(null); setRenderNonce(n => n + 1); }}>Retry</button></div>}
-      <canvas ref={canvasRef} className="pdf-preview-canvas" />
+      {/* Ali Nassef Edits: Scale the retained canvas to the stable page bounds. */}
+      <canvas ref={canvasRef} className="pdf-preview-canvas" style={{ width: "100%", height: "100%" }} />
       {showColumnResize && (
         <div
           className={`pdf-examiner-col-rail${dragKey === "column" ? " pdf-examiner-col-rail--active" : ""}`}
@@ -587,7 +596,8 @@ export default function AnnotatedPdfPreview({
   const [renderZoom, setRenderZoom] = useState(DEFAULT_ZOOM);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
-  const [contentHeight, setContentHeight] = useState(0);
+  // Ali Nassef Edits: Store a point within a page, not a document-wide scroll ratio.
+  const zoomAnchorRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fitMenuOpen, setFitMenuOpen] = useState(false);
   /** Local drag overrides keyed by placementKey (row index), not questionNumber alone. */
@@ -611,14 +621,12 @@ export default function AnnotatedPdfPreview({
   const labelEditEnabled = typeof onQuestionLabelChange === "function";
 
   const baseRenderWidth = Math.max(240, Math.floor(containerWidth) || 320);
-  const visualScale = renderZoom > 0 ? zoomLevel / renderZoom : 1;
   const effectiveRenderWidth = Math.min(
     Math.max(240, Math.ceil(baseRenderWidth * renderZoom)),
     MAX_RENDER_PIXEL_WIDTH
   );
   const zoomPercent = Math.round(zoomLevel * 100);
   const scaledWidth = Math.ceil(baseRenderWidth * zoomLevel);
-  const scaledHeight = Math.ceil(contentHeight * visualScale);
 
   const handleQuestionRemove = useCallback(
     (questionIndex) => {
@@ -668,7 +676,7 @@ export default function AnnotatedPdfPreview({
     zoomRef.current = zoomLevel;
   }, [zoomLevel]);
 
-  /** Debounce expensive PDF re-renders during wheel/pinch; buttons update renderZoom via applyZoomAtPoint. */
+  /** Ali Nassef Edits: Debounce expensive raster redraws while page layout follows zoom immediately. */
   useEffect(() => {
     if (Math.abs(zoomLevel - renderZoom) < 0.001) return undefined;
     const timer = window.setTimeout(() => {
@@ -715,15 +723,19 @@ export default function AnnotatedPdfPreview({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [fitMenuOpen]);
 
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const el = contentRef.current;
-    const measure = () => setContentHeight(el.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [numPages, effectiveRenderWidth, url]);
+  // Ali Nassef Edits: Page dimensions commit synchronously; restore before the browser paints.
+  useLayoutEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    const root = scrollRef.current;
+    if (!anchor || !root) return;
+    zoomAnchorRef.current = null;
+    const page = root.querySelector('[data-page="' + anchor.page + '"]');
+    if (!page) return;
+    const rect = page.getBoundingClientRect();
+    const bounds = root.getBoundingClientRect();
+    root.scrollLeft += rect.left + rect.width * anchor.x - bounds.left - anchor.clientX;
+    root.scrollTop += rect.top + rect.height * anchor.y - bounds.top - anchor.clientY;
+  }, [zoomLevel]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -1151,19 +1163,24 @@ export default function AnnotatedPdfPreview({
       return;
     }
 
-    const rect = root.getBoundingClientRect();
-    const ratio = clamped / oldZoom;
-    const offsetX = clientX - rect.left + root.scrollLeft;
-    const offsetY = clientY - rect.top + root.scrollTop;
-
+    // Ali Nassef Edits: Anchor to the nearest page so padding and page gaps do not drift.
+    const bounds = root.getBoundingClientRect();
+    const pages = [...root.querySelectorAll('[data-page]')];
+    const page = pages.find(node => node.getBoundingClientRect().bottom >= clientY) || pages.at(-1);
+    if (page) {
+      const rect = page.getBoundingClientRect();
+      zoomAnchorRef.current = {
+        page: page.getAttribute('data-page'),
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height,
+        clientX: clientX - bounds.left,
+        clientY: clientY - bounds.top,
+      };
+    }
     setZoomLevel(clamped);
     zoomRef.current = clamped;
-    setRenderZoom(clamped);
+    // Ali Nassef Edits: The existing debounce redraws only after wheel/pinch zoom settles.
 
-    requestAnimationFrame(() => {
-      root.scrollLeft = offsetX * ratio - (clientX - rect.left);
-      root.scrollTop = offsetY * ratio - (clientY - rect.top);
-    });
   }, []);
 
   const zoomOut = () => {
@@ -1196,19 +1213,14 @@ export default function AnnotatedPdfPreview({
     applyZoomAtPoint(zoomRef.current + ZOOM_STEP_BTN, rect.left + rect.width / 2, rect.top + rect.height / 2);
   };
 
-  const resetZoom = () => {
-    setZoomLevel(DEFAULT_ZOOM);
-    setRenderZoom(DEFAULT_ZOOM);
-    zoomRef.current = DEFAULT_ZOOM;
-    scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-  };
-
-  const fitWidth = useCallback(() => {
-    setZoomLevel(DEFAULT_ZOOM);
-    setRenderZoom(DEFAULT_ZOOM);
-    zoomRef.current = DEFAULT_ZOOM;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollTop, left: 0, behavior: "smooth" });
-  }, []);
+  // Ali Nassef Edits: Reset and fit controls preserve the same viewport anchor as zoom buttons.
+  const zoomAtCenter = useCallback((zoom) => {
+    const root = scrollRef.current;
+    const rect = root?.getBoundingClientRect();
+    applyZoomAtPoint(zoom, rect ? rect.left + rect.width / 2 : 0, rect ? rect.top + rect.height / 2 : 0);
+  }, [applyZoomAtPoint]);
+  const resetZoom = () => zoomAtCenter(DEFAULT_ZOOM);
+  const fitWidth = useCallback(() => zoomAtCenter(DEFAULT_ZOOM), [zoomAtCenter]);
 
   const fitPage = useCallback(async () => {
     if (!pdf || !scrollRef.current) return;
@@ -1218,14 +1230,12 @@ export default function AnnotatedPdfPreview({
       const pageHeightAtBase = (baseRenderWidth / viewport.width) * viewport.height;
       const available = scrollRef.current.clientHeight - 8;
       const nextZoom = clampZoom(available / pageHeightAtBase);
-      setZoomLevel(nextZoom);
-      setRenderZoom(nextZoom);
-      zoomRef.current = nextZoom;
-      scrollRef.current.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      // Ali Nassef Edits: Fit the current page without returning to page one.
+      zoomAtCenter(nextZoom);
     } catch (err) {
       console.warn("[AnnotatedPdfPreview] fit page:", err);
     }
-  }, [pdf, currentPage, baseRenderWidth]);
+  }, [pdf, currentPage, baseRenderWidth, zoomAtCenter]);
 
   const handleZoomSelect = (e) => {
     const value = e.target.value;
@@ -1526,6 +1536,8 @@ export default function AnnotatedPdfPreview({
           scrollRef.current = node;
           setScrollRoot(node);
         }}
+        // Ali Nassef Edits: Explicit zoom anchoring owns scroll restoration.
+        style={{ overflowAnchor: "none" }}
         className="pdf-preview-scroll"
         title={
           placementEnabled
@@ -1555,17 +1567,15 @@ export default function AnnotatedPdfPreview({
           className="pdf-preview-zoom-spacer"
           style={{
             width: Math.max(scaledWidth, baseRenderWidth),
-            height: scaledHeight || undefined,
-            minHeight: scaledHeight ? undefined : "100%",
+            // Ali Nassef Edits: Let stable page boxes define scroll height synchronously.
           }}
         >
           <div
             ref={contentRef}
             className="pdf-preview-scroll-inner"
             style={{
-              width: effectiveRenderWidth,
-              transform: Math.abs(visualScale - 1) > 0.001 ? `scale(${visualScale})` : undefined,
-              transformOrigin: "top left",
+              // Ali Nassef Edits: Layout follows zoom immediately, independently of raster resolution.
+              width: scaledWidth,
             }}
           >
             {Array.from({ length: numPages }, (_, i) => {
@@ -1577,10 +1587,13 @@ export default function AnnotatedPdfPreview({
                   : null;
               return (
                 <LazyPdfPage
-                  key={`p${pageNumber}-w${effectiveRenderWidth}`}
+                  // Ali Nassef Edits: Zoom must never remount pages and collapse their canvases.
+                  key={`p${pageNumber}`}
                   pdf={pdf}
                   pageNumber={pageNumber}
                   renderWidth={effectiveRenderWidth}
+                  // Ali Nassef Edits: Resize every page, including off-screen placeholders.
+                  layoutWidth={scaledWidth}
                   scrollRoot={scrollRoot}
                   studentPageNumber={studentPageNumber}
                   pageQuestions={pageQuestions}
