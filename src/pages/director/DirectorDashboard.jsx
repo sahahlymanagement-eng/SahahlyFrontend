@@ -139,6 +139,21 @@ export default function DirectorDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [sendingExternalAlertId, setSendingExternalAlertId] = useState(null);
 
+  // Hide/edit-a-row + manager deletion-request state. Kept separate from the
+  // above person-detail modal since they open from different tables and have
+  // different shapes.
+  const [hiddenRows, setHiddenRows] = useState([]);
+  const [hiddenLoading, setHiddenLoading] = useState(false);
+  const [showHiddenPanel, setShowHiddenPanel] = useState(false);
+  const [deletionRequests, setDeletionRequests] = useState([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [showRequestsPanel, setShowRequestsPanel] = useState(false);
+  const [rowActionBusyId, setRowActionBusyId] = useState(null);
+  // { mode: "hide" | "edit", sourceType, refId, row }
+  const [rowModal, setRowModal] = useState(null);
+  const [rowModalForm, setRowModalForm] = useState({ reason: "", status: "", deadline: "" });
+  const [rowModalSaving, setRowModalSaving] = useState(false);
+
   // Clicking a tile below picks which bucket's assignment list this fetches
   // (same usePagination/Pagination pair ManagerDashboard uses) — kept
   // separate from the main dashboard load so switching tiles doesn't
@@ -192,6 +207,152 @@ export default function DirectorDashboard() {
       cancelled = true;
     };
   }, [user, period.params.from, period.params.to]);
+
+  const fetchHiddenRows = useCallback(async () => {
+    setHiddenLoading(true);
+    try {
+      const res = await api.get("/director/dashboard/rows/hidden");
+      setHiddenRows(res.data?.rows || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load hidden rows");
+    } finally {
+      setHiddenLoading(false);
+    }
+  }, []);
+
+  const fetchDeletionRequests = useCallback(async () => {
+    setRequestsLoading(true);
+    try {
+      const res = await api.get("/director/dashboard/deletion-requests", {
+        params: { status: "pending" },
+      });
+      setDeletionRequests(res.data?.rows || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to load deletion requests");
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      await fetchHiddenRows();
+      await fetchDeletionRequests();
+    })();
+  }, [user, fetchHiddenRows, fetchDeletionRequests]);
+
+  // Re-fetch whichever bucket is open + the tile counts after a row is
+  // hidden/unhidden/edited, so numbers never drift from what's on screen.
+  const refreshAfterRowChange = useCallback(async () => {
+    try {
+      const res = await api.get("/director/dashboard", { params: period.params });
+      setData(res.data);
+    } catch {
+      // Non-fatal — the next natural reload will pick it up.
+    }
+    if (selectedBucket) fetchBucketPage(bucketPage);
+  }, [period.params, selectedBucket, bucketPage, fetchBucketPage]);
+
+  const openHideModal = (sourceType, row, refId) => {
+    setRowModal({ mode: "hide", sourceType, refId, row });
+    setRowModalForm({ reason: "", status: "", deadline: "" });
+  };
+
+  const openEditModal = (sourceType, row, refId) => {
+    setRowModal({ mode: "edit", sourceType, refId, row });
+    setRowModalForm({
+      reason: "",
+      status: row.status || "",
+      deadline: row.assistantDeadline || row.deadline
+        ? new Date(row.assistantDeadline || row.deadline).toISOString().slice(0, 16)
+        : "",
+    });
+  };
+
+  const closeRowModal = () => {
+    setRowModal(null);
+    setRowModalForm({ reason: "", status: "", deadline: "" });
+  };
+
+  const submitRowModal = async () => {
+    if (!rowModal) return;
+    const { mode, sourceType, refId } = rowModal;
+    setRowModalSaving(true);
+    try {
+      if (mode === "hide") {
+        await api.post("/director/dashboard/rows/hide", {
+          sourceType,
+          refId,
+          reason: rowModalForm.reason || undefined,
+        });
+        toast.success("Row hidden from dashboard");
+      } else if (sourceType === "assignment") {
+        if (rowModalForm.status) {
+          await api.patch(`/director/dashboard/assignments/${refId}/status`, {
+            status: rowModalForm.status,
+          });
+        }
+        if (rowModalForm.deadline) {
+          await api.patch(`/director/dashboard/assignments/${refId}/assistant-deadline`, {
+            assistantDeadline: rowModalForm.deadline,
+          });
+        }
+        toast.success("Assignment updated");
+      } else {
+        await api.patch(`/grading-delegations/${refId}`, {
+          status: rowModalForm.status || undefined,
+          deadline: rowModalForm.deadline || undefined,
+        });
+        toast.success("Delegation updated");
+      }
+      closeRowModal();
+      await Promise.all([fetchHiddenRows(), refreshAfterRowChange()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save changes");
+    } finally {
+      setRowModalSaving(false);
+    }
+  };
+
+  const unhideRow = async (sourceType, refId) => {
+    setRowActionBusyId(refId);
+    try {
+      await api.post("/director/dashboard/rows/unhide", { sourceType, refId });
+      toast.success("Row restored to dashboard");
+      await Promise.all([fetchHiddenRows(), refreshAfterRowChange()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to restore row");
+    } finally {
+      setRowActionBusyId(null);
+    }
+  };
+
+  const approveRequest = async (id) => {
+    setRowActionBusyId(id);
+    try {
+      await api.post(`/director/dashboard/deletion-requests/${id}/approve`);
+      toast.success("Request approved, row hidden");
+      await Promise.all([fetchDeletionRequests(), fetchHiddenRows(), refreshAfterRowChange()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to approve request");
+    } finally {
+      setRowActionBusyId(null);
+    }
+  };
+
+  const rejectRequest = async (id) => {
+    setRowActionBusyId(id);
+    try {
+      await api.post(`/director/dashboard/deletion-requests/${id}/reject`);
+      toast.success("Request rejected");
+      await fetchDeletionRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to reject request");
+    } finally {
+      setRowActionBusyId(null);
+    }
+  };
 
   const openManagerDetail = async (m) => {
     setDetailTarget({ type: "manager", name: m.name });
@@ -414,13 +575,29 @@ export default function DirectorDashboard() {
                             <span className="md-cell-muted">{r.assistantName || "—"}</span>
                           </td>
                           <td data-label="Action">
-                            <button
-                              type="button"
-                              className="md-external-alertBtn"
-                              onClick={() => goToDirectorSubmissionViewer(r)}
-                            >
-                              Open viewer
-                            </button>
+                            <div className="ddx-row-actions">
+                              <button
+                                type="button"
+                                className="md-external-alertBtn"
+                                onClick={() => goToDirectorSubmissionViewer(r)}
+                              >
+                                Open viewer
+                              </button>
+                              <button
+                                type="button"
+                                className="md-external-alertBtn md-external-alertBtn--ghost"
+                                onClick={() => openEditModal("assignment", r, r.assignmentId)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="md-external-alertBtn md-external-alertBtn--danger"
+                                onClick={() => openHideModal("assignment", r, r.assignmentId)}
+                              >
+                                Hide
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -446,18 +623,34 @@ export default function DirectorDashboard() {
                             <span className="md-cell-muted">{r.personName}</span>
                           </td>
                           <td data-label="Action">
-                            <button
-                              type="button"
-                              className="md-external-alertBtn"
-                              disabled={sendingExternalAlertId === r._id}
-                              onClick={() => sendExternalAlert(r._id)}
-                            >
-                              {sendingExternalAlertId === r._id
-                                ? "Alerting…"
-                                : r.role === "manager"
-                                ? "Alert Manager"
-                                : "Alert Assistant"}
-                            </button>
+                            <div className="ddx-row-actions">
+                              <button
+                                type="button"
+                                className="md-external-alertBtn"
+                                disabled={sendingExternalAlertId === r._id}
+                                onClick={() => sendExternalAlert(r._id)}
+                              >
+                                {sendingExternalAlertId === r._id
+                                  ? "Alerting…"
+                                  : r.role === "manager"
+                                  ? "Alert Manager"
+                                  : "Alert Assistant"}
+                              </button>
+                              <button
+                                type="button"
+                                className="md-external-alertBtn md-external-alertBtn--ghost"
+                                onClick={() => openEditModal("externalDelegation", r, r._id)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="md-external-alertBtn md-external-alertBtn--danger"
+                                onClick={() => openHideModal("externalDelegation", r, r._id)}
+                              >
+                                Hide
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -487,6 +680,152 @@ export default function DirectorDashboard() {
           )}
         </>
       )}
+
+      {/* ── Manager deletion requests ────────────────────────────────── */}
+      <section className="directorDashSection">
+        <div className="directorDashSectionHeader">
+          <div className="directorDashTitleWrap">
+            <span className="directorDashDot" />
+            <h2 className="directorDashTitle">
+              <button
+                type="button"
+                className="ddx-section-toggle"
+                onClick={() => setShowRequestsPanel((v) => !v)}
+              >
+                Deletion requests {showRequestsPanel ? "▾" : "▸"}
+              </button>
+            </h2>
+          </div>
+          <div className="directorDashCount">
+            <FiAlertTriangle /> {deletionRequests.length} pending
+          </div>
+        </div>
+        {showRequestsPanel && (
+          <div className="ddx-table-wrap">
+            {requestsLoading ? (
+              <p className="ddx-loading">Loading…</p>
+            ) : (
+              <table className="ddx-table sah-table--cards">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Requested by</th>
+                    <th>Reason</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletionRequests.map((req) => (
+                    <tr key={req._id}>
+                      <td data-label="Row">
+                        <strong>{req.title || "—"}</strong>
+                        <div className="ddx-muted">
+                          {req.sourceType === "assignment" ? req.className : req.provider}
+                        </div>
+                      </td>
+                      <td data-label="Requested by">{req.requestedByName || "—"}</td>
+                      <td data-label="Reason">{req.reason || "—"}</td>
+                      <td data-label="Action">
+                        <div className="ddx-row-actions">
+                          <button
+                            type="button"
+                            className="md-external-alertBtn"
+                            disabled={rowActionBusyId === req._id}
+                            onClick={() => approveRequest(req._id)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            className="md-external-alertBtn md-external-alertBtn--ghost"
+                            disabled={rowActionBusyId === req._id}
+                            onClick={() => rejectRequest(req._id)}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!deletionRequests.length && (
+                    <tr>
+                      <td colSpan={4} className="md-cell-empty">No pending requests.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* ── Hidden dashboard rows ────────────────────────────────────── */}
+      <section className="directorDashSection">
+        <div className="directorDashSectionHeader">
+          <div className="directorDashTitleWrap">
+            <span className="directorDashDot" />
+            <h2 className="directorDashTitle">
+              <button
+                type="button"
+                className="ddx-section-toggle"
+                onClick={() => setShowHiddenPanel((v) => !v)}
+              >
+                Hidden rows {showHiddenPanel ? "▾" : "▸"}
+              </button>
+            </h2>
+          </div>
+          <div className="directorDashCount">
+            <FiUsers /> {hiddenRows.length} hidden
+          </div>
+        </div>
+        {showHiddenPanel && (
+          <div className="ddx-table-wrap">
+            {hiddenLoading ? (
+              <p className="ddx-loading">Loading…</p>
+            ) : (
+              <table className="ddx-table sah-table--cards">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Hidden by</th>
+                    <th>Reason</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hiddenRows.map((row) => (
+                    <tr key={row._id}>
+                      <td data-label="Row">
+                        <strong>{row.title || "—"}</strong>
+                        <div className="ddx-muted">
+                          {row.sourceType === "assignment" ? row.className : row.provider}
+                        </div>
+                      </td>
+                      <td data-label="Hidden by">{row.hiddenByName || "—"}</td>
+                      <td data-label="Reason">{row.reason || "—"}</td>
+                      <td data-label="Action">
+                        <button
+                          type="button"
+                          className="md-external-alertBtn"
+                          disabled={rowActionBusyId === row.refId}
+                          onClick={() => unhideRow(row.sourceType, row.refId)}
+                        >
+                          Unhide
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!hiddenRows.length && (
+                    <tr>
+                      <td colSpan={4} className="md-cell-empty">Nothing hidden.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* ── Teachers at risk ─────────────────────────────────────────── */}
       {!loading && data?.teachersAtRisk?.length > 0 && (
@@ -714,6 +1053,107 @@ export default function DirectorDashboard() {
                     onLateRowClick={goToDirectorSubmissionViewer}
                   />
                 )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {rowModal &&
+        createPortal(
+          <div className="ddx-modal-overlay" onClick={closeRowModal}>
+            <div className="ddx-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="ddx-modal-header">
+                <h3>
+                  {rowModal.mode === "hide" ? "Hide from dashboard" : "Edit row"} ·{" "}
+                  {rowModal.row?.title || rowModal.row?.assignmentName}
+                </h3>
+                <button type="button" className="ddx-modal-close" onClick={closeRowModal}>
+                  <FiX />
+                </button>
+              </div>
+
+              <div className="ddx-modal-body">
+                {rowModal.mode === "hide" ? (
+                  <>
+                    <p className="ddx-muted">
+                      This only removes the row from dashboard tiles/lists. It stays
+                      untouched in the submission viewer / partner tab, and can be
+                      restored later from "Hidden rows".
+                    </p>
+                    <label className="ddx-field-label" htmlFor="rowModalReason">
+                      Reason (optional)
+                    </label>
+                    <textarea
+                      id="rowModalReason"
+                      className="ddx-textarea"
+                      rows={3}
+                      value={rowModalForm.reason}
+                      onChange={(e) => setRowModalForm((f) => ({ ...f, reason: e.target.value }))}
+                      placeholder="e.g. dummy test assignment"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="ddx-field-label" htmlFor="rowModalStatus">
+                      Status
+                    </label>
+                    <select
+                      id="rowModalStatus"
+                      className="ddx-select"
+                      value={rowModalForm.status}
+                      onChange={(e) => setRowModalForm((f) => ({ ...f, status: e.target.value }))}
+                    >
+                      <option value="">— leave unchanged —</option>
+                      {(rowModal.sourceType === "assignment"
+                        ? [
+                            "UNASSIGNED",
+                            "ASSIGNED",
+                            "IN_REVIEW",
+                            "RECHECK_BY_ASSISTANT",
+                            "IN_REVIEW_AFTER_RECHECK",
+                            "EMERGENCY",
+                            "FAILED_DEADLINE",
+                            "DONE",
+                            "DONE_BY_QUALITY",
+                            "DONE_BY_QUALITY_LATE",
+                          ]
+                        : ["ASSIGNED", "IN_PROGRESS", "DONE", "FAILED_DEADLINE"]
+                      ).map((s) => (
+                        <option key={s} value={s}>
+                          {rowModal.sourceType === "assignment" ? statusLabel(s) : s}
+                        </option>
+                      ))}
+                    </select>
+
+                    <label className="ddx-field-label" htmlFor="rowModalDeadline">
+                      {rowModal.sourceType === "assignment"
+                        ? "Assistant deadline (Sahahly-side only — not the classroom due date)"
+                        : "Deadline"}
+                    </label>
+                    <input
+                      id="rowModalDeadline"
+                      type="datetime-local"
+                      className="ddx-select"
+                      value={rowModalForm.deadline}
+                      onChange={(e) => setRowModalForm((f) => ({ ...f, deadline: e.target.value }))}
+                    />
+                  </>
+                )}
+              </div>
+
+              <div className="ddx-modal-footer">
+                <button type="button" className="md-external-alertBtn md-external-alertBtn--ghost" onClick={closeRowModal}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`md-external-alertBtn ${rowModal.mode === "hide" ? "md-external-alertBtn--danger" : ""}`}
+                  disabled={rowModalSaving}
+                  onClick={submitRowModal}
+                >
+                  {rowModalSaving ? "Saving…" : rowModal.mode === "hide" ? "Hide row" : "Save changes"}
+                </button>
               </div>
             </div>
           </div>,

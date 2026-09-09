@@ -1034,3 +1034,13 @@
   cursor: default;
 }
 
+/* "Request deletion" — a neutral ask, not an alert, so it gets a quieter
+   outline than the alert buttons above. */
+.md-external-alertBtn--ghost {
+  border-color: var(--border-soft);
+  color: var(--text-secondary);
+}
+.md-external-alertBtn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+

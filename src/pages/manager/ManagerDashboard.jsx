@@ -91,6 +91,28 @@ export default function ManagerDashboard({ scope = "manager", variant = "home" }
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [sendingExternalAlertId, setSendingExternalAlertId] = useState(null);
   const [alertingAssignmentDelegationId, setAlertingAssignmentDelegationId] = useState(null);
+  // Manager can only ASK the director to hide a dashboard row (never edit or
+  // hide it themselves). justRequestedIds is optimistic UI only — the next
+  // natural refetch picks up the real hasPendingDeletionRequest flag.
+  const [requestingDeletionId, setRequestingDeletionId] = useState(null);
+  const [justRequestedIds, setJustRequestedIds] = useState(() => new Set());
+
+  const requestDashboardDeletion = async (sourceType, refId) => {
+    setRequestingDeletionId(refId);
+    try {
+      const path =
+        sourceType === "assignment"
+          ? `/assignments/${refId}/dashboard-deletion-request`
+          : `/grading-delegations/${refId}/dashboard-deletion-request`;
+      await api.post(path);
+      toast.success("Deletion request sent to the director");
+      setJustRequestedIds((prev) => new Set(prev).add(String(refId)));
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send deletion request");
+    } finally {
+      setRequestingDeletionId(null);
+    }
+  };
 
   // Classroom-level default assistants (auto-assign on new coursework)
   const [classroomDefaults, setClassroomDefaults] = useState({});
@@ -1095,6 +1117,7 @@ const goToSubmissionViewer = (assignment) => {
                         <th>Deadline</th>
                         <th>Quality Team</th>
                         <th>Action</th>
+                        <th>Dashboard</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1296,12 +1319,26 @@ const goToSubmissionViewer = (assignment) => {
                                     return null;
                                   })()}
                                 </td>
+                                <td data-label="Dashboard">
+                                  {a.hasPendingDeletionRequest || justRequestedIds.has(String(a._id)) ? (
+                                    <span className="md-cell-muted">Requested</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="md-external-alertBtn md-external-alertBtn--ghost"
+                                      disabled={requestingDeletionId === a._id}
+                                      onClick={() => requestDashboardDeletion("assignment", a._id)}
+                                    >
+                                      {requestingDeletionId === a._id ? "Sending…" : "Request deletion"}
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
 
                               {/* ── EXPANDED DETAIL PANEL ── */}
                               {isExpanded && (
                                 <tr className="md-detail-row">
-                                  <td colSpan={8} className="md-detail-cell">
+                                  <td colSpan={9} className="md-detail-cell">
                                     <div className="md-detail-panel">
                                       <div className="md-detail-panel-top">
                                       <div className="md-detail-grid">
@@ -1417,6 +1454,20 @@ const goToSubmissionViewer = (assignment) => {
                                       : row.role === "manager"
                                       ? "Alert Manager"
                                       : "Alert Assistant"}
+                                  </button>
+                                )}
+                              </td>
+                              <td data-label="Dashboard">
+                                {row.hasPendingDeletionRequest || justRequestedIds.has(String(row._id)) ? (
+                                  <span className="md-cell-muted">Requested</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="md-external-alertBtn md-external-alertBtn--ghost"
+                                    disabled={requestingDeletionId === row._id}
+                                    onClick={() => requestDashboardDeletion("externalDelegation", row._id)}
+                                  >
+                                    {requestingDeletionId === row._id ? "Sending…" : "Request deletion"}
                                   </button>
                                 )}
                               </td>
