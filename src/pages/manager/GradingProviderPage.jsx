@@ -621,10 +621,24 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     return entry;
   }, [BASE]);
 
-  const getStudentFile = useCallback(
-    async (submissionId) => (await fetchPdfs(submissionId)).studentFile,
-    [fetchPdfs]
-  );
+  const studentFetchesRef = useRef(new Map());
+  const getStudentFile = useCallback(async (submissionId) => {
+    if (pdfCacheRef.current[submissionId]?.studentFile) return pdfCacheRef.current[submissionId].studentFile;
+    const key = `${BASE}:${submissionId}`;
+    if (studentFetchesRef.current.has(key)) return studentFetchesRef.current.get(key);
+    // The annotated script needs only the student's PDF. A slow/missing mark
+    // scheme must not hold its preview hostage while the other pane retries.
+    const request = withPdfFetchRetry(async () => {
+      const {data} = await api.get(`${BASE}/submissions/${submissionId}/pdfs/submission`, {
+        responseType: 'blob', timeout: 120000,
+      });
+      await assertPdfBlob(data, 'Student submission');
+      return new File([data], `submission_${submissionId}.pdf`, {type:'application/pdf'});
+    }).catch(async () => (await fetchPdfs(submissionId)).studentFile)
+      .finally(() => studentFetchesRef.current.delete(key));
+    studentFetchesRef.current.set(key, request);
+    return request;
+  }, [BASE, fetchPdfs]);
 
   // Read-only mark scheme preview (right column of the results modal).
   // Mark scheme is per-submission here; source it from the cached msFile.

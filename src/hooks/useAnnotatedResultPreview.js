@@ -316,9 +316,9 @@ export function useAnnotatedResultPreview({
             googleUserId: googleUserId || undefined,
             // A dead proxy request should release quickly enough for the retry
             // ladder to help; the outer timeout still allows the full ladder.
-            timeout: 30_000,
+            timeout: 120_000,
           }),
-          150_000,
+          650_000,
           "Loading student PDF"
         );
         if (requestId !== previewRequestRef.current) return;

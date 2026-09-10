@@ -22,7 +22,7 @@ function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
 }
 
-const PREVIEW_TIMEOUT_MS = 120_000;
+const PREVIEW_TIMEOUT_MS = 300_000;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -197,8 +197,8 @@ export function useExternalAnnotatedPreview({
         throw new Error("Student PDF unavailable for preview");
       }
       const studentFile = await withTimeout(
-        getStudentFileRef.current(snapshot.submissionId),
-        90_000,
+        Promise.resolve(snapshot.studentFile || getStudentFileRef.current(snapshot.submissionId)),
+        650_000,
         "Loading student PDF"
       );
       if (requestId !== previewRequestRef.current) return;

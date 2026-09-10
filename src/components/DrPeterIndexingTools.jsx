@@ -5,20 +5,17 @@ import { assertPdfBlob, getApiErrorMessage } from '../utils/markingFormData';
 import { withPdfFetchRetry } from '../utils/studentPdfCache';
 import { sahahlyModelLabel } from '../utils/markingCost';
 import './DrPeterIndexingTools.css';
+import { getIndexingUpload, subscribeIndexingUploads, startIndexingUpload } from '../utils/indexingUploads';
 
-const INDEXING_MODELS = [
-  { id: 'gemini-2.5-flash', label: 'Sahahly 2.5 Flash' },
-  { id: 'gemini-3-flash-preview', label: 'Sahahly 3 Flash Preview' },
-];
 const INDEXING_MODEL_KEY = 'sahahly.indexing.gradeModel';
-const DEFAULT_INDEXING_MODEL = INDEXING_MODELS[0].id;
+const DEFAULT_INDEXING_MODEL = 'gemini-2.5-flash';
 
 function readIndexingModel(fallback) {
   try {
     const remembered = localStorage.getItem(INDEXING_MODEL_KEY);
-    if (INDEXING_MODELS.some(m => m.id === remembered)) return remembered;
+    if (remembered) return remembered;
   } catch { /* private mode */ }
-  if (INDEXING_MODELS.some(m => m.id === fallback)) return fallback;
+  if (fallback) return fallback;
   return DEFAULT_INDEXING_MODEL;
 }
 
@@ -39,6 +36,18 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const [sourceMessage, setSourceMessage] = useState('');
   const [view, setView] = useState(null);
   const [indexingModel, setIndexingModel] = useState(() => readIndexingModel(gradeModel));
+  const [indexingModels, setIndexingModels] = useState([]);
+  useEffect(() => {
+    let active = true;
+    api.get(`${base}/models`, {timeout:30000}).then(({data}) => {
+      if (!active) return;
+      const models = data.models || [];
+      setIndexingModels(models);
+      setIndexingModel(current => models.some(model => model.id === current)
+        ? current : (models.find(model => model.isDefault)?.id || models[0]?.id || DEFAULT_INDEXING_MODEL));
+    }).catch(async err => { if (active) setError(await getApiErrorMessage(err)); });
+    return () => { active = false; };
+  }, [base]);
   const readyCallback = useRef(onResultsReady);
   const viewerRevision = useRef('');
   useEffect(() => { readyCallback.current = onResultsReady; }, [onResultsReady]);
@@ -46,9 +55,22 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const roster = useRef(loadRoster);
   useEffect(() => { roster.current = loadRoster; }, [loadRoster]);
   const assignmentId = String(classroom ? assignment._id : assignment.id);
+  const uploadKey = `${provider}:${assignmentId}`;
+  useEffect(() => {
+    let previous;
+    const refresh = () => {
+      const job = getIndexingUpload(uploadKey);
+      if (!job || job === previous) return;
+      previous = job;
+      setBusy(job.active ? job.message : '');
+      if (job.error) getApiErrorMessage(job.error).then(setError);
+    };
+    refresh();
+    return subscribeIndexingUploads(refresh);
+  }, [uploadKey]);
 
   function chooseIndexingModel(id) {
-    if (!INDEXING_MODELS.some(m => m.id === id)) return;
+    if (!indexingModels.some(m => m.id === id)) return;
     setIndexingModel(id);
     try { localStorage.setItem(INDEXING_MODEL_KEY, id); } catch { /* private mode */ }
   }
@@ -115,9 +137,9 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
 
   async function mark(mode) {
     const selected = new Set([...selectedIds].map(String));
-    if (!selected.size || !pack || pack.status !== 'ready') return;
-    setBusy('Loading selected students…');setError('');
-    try {
+    if (!selected.size || !pack || pack.status !== 'ready' || !indexingModels.length) return;
+    setError('');
+    const data = await startIndexingUpload(uploadKey, async report => {
       // Refresh the full assignment roster: selection may span pages/search results.
       const all=await roster.current();
       const students=all.filter(s=>selected.has(String(s.submissionId)));
@@ -126,20 +148,31 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       const form=new FormData();form.set('examId',pack.id);form.set('partnerAssignmentId',assignmentId);form.set('mode',mode);form.set('gradeModel',indexingModel);
       form.set('submissionIds',JSON.stringify(students.map(s=>String(s.submissionId))));
       form.set('studentNames',JSON.stringify(students.map(s=>s.name || `Submission ${s.submissionId}`)));
-      for(let i=0;i<students.length;i++) {
-        if(!alive.current)return;
-        const student=students[i];setBusy(`Loading student PDFs ${i+1}/${students.length}…`);
+      const papers = new Array(students.length);
+      let next = 0, loaded = 0;
+      const loadPaper = async () => { while (next < students.length) {
+        const i = next++;
+        const student=students[i];
         const {data}=await withPdfFetchRetry(()=>api.get(classroom ? '/submission-files/pdf' : `/grading/${provider}/submissions/${student.submissionId}/pdfs/submission`,{params:classroom ? {assignmentId,submissionId:student.submissionId,googleUserId:student.googleUserId || student.studentGoogleUserId} : undefined,responseType:'blob',timeout:120000}));
         await assertPdfBlob(data,`Submission ${student.submissionId}`);
-        form.append('studentPapers',new File([data],`submission_${student.submissionId}.pdf`,{type:'application/pdf'}));
-      }
-      if(!alive.current)return;
-      setBusy(`Starting indexing ${mode} marking…`);
-      const {data}=await api.post(`${base}/runs`,form,{timeout:180000});
-      if(!alive.current)return;
-      setRuns(previous=>[data,...previous]);setView({title:`Indexing marking — ${mode}`,hash:`#/runs/${data.id}`});
-    }catch(err){if(alive.current)setError(await getApiErrorMessage(err));}
-    finally{if(alive.current)setBusy('');}
+        papers[i] = new File([data],`submission_${student.submissionId}.pdf`,{type:'application/pdf'});
+        report(`Loaded student PDFs ${++loaded}/${students.length}… You can navigate to another app tab.`);
+      }};
+      const downloads = await Promise.allSettled(Array.from({length:Math.min(3,students.length)},loadPaper));
+      const failed = downloads.find(result=>result.status==='rejected');
+      if (failed) throw failed.reason;
+      papers.forEach(paper=>form.append('studentPapers',paper));
+      report(`Uploading ${students.length} papers for ${mode} marking…`);
+      const {data}=await api.post(`${base}/runs`,form,{timeout:900000,
+        onUploadProgress: event => report(event.total && event.loaded < event.total
+          ? `Uploading papers: ${Math.round(event.loaded / event.total * 100)}%`
+          : 'Upload sent — validating and saving the marking run…')});
+      return data;
+    });
+    if(data && alive.current) {
+      setRuns(previous=>[data,...previous.filter(run=>run.id!==data.id)]);
+      setView({title:`Indexing marking — ${mode}`,hash:`#/runs/${data.id}`});
+    }
   }
 
   return <section className="dpi-tools" aria-label="Assignment indexing">
@@ -152,20 +185,27 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
           <select
             value={indexingModel}
             onChange={e => chooseIndexingModel(e.target.value)}
-            disabled={!!busy || pack?.status !== 'ready'}
+            disabled={!!busy || pack?.status !== 'ready' || !indexingModels.length}
             aria-label="Indexing marking model"
           >
-            {INDEXING_MODELS.map(m => (
-              <option key={m.id} value={m.id}>{m.label}</option>
+            {!indexingModels.length && <option value={indexingModel}>Loading indexing models…</option>}
+            {indexingModels.map(m => (
+              <option key={m.id} value={m.id}>{sahahlyModelLabel(m.id)}</option>
             ))}
           </select>
         </label>
-        <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || pack?.status!=='ready'}>Mark with indexing (Instant)</button>
-        <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || pack?.status!=='ready'}>Mark with indexing (Batch)</button>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || pack?.status!=='ready' || !indexingModels.length}>Mark with indexing (Instant)</button>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || pack?.status!=='ready' || !indexingModels.length}>Mark with indexing (Batch)</button>
         <span>{selectedIds.size} selected · {sahahlyModelLabel(indexingModel)}{pack?.status!=='ready'?' — index and approve this assignment first':''}</span>
       </>}
     </div>
     {busy && <p role="status">{busy}</p>}
+    {runs.filter(run=>['queued','processing'].includes(run.status)).map(run=><div key={run.id} role="status">
+      <strong>{run.mode === 'instant' ? 'Instant marking' : 'Batch marking'}: {run.readyCount}/{run.paperCount} completed · {run.failedCount || 0} failed</strong>
+      <progress value={run.readyCount + (run.failedCount || 0)} max={run.paperCount || 1} />
+      <button type="button" onClick={()=>setView({title:'Marking progress',hash:`#/runs/${run.id}`})}>View live progress</button>
+      <p>Marking continues on the server when you leave this tab.</p>
+    </div>)}
     {error && <p role="alert" className="dpi-error">{error}</p>}
     {pack?.error && <p className="dpi-error">{pack.error}</p>}
     {runs.length>0 && <p>Completed papers appear in each student’s Results button. Edit them there and use the existing {classroom ? 'Return All' : 'Publish All'} to return them.</p>}

@@ -199,7 +199,10 @@ export async function getApiErrorMessage(err) {
     err?.code === "ECONNABORTED" ||
     /timed?\s*out|timeout of \d+ms exceeded/i.test(String(err?.message || ""))
   ) {
-    return "Request timed out. The server may still be working — wait a moment and refresh, or try again with fewer submissions.";
+    if (/^(Loading student PDF|Building annotated preview) timed out/i.test(String(err?.message || ''))) {
+      return `${err.message}. Use Retry preview to try again; saved marks are unaffected.`;
+    }
+    return "The request timed out while waiting for the server. Check the current job status before submitting again. For a PDF preview, use Retry preview; saved marks are unaffected.";
   }
 
   if (
