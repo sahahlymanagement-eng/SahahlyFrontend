@@ -1,0 +1,155 @@
+/**
+ * Sahahly design tokens.
+ *
+ * Mirrors frontend/src/styles/theme.css from the main product so this tool
+ * looks native beside it. Dark is the base; light is an attribute override.
+ */
+
+:root {
+  --font-body: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Fraunces", "Outfit", Georgia, serif;
+  --font-numeric: "Outfit", "Plus Jakarta Sans", sans-serif;
+
+  /* Brand */
+  --primary: #7a9cb3; /* Chambray */
+  --primary-hover: #90aec4;
+  --primary-active: #68889d;
+  --primary-strong: #90aec4;
+  --primary-contrast: #0f2027;
+  --accent: #ad7556; /* Terracotta */
+  --accent-soft: #c08e70;
+  --gradient: linear-gradient(135deg, #4a6172, #7a9cb3);
+
+  /* Warm neutral seeds */
+  --sandstone: #dccfb8;
+  --muslin: #f1efe6;
+
+  /* Surfaces + text (dark base) */
+  --background: #2e4250;
+  --surface: #3c5262;
+  --surface-2: #4a6172;
+  --surface-secondary: #4a6172;
+  --text-primary: #f1efe6;
+  --text-secondary: #dccfb8;
+  --text-disabled: #afa79d;
+  --muted: #afa79d;
+  --border: #5c7383;
+  --border-soft: rgba(241, 239, 230, 0.08);
+  --overlay: rgba(9, 18, 24, 0.6);
+
+  --radius: 12px;
+  --radius-lg: 18px;
+  --shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --focus-ring: 0 0 0 3px rgba(144, 174, 196, 0.5);
+  --transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --success: #6ba88c;
+  --success-bg: rgba(107, 168, 140, 0.18);
+  --warning: #d6ab55;
+  --warning-bg: rgba(214, 171, 85, 0.18);
+  --danger: #d07666;
+  --danger-bg: rgba(208, 118, 102, 0.18);
+  --info: #90aec4;
+  --info-bg: rgba(144, 174, 196, 0.18);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --primary: #2e8bf0; /* logo azure */
+  --primary-hover: #4c9df5;
+  --primary-active: #1f73d6;
+  --primary-strong: #1668c9;
+  --primary-contrast: #ffffff;
+  --gradient: linear-gradient(135deg, #12224f, #2e8bf0);
+
+  --background: #f4f7fc;
+  --surface: #ffffff;
+  --surface-2: #eef3fb;
+  --surface-secondary: #dce6f5;
+  --text-primary: #12224f;
+  --text-secondary: #4a5a78;
+  --text-disabled: #97a3b8;
+  --muted: #4a5a78;
+  --border: #d3deee;
+  --border-soft: rgba(18, 34, 79, 0.1);
+  --overlay: rgba(18, 34, 79, 0.35);
+
+  --shadow: 0 8px 28px rgba(18, 34, 79, 0.12);
+  --shadow-sm: 0 3px 12px rgba(18, 34, 79, 0.08);
+  --focus-ring: 0 0 0 3px rgba(46, 139, 240, 0.45);
+
+  --success: #5b9279;
+  --success-bg: rgba(91, 146, 121, 0.14);
+  --warning: #c79a3e;
+  --warning-bg: rgba(199, 154, 62, 0.14);
+  --danger: #c15f52;
+  --danger-bg: rgba(193, 95, 82, 0.14);
+  --info: #2e8bf0;
+  --info-bg: rgba(46, 139, 240, 0.14);
+
+  color-scheme: light;
+}
+
+/* ---------- Motion vocabulary ---------- */
+
+@keyframes sah-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sah-fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sah-fade-down {
+  from { opacity: 0; transform: translateY(-14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sah-scale-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes sah-row-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sah-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sah-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes sah-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes sah-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+
+@keyframes sah-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

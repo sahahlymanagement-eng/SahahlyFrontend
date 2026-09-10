@@ -23,7 +23,8 @@ export default function ManagerLayout() {
     const onAllowedTab = allowedTabs.some(
       (slug) =>
         pathname === `/manager/${slug}` ||
-        pathname === `/manager/${slug}-assign-assistants`
+        pathname === `/manager/${slug}-assign-assistants` ||
+        (slug === "drpeter" && pathname === "/manager/drpeter-indexing")
     );
     if (!onAllowedTab) {
       return <Navigate to={`/manager/${allowedTabs[0]}`} replace />;

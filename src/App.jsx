@@ -28,6 +28,7 @@ import QualityChecklistItems from "./pages/QualityChecklistItemsPage";
 import ManagerLoginCss from "./pages/manager/ManagerLoginCss";
 import ManagerMariamGabalawy from "./pages/manager/ManagerMariamGabalawy";
 import ManagerDrPeter from "./pages/manager/ManagerDrPeter";
+import ManagerDrPeterIndexing from "./pages/manager/ManagerDrPeterIndexing";
 import ManagerGradingAssistants from "./pages/manager/ManagerGradingAssistants";
 import Login from "./pages/Login";
 import PrivacySecurityPolicy from "./pages/PrivacySecurityPolicy";
@@ -269,6 +270,7 @@ function App() {
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="drpeter" element={<ManagerDrPeter />} />
+          <Route path="drpeter-indexing" element={<ManagerDrPeterIndexing />} />
         </Route>
 
 
@@ -303,6 +305,7 @@ function App() {
           <Route path="logincss" element={<ManagerLoginCss />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="drpeter" element={<ManagerDrPeter />} />
+          <Route path="drpeter-indexing" element={<ManagerDrPeterIndexing />} />
           {/* A provider-manager's own "assign assistants to a class" tab —
               separate from the assignment view itself, mirroring the
               director's Assign Grading Partner Assignments page. Deliberately
@@ -394,6 +397,7 @@ function App() {
           <Route path="automatic-batch-queue" element={<AutomaticBatchQueue />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="drpeter" element={<ManagerDrPeter />} />
+          <Route path="drpeter-indexing" element={<ManagerDrPeterIndexing />} />
           <Route path="manual-correction" element={<DirectorManualCorrection />} />
           <Route path="assign-assistants" element={<ManagerDashboard scope="director" />} />
           <Route path="ai-agent" element={<DirectorChatbot />} />

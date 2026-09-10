@@ -148,7 +148,7 @@ const getScoreColor = (awarded, max) => {
  * @param {string} props.slug  backend provider slug, e.g. "mariamgabalawy"
  * @param {string} props.label human-readable partner name shown in the UI
  */
-export default function GradingProviderPage({ slug, label }) {
+export default function GradingProviderPage({ slug, label, AssignmentTools = null, workflowKey = slug }) {
   const navigate = useNavigate();
 
   // Every backend call for this tab lives under the provider-parameterized
@@ -266,15 +266,15 @@ export default function GradingProviderPage({ slug, label }) {
   // bucket (assignments predating the classroom field, or never assigned to
   // one). Two-step drill-down mirroring ManagerSubmissionViewer's
   // classroom -> assignment flow, not a filter you can clear.
-  const [selectedClass, setSelectedClass] = usePersistedState(`${slug}:class`, null);
-  const [selectedAssignment, setSelectedAssignment] = usePersistedState(`${slug}:assignment`, null);
+  const [selectedClass, setSelectedClass] = usePersistedState(`${workflowKey}:class`, null);
+  const [selectedAssignment, setSelectedAssignment] = usePersistedState(`${workflowKey}:assignment`, null);
   // "class" (default) drills Class -> Assignment, as above. "assignment"
   // skips the class step entirely and lists one row per assignment id,
   // summed across every class it was given to — for a multi-class assignment
   // (IGSpaces lets a teacher post one assignment to several classes at once)
   // that's the whole thing to batch-mark in one go, rather than hunting it
   // down class by class and marking each slice separately.
-  const [groupBy, setGroupBy] = usePersistedState(`${slug}:groupBy`, "class");
+  const [groupBy, setGroupBy] = usePersistedState(`${workflowKey}:groupBy`, "class");
   // Read by loadAll and the mount effect so neither has to re-create itself
   // every time the selection changes. Seeded with the persisted value, then
   // kept in sync from an effect — assigning during render is not allowed.
@@ -3017,6 +3017,17 @@ toast.success("Result cleared — you can mark again");
 
                 {/* Row selection narrows a marking run OR a Publish All run, so
                     it renders for reviewers too — they can only do the latter. */}
+                {AssignmentTools && (
+                  <AssignmentTools
+                    key={selectedAssignment.id}
+                    assignment={selectedAssignment}
+                    selectedIds={markingSelection.selectedIds}
+                    canMark={canMark && (!isProviderManagerLocked || markingUnlocked)}
+                    gradeModel={pickValidGeminiModel(geminiModels, geminiModel)}
+                    loadRoster={() => fetchAssignmentRoster(selectedAssignment)}
+                    onResultsReady={() => loadAll()}
+                  />
+                )}
                 <MarkingSelectionBar
                   selectedCount={markingSelection.selectedCount}
                   pageSelectableCount={pageSelectableIds.length}

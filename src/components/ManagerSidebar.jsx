@@ -21,6 +21,7 @@ const GRADING_NAV_PATHS = {
   "/manager/logincss": "logincss",
   "/manager/mariamgabalawy": "mariamgabalawy",
   "/manager/drpeter": "drpeter",
+  "/manager/drpeter-indexing": "drpeter",
 };
 
 // A provider-manager's own "assign assistants to a class" tab — shown only
@@ -51,6 +52,7 @@ const NAV_ITEMS = [
   { icon: <FiUploadCloud />, label: "LoginCSS",         path: "/manager/logincss"       },
   { icon: <FiUploadCloud />, label: "Mariam Gabalawy",  path: "/manager/mariamgabalawy" },
   { icon: <FiUploadCloud />, label: "Dr Peter",         path: "/manager/drpeter"        },
+  { icon: <FiUploadCloud />, label: "Dr Peter — Indexing", path: "/manager/drpeter-indexing" },
   { icon: <FiUser />,      label: "Assign Assistants — Mariam Gabalawy", path: "/manager/mariamgabalawy-assign-assistants" },
   { icon: <FiUser />,      label: "Assign Assistants — Dr Peter",        path: "/manager/drpeter-assign-assistants" },
   { icon: <FiZap />,       label: "Question Bank",      path: "/questionbank/manage"    },
@@ -76,6 +78,7 @@ export default function ManagerSidebar() {
     if (!slug) return !gradingOnly;
     return canGradeProvider(slug, delegations);
   }).map((item) => {
+    if (item.path.endsWith("/drpeter-indexing")) return item;
     const slug = GRADING_NAV_PATHS[item.path];
     const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;
     return unread > 0 ? { ...item, badge: unread } : item;

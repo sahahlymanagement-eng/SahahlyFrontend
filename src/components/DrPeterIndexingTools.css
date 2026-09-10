@@ -1,0 +1,31 @@
+.dpi-tools { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); background: var(--surface-2); }
+.dpi-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.dpi-actions h2 { flex:1; font-size:18px; }
+.dpi-actions > button:last-child { margin-left:auto; }
+.dpi-tools p { font-size:13px; line-height:1.6; }
+.dpi-error { color:var(--danger); }
+.dpi-tools details { margin-top:10px; }
+.dpi-tools summary { cursor:pointer; font-weight:600; }
+.dpi-runs { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.dpi-runs button { text-align:left; padding:8px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; cursor:pointer; }
+.dpi-overlay { position:fixed; inset:0; z-index:12000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.55); }
+.dpi-dialog,.dpi-workspace { background:var(--surface,#fff); color:var(--text-primary,#152135); border-radius:12px; width:min(760px,96vw); padding:20px; max-height:94vh; overflow:auto; box-shadow:0 12px 60px #0004; }
+.dpi-dialog label { display:block; margin:18px 0; font-size:14px; }
+.dpi-dialog input { display:block; margin-top:8px; width:100%; }
+.dpi-workspace { width:96vw; height:94vh; display:flex; flex-direction:column; overflow:hidden; }
+.dpi-workspace > .dpi-actions { flex-shrink:0; padding-bottom:12px; }
+.dpi-workspace iframe { flex:1; width:100%; min-height:0; border:0; background:white; border-radius:8px; }
+@media(max-width:700px) { .dpi-overlay{padding:4px}.dpi-workspace{padding:10px;width:100vw;height:98vh}.dpi-actions>button:last-child{margin-left:0} }
+
+.dpi-dialog .exam-setup-fields { border:0; padding:0; margin:0; min-width:0; }
+.dpi-dialog .exam-setup-fields .muted { color:var(--text-secondary,#657084); font-weight:normal; }
+.dpi-dialog .exam-setup-fields .drops,.dpi-dialog .exam-setup-fields .expected-labels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.dpi-dialog .exam-setup-fields .row-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.dpi-dialog .exam-setup-fields input:not([type=file]),.dpi-dialog .exam-setup-fields textarea { box-sizing:border-box; width:100%; padding:9px 10px; margin-top:8px; border:1px solid var(--border,#ccd1db); border-radius:6px; background:var(--surface,#fff); color:inherit; font:inherit; }
+.dpi-dialog .exam-setup-fields textarea { resize:vertical; min-height:128px; }
+.dpi-dialog .exam-setup-fields .drop { position:relative; border:2px dashed var(--border,#ccd1db); padding:16px; border-radius:10px; cursor:pointer; display:flex; flex-direction:column; gap:8px; overflow-wrap:anywhere; }
+.dpi-dialog .exam-setup-fields .drop.dragging { border-color:#546bdb; background:#546bdb12; }
+.dpi-dialog .exam-setup-fields .drop.has-file { border-color:#359972; }
+.dpi-dialog .exam-setup-fields .drop-kicker { font-weight:600; }
+.dpi-dialog .exam-setup-fields .drop-check { color:#238057; }
+@media(max-width:700px) { .dpi-dialog .exam-setup-fields .drops,.dpi-dialog .exam-setup-fields .expected-labels,.dpi-dialog .exam-setup-fields .row-4 { grid-template-columns:1fr; } }

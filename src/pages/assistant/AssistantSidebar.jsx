@@ -15,6 +15,7 @@ const GRADING_NAV_PATHS = {
   "/assistant/logincss": "logincss",
   "/assistant/mariamgabalawy": "mariamgabalawy",
   "/assistant/drpeter": "drpeter",
+  "/assistant/drpeter-indexing": "drpeter",
 };
 
 const NAV_ITEMS = [
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { icon: <FiUploadCloud />, label: "LoginCSS", path: "/assistant/logincss" },
   { icon: <FiUploadCloud />, label: "Mariam Gabalawy", path: "/assistant/mariamgabalawy" },
   { icon: <FiUploadCloud />, label: "Dr Peter", path: "/assistant/drpeter" },
+  { icon: <FiUploadCloud />, label: "Dr Peter — Indexing", path: "/assistant/drpeter-indexing" },
 ];
 
 export default function AssistantSidebar() {
@@ -48,6 +50,7 @@ export default function AssistantSidebar() {
     if (!slug) return item.path === "/assistant/courses" || !gradingOnly;
     return canGradeProvider(slug, delegations);
   }).map((item) => {
+    if (item.path.endsWith("/drpeter-indexing")) return item;
     const slug = GRADING_NAV_PATHS[item.path];
     const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;
     return unread > 0 ? { ...item, badge: unread } : item;

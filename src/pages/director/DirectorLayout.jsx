@@ -75,6 +75,7 @@ function buildNavSections(counts) {
           path: "/director/drpeter",
           badge: partnerBadge("/director/drpeter"),
         },
+        { icon: <FiUploadCloud />, label: "Dr Peter — Indexing", path: "/director/drpeter-indexing" },
         { icon: <FiEdit3 />, label: "Manual Correction", path: "/director/manual-correction" },
         { icon: <FiUser />, label: "Assign Assistants", path: "/director/assign-assistants" },
         { icon: <FiUploadCloud />, label: "Assign Grading Partners", path: "/director/grading-delegations" },

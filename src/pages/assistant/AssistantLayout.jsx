@@ -19,7 +19,8 @@ export default function AssistantLayout() {
     pathname.startsWith("/assistant/coursework/");
   if (allowedTabs.length && !onCourseManagement) {
     const onAllowedTab = allowedTabs.some(
-      (slug) => pathname === `/assistant/${slug}`
+      (slug) => pathname === `/assistant/${slug}` ||
+        (slug === "drpeter" && pathname === "/assistant/drpeter-indexing")
     );
     if (!onAllowedTab) {
       return <Navigate to={`/assistant/${allowedTabs[0]}`} replace />;
