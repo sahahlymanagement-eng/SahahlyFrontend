@@ -312,6 +312,10 @@ function LazyPdfPage({
   const renderTaskRef = useRef(null);
   const renderedRef = useRef(false);
   const [rendered, setRendered] = useState(false);
+  // Real PDF page height in points — a scanned/photographed submission page
+  // can be several times taller than a normal ~842pt page, so a box's
+  // estimated height must be rescaled to it (see estimateNoteBoxHeightPercent).
+  const [pageHeightPt, setPageHeightPt] = useState(842);
 
   useEffect(() => {
     renderedRef.current = false;
@@ -334,6 +338,7 @@ function LazyPdfPage({
       try {
         const page = await pdf.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
+        if (!disposed) setPageHeightPt(baseViewport.height);
         let scale = renderWidth / baseViewport.width;
         const maxScale = MAX_RENDER_PIXEL_WIDTH / baseViewport.width;
         scale = Math.min(scale, maxScale);
@@ -447,7 +452,7 @@ function LazyPdfPage({
               duplicateQuestionNumbers
             );
             const stackZ = 3 + (Number(item.placementIndex) || 0) * 2;
-            const heightPct = estimateNoteBoxHeightPercent(q);
+            const heightPct = estimateNoteBoxHeightPercent(q, pageHeightPt);
             return (
               <div key={`place-${item.placementIndex ?? key}`} className="pdf-place-handle-group">
                 <PlacementHandle

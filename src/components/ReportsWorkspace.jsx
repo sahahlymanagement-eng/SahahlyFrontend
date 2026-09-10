@@ -13,7 +13,7 @@ import {
   FiInfo, FiX, FiClock,
 } from "react-icons/fi";
 import "./ReportsWorkspace.css";
-import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
+import AssignmentReportAutoSendModal from "./AssignmentReportAutoSendModal";
 
 import { SubmissionStatusBadge } from "../utils/submissionStatusBadge";
 import { parseAttendanceNamesFromFile, buildInitialAttendanceMap, countPresentInMap } from "../utils/attendanceExcel";
@@ -2048,10 +2048,9 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         )}
 
         {showAutoSendModal && selectedClassroom && (
-          <ReportAutomationRuleModal
+          <AssignmentReportAutoSendModal
             classroomId={selectedClassroom._id}
             classroomName={selectedClassroom.name}
-            reportType="custom_collective"
             onClose={() => setShowAutoSendModal(false)}
           />
         )}
