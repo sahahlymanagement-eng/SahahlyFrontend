@@ -577,34 +577,40 @@ export default function GradingProviderPage({ slug, label }) {
   const fetchPdfs = useCallback(async (submissionId) => {
     if (pdfCacheRef.current[submissionId]) return pdfCacheRef.current[submissionId];
 
-    let entry = null;
-    try {
+    const fetchOne = (kind, filename) =>
       // A partner's storage drops connections under load more often than Drive
       // does; retry transient blips instead of falling straight to the
       // pre-signed-URL fallback (which itself calls the same flaky endpoint).
-      entry = await withPdfFetchRetry(async () => {
-        const [studentRes, msRes] = await Promise.all([
-          api.get(`${BASE}/submissions/${submissionId}/pdfs/submission`, {
-            responseType: "blob",
-            timeout: 120000,
-          }),
-          api.get(`${BASE}/submissions/${submissionId}/pdfs/markScheme`, {
-            responseType: "blob",
-            timeout: 120000,
-          }),
-        ]);
-        return {
-          studentFile: new File([studentRes.data], `submission_${submissionId}.pdf`, { type: "application/pdf" }),
-          msFile: new File([msRes.data], `markscheme_${submissionId}.pdf`, { type: "application/pdf" }),
-        };
+      withPdfFetchRetry(async () => {
+        const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs/${kind}`, {
+          responseType: "blob",
+          timeout: 120000,
+        });
+        return new File([res.data], filename, { type: "application/pdf" });
       });
-    } catch (primaryErr) {
-      // /pdfs blocked (e.g. already marked) — try fresh pre-signed URLs instead.
+
+    // Fetched independently (not Promise.all) so a partner that never attached
+    // a mark scheme to this assignment — a real, permanent 404, not a transient
+    // drop — doesn't also block the student's own submission, which downloaded
+    // fine, from being viewed/downloaded.
+    const [studentOutcome, msOutcome] = await Promise.allSettled([
+      fetchOne("submission", `submission_${submissionId}.pdf`),
+      fetchOne("markScheme", `markscheme_${submissionId}.pdf`),
+    ]);
+
+    let entry =
+      studentOutcome.status === "fulfilled"
+        ? { studentFile: studentOutcome.value, msFile: msOutcome.status === "fulfilled" ? msOutcome.value : null }
+        : null;
+
+    if (!entry) {
+      // The student submission itself failed — /pdfs blocked (e.g. already
+      // marked) or genuinely gone. Try fresh pre-signed URLs instead.
       try {
         entry = await fetchPdfsViaSubmission(submissionId);
       } catch (fallbackErr) {
-        console.error("Both /pdfs and /submissions/:id URL fallback failed", primaryErr, fallbackErr);
-        throw primaryErr;
+        console.error("Both /pdfs and /submissions/:id URL fallback failed", studentOutcome.reason, fallbackErr);
+        throw studentOutcome.reason;
       }
     }
 
@@ -1290,7 +1296,25 @@ export default function GradingProviderPage({ slug, label }) {
     }
   }, []);
 
-  const openGuidanceModal = (student, opts = {}) => {
+  const openGuidanceModal = async (student, opts = {}) => {
+    // Single/priority mark on one paper — check the mark scheme is actually
+    // there before the guidance dialog even opens, so a provider that never
+    // attached one to this assignment fails fast instead of after the user
+    // has picked guidance and waited on a fetch. Bulk/batch cover many
+    // submissions at once (checking each up front isn't representative) and
+    // already surface a missing mark scheme per-submission during the run.
+    if (student) {
+      try {
+        const entry = await fetchPdfs(student.submissionId);
+        if (!entry.msFile) {
+          toast.error("Mark scheme not uploaded by the provider for this submission — marking is disabled until it is.");
+          return;
+        }
+      } catch {
+        // A fetch hiccup here shouldn't block opening the modal — the normal
+        // marking flow will surface/report it if it's still a problem then.
+      }
+    }
     setGuidance(resolveMarkingGuidanceText("", assignmentPrompt.content));
     setGuidanceModal({ student, ...opts });
   };
