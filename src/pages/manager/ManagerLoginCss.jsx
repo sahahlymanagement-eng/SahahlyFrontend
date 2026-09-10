@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
+import { loadPartnerLogoBytes } from "../../utils/partnerReportLogo";
 import { downloadBlob } from "../../utils/downloadBlob";
 import { withPdfFetchRetry } from "../../utils/studentPdfCache";
 import {
@@ -568,6 +569,7 @@ export default function ManagerLoginCss() {
         ? resultModalSubmissionId
         : null,
     getEditorBaseline,
+    partnerSlug: "logincss",
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -1669,6 +1671,7 @@ export default function ManagerLoginCss() {
     try {
       const submissionId = resultModal.submissionId;
       const studentFile = await getStudentFile(submissionId);
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, "logincss");
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -1678,6 +1681,7 @@ export default function ManagerLoginCss() {
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        teacherLogoBytes,
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
@@ -1726,6 +1730,7 @@ export default function ManagerLoginCss() {
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, "logincss");
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -1735,6 +1740,7 @@ export default function ManagerLoginCss() {
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        teacherLogoBytes,
       });
 
       const fd = new FormData();
@@ -1832,6 +1838,7 @@ export default function ManagerLoginCss() {
       api,
       base: "/external-grading",
       queue: queued,
+      partnerSlug: "logincss",
       assignmentMaxPoints:
         resolvePartnerAssignmentMax({
           maxGrade: assignmentSettings.settings.maxGrade,

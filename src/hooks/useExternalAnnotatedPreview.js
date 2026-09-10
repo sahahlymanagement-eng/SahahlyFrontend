@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import api from "../api/api";
 import { annotatePdf } from "../utils/annotatePdf";
+import { loadPartnerLogoBytes } from "../utils/partnerReportLogo";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
@@ -65,6 +67,10 @@ export function useExternalAnnotatedPreview({
   outOfScopeNotesOverride = null,
   editorReadySubmissionId = null,
   getEditorBaseline = null,
+  // Grading partner slug ("logincss" | "mariamgabalawy" | "drpeter") — resolves
+  // the partner-owned report logo drawn on the summary page, same slot the
+  // classroom preview fills from the assignment's teacher.
+  partnerSlug = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -101,6 +107,8 @@ export function useExternalAnnotatedPreview({
   outOfScopeNotesOverrideRef.current = outOfScopeNotesOverride;
   const getEditorBaselineRef = useRef(getEditorBaseline);
   getEditorBaselineRef.current = getEditorBaseline;
+  const partnerSlugRef = useRef(partnerSlug);
+  partnerSlugRef.current = partnerSlug;
 
   const pendingRemovedRef = useRef(pendingRemovedIndices);
   pendingRemovedRef.current = pendingRemovedIndices;
@@ -196,6 +204,9 @@ export function useExternalAnnotatedPreview({
       if (requestId !== previewRequestRef.current) return;
       if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, partnerSlugRef.current);
+      if (requestId !== previewRequestRef.current) return;
+
       const markingMode = resultModalRef.current?.result?.markingMode || "normal";
       const pdfBytes = await withTimeout(
         annotatePdf({
@@ -211,6 +222,7 @@ export function useExternalAnnotatedPreview({
           finalMaximumMarks: snapshot.finalMaximumMarks ?? snapshot.maxTotal,
           skipCompress: true,
           lockPlacement,
+          teacherLogoBytes,
         }),
         PREVIEW_TIMEOUT_MS,
         "Building annotated preview"

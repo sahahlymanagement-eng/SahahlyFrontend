@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
+import { loadPartnerLogoBytes } from "../../utils/partnerReportLogo";
 import { downloadBlob } from "../../utils/downloadBlob";
 import { withPdfFetchRetry } from "../../utils/studentPdfCache";
 import {
@@ -737,6 +738,7 @@ export default function GradingProviderPage({ slug, label }) {
         ? resultModalSubmissionId
         : null,
     getEditorBaseline,
+    partnerSlug: slug,
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -1985,6 +1987,7 @@ toast.success("Result cleared — you can mark again");
     try {
       const submissionId = resultModal.submissionId;
       const studentFile = await getStudentFile(submissionId);
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, slug);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -1994,6 +1997,7 @@ toast.success("Result cleared — you can mark again");
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        teacherLogoBytes,
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
@@ -2042,6 +2046,7 @@ toast.success("Result cleared — you can mark again");
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, slug);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -2051,6 +2056,7 @@ toast.success("Result cleared — you can mark again");
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        teacherLogoBytes,
       });
 
       const fd = new FormData();
@@ -2147,6 +2153,7 @@ toast.success("Result cleared — you can mark again");
     const { successCount, failures, publishedIds, stopped } = await runGradingPublishAll({
       api,
       base: BASE,
+      partnerSlug: slug,
       queue: queued,
       assignmentMaxPoints:
         assignmentSettings.settings.maxGrade != null
