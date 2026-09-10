@@ -37,12 +37,15 @@ export function useReportTeacherFilter({
   loadGlobalTeachers = false,
   /** Director sees all classrooms — do not scope by manager personId */
   omitPersonId = false,
+  // Ali Nassef: Allow hidden report workspaces to pause their teacher lookup.
+  enabled = true,
 }) {
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [allTeachers, setAllTeachers] = useState([]);
 
   useEffect(() => {
-    if (isTeacher) return;
+    // Ali Nassef: No teacher requests until this workspace is active.
+    if (!enabled || isTeacher) return;
 
     if (loadGlobalTeachers) {
       api
@@ -58,7 +61,7 @@ export function useReportTeacherFilter({
       .get("/google-classroom/filter-teachers", { params: { personId: userId } })
       .then((r) => setAllTeachers(r.data || []))
       .catch(() => {});
-  }, [isTeacher, loadGlobalTeachers, userId]);
+  }, [enabled, isTeacher, loadGlobalTeachers, userId]);
 
   const classroomParams = useMemo(() => {
     const params = { search: classroomSearch };

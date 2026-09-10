@@ -45,6 +45,10 @@ import usePersistedState from "../hooks/usePersistedState";
 import PartnerContactsPanel from "./PartnerContactsPanel";
 import PartnerLogoPanel from "./PartnerLogoPanel";
 import PartnerReportAutoSendModal from "./PartnerReportAutoSendModal";
+// Ali Nassef: Shared search controls and matching for partner report lists.
+import PartnerReportSearch from "./PartnerReportSearch";
+import { matchesReportSearch } from "../utils/partnerReportSearch";
+import useDebouncedValue from "../hooks/useDebouncedValue";
 import Pagination from "./Pagination";
 import DashboardPeriodFilter from "./DashboardPeriodFilter";
 import { useDashboardPeriod } from "../hooks/useDashboardPeriod";
@@ -128,6 +132,11 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const [slug, setSlug] = usePersistedState(`partnerReports:${variant}:partner`, null);
   const [view, setView] = usePersistedState(`partnerReports:${variant}:view`, "assignment");
   const [showAutoSend, setShowAutoSend] = useState(false);
+  // Ali Nassef: Search loaded partner data without additional API calls.
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [statusSearch, setStatusSearch] = useState("");
+  const canLoadPartner = allowedPartners.some((partner) => partner.slug === slug);
 
   // ── Shared: classes + assignments + students for the selected partner ──
   // Classes are the IGSpaces "which group is this assignment in" half of the
@@ -186,7 +195,8 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const assignmentsRequestRef = useRef(0);
 
   const loadAssignments = useCallback(async () => {
-    if (!slug) return;
+    // Ali Nassef: Wait until the persisted partner is authorized.
+    if (!canLoadPartner) return;
     const requestId = ++assignmentsRequestRef.current;
     setLoadingAssignments(true);
     try {
@@ -203,10 +213,11 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     } finally {
       if (assignmentsRequestRef.current === requestId) setLoadingAssignments(false);
     }
-  }, [slug]);
+  }, [slug, canLoadPartner]);
 
   useEffect(() => {
-    if (!slug || !isIgspacesConnected) {
+    // Ali Nassef: Do not load classes for a stale or unauthorized partner.
+    if (!canLoadPartner || !isIgspacesConnected) {
       setClasses([]);
       return undefined;
     }
@@ -223,15 +234,23 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     return () => {
       cancelled = true;
     };
-  }, [slug, isIgspacesConnected]);
+  }, [slug, isIgspacesConnected, canLoadPartner]);
 
+  // Ali Nassef: Apply assignment search together with the selected class filter.
   const filteredAssignments = useMemo(
-    () =>
-      classFilter == null
-        ? assignments
-        : assignments.filter((a) => a.classroom?.group_id === classFilter),
-    [assignments, classFilter]
+    () => assignments.filter((a) =>
+      (classFilter == null || a.classroom?.group_id === classFilter) &&
+      matchesReportSearch(assignmentSearch, [a.name, a.id, a.classroom?.group_name])
+    ),
+    [assignments, classFilter, assignmentSearch]
   );
+  const filteredStudents = useMemo(
+    () => students.filter((s) => matchesReportSearch(studentSearch,
+      [s.studentName, s.studentCode, s.parentName, s.phone, s.parentPhone, s.email, s.parentEmail])),
+    [students, studentSearch]
+  );
+  // Ali Nassef: Search fields remain user-controlled across scope changes; the
+  // result lists themselves are rebuilt from the active partner/view.
 
   // How many of THIS list's (already active-only) assignments fall in each
   // class — not the class's own assignmentCount, which also counts
@@ -264,6 +283,8 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     setClassFilter(null);
     setAssignments([]);
     loadAssignments();
+    // Ali Nassef: Discard assignment responses after switching partners or leaving Reports.
+    return () => { assignmentsRequestRef.current += 1; };
   }, [slug, loadAssignments]);
 
   // Submission Status only exists for IGSpaces-connected partners — bounce
@@ -273,15 +294,19 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     if (!VIEWS.some((v) => v.key === view)) setView("assignment");
   }, [VIEWS, view, setView]);
 
+  // Ali Nassef: Ignore stale student loads and their error toasts after a scope change.
+  const studentsRequestRef = useRef(0);
   const loadStudents = useCallback(
     async (forAssignmentId) => {
-      if (!slug) return;
+      if (!canLoadPartner) return;
+      const requestId = ++studentsRequestRef.current;
       setLoadingStudents(true);
       try {
         const data = await listPartnerStudents(
           slug,
           forAssignmentId ? { assignmentId: forAssignmentId } : undefined
         );
+        if (studentsRequestRef.current !== requestId) return;
         setStudents(data.students || []);
         setUnnamed(data.unnamed || 0);
         // A WhatsApp send can only reach a student with a saved number; an
@@ -293,13 +318,15 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         }
         setSelected(next);
       } catch (err) {
-        toast.error(partnerReportErr(err, "Failed to load partner students"));
+        if (studentsRequestRef.current !== requestId) return;
+        toast.error(partnerReportErr(err, "Failed to load partner students"), { toastId: "partner-students-load" });
+        setSelected({});
         setStudents([]);
       } finally {
-        setLoadingStudents(false);
+        if (studentsRequestRef.current === requestId) setLoadingStudents(false);
       }
     },
-    [slug, isIgspacesConnected]
+    [slug, isIgspacesConnected, canLoadPartner]
   );
 
   const selectedKeys = useMemo(
@@ -342,16 +369,18 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
    * never submitted that assignment.
    */
   useEffect(() => {
-    if (!slug) return;
+    // Ali Nassef: Only student-report views need this roster; other tabs load their own data.
+    if (!canLoadPartner) return;
     if (view === "monthly") {
       loadStudents(null);
-    } else if (assignmentId) {
+    } else if (view === "assignment" && assignmentId) {
       loadStudents(assignmentId);
     } else {
       setStudents([]);
       setSelected({});
     }
-  }, [view, slug, assignmentId, loadStudents]);
+    return () => { studentsRequestRef.current += 1; };
+  }, [view, slug, assignmentId, loadStudents, canLoadPartner]);
 
   // ── 1. Assignment reports ──
 
@@ -495,7 +524,8 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const [period, setPeriod] = useState(null);
 
   useEffect(() => {
-    if (view !== "monthly" || !slug) return undefined;
+    // Ali Nassef: Wait for authorized partner access before loading month options.
+    if (view !== "monthly" || !canLoadPartner) return undefined;
     let cancelled = false;
     listPartnerMonths(slug)
       .then((rows) => {
@@ -509,7 +539,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     return () => {
       cancelled = true;
     };
-  }, [view, slug]);
+  }, [view, slug, canLoadPartner]);
 
   const downloadMonthly = async (student) => {
     if (!period) return;
@@ -657,6 +687,10 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   // ── Submission status (IGSpaces-connected partners only) ──
   const [statusData, setStatusData] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
+  // Ali Nassef: Search the complete loaded submission roster locally.
+  const filteredStatusRows = useMemo(() => (statusData?.rows || []).filter((row) =>
+    matchesReportSearch(statusSearch, [row.name, row.status, row.submittedAt])
+  ), [statusData, statusSearch]);
 
   const loadSubmissionStatus = async (id) => {
     setLoadingStatus(true);
@@ -711,31 +745,39 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   });
   const [historyReportType, setHistoryReportType] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
+  // Ali Nassef: Search history on the server before pagination, after typing settles.
+  const [historySearch, setHistorySearch] = useState("");
+  const settledHistorySearch = useDebouncedValue(historySearch.trim(), 300, slug);
+  const historyRequestRef = useRef(0);
 
   const loadHistory = useCallback(
     async (page = 1) => {
-      if (!slug) return;
+      if (!canLoadPartner) return;
+      const requestId = ++historyRequestRef.current;
       setLoadingHistory(true);
       try {
-        setHistory(
-          await listPartnerSentHistory(slug, {
+        const result = await listPartnerSentHistory(slug, {
             page,
             limit: 20,
             ...sentPeriod.params,
             ...(historyReportType ? { reportType: historyReportType } : {}),
-          })
-        );
+            search: settledHistorySearch,
+          });
+        if (historyRequestRef.current === requestId) setHistory(result);
       } catch (err) {
-        toast.error(partnerReportErr(err, "Failed to load sent reports"));
+        if (historyRequestRef.current !== requestId) return;
+        toast.error(partnerReportErr(err, "Failed to load sent reports"), { toastId: "partner-history-load" });
       } finally {
-        setLoadingHistory(false);
+        if (historyRequestRef.current === requestId) setLoadingHistory(false);
       }
     },
-    [slug, sentPeriod.params.from, sentPeriod.params.to, historyReportType]
+    [slug, sentPeriod.params.from, sentPeriod.params.to, historyReportType, settledHistorySearch, canLoadPartner]
   );
 
   useEffect(() => {
     if (view === "sent") loadHistory(1);
+    // Ali Nassef: Obsolete requests must not overwrite the current history search.
+    return () => { historyRequestRef.current += 1; };
   }, [view, loadHistory]);
 
   // ── Render ──
@@ -777,6 +819,9 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         </button>
       </div>
 
+      {/* Ali Nassef: Search assignment titles, IDs and class names. */}
+      <PartnerReportSearch label="Search assignments" placeholder="Assignment name, ID, or class..."
+        value={assignmentSearch} onChange={setAssignmentSearch} count={filteredAssignments.length} />
       {isIgspacesConnected && classesWithActiveAssignments.length > 0 && (
         <div className="prw-chip-row">
           <button
@@ -804,7 +849,10 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         <p className="prw-empty">Loading assignments…</p>
       ) : !filteredAssignments.length ? (
         <p className="prw-empty">
-          {assignments.length
+          {/* Ali Nassef: Explain when search excludes every assignment. */}
+          {assignmentSearch.trim()
+            ? "No assignments match your search in this class."
+            : assignments.length
             ? "No assignments in this class."
             : `No assignments found for ${providerLabel}.`}
         </p>
@@ -872,10 +920,14 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         </p>
       )}
 
+      {/* Ali Nassef: Search changes visibility; the selected recipients stay unchanged. */}
+      <PartnerReportSearch label="Search students" placeholder="Student name, code, parent, phone, or email..."
+        value={studentSearch} onChange={setStudentSearch} count={filteredStudents.length} />
+      {studentSearch.trim() && <p className="prw-panel-sub">Search filters this list only. Sending still includes all selected students.</p>}
       {loadingStudents && !students.length ? (
         <p className="prw-empty">Loading students…</p>
-      ) : !students.length ? (
-        <p className="prw-empty">No students found.</p>
+      ) : !filteredStudents.length ? (
+        <p className="prw-empty">{studentSearch.trim() ? "No students match your search." : "No students found."}</p>
       ) : (
         <div className="prw-table-wrap">
           <table className="prw-table">
@@ -890,7 +942,8 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
               </tr>
             </thead>
             <tbody>
-              {students.map((s) => (
+              {/* Ali Nassef: Render matching students without mutating recipient selection. */}
+              {filteredStudents.map((s) => (
                 <tr
                   key={s.studentKey}
                   className={!isIgspacesConnected && !s.hasContact ? "prw-row--missing" : undefined}
@@ -1460,6 +1513,10 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                   </button>
                 </div>
 
+                {/* Ali Nassef: Search names and submission status in the loaded roster. */}
+                <PartnerReportSearch label="Search submission status" placeholder="Student name or status..."
+                  value={statusSearch} onChange={setStatusSearch} count={filteredStatusRows.length} />
+                {statusData && !loadingStatus && !filteredStatusRows.length && <p className="prw-empty">No students match this search.</p>}
                 {loadingStatus ? (
                   <p className="prw-empty">Loading the live roster…</p>
                 ) : statusData ? (
@@ -1474,7 +1531,8 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                           </tr>
                         </thead>
                         <tbody>
-                          {statusData.rows.map((row, i) => (
+                          {/* Ali Nassef: Only matching roster rows are displayed. */}
+                          {filteredStatusRows.map((row, i) => (
                             <tr key={`${row.name}-${i}`}>
                               <td data-label="Name">{row.name}</td>
                               <td data-label="Status">
@@ -1545,6 +1603,9 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
               monthLabel={sentPeriod.monthLabel}
             />
 
+            {/* Ali Nassef: History search includes records on every page within the date/type filters. */}
+            <PartnerReportSearch label="Search sent reports" placeholder="Assignment, recipient, sender, or period..."
+              value={historySearch} onChange={setHistorySearch} />
             <div className="ma-sent-filters">
               <label className="ma-sent-filter">
                 <span>Report type</span>

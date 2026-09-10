@@ -11,8 +11,10 @@ import api from "./api";
 const BASE = "/partner-reports";
 
 /** Prefer the backend's message — validation failures return 400 `{ message }`. */
+// Ali Nassef: Preserve useful server/network details so load failures identify
+// the actual problem instead of collapsing into the same generic message.
 export const partnerReportErr = (err, fallback) =>
-  err?.response?.data?.message || fallback;
+  err?.response?.data?.message || err?.message || fallback;
 
 // ── Partners / assignments / students ──────────────────────────────────────
 

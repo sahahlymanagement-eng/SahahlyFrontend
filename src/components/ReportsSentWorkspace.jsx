@@ -13,6 +13,8 @@ import {
 import { isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import Pagination from "./Pagination";
 import PartnerReportsTabButton from "./PartnerReportsTabButton";
+// Ali Nassef: Search sent reports across the complete filtered history.
+import PartnerReportSearch from "./PartnerReportSearch";
 import DashboardPeriodFilter from "./DashboardPeriodFilter";
 import { useDashboardPeriod } from "../hooks/useDashboardPeriod";
 import "../pages/manager/ManagerAssignments.css";
@@ -57,6 +59,8 @@ export default function ReportsSentWorkspace({ variant = "manager", onBack, onNa
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
+  // Ali Nassef: Keep history search separate from the existing structured filters.
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -102,6 +106,8 @@ export default function ReportsSentWorkspace({ variant = "manager", onBack, onNa
             ...(classroomId ? { classroomId } : {}),
             ...(reportType ? { reportType } : {}),
             ...(recipientType ? { recipientType } : {}),
+            // Ali Nassef: Forward free-text search to the backend before pagination.
+            ...(search.trim() ? { search: search.trim() } : {}),
           },
         });
         setItems(data.items || []);
@@ -130,6 +136,7 @@ export default function ReportsSentWorkspace({ variant = "manager", onBack, onNa
       classroomId,
       reportType,
       recipientType,
+      search,
     ]
   );
 
@@ -209,6 +216,9 @@ export default function ReportsSentWorkspace({ variant = "manager", onBack, onNa
         />
 
         <div className="ma-sent-filters">
+          {/* Ali Nassef: Search assignments, recipients, periods, and senders. */}
+          <PartnerReportSearch label="Search sent reports" placeholder="Assignment, recipient, sender, or period..."
+            value={search} onChange={setSearch} />
           <label className="ma-sent-filter">
             <span>Classroom</span>
             <select value={classroomId} onChange={(e) => setClassroomId(e.target.value)}>

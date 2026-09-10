@@ -10,7 +10,7 @@ import {
   FiClipboard, FiUsers, FiSend,
   FiCheckSquare, FiMessageSquare, FiCalendar,
   FiBarChart2, FiDownload, FiEye, FiChevronRight,
-  FiInfo, FiX, FiClock,
+  FiInfo, FiX, FiClock, FiSearch,
 } from "react-icons/fi";
 import "./ReportsWorkspace.css";
 import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
@@ -32,6 +32,8 @@ import {
   applyReportCartGradeSync,
 } from "../utils/refreshAssignmentFromClassroom";
 import { computeGradePercent, parsePercentInput, displayPercent, resolveReportDisplayPercent } from "../utils/reportGradePercent";
+// Ali Nassef: Debounce report searches before requesting another page.
+import useDebouncedValue from "../hooks/useDebouncedValue";
 import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
 import { fetchAllPaginated } from "../utils/fetchAllStudents";
@@ -63,6 +65,10 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   const activeSendIdRef = useRef(null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
+  // Ali Nassef: Search the full roster without a request for every keystroke.
+  const [studentSearch, setStudentSearch] = useState("");
+  const settledStudentSearch = useDebouncedValue(studentSearch.trim(), 300, selectedAssignment?._id);
+  const studentParams = useMemo(() => ({ search: settledStudentSearch }), [settledStudentSearch]);
   const [checkedAssignments, setCheckedAssignments] = useState({});
   const [customPhone, setCustomPhone] = useState("");
   const [showAutoSendModal, setShowAutoSendModal] = useState(false);
@@ -72,6 +78,8 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   const [refreshingGrades, setRefreshingGrades] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
   const [reportView, setReportView] = usePersistedState(`reports:${variant}:view`, "assignment");
+  // Ali Nassef: Hidden assignment reports must not load or sync Google Classroom data.
+  const assignmentViewActive = assignmentOnly || reportView === "assignment";
   const [preview, setPreview] = useState({ open: false, loading: false, error: null, previews: [] });
   const [previewClassroomId, setPreviewClassroomId] = useState(null);
   const [studentFilter, setStudentFilter] = useState("all");
@@ -90,6 +98,8 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     classroomSearch,
     loadGlobalTeachers: isDirector,
     omitPersonId: isDirector,
+    // Ali Nassef: Teacher options belong to the visible assignment workspace.
+    enabled: assignmentViewActive && !!user?.id,
   });
 
   const classroomsUrl = isTeacher
@@ -110,7 +120,8 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     classroomParams,
     isDirector ? 50 : 20,
     "data",
-    isDirector ? true : !!user?.id
+    // Ali Nassef: Do not fetch hidden classroom lists.
+    assignmentViewActive && !!user?.id
   );
 
   const teacherOptions = useReportTeacherOptions(isTeacher, allTeachers, classrooms);
@@ -126,8 +137,9 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
   useClassroomRosterSync(selectedClassroom?._id, {
-    enabled: Boolean(selectedClassroom?._id),
-    autoSync: Boolean(selectedClassroom?._id),
+    // Ali Nassef: Avoid background roster sync while another Reports tab is open.
+    enabled: assignmentViewActive && Boolean(selectedClassroom?._id),
+    autoSync: assignmentViewActive && Boolean(selectedClassroom?._id),
   });
 
   const assignmentParams = useMemo(() => ({
@@ -145,7 +157,8 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     assignmentParams,
     10,
     "data",
-    !!selectedClassroom?._id
+    // Ali Nassef: Only request assignments for the active view.
+    assignmentViewActive && !!user?.id && !!selectedClassroom?._id
   );
 
   const {
@@ -159,10 +172,11 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     error: studentFetchError,
   } = usePagination(
     selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
-    {},
+    studentParams,
     10,
     "students",
-    !!selectedAssignment?._id
+    // Ali Nassef: Only request students for the active view.
+    assignmentViewActive && !!user?.id && !!selectedAssignment?._id
   );
 
   useEffect(() => {
@@ -172,13 +186,14 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   }, [studentExtra]);
 
   useEffect(() => {
-    if (!selectedAssignment?._id || loadingStudents) return;
+    // Ali Nassef: Ignore hidden-workspace errors; deduplicate the current request error.
+    if (!assignmentViewActive || !selectedAssignment?._id || loadingStudents) return;
     if (studentFetchError) {
-      toast.error(`Could not load students: ${studentFetchError}`);
+      toast.error(`Could not load students: ${studentFetchError}`, { toastId: "reports-students-load" });
     } else if (studentExtra.googleUnavailable) {
       toast.warn("Google Classroom is unavailable — showing saved students without live submission status.");
     }
-  }, [selectedAssignment?._id, loadingStudents, studentFetchError, studentExtra.googleUnavailable]);
+  }, [assignmentViewActive, selectedAssignment?._id, loadingStudents, studentFetchError, studentExtra.googleUnavailable]);
 
   /* AUTH */
   useEffect(() => {
@@ -221,6 +236,11 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     setShowCollectivePanel(false);
     closePreview();
   };
+
+  // Ali Nassef: Reset search when moving to a different assignment.
+  useEffect(() => {
+    setStudentSearch("");
+  }, [selectedAssignment?._id]);
 
   /* SELECT ASSIGNMENT */
   const selectAssignment = async (assignment) => {
@@ -1543,7 +1563,8 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                     onClick={selectAllStudentsForAssignment}
                     disabled={selectingAll || loadingStudents || !selectedAssignment}
                   >
-                    {selectingAll ? "Selecting…" : "Select All"}
+                    {/* Ali Nassef: This action includes students outside the search results. */}
+                    {selectingAll ? "Selecting…" : "Select all students"}
                   </button>
 
                   <button
@@ -1558,6 +1579,24 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                     <span className="ma-panel-hint">
                       <FiCheckSquare size={12} /> {reportCount} report{reportCount !== 1 ? "s" : ""} ready
                     </span>
+                  )}
+                </div>
+
+                {/* Ali Nassef: Accessible student search with an explicit clear action. */}
+                <div className="rw-student-toolbar">
+                  <label htmlFor="report-student-search"><FiSearch aria-hidden="true" /> Search students</label>
+                  <input
+                    id="report-student-search"
+                    type="search"
+                    className="ma-search-input"
+                    placeholder="Search name, email, phone, or parent name..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                  />
+                  {studentSearch && (
+                    <button type="button" className="ma-send-btn ma-send-btn--ghost" onClick={() => setStudentSearch("")}>
+                      <FiX aria-hidden="true" /> Clear search
+                    </button>
                   )}
                 </div>
 
@@ -1648,9 +1687,12 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
 
                 {!loadingStudents && students.length === 0 && (
                   <p className="ma-empty-msg">
+                    {/* Ali Nassef: Distinguish a search with no matches from an empty roster. */}
                     {studentFetchError
                       ? "Could not load students. Check your Google Classroom connection."
-                      : studentTotal === 0
+                      : studentSearch.trim()
+                        ? "No students match your search."
+                        : studentTotal === 0
                         ? "No students synced for this classroom. Open Students Data and run Sync."
                         : "No students found."}
                   </p>
