@@ -15,7 +15,7 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mj
 import { buildDuplicateQuestionNumberSet, formatQuestionLabelWithPage } from "../utils/questionLabelDisplay";
 import { placementKey, normalizeQuestionLabelInput } from "../utils/markingFormData";
 import { resolveBadgeYPercentsForPage } from "../utils/normalizeQuestionPlacement";
-import { readLocalPdfPreview } from "../utils/localPdfPreviewStore";
+import { hasPdfHeader, readLocalPdfPreview } from "../utils/localPdfPreviewStore";
 import {
   clampExaminerColumnWidthPercent,
   clampNoteBoxHeightPercent,
@@ -53,6 +53,9 @@ function friendlyPdfLoadError(err) {
 async function loadPdfDocumentFromUrl(url) {
   const retained = readLocalPdfPreview(url);
   if (retained?.byteLength) {
+    if (!hasPdfHeader(retained)) {
+      throw new Error("Generated preview is not a valid PDF (missing %PDF- header)");
+    }
     const loadingTask = getDocument({
       data: retained.slice(),
       disableAutoFetch: true,
@@ -80,6 +83,9 @@ async function loadPdfDocumentFromUrl(url) {
   const data = await res.arrayBuffer();
   if (data.byteLength < 100) {
     throw new Error("Preview PDF is empty");
+  }
+  if (!hasPdfHeader(data)) {
+    throw new Error("Generated preview is not a valid PDF (missing %PDF- header)");
   }
   const loadingTask = getDocument({
     data: new Uint8Array(data),
@@ -575,6 +581,7 @@ export default function AnnotatedPdfPreview({
   const pdfSessionRef = useRef(null);
   const currentPageRef = useRef(1);
   const structuralRetryUrlRef = useRef(null);
+  const structuralRetryCountRef = useRef(0);
 
   const placementEnabled =
     Array.isArray(placementQuestions) && typeof onPlacementChange === "function";
@@ -721,6 +728,7 @@ export default function AnnotatedPdfPreview({
     const sameSession =
       pdfSessionKey != null && pdfSessionKey === pdfSessionRef.current;
     pdfSessionRef.current = pdfSessionKey ?? null;
+    if (!sameSession) structuralRetryCountRef.current = 0;
 
     let cancelled = false;
     setLoading(true);
@@ -753,14 +761,20 @@ export default function AnnotatedPdfPreview({
       } catch (err) {
         if (!cancelled) {
           console.error("[AnnotatedPdfPreview] load:", err);
-          const structural = /invalid root reference|invalid xref|xref.*(invalid|missing)|trailer.*root/i.test(
+          const structural = /no pdf header|missing %pdf-? header|invalid root reference|invalid xref|xref.*(invalid|missing)|trailer.*root/i.test(
             String(err?.message || err || "")
           );
           const localHandoffFailure = /network error|failed to fetch|failed to read preview pdf/i.test(
             String(err?.message || err || "")
           );
-          if ((structural || localHandoffFailure) && onStructuralError && structuralRetryUrlRef.current !== url) {
+          if (
+            (structural || localHandoffFailure) &&
+            onStructuralError &&
+            structuralRetryUrlRef.current !== url &&
+            structuralRetryCountRef.current < 1
+          ) {
             structuralRetryUrlRef.current = url;
+            structuralRetryCountRef.current += 1;
             setError(
               structural
                 ? "The generated preview was incomplete. Sahahly is rebuilding it automatically."

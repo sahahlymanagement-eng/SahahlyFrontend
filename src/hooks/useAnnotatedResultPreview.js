@@ -15,7 +15,11 @@ import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { fetchStudentPdf } from "../utils/studentPdfCache";
 import { studentGoogleUserId } from "../utils/returnAllExecution";
 import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
-import { rememberLocalPdfPreview, forgetLocalPdfPreview } from "../utils/localPdfPreviewStore";
+import {
+  rememberLocalPdfPreview,
+  forgetLocalPdfPreview,
+  hasPdfHeader,
+} from "../utils/localPdfPreviewStore";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -68,7 +72,15 @@ function previewSnapshotSignature(snapshot, markingMode, lockPlacement) {
 
 function readCompletedPreview(cacheKey, signature) {
   const cached = completedPreviewCache.get(cacheKey);
-  if (!cached || cached.signature !== signature || !cached.bytes?.byteLength) return null;
+  if (
+    !cached ||
+    cached.signature !== signature ||
+    !cached.bytes?.byteLength ||
+    !hasPdfHeader(cached.bytes)
+  ) {
+    if (cached) completedPreviewCache.delete(cacheKey);
+    return null;
+  }
   // Refresh insertion order so eviction behaves like a small LRU cache.
   completedPreviewCache.delete(cacheKey);
   completedPreviewCache.set(cacheKey, cached);
@@ -331,6 +343,9 @@ export function useAnnotatedResultPreview({
           PREVIEW_TIMEOUT_MS,
           "Building annotated preview"
         );
+        if (!hasPdfHeader(pdfBytes)) {
+          throw new Error("Generated preview is not a valid PDF (missing %PDF- header)");
+        }
         if (requestId !== previewRequestRef.current) return;
         if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
 
