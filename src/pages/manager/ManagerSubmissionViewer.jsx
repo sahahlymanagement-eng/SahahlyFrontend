@@ -127,6 +127,7 @@ import {
   markingActionLabel,
 } from "../../utils/markingStudentSelection";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import DrPeterIndexingTools from '../../components/DrPeterIndexingTools';
 import ReportTeacherFilterSelect from "../../components/ReportTeacherFilterSelect";
 import { buildReportTeacherOptions } from "../../hooks/useReportTeacherFilter";
 import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
@@ -4628,6 +4629,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
                   </div>
 
+                  {showMarkingTools && selectedAssignment?._id && (
+                    <DrPeterIndexingTools key={selectedAssignment._id} provider="classroom"
+                      assignment={selectedAssignment} selectedIds={markingSelection.selectedIds}
+                      canMark={showMarkingTools} gradeModel={pickValidGeminiModel(geminiModels, geminiModel)}
+                      loadRoster={() => fetchAllPaginated(api, studentsMarkingUrl, {}, 'students')}
+                      onResultsReady={fetchSavedResults} />
+                  )}
                   {showMarkingTools && (
                   <MarkingSelectionBar
                     selectedCount={markingSelection.selectedCount}

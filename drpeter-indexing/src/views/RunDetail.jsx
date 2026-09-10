@@ -156,7 +156,7 @@ export default function RunDetail({ runId }) {
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      {run.partnerProvider === 'drpeter' && <section className="panel"><h2>Results in the assignment viewer</h2><p>Close this window and use Results beside each student to view and edit their marked paper. Use the existing Publish All button to return results.</p></section>}
+      {['drpeter','classroom','mariamgabalawy'].includes(run.partnerProvider) && <section className="panel"><h2>Results in the assignment viewer</h2><p>Close this window and use Results beside each student to view and edit their marked paper. Use the existing {run.partnerProvider === 'classroom' ? 'Return All' : 'Publish All'} button to return results.</p></section>}
       <div className="page-head" style={{ marginBottom: 0 }}>
         <a className="back" href="#/grade">
           <Icon name="chevronLeft" size={14} /> Marking
@@ -385,6 +385,7 @@ export default function RunDetail({ runId }) {
                           </a>
                         )}
                         {grading.partnerSubmissionId && grading.status === 'ready' && <p className={grading.viewerSyncError?'error':'muted'}>{grading.viewerSyncStatus==='synced'?'Available in student Results':grading.viewerSyncError || 'Saving to student Results…'}</p>}
+                        {grading.usageAccountingError && <p role="status" className="error">Token usage is saved locally and waiting to sync: {grading.usageAccountingError} The server will retry automatically.</p>}
                       </td>
                     </tr>
                     {grading.error && (

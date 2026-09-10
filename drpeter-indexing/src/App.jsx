@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
+import { isClassroom } from './workspace.js';
 import logo from "./assets/sahahly-logo.png";
 import { Icon, ToastHost, useTheme } from "./ui.jsx";
 import Library from "./views/Library.jsx";
@@ -95,7 +96,7 @@ export default function App() {
                 <Icon name={collapsed ? "chevronRight" : "chevronLeft"} />
               </button>
             </div>
-            <p className="sidebar-tagline">Dr Peter — Indexing</p>
+            <p className="sidebar-tagline">{isClassroom ? 'Classroom — Indexing' : 'Dr Peter — Indexing'}</p>
           </div>
 
           <nav className="sidebar-nav">

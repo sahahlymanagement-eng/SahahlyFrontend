@@ -1,3 +1,4 @@
+import { apiRoot } from './workspace.js';
 const json = async (res) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || data.message || res.statusText || "Request failed");
@@ -8,7 +9,7 @@ const json = async (res) => {
 function apiFetch(url, options = {}, timeoutMs = 30000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch("/api/drpeter-indexing" + url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${localStorage.getItem("token") || ""}` }, signal: controller.signal })
+  return fetch(apiRoot + url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${localStorage.getItem("token") || ""}` }, signal: controller.signal })
     .then(async res => new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers }))
     .finally(() => clearTimeout(timer))
     .catch((err) => {
@@ -66,5 +67,5 @@ export const api = {
   resetPlacement: (id) =>
     apiFetch(`/api/gradings/${id}/placement`, { method: "DELETE" }).then(json),
   annotatedPdfUrl: (id, { download = false, revision = 0 } = {}) =>
-    `/api/drpeter-indexing/api/gradings/${id}/annotated.pdf?v=${revision}${download ? "&download=1" : ""}`,
+    `${apiRoot}/api/gradings/${id}/annotated.pdf?v=${revision}${download ? "&download=1" : ""}`,
 };

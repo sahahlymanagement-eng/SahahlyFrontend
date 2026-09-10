@@ -1,5 +1,7 @@
 .dpi-tools { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); background: var(--surface-2); }
 .dpi-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.dpi-model { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary, var(--muted)); }
+.dpi-model select { min-width: 12.5rem; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface, #fff); color: var(--text-primary); font: inherit; }
 .dpi-actions h2 { flex:1; font-size:18px; }
 .dpi-actions > button:last-child { margin-left:auto; }
 .dpi-tools p { font-size:13px; line-height:1.6; }

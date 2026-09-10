@@ -14,6 +14,7 @@ import {
 } from "../ui.jsx";
 import IndexChat from "./IndexChat.jsx";
 import MarkingGuidance from './MarkingGuidance.jsx';
+import { apiRoot } from '../workspace.js';
 
 function cloneQuestions(rows) {
   return (rows || []).map((q, i) => ({
@@ -311,7 +312,7 @@ export default function ExamDetail({ examId, embedded = false }) {
       <div className="card" style={{ padding: 16 }}>
         <h2>Source verification</h2>
         {exam.generatedPack && <details><summary>Compare regenerated evidence (saved corrections remain active)</summary><pre style={{ whiteSpace: "pre-wrap", maxHeight: 400, overflow: "auto" }}>{JSON.stringify(exam.generatedPack, null, 2)}</pre></details>}
-        <p><a href={`/api/drpeter-indexing/api/exams/${exam.id}/qp.pdf`} target="_blank" rel="noreferrer">Open original question paper</a> · <a href={`/api/drpeter-indexing/api/exams/${exam.id}/ms.pdf`} target="_blank" rel="noreferrer">Open original mark scheme</a></p>
+        <p><a href={`${apiRoot}/api/exams/${exam.id}/qp.pdf`} target="_blank" rel="noreferrer">Open original question paper</a> · <a href={`${apiRoot}/api/exams/${exam.id}/ms.pdf`} target="_blank" rel="noreferrer">Open original mark scheme</a></p>
         <p>Compare each row with its physical source pages. Correct discrepancies, verify totals, then save and approve. Saved corrections survive repair and re-indexing.</p>
         <label>Question-paper total <input type="number" min="1" disabled={!editing} value={editing ? qpTotal : (pack?.questionPaperTotalMarks ?? '')} onChange={e => { setQpTotal(e.target.value); setDirty(true); }} /></label>
         <label>Mark-scheme total <input type="number" min="1" disabled={!editing} value={editing ? msTotal : (pack?.markSchemeTotalMarks ?? '')} onChange={e => { setMsTotal(e.target.value); setDirty(true); }} /></label>
@@ -499,7 +500,7 @@ export default function ExamDetail({ examId, embedded = false }) {
                     {open && !editing && (
                       <div className="q-body">
                         <p className="muted">
-                          <a target="_blank" rel="noreferrer" href={`/api/drpeter-indexing/api/exams/${exam.id}/qp.pdf#page=${q.qpPages?.[0] || 1}`}>QP p{(q.qpPages || []).join(", ") || "?"}</a> · MS {q.msLabel || "unmatched"} p
+                          <a target="_blank" rel="noreferrer" href={`${apiRoot}/api/exams/${exam.id}/qp.pdf#page=${q.qpPages?.[0] || 1}`}>QP p{(q.qpPages || []).join(", ") || "?"}</a> · MS {q.msLabel || "unmatched"} p
                           {(q.msPages || []).join(", ") || "?"} · {q.questionType}
                           {q.isMcq ? ` · correct ${q.correctMcqLetter || "?"}` : ""}
                         </p>
