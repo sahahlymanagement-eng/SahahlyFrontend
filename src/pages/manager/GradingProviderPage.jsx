@@ -4,6 +4,7 @@ import api from "../../api/api";
 import { toast } from "react-toastify";
 import { confirmToast, promptToast } from "../../utils/confirmToast";
 import { annotatePdf } from "../../utils/annotatePdf";
+import { loadPartnerLogoBytes } from "../../utils/partnerReportLogo";
 import { downloadBlob } from "../../utils/downloadBlob";
 import { withPdfFetchRetry } from "../../utils/studentPdfCache";
 import {
@@ -126,6 +127,10 @@ import {
 const PER_PAGE = 10;
 const ASSIGNMENTS_PER_PAGE = 15;
 
+// pollSyncUntilDone's cadence/ceiling — see that function's doc comment.
+const SYNC_POLL_INTERVAL_MS = 3000;
+const SYNC_POLL_MAX_MS = 20 * 60 * 1000;
+
 // Stable per-assignment key (submissions with no assignment fall under "__none__").
 const getScoreColor = (awarded, max) => {
   const pct = max > 0 ? awarded / max : 0;
@@ -226,6 +231,13 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   const [page, setPage] = useState(1);
   // Lets loadAll refresh the page currently on screen without depending on it.
   const pageRef = useRef(page);
+  // Guards loadAssignmentSubmissions against out-of-order responses: clicking
+  // a different assignment (or page) before the previous fetch resolves can
+  // let that STALE response land after the new one and silently overwrite it
+  // — the symptom was "the first couple pages belong to another assignment"
+  // after switching. Every call bumps this; a response only gets applied if
+  // no newer call has started since (see loadAssignmentSubmissions).
+  const submissionsRequestIdRef = useRef(0);
   const [assignmentPage, setAssignmentPage] = useState(1);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingAssignments, setLoadingAssignments] = useState(true);
@@ -566,34 +578,40 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   const fetchPdfs = useCallback(async (submissionId) => {
     if (pdfCacheRef.current[submissionId]) return pdfCacheRef.current[submissionId];
 
-    let entry = null;
-    try {
+    const fetchOne = (kind, filename) =>
       // A partner's storage drops connections under load more often than Drive
       // does; retry transient blips instead of falling straight to the
       // pre-signed-URL fallback (which itself calls the same flaky endpoint).
-      entry = await withPdfFetchRetry(async () => {
-        const [studentRes, msRes] = await Promise.all([
-          api.get(`${BASE}/submissions/${submissionId}/pdfs/submission`, {
-            responseType: "blob",
-            timeout: 120000,
-          }),
-          api.get(`${BASE}/submissions/${submissionId}/pdfs/markScheme`, {
-            responseType: "blob",
-            timeout: 120000,
-          }),
-        ]);
-        return {
-          studentFile: new File([studentRes.data], `submission_${submissionId}.pdf`, { type: "application/pdf" }),
-          msFile: new File([msRes.data], `markscheme_${submissionId}.pdf`, { type: "application/pdf" }),
-        };
+      withPdfFetchRetry(async () => {
+        const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs/${kind}`, {
+          responseType: "blob",
+          timeout: 120000,
+        });
+        return new File([res.data], filename, { type: "application/pdf" });
       });
-    } catch (primaryErr) {
-      // /pdfs blocked (e.g. already marked) — try fresh pre-signed URLs instead.
+
+    // Fetched independently (not Promise.all) so a partner that never attached
+    // a mark scheme to this assignment — a real, permanent 404, not a transient
+    // drop — doesn't also block the student's own submission, which downloaded
+    // fine, from being viewed/downloaded.
+    const [studentOutcome, msOutcome] = await Promise.allSettled([
+      fetchOne("submission", `submission_${submissionId}.pdf`),
+      fetchOne("markScheme", `markscheme_${submissionId}.pdf`),
+    ]);
+
+    let entry =
+      studentOutcome.status === "fulfilled"
+        ? { studentFile: studentOutcome.value, msFile: msOutcome.status === "fulfilled" ? msOutcome.value : null }
+        : null;
+
+    if (!entry) {
+      // The student submission itself failed — /pdfs blocked (e.g. already
+      // marked) or genuinely gone. Try fresh pre-signed URLs instead.
       try {
         entry = await fetchPdfsViaSubmission(submissionId);
       } catch (fallbackErr) {
-        console.error("Both /pdfs and /submissions/:id URL fallback failed", primaryErr, fallbackErr);
-        throw primaryErr;
+        console.error("Both /pdfs and /submissions/:id URL fallback failed", studentOutcome.reason, fallbackErr);
+        throw studentOutcome.reason;
       }
     }
 
@@ -720,6 +738,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
         ? resultModalSubmissionId
         : null,
     getEditorBaseline,
+    partnerSlug: slug,
   });
 
   const handleAnnotationPlacementChange = useCallback((change) => {
@@ -894,6 +913,10 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   // Results fetches that one paper's draft via /submissions/:id/draft.
   const loadAssignmentSubmissions = useCallback(async (assignment, pageNum = 1) => {
     if (!assignment) return;
+    // Claim this as the newest in-flight request before awaiting anything —
+    // any earlier call's response that lands after this point is stale and
+    // must not touch state, even if it resolves later (see the ref's comment).
+    const requestId = ++submissionsRequestIdRef.current;
     setLoadingList(true);
     try {
       const { data } = await api.get(`${BASE}/submissions`, {
@@ -910,6 +933,10 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
           per_page: PER_PAGE,
         },
       });
+      // A newer call started while this one was in flight — its own response
+      // (or the newer call itself, still pending) owns the screen now.
+      if (requestId !== submissionsRequestIdRef.current) return;
+
       const items = data?.data || [];
 
       const collected = [];
@@ -923,10 +950,13 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
         lastPage: data?.last_page ?? 1,
       });
     } catch (err) {
+      if (requestId !== submissionsRequestIdRef.current) return;
       console.error("Failed to load submissions", err);
       toast.error((await getApiErrorMessage(err)) || "Failed to load submissions");
     } finally {
-      setLoadingList(false);
+      // Only the newest call gets to clear the spinner — an older, now-stale
+      // call finishing here must not stop it while the newer one is still running.
+      if (requestId === submissionsRequestIdRef.current) setLoadingList(false);
     }
   }, [BASE]);
 
@@ -975,6 +1005,26 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     }
   }, [loadAssignments, loadClasses, loadAssignmentSubmissions, fetchAssignmentRoster, applySearchRoster]);
 
+  // Poll GET /:provider/sync-status?kind= until the backgrounded job it's
+  // watching reports `running: false`, returning its final { lastResult,
+  // lastError }. The POST that starts a sync (submissions or classes) now
+  // responds instantly — the server keeps working underneath it — so this is
+  // what lets the button's spinner reflect the job's REAL duration again
+  // instead of just the instant HTTP round-trip, the way it did before that
+  // change. Bails out (rather than spinning forever) if the job is still
+  // running after SYNC_POLL_MAX_MS — the server has its own much longer
+  // stale-slot cutoff (gradingSyncStatus.js), this is just so the BUTTON
+  // doesn't look stuck to the person staring at it.
+  const pollSyncUntilDone = useCallback(async (kind) => {
+    const deadline = Date.now() + SYNC_POLL_MAX_MS;
+    while (Date.now() < deadline) {
+      const { data } = await api.get(`${BASE}/sync-status`, { params: { kind } });
+      if (!data?.running) return data;
+      await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_INTERVAL_MS));
+    }
+    return { running: true, timedOut: true };
+  }, [BASE]);
+
   // ── Reconcile our copy against the provider ──
   // The list above is served from our own database, which the webhook keeps in
   // step. This pulls the provider's full list to recover anything a delivery
@@ -983,24 +1033,35 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   // safe to run.
   //
   // The backend runs this in the BACKGROUND and responds immediately
-  // ({ started: true }) rather than waiting for the whole thing — a full
-  // history walk on mariamgabalawy/drpeter can now take several minutes
-  // (their true history turned out to run to many thousands of rows once
-  // IGSpaces' cursor pagination stopped silently capping it at ~979), which
-  // used to time out this very request while the server kept working anyway.
-  // There's no progress/completion signal to poll yet, so this just confirms
-  // the sync started — reload the assignments list yourself in a bit to see
-  // the result.
+  // ({ started: true }) — a full history walk on mariamgabalawy/drpeter can
+  // take several minutes (their true history turned out to run to many
+  // thousands of rows once IGSpaces' cursor pagination stopped silently
+  // capping it at ~979), which used to time out this very request while the
+  // server kept working anyway. pollSyncUntilDone is what keeps the button
+  // spinning for that whole real duration instead of just this instant POST.
   const syncFromProvider = useCallback(async () => {
     setSyncing(true);
     try {
-      const { data } = await api.post(`${BASE}/sync`, null, { timeout: 15000 });
-      if (data?.alreadyRunning) {
-        toast.info("A sync is already running for this provider — check back shortly.");
+      await api.post(`${BASE}/sync`, null, { timeout: 15000 });
+      // Poll regardless of whether THIS click's own claim succeeded or it
+      // found one already running (started by another click, another user,
+      // or the 15-minute cron) — either way a sync is genuinely in flight and
+      // the spinner should track it until it's actually done.
+      const final = await pollSyncUntilDone("submissions");
+      if (final.timedOut) {
+        toast.info("Still syncing in the background — this is taking a while, check back shortly.");
+      } else if (final.lastError) {
+        toast.error(`Sync failed: ${final.lastError}`);
       } else {
-        toast.success(
-          "Sync started in the background. A full history walk can take several minutes — reload this list afterward to see new submissions."
-        );
+        const r = final.lastResult || {};
+        const inserted = r.inserted ?? 0;
+        const updated = r.updated ?? 0;
+        if (inserted || updated) {
+          toast.success(`Synced — ${inserted} new, ${updated} updated of ${r.fetched ?? 0}`);
+          await loadAll();
+        } else {
+          toast.info(`Already up to date — ${r.fetched ?? 0} submissions in sync`);
+        }
       }
     } catch (err) {
       console.error("Failed to sync from provider", err);
@@ -1008,7 +1069,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     } finally {
       setSyncing(false);
     }
-  }, [BASE]);
+  }, [BASE, pollSyncUntilDone, loadAll]);
 
   // ── Reconcile the class/group picker against the provider ──
   // Separate from syncFromProvider above: that one pulls SUBMISSIONS (what
@@ -1016,23 +1077,32 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   // discovery feed into IGSpacesAssignmentIndex, which is the only thing that
   // populates the "Select class" step (and picks up assignments with zero
   // submissions, which the submissions sync never sees at all). That feed
-  // otherwise only refreshes on an hourly cron tick.
+  // otherwise only refreshes on an hourly cron tick. Backgrounded and polled
+  // the same way syncFromProvider is above, for the same reason.
   const syncClassesFromProvider = useCallback(async () => {
     setSyncingClasses(true);
     try {
-      const { data } = await api.post(`${BASE}/sync-classes`, null, { timeout: 120000 });
-      toast.success(
-        `Synced classes — ${data?.classes ?? 0} classes, ${data?.assignments ?? 0} assignments` +
-          (data?.failedClasses ? ` (${data.failedClasses} classes failed, will retry next sync)` : "")
-      );
-      await loadClasses();
+      await api.post(`${BASE}/sync-classes`, null, { timeout: 15000 });
+      const final = await pollSyncUntilDone("classes");
+      if (final.timedOut) {
+        toast.info("Still syncing classes in the background — this is taking a while, check back shortly.");
+      } else if (final.lastError) {
+        toast.error(`Class sync failed: ${final.lastError}`);
+      } else {
+        const r = final.lastResult || {};
+        toast.success(
+          `Synced classes — ${r.classes ?? 0} classes, ${r.assignments ?? 0} assignments` +
+            (r.failedClasses ? ` (${r.failedClasses} classes failed, will retry next sync)` : "")
+        );
+        await loadClasses();
+      }
     } catch (err) {
       console.error("Failed to sync classes from provider", err);
       toast.error((await getApiErrorMessage(err)) || "Failed to sync classes from provider");
     } finally {
       setSyncingClasses(false);
     }
-  }, [loadClasses, BASE]);
+  }, [loadClasses, BASE, pollSyncUntilDone]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -1228,7 +1298,25 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     }
   }, []);
 
-  const openGuidanceModal = (student, opts = {}) => {
+  const openGuidanceModal = async (student, opts = {}) => {
+    // Single/priority mark on one paper — check the mark scheme is actually
+    // there before the guidance dialog even opens, so a provider that never
+    // attached one to this assignment fails fast instead of after the user
+    // has picked guidance and waited on a fetch. Bulk/batch cover many
+    // submissions at once (checking each up front isn't representative) and
+    // already surface a missing mark scheme per-submission during the run.
+    if (student) {
+      try {
+        const entry = await fetchPdfs(student.submissionId);
+        if (!entry.msFile) {
+          toast.error("Mark scheme not uploaded by the provider for this submission — marking is disabled until it is.");
+          return;
+        }
+      } catch {
+        // A fetch hiccup here shouldn't block opening the modal — the normal
+        // marking flow will surface/report it if it's still a problem then.
+      }
+    }
     setGuidance(resolveMarkingGuidanceText("", assignmentPrompt.content));
     setGuidanceModal({ student, ...opts });
   };
@@ -1580,7 +1668,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
           providerSlug: PROVIDER,
           assignmentId: String(selectedAssignment.id),
           assignmentName: selectedAssignment.name || selectedAssignment.title,
-          classroomName: selectedClass?.groupName || selectedClass?.name,
+          classroomName: selectedClass?.schoolName || selectedClass?.name,
           submissions: eligible.map((s) => ({ submissionId: s.submissionId, studentId: s.studentId, name: s.name, studentName: s.name, state: s.state })),
           config: { markingMode: mode, guidance: guidanceForForm(guidanceText), geminiModel: selectedModel, chunkSize: resolveMarkingChunkSize(selectedModel), totalGrade: configuredTotal, ...examBoardGuidance.getExamBoardFields() },
         });
@@ -1899,6 +1987,7 @@ toast.success("Result cleared — you can mark again");
     try {
       const submissionId = resultModal.submissionId;
       const studentFile = await getStudentFile(submissionId);
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, slug);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -1908,6 +1997,7 @@ toast.success("Result cleared — you can mark again");
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        teacherLogoBytes,
       });
       downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), `${resultModal.student.name || "submission"}_graded.pdf`);
       toast.success("Downloaded");
@@ -1956,6 +2046,7 @@ toast.success("Result cleared — you can mark again");
         markingMode: resultModal.result?.markingMode || "normal",
       });
       const summary = resolvePdfSummary(submissionId, resultModal.result);
+      const teacherLogoBytes = await loadPartnerLogoBytes(api, slug);
       const pdfBytes = await annotatePdf({
         studentFile,
         questions: editingQuestions,
@@ -1965,6 +2056,7 @@ toast.success("Result cleared — you can mark again");
         teacherAnnotations: getTeacherAnnotations(resultModal.result),
         criteriaGrade: editingCriteriaGrade || resultModal.result?.criteriaGrade,
         markingMode: resultModal.result?.markingMode || "normal",
+        teacherLogoBytes,
       });
 
       const fd = new FormData();
@@ -2061,6 +2153,7 @@ toast.success("Result cleared — you can mark again");
     const { successCount, failures, publishedIds, stopped } = await runGradingPublishAll({
       api,
       base: BASE,
+      partnerSlug: slug,
       queue: queued,
       assignmentMaxPoints:
         assignmentSettings.settings.maxGrade != null
@@ -2261,27 +2354,52 @@ toast.success("Result cleared — you can mark again");
   // Grouped by the server — see loadAssignments.
   const assignments = assignmentIndex;
 
-  // One row per assignment id, count/graded/marked summed across every class
-  // it was given to (assignmentIndex already carries one row per class — see
-  // gradingSubmissionQuery.js's listAssignmentSummary). Picking a row here
-  // opens the same cross-class submission set "By Class" would (the backend
-  // filters submissions by assignmentId alone, never by class), so this is
-  // purely a faster way to FIND the assignment when you want to work — or
-  // batch-mark — the whole thing rather than one class's slice of it.
-  const collapsedByAssignment = useMemo(() => {
+  // The partner reuses the same school_name across several distinct
+  // school_ids (seen live: "Gp1" alone spans a dozen+ ids — looks like a new
+  // school_id gets minted per cohort/intake but keeps the generic display
+  // name). To the user those are all the same class, so every school-level
+  // grouping below keys on this normalized NAME rather than school_id —
+  // merging them is the whole point, an id-keyed group would just split one
+  // real class back into a dozen near-duplicate rows. Case/whitespace
+  // differences are folded together too, since it's the same partner-side
+  // sloppiness that produces the duplicate ids. Missing/blank names fall to
+  // `null` — the "No class" bucket, same meaning as before.
+  function normalizeSchoolName(name) {
+    const trimmed = (name || "").trim();
+    return trimmed ? trimmed.toLowerCase() : null;
+  }
+
+  // One row per assignment id, count/graded/marked summed across every input
+  // row that shares that id (assignmentIndex carries one row per (assignment,
+  // group) — see gradingSubmissionQuery.js's listAssignmentSummary). Used by
+  // BOTH "By Assignment" mode (collapses across every class network-wide) and
+  // the "By Class" school step below (collapses across every group WITHIN one
+  // school — a school can have several groups, e.g. "1A"/"1B"/"1C" all under
+  // school_name "Gp1", and the group-level distinction is not shown to the
+  // user at all, so an assignment given to three of that school's groups must
+  // still appear as exactly one row here, not three).
+  //
+  // `scope` tags which collapse this is so a later re-open
+  // (selectedAssignmentStats) knows the right subset to re-derive stats from:
+  // `{ type: "all" }` sums across the WHOLE assignmentIndex; `{ type: "school",
+  // schoolKey }` (normalizeSchoolName's output) sums every row from every
+  // school_id sharing that name.
+  function collapseAssignments(rows, scope) {
+    const scopeKey = scope.type === "school" ? `school:${scope.schoolKey ?? "none"}` : "__all__";
     const byId = new Map();
-    for (const a of assignments) {
+    for (const a of rows) {
       const mapKey = a.id != null ? String(a.id) : "__none__";
       const existing = byId.get(mapKey);
       if (!existing) {
         byId.set(mapKey, {
           ...a,
-          key: a.id != null ? `${a.id}:__all__` : "__none__",
+          key: a.id != null ? `${a.id}:${scopeKey}` : "__none__",
           classroom: null,
           classCount: 1,
           count: a.count ?? 0,
           graded: a.graded ?? 0,
           marked: a.marked ?? 0,
+          collapseScope: scope,
         });
       } else {
         existing.count += a.count ?? 0;
@@ -2291,19 +2409,34 @@ toast.success("Result cleared — you can mark again");
       }
     }
     return [...byId.values()];
-  }, [assignments]);
+  }
 
-  // A selection made in "By Assignment" mode carries the synthetic `:__all__`
-  // key — its stats need re-summing across every one of that assignment's
-  // class rows (fresh on each assignmentIndex reload), not a single-row
-  // lookup by key the way a "By Class" selection works.
-  const isCollapsedSelection = !!selectedAssignment?.key?.endsWith(":__all__");
+  // Picking a row from either collapsed list opens the same cross-class
+  // submission set (the backend filters submissions by assignmentId alone,
+  // never by class), so collapsing is purely a faster way to FIND the
+  // assignment when you want to work — or batch-mark — the whole thing rather
+  // than one group's slice of it.
+  const collapsedByAssignment = useMemo(
+    () => collapseAssignments(assignments, { type: "all" }),
+    [assignments]
+  );
+
+  // A collapsed row (either scope) carries a `collapseScope` the individual
+  // per-group rows don't — its stats need re-summing across the matching
+  // subset of assignmentIndex (fresh on every reload), not a single-row
+  // lookup by key the way an ungrouped row works.
+  const isCollapsedSelection = !!selectedAssignment?.collapseScope;
 
   const selectedAssignmentStats = useMemo(() => {
     if (!selectedAssignment?.key) return selectedAssignment;
 
     if (isCollapsedSelection) {
-      const rows = assignmentIndex.filter((a) => a.id === selectedAssignment.id);
+      const scope = selectedAssignment.collapseScope;
+      const rows = assignmentIndex.filter((a) => {
+        if (a.id !== selectedAssignment.id) return false;
+        if (scope.type === "school") return normalizeSchoolName(a.classroom?.school_name) === scope.schoolKey;
+        return true;
+      });
       if (!rows.length) return selectedAssignment;
       return rows.reduce(
         (acc, r) => ({
@@ -2325,50 +2458,74 @@ toast.success("Result cleared — you can mark again");
   // Assignments with no classroom at all (predate the field, or the partner
   // never assigned one) still need a way in — a synthetic bucket rather than
   // dropping them from the picker entirely.
-  // Per class: how many of its assignments actually have a submission, and how
-  // many submissions that adds up to — both from `assignments` (grouped from
-  // real submission docs, so every row here is inherently "active" already),
-  // NOT the class's own `assignmentCount` (from the discovery sync index,
-  // which lists every assignment IGSpaces knows about, including ones nobody
-  // has submitted to yet). A class whose only known assignments are all still
-  // empty would otherwise show up in the picker with a nonzero-looking
-  // assignment count and then drill down to nothing. `null` is the "No class"
-  // bucket for assignments with no classroom at all.
-  const statsByClass = useMemo(() => {
+  //
+  // Grouped by SCHOOL NAME (`classroom.school_name`, via normalizeSchoolName
+  // above), not by group (`classroom.group_id`/`group_name`) or raw school_id
+  // — what the partner API calls a "school" is what we and the user call a
+  // "class" (e.g. school_name "Gp1"), one of those can have several groups
+  // under it (groups "1A"/"1B"/"1C", all with school_name "Gp1"), AND the
+  // partner mints a fresh school_id per name on top of that (many distinct
+  // ids all displaying "Gp1"). Both splits were confusing here — a
+  // multi-group OR multi-id assignment showed once per group/id, scattered
+  // across near-identical-looking rows — so the picker collapses straight to
+  // the one class name a partner teacher actually thinks in terms of.
+  //
+  // Per school NAME: how many DISTINCT assignments actually have a
+  // submission (assignmentIds, a Set — one assignment can span several
+  // groups/ids under the same name and must still count once), and how many
+  // submissions that adds up to — both from `assignments` (grouped from real
+  // submission docs, so every row here is inherently "active" already), NOT
+  // the school's own row count from the discovery sync index, which lists
+  // every assignment IGSpaces knows about including ones nobody has
+  // submitted to yet. A school whose only known assignments are all still
+  // empty would otherwise show up in the picker with a nonzero-looking count
+  // and then drill down to nothing. `null` is the "No class" bucket, for
+  // assignments with no classroom at all OR a blank school_name.
+  const statsBySchool = useMemo(() => {
     const map = new Map();
     for (const a of assignments) {
-      const groupId = a.classroom?.group_id ?? null;
-      const entry = map.get(groupId) || { assignmentCount: 0, submissionCount: 0 };
-      entry.assignmentCount += 1;
+      const key = normalizeSchoolName(a.classroom?.school_name);
+      const entry = map.get(key) || { assignmentIds: new Set(), submissionCount: 0 };
+      if (a.id != null) entry.assignmentIds.add(a.id);
       entry.submissionCount += a.count ?? 0;
-      map.set(groupId, entry);
+      map.set(key, entry);
     }
     return map;
   }, [assignments]);
 
   const classOptions = useMemo(() => {
-    const opts = classes
-      .filter((c) => (statsByClass.get(c.groupId)?.assignmentCount || 0) > 0)
-      .map((c) => ({
-        groupId: c.groupId,
-        groupName: c.groupName,
-        assignmentCount: statsByClass.get(c.groupId)?.assignmentCount || 0,
-        submissionCount: statsByClass.get(c.groupId)?.submissionCount || 0,
+    // First raw (non-normalized) name seen for each key wins as the display
+    // label — arbitrary among duplicates, but they only ever differ in case/
+    // whitespace, so any of them reads fine to the user.
+    const displayNameByKey = new Map();
+    for (const c of classes) {
+      const key = normalizeSchoolName(c.schoolName);
+      if (key != null && !displayNameByKey.has(key)) {
+        displayNameByKey.set(key, c.schoolName);
+      }
+    }
+    const opts = [...displayNameByKey.entries()]
+      .filter(([key]) => (statsBySchool.get(key)?.assignmentIds.size || 0) > 0)
+      .map(([key, schoolName]) => ({
+        schoolKey: key,
+        schoolName,
+        assignmentCount: statsBySchool.get(key)?.assignmentIds.size || 0,
+        submissionCount: statsBySchool.get(key)?.submissionCount || 0,
       }));
-    const unclassed = statsByClass.get(null);
-    if (unclassed?.assignmentCount > 0) {
+    const unclassed = statsBySchool.get(null);
+    if (unclassed?.assignmentIds.size > 0) {
       opts.push({
-        groupId: null,
-        groupName: "No class",
-        assignmentCount: unclassed.assignmentCount,
+        schoolKey: null,
+        schoolName: "No class",
+        assignmentCount: unclassed.assignmentIds.size,
         submissionCount: unclassed.submissionCount,
       });
     }
-    return opts;
-  }, [classes, statsByClass]);
+    return opts.sort((a, b) => a.schoolName.localeCompare(b.schoolName));
+  }, [classes, statsBySchool]);
   const cq = classSearch.trim().toLowerCase();
   const filteredClassOptions = cq
-    ? classOptions.filter((c) => c.groupName.toLowerCase().includes(cq))
+    ? classOptions.filter((c) => c.schoolName.toLowerCase().includes(cq))
     : classOptions;
 
   // 'loading' avoids flashing the assignment list before classes are known to
@@ -2388,12 +2545,25 @@ toast.success("Result cleared — you can mark again");
   const canGroupByAssignment = classStepStatus !== "skip";
   const showClassStep = classStepStatus === "show" && (groupBy !== "assignment" || !canGroupByAssignment);
 
+  // Selecting a school collapses its assignments across every one of that
+  // school's groups (see the doc comment above statsBySchool) rather than
+  // listing one row per (assignment, group) — the group split is never shown
+  // to the user in this flow, so a duplicate-looking row per group would just
+  // be confusing.
+  const schoolFilteredAssignments = useMemo(() => {
+    if (!selectedClass) return [];
+    const rows = assignments.filter(
+      (a) => normalizeSchoolName(a.classroom?.school_name) === selectedClass.schoolKey
+    );
+    return collapseAssignments(rows, { type: "school", schoolKey: selectedClass.schoolKey });
+  }, [assignments, selectedClass]);
+
   const aq = assignmentSearch.trim().toLowerCase();
   const classFiltered =
     groupBy === "assignment" && canGroupByAssignment
       ? collapsedByAssignment
       : showClassStep
-        ? assignments.filter((a) => (a.classroom?.group_id ?? null) === selectedClass?.groupId)
+        ? schoolFilteredAssignments
         : assignments;
   const filteredAssignments = aq
     ? classFiltered.filter((a) => (a.name || "").toLowerCase().includes(aq))
@@ -2634,13 +2804,13 @@ toast.success("Result cleared — you can mark again");
                     ) : (
                       filteredClassOptions.map((c) => (
                         <div
-                          key={c.groupId ?? "__none__"}
+                          key={c.schoolKey ?? "__none__"}
                           className="ma-classroom-card"
                           onClick={() => selectClass(c)}
                         >
                           <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                           <div className="ma-classroom-info">
-                            <span className="ma-classroom-name">{c.groupName}</span>
+                            <span className="ma-classroom-name">{c.schoolName}</span>
                             <span className="ma-classroom-section">
                               {c.assignmentCount} assignment{c.assignmentCount === 1 ? "" : "s"}
                               {" · "}
@@ -2661,7 +2831,7 @@ toast.success("Result cleared — you can mark again");
                   tabIndex={0}
                 >
                   <span className="msv-section-collapsed-chevron">▶</span>
-                  <span className="msv-section-collapsed-text">Class: {selectedClass.groupName}</span>
+                  <span className="msv-section-collapsed-text">Class: {selectedClass.schoolName}</span>
                   <button
                     type="button"
                     className="msv-section-change"
@@ -2683,7 +2853,7 @@ toast.success("Result cleared — you can mark again");
                       {filteredAssignments.length} assignment{filteredAssignments.length === 1 ? "" : "s"}
                       {" · "}
                       {showClassStep
-                        ? statsByClass.get(selectedClass?.groupId ?? null)?.submissionCount ?? 0
+                        ? statsBySchool.get(selectedClass?.schoolKey ?? null)?.submissionCount ?? 0
                         : listTotal}{" "}
                       submissions
                     </span>

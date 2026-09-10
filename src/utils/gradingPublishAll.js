@@ -28,6 +28,7 @@ import {
   resolveDisplayMaxTotal,
 } from "./markingFormData";
 import { getMarkingIntegrityPublishGate } from "./markingIntegrityPublish";
+import { loadPartnerLogoBytes } from "./partnerReportLogo";
 
 /**
  * The publish queue for an assignment: [{ submissionId, name, submittedAt }].
@@ -67,6 +68,9 @@ const PUBLISH_CONCURRENCY = 3;
  * @param {string}   opts.base
  * @param {Array}    opts.queue            rows from fetchPublishQueue
  * @param {number|null} opts.assignmentMaxPoints  configured maxGrade / partner total
+ * @param {string|null} [opts.partnerSlug] "logincss" | "mariamgabalawy" | "drpeter" —
+ *        resolves the partner's report logo, drawn on the summary page the same
+ *        way a classroom teacher's logo is. Omit to draw Sahahly's logo alone.
  * @param {function} opts.getStudentFile   (submissionId) => Promise<File>
  * @param {function} [opts.releaseStudentFile] drop a published submission's cached
  *        PDFs — without it a long run keeps every downloaded PDF in memory
@@ -82,6 +86,7 @@ export async function runGradingPublishAll({
   base,
   queue = [],
   assignmentMaxPoints = null,
+  partnerSlug = null,
   getStudentFile,
   releaseStudentFile,
   onProgress,
@@ -94,6 +99,8 @@ export async function runGradingPublishAll({
   let nextIndex = 0;
   let doneCount = 0;
   const inFlight = new Map();
+  // Same logo for every item in the run — fetched once, not per submission.
+  const teacherLogoBytes = await loadPartnerLogoBytes(api, partnerSlug);
 
   const reportProgress = () => {
     onProgress?.({
@@ -145,6 +152,7 @@ export async function runGradingPublishAll({
         teacherAnnotations: getTeacherAnnotations(result),
         criteriaGrade: result.criteriaGrade,
         markingMode: result.markingMode || "normal",
+        teacherLogoBytes,
       });
 
       const fd = new FormData();

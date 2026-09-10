@@ -48,14 +48,84 @@ export function noteBoxHeightPt(pageHeight, heightPct) {
   return Math.max(22, Math.min(h * 0.55, (pct / 100) * h));
 }
 
-/** Overlay height when the teacher has not resized this box yet. */
-export function estimateNoteBoxHeightPercent(q) {
+function estimatedTextLines(text) {
+  const len = String(text ?? "").trim().length;
+  return len ? Math.max(1, Math.ceil(len / 48)) : 0;
+}
+
+function estimatedListLines(arr) {
+  if (!Array.isArray(arr)) return 0;
+  return arr.reduce((sum, text) => sum + estimatedTextLines(text), 0);
+}
+
+/** Same field priority as annotatePdf.js's markPointDetail(). */
+function markPointDetailText(p) {
+  return String(p?.evidence || p?.description || p?.criterion || p?.label || p?.text || "").trim();
+}
+
+// Chosen so that at a normal ~842pt page these reproduce the old flat
+// "6.5 + extra * 1.35" percent formula exactly (54.73/842*100 = 6.5,
+// 11.37/842*100 = 1.35) — same numbers for ordinary pages, but now expressed
+// in points so they can be rescaled to the page they're actually drawn on.
+const NOTE_BOX_BASE_PT = 54.73;
+const NOTE_BOX_LINE_PT = 11.37;
+
+/**
+ * Overlay height when the teacher has not resized this box yet.
+ * Must track annotatePdf.js's buildColumnBlock reasonably closely, in two
+ * ways:
+ *  1. Line count — a long keyword/point phrase wraps to several printed
+ *     lines (not one), a mark-point row prints under
+ *     evidence/description/criterion/label/text (falling back to the
+ *     matching keyword by award order) — not `.code`, which is just a short
+ *     tag — and when points exist the real PDF draws points ONLY, never
+ *     points plus the keyword bullets too. MCQ/blank/manually-added rows
+ *     print the student's or correct answer instead of any of that.
+ *  2. Page height — buildColumnBlock's height is an absolute point value
+ *     (font size × line count), not a percent of the page. A scanned/
+ *     photographed submission page can be several times taller than a normal
+ *     ~842pt page, so the SAME box is a much smaller fraction of it. Passing
+ *     the real rendered page height (from the pdf.js viewport) is what keeps
+ *     this in percent-terms consistent with what's actually drawn there.
+ * Getting either wrong desyncs the drag handle from the box actually drawn
+ * on the page, leaving the resize handle unclickable wherever the visible
+ * box ends — this is what "resize doesn't work" looks like to a teacher.
+ */
+export function estimateNoteBoxHeightPercent(q, pageHeight = 842) {
   const stored = clampNoteBoxHeightPercent(q?.noteBoxHeightPercent);
   if (stored != null) return stored;
-  const reason = String(q?.reason || "");
-  const marked = Array.isArray(q?.markedKeywords) ? q.markedKeywords.length : 0;
-  const missing = Array.isArray(q?.missingKeywords) ? q.missingKeywords.length : 0;
-  const points = Array.isArray(q?.markPoints) ? q.markPoints.length : 0;
-  const extra = Math.ceil(reason.length / 48) + marked + missing + points;
-  return clampNoteBoxHeightPercent(6.5 + extra * 1.35) ?? 8;
+
+  const markedKeywords = (Array.isArray(q?.markedKeywords) ? q.markedKeywords : [])
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
+  const missingKeywords = (Array.isArray(q?.missingKeywords) ? q.missingKeywords : [])
+    .map((k) => String(k || "").trim())
+    .filter(Boolean);
+  const markPoints = (Array.isArray(q?.markPoints) ? q.markPoints : []).filter(Boolean);
+
+  let extra = estimatedTextLines(q?.reason);
+
+  if (markPoints.length) {
+    let markIdx = 0;
+    let missIdx = 0;
+    extra += markPoints.reduce((sum, p) => {
+      let detail = markPointDetailText(p);
+      if (!detail) {
+        detail = p?.awarded === true ? markedKeywords[markIdx++] || "" : missingKeywords[missIdx++] || "not met";
+      }
+      const code = String(p?.code || "").trim();
+      const text = [code, detail].filter(Boolean).join(": ");
+      return sum + estimatedTextLines(text);
+    }, 0);
+  } else if (markedKeywords.length || missingKeywords.length) {
+    extra += estimatedListLines(markedKeywords) + estimatedListLines(missingKeywords);
+  } else {
+    extra +=
+      estimatedTextLines(q?.studentFinalAnswer || q?.studentAnswer) +
+      estimatedTextLines(q?.correctAnswer);
+  }
+
+  const heightPt = NOTE_BOX_BASE_PT + extra * NOTE_BOX_LINE_PT;
+  const h = Math.max(80, Number(pageHeight) || 842);
+  return clampNoteBoxHeightPercent((heightPt / h) * 100) ?? 8;
 }
