@@ -1505,7 +1505,7 @@ useEffect(() => {
 
 
   const openGuidanceModal = (student = null, isBatch = false, intent = null) => {
-    if (expectedPages === null) {
+    if (intent !== "normalBulk" && expectedPages === null) {
       toast.warn("Please set the expected page count for this assignment before marking");
       setShowExpectedPagesEdit(true);
       return;
@@ -2293,11 +2293,8 @@ useEffect(() => {
     const loaded = await resolveEligibleForMarking(false);
     if (!loaded) return;
 
-    // Advisory page-count check before spending AI tokens on possibly-wrong files.
-    // The orientation review can drop the flagged papers, so the list it hands
-    // back — not `loaded.eligible` — is what gets marked.
-    const eligible = await confirmPreGradingChecks(loaded.eligible);
-    if (!eligible) return;
+    // Bulk marking starts with every eligible selected submission, without PDF pre-scans.
+    const eligible = loaded.eligible;
 
     const guidanceValue = guidanceForForm(guidanceText);
     const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
@@ -2868,9 +2865,6 @@ const runBatchMark = async (guidanceText, mode = "normal", modelOverride = null,
     return;
   }
 
-  // Advisory page-count check before spending AI tokens on possibly-wrong files.
-  // Papers the orientation review excluded are dropped from `eligible` here, so
-  // every step below (upload, batch, progress) sees only what will be marked.
   const toGrade = await confirmPreGradingChecks(eligible);
   if (!toGrade) return;
   eligible = toGrade;
@@ -3146,13 +3140,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     return;
   }
 
-  // Advisory page-count check before spending AI tokens on possibly-wrong files.
-  // Papers the orientation review excluded are dropped from `eligible` here.
+  const guidanceValue = guidanceForForm(guidanceText);
+
   const toGrade = await confirmPreGradingChecks(eligible);
   if (!toGrade) return;
   eligible = toGrade;
-
-  const guidanceValue = guidanceForForm(guidanceText);
 
   // Mark eligible rows as pending so the per-row UI shows progress.
   const progress = {};
