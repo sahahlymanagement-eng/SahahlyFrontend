@@ -138,6 +138,13 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   const [classFilter, setClassFilter] = useState(null); // group_id, or null = all
   const [assignments, setAssignments] = useState([]);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
+  // Ali Nassef
+  const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState(null);
+  const searchTerm = search.trim();
+  const searching = Boolean(searchTerm) && (
+    searchResults?.slug !== slug || searchResults?.term !== searchTerm || searchResults?.source !== assignments
+  );
   const [assignmentId, setAssignmentId] = useState(null);
   const [students, setStudents] = useState([]);
   const [unnamed, setUnnamed] = useState(0);
@@ -225,12 +232,36 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     };
   }, [slug, isIgspacesConnected]);
 
+  // Ali Nassef
+  useEffect(() => {
+    if (!slug || !searchTerm) {
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const data = await listPartnerAssignments(slug, { search: searchTerm });
+        if (!cancelled) setSearchResults({ slug, term: searchTerm, source: assignments, rows: data.assignments || [] });
+      } catch (err) {
+        if (!cancelled) {
+          setSearchResults({ slug, term: searchTerm, source: assignments, rows: [] });
+          toast.error(partnerReportErr(err, "Failed to search partner reports"));
+        }
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [slug, searchTerm, assignments]);
+
+  // Ali Nassef
   const filteredAssignments = useMemo(
     () =>
       classFilter == null
-        ? assignments
-        : assignments.filter((a) => a.classroom?.group_id === classFilter),
-    [assignments, classFilter]
+        ? (searchTerm ? searchResults?.rows || [] : assignments)
+        : (searchTerm ? searchResults?.rows || [] : assignments).filter((a) => a.classroom?.group_id === classFilter),
+    [assignments, classFilter, searchTerm, searchResults]
   );
 
   // How many of THIS list's (already active-only) assignments fall in each
@@ -777,6 +808,17 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         </button>
       </div>
 
+      {/* Ali Nassef */}
+      <div className="prw-search">
+        <input
+          type="search"
+          aria-label="Search partner reports"
+          placeholder="Search partner reports..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+
       {isIgspacesConnected && classesWithActiveAssignments.length > 0 && (
         <div className="prw-chip-row">
           <button
@@ -800,11 +842,15 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
         </div>
       )}
 
-      {loadingAssignments && !assignments.length ? (
+      {/* Ali Nassef */}
+      {searching || (loadingAssignments && !assignments.length) ? (
         <p className="prw-empty">Loading assignments…</p>
       ) : !filteredAssignments.length ? (
         <p className="prw-empty">
-          {assignments.length
+          {/* Ali Nassef */}
+          {searchTerm
+            ? "No partner reports match your search."
+            : assignments.length
             ? "No assignments in this class."
             : `No assignments found for ${providerLabel}.`}
         </p>

@@ -19,8 +19,9 @@ export const partnerReportErr = (err, fallback) =>
 export const listReportPartners = () =>
   api.get(`${BASE}/partners`).then((r) => r.data?.partners ?? []);
 
-export const listPartnerAssignments = (slug) =>
-  api.get(`${BASE}/${slug}/assignments`).then((r) => r.data ?? { assignments: [] });
+// Ali Nassef
+export const listPartnerAssignments = (slug, params) =>
+  api.get(`${BASE}/${slug}/assignments`, { params }).then((r) => r.data ?? { assignments: [] });
 
 /** IGSpaces-connected partners only — empty array for LoginCSS or an unsynced partner. */
 export const listPartnerClasses = (slug) =>
