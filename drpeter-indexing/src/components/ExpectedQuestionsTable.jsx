@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
+import { rowsFromColumns, expectedRowsError } from "./expectedQuestionColumns";
 
 export function emptyExpectedRow() {
   return { label: "", marks: "" };
@@ -31,6 +32,8 @@ export function rowsFromExamLists(labels = [], maxMarks = []) {
 
 /** Serialize table rows for the indexing API (same wire format as before). */
 export function textFromExpectedRows(rows) {
+  const error = expectedRowsError(rows);
+  if (error) throw new Error(error);
   return (rows || [])
     .map((row) => {
       const label = String(row?.label ?? "").trim();
@@ -53,6 +56,9 @@ export default function ExpectedQuestionsTable({
   onChange,
   disabled = false,
 }) {
+  const [mode, setMode] = useState("table");
+  const [columns, setColumns] = useState({ questions: "", marks: "" });
+  const id = useId();
   const safeRows = useMemo(
     () => (Array.isArray(rows) && rows.length ? rows : [emptyExpectedRow()]),
     [rows]
@@ -78,6 +84,26 @@ export default function ExpectedQuestionsTable({
     const n = Number(row.marks);
     return sum + (Number.isFinite(n) && n > 0 ? n : 0);
   }, 0);
+  const error = expectedRowsError(safeRows);
+  const textColumns = columns.rows === rows ? columns : {
+    questions: safeRows.map(r => r.label).join("\n"),
+    marks: safeRows.map(r => r.marks).join("\n"),
+  };
+
+  function changeMode(next) {
+    if (next === "text") {
+      setColumns({ questions: safeRows.map(r => r.label).join("\n"), marks: safeRows.map(r => r.marks).join("\n"), rows });
+    }
+    setMode(next);
+  }
+
+  function updateColumn(key, value) {
+    if (disabled) return;
+    const next = { ...textColumns, [key]: value };
+    const nextRows = rowsFromColumns(next.questions, next.marks);
+    setColumns({ ...next, rows: nextRows });
+    onChange(nextRows);
+  }
 
   return (
     <div className="expected-q-table-wrap">
@@ -85,7 +111,25 @@ export default function ExpectedQuestionsTable({
         <strong>{label}</strong>
         {hint ? <span className="muted small">{hint}</span> : null}
       </div>
-      <div className="expected-q-table-scroll">
+      <div className="expected-q-entry-modes" role="group" aria-label={`${label} entry method`}>
+        <button type="button" disabled={disabled} aria-pressed={mode === "table"} onClick={() => changeMode("table")}>Table</button>
+        <button type="button" disabled={disabled} aria-pressed={mode === "text"} onClick={() => changeMode("text")}>Text</button>
+      </div>
+      {mode === "text" ? <>
+        <p id={`${id}-hint`} className="muted small">Enter one question and one mark per line. Matching lines belong together. Marks may be left blank if unknown.</p>
+        <div className="expected-q-text-columns">
+          <label htmlFor={`${id}-questions`}>Questions
+            <textarea id={`${id}-questions`} rows={8} wrap="off" spellCheck={false} disabled={disabled}
+              value={textColumns.questions} placeholder={"1a\n1b\n2a\n3a"} aria-describedby={`${id}-hint`}
+              onChange={e => updateColumn("questions", e.target.value)} />
+          </label>
+          <label htmlFor={`${id}-marks`}>Marks
+            <textarea id={`${id}-marks`} rows={8} wrap="off" spellCheck={false} disabled={disabled}
+              value={textColumns.marks} placeholder={"1\n3\n2\n2"} aria-describedby={`${id}-hint${error ? ` ${id}-error` : ""}`} aria-invalid={Boolean(error)}
+              onChange={e => updateColumn("marks", e.target.value)} />
+          </label>
+        </div>
+      </> : <div className="expected-q-table-scroll">
         <table className="expected-q-table">
           <thead>
             <tr>
@@ -137,11 +181,12 @@ export default function ExpectedQuestionsTable({
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {error && <p id={`${id}-error`} className="error" role="alert">{error}</p>}
       <div className="expected-q-table-foot">
-        <button type="button" className="expected-q-add" disabled={disabled} onClick={addRow}>
+        {mode === "table" && <button type="button" className="expected-q-add" disabled={disabled} onClick={addRow}>
           + Add question
-        </button>
+        </button>}
         <span className="muted small">
           {safeRows.filter((r) => String(r.label || "").trim()).length} questions
           {marksTotal > 0 ? ` · ${marksTotal} marks` : ""}

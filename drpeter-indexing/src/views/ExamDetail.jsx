@@ -264,12 +264,14 @@ export default function ExamDetail({ examId, embedded = false }) {
   async function reindex() {
     if (editing && dirty && !window.confirm("Re-index will overwrite unsaved edits. Continue?")) return;
     try {
+      const expectedQpLabels = textFromExpectedRows(expectedQpRows);
+      const expectedMsLabels = textFromExpectedRows(expectedMsRows);
       setEditing(false);
       setDirty(false);
       setExam(
         await api.reprocess(exam.id, {
-          expectedQpLabels: textFromExpectedRows(expectedQpRows),
-          expectedMsLabels: textFromExpectedRows(expectedMsRows),
+          expectedQpLabels,
+          expectedMsLabels,
         })
       );
       setExpectedDirty(false);
