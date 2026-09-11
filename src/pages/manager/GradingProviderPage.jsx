@@ -576,7 +576,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   };
 
   const fetchPdfs = useCallback(async (submissionId) => {
-    if (pdfCacheRef.current[submissionId]) return pdfCacheRef.current[submissionId];
+    if (Object.hasOwn(pdfCacheRef.current[submissionId] || {}, "msFile")) return pdfCacheRef.current[submissionId];
 
     const fetchOne = (kind, filename) =>
       // A partner's storage drops connections under load more often than Drive
@@ -633,7 +633,9 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
         responseType: 'blob', timeout: 120000,
       });
       await assertPdfBlob(data, 'Student submission');
-      return new File([data], `submission_${submissionId}.pdf`, {type:'application/pdf'});
+      const studentFile = new File([data], `submission_${submissionId}.pdf`, {type:'application/pdf'});
+      pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], studentFile };
+      return studentFile;
     }).catch(async () => (await fetchPdfs(submissionId)).studentFile)
       .finally(() => studentFetchesRef.current.delete(key));
     studentFetchesRef.current.set(key, request);

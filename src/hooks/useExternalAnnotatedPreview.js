@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import api from "../api/api";
-import { annotatePdf } from "../utils/annotatePdf";
+import { buildPreviewPdf } from "../utils/buildPreviewPdf";
 import { loadPartnerLogoBytes } from "../utils/partnerReportLogo";
 import {
   applyTeacherEditsToResult,
@@ -79,6 +79,7 @@ export function useExternalAnnotatedPreview({
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
+  const previewBuildRef = useRef(null);
   const previewUrlRef = useRef(null);
   const retiredPreviewUrlsRef = useRef(new Set());
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
@@ -119,6 +120,7 @@ export function useExternalAnnotatedPreview({
   );
 
   const revokePreviewUrl = useCallback(() => {
+    previewBuildRef.current?.abort();
     if (previewUrlRef.current) {
       forgetLocalPdfPreview(previewUrlRef.current);
       URL.revokeObjectURL(previewUrlRef.current);
@@ -189,6 +191,9 @@ export function useExternalAnnotatedPreview({
   const generatePreview = useCallback(async (snapshot, { lockPlacement = false } = {}) => {
     if (!snapshot?.submissionId) return;
     const requestId = ++previewRequestRef.current;
+    previewBuildRef.current?.abort();
+    const buildController = new AbortController();
+    previewBuildRef.current = buildController;
     setPreviewLoading(true);
     setPreviewError(null);
 
@@ -196,6 +201,7 @@ export function useExternalAnnotatedPreview({
       if (!getStudentFileRef.current) {
         throw new Error("Student PDF unavailable for preview");
       }
+      const logoPromise = loadPartnerLogoBytes(api, partnerSlugRef.current);
       const studentFile = await withTimeout(
         Promise.resolve(snapshot.studentFile || getStudentFileRef.current(snapshot.submissionId)),
         650_000,
@@ -204,12 +210,12 @@ export function useExternalAnnotatedPreview({
       if (requestId !== previewRequestRef.current) return;
       if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
-      const teacherLogoBytes = await loadPartnerLogoBytes(api, partnerSlugRef.current);
+      const teacherLogoBytes = await logoPromise;
       if (requestId !== previewRequestRef.current) return;
 
       const markingMode = resultModalRef.current?.result?.markingMode || "normal";
       const pdfBytes = await withTimeout(
-        annotatePdf({
+        buildPreviewPdf({
           studentFile,
           questions: snapshot.questions,
           maxTotalMarks: snapshot.maxTotal,
@@ -223,7 +229,7 @@ export function useExternalAnnotatedPreview({
           skipCompress: true,
           lockPlacement,
           teacherLogoBytes,
-        }),
+        }, { signal: buildController.signal }),
         PREVIEW_TIMEOUT_MS,
         "Building annotated preview"
       );
@@ -257,6 +263,8 @@ export function useExternalAnnotatedPreview({
   const openSubmissionId = getSubmissionId(resultModal);
 
   useEffect(() => {
+    previewRequestRef.current += 1;
+    previewBuildRef.current?.abort();
     if (!openSubmissionId) {
       previewRequestRef.current += 1;
       revokePreviewUrl();

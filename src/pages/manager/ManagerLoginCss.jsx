@@ -415,7 +415,7 @@ export default function ManagerLoginCss() {
   };
 
   const fetchPdfs = useCallback(async (submissionId) => {
-    if (pdfCacheRef.current[submissionId]) return pdfCacheRef.current[submissionId];
+    if (Object.hasOwn(pdfCacheRef.current[submissionId] || {}, "msFile")) return pdfCacheRef.current[submissionId];
 
     let entry = null;
     try {
@@ -454,10 +454,24 @@ export default function ManagerLoginCss() {
     return entry;
   }, []);
 
-  const getStudentFile = useCallback(
-    async (submissionId) => (await fetchPdfs(submissionId)).studentFile,
-    [fetchPdfs]
-  );
+  const studentFetchesRef = useRef(new Map());
+  const getStudentFile = useCallback(async (submissionId) => {
+    if (pdfCacheRef.current[submissionId]?.studentFile) return pdfCacheRef.current[submissionId].studentFile;
+    if (studentFetchesRef.current.has(submissionId)) return studentFetchesRef.current.get(submissionId);
+    // The script preview must not wait for a slow or missing mark scheme.
+    const request = withPdfFetchRetry(async () => {
+      const { data } = await api.get(`/external-grading/submissions/${submissionId}/pdfs/submission`, {
+        responseType: "blob", timeout: 120000,
+      });
+      await assertPdfBlob(data, "Student submission");
+      const studentFile = new File([data], `submission_${submissionId}.pdf`, { type: "application/pdf" });
+      pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], studentFile };
+      return studentFile;
+    }).catch(async () => (await fetchPdfs(submissionId)).studentFile)
+      .finally(() => studentFetchesRef.current.delete(submissionId));
+    studentFetchesRef.current.set(submissionId, request);
+    return request;
+  }, [fetchPdfs]);
 
   // Read-only mark scheme preview (right column of the results modal).
   // Mark scheme is per-submission here; source it from the cached msFile.

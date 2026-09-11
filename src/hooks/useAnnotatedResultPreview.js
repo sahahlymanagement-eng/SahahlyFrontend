@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { annotatePdf } from "../utils/annotatePdf";
+import { buildPreviewPdf } from "../utils/buildPreviewPdf";
 import {
   applyTeacherEditsToResult,
   questionsHavePendingEdits,
@@ -159,6 +159,7 @@ export function useAnnotatedResultPreview({
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
   const [reportPageCount, setReportPageCount] = useState(0);
   const previewRequestRef = useRef(0);
+  const previewBuildRef = useRef(null);
   const previewUrlRef = useRef(null);
   const previewSignatureRef = useRef(null);
   const retiredPreviewUrlsRef = useRef(new Set());
@@ -202,6 +203,7 @@ export function useAnnotatedResultPreview({
   );
 
   const revokePreviewUrl = useCallback(() => {
+    previewBuildRef.current?.abort();
     if (previewUrlRef.current) {
       forgetLocalPdfPreview(previewUrlRef.current);
       URL.revokeObjectURL(previewUrlRef.current);
@@ -273,6 +275,9 @@ export function useAnnotatedResultPreview({
     async (snapshot, { lockPlacement = false, force = false } = {}) => {
       if (!assignmentId || !snapshot?.submissionId) return;
       const requestId = ++previewRequestRef.current;
+      previewBuildRef.current?.abort();
+      const buildController = new AbortController();
+      previewBuildRef.current = buildController;
       setPreviewLoading(true);
       setPreviewError(null);
 
@@ -309,6 +314,7 @@ export function useAnnotatedResultPreview({
         // while one modal is open, and the student's file cannot change under
         // it. See utils/studentPdfCache.js.
         const googleUserId = studentGoogleUserId(resultModalRef.current?.student);
+        const logoPromise = loadAssignmentTeacherLogo(api, assignmentId);
         const studentFile = await withTimeout(
           fetchStudentPdf(api, {
             assignmentId,
@@ -323,9 +329,9 @@ export function useAnnotatedResultPreview({
         );
         if (requestId !== previewRequestRef.current) return;
 
-        const teacherLogoBytes = await loadAssignmentTeacherLogo(api, assignmentId);
+        const teacherLogoBytes = await logoPromise;
         const pdfBytes = await withTimeout(
-          annotatePdf({
+          buildPreviewPdf({
             studentFile,
             questions: snapshot.questions,
             maxTotalMarks: snapshot.maxTotal,
@@ -339,7 +345,7 @@ export function useAnnotatedResultPreview({
             skipCompress: true,
             lockPlacement,
             teacherLogoBytes,
-          }),
+          }, { signal: buildController.signal }),
           PREVIEW_TIMEOUT_MS,
           "Building annotated preview"
         );
@@ -385,6 +391,8 @@ export function useAnnotatedResultPreview({
     resultModal?.submissionId || resultModal?.student?.submissionId || null;
 
   useEffect(() => {
+    previewRequestRef.current += 1;
+    previewBuildRef.current?.abort();
     if (!openSubmissionId || !assignmentId) {
       previewRequestRef.current += 1;
       revokePreviewUrl();

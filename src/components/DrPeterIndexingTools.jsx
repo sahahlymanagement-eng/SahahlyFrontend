@@ -1,9 +1,13 @@
 import ExamSetupFields from "../../drpeter-indexing/src/components/ExamSetupFields.jsx";
+import { textFromExpectedRows } from "../../drpeter-indexing/src/components/ExpectedQuestionsTable.jsx";
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import api from '../api/api';
 import { assertPdfBlob, getApiErrorMessage } from '../utils/markingFormData';
 import { withPdfFetchRetry } from '../utils/studentPdfCache';
 import { sahahlyModelLabel } from '../utils/markingCost';
+import { usePageCountCheck, applyPageCountDecision } from '../hooks/usePageCountCheck';
+import PageCountCheckModal from './PageCountCheckModal';
 import './DrPeterIndexingTools.css';
 import { getIndexingUpload, subscribeIndexingUploads, startIndexingUpload } from '../utils/indexingUploads';
 
@@ -24,13 +28,14 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const classroom = provider === 'classroom';
   const root = `/${provider}-indexing`;
   const base = `${root}/api`;
+  const { pageCheckModal, confirmPageCounts, confirmGradingPageCounts, resolvePageCheck } = usePageCountCheck();
   const [pack, setPack] = useState(null);
   const [runs, setRuns] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [setup, setSetup] = useState(false);
-  const [indexForm, setIndexForm] = useState(() => ({ title: assignment.name || assignment.title || '', subject: '', board: '', year: '', paperCode: '', expectedQpLabels: '', expectedMsLabels: '', questionPaper: null, markScheme: null }));
+  const [indexForm, setIndexForm] = useState(() => ({ title: assignment.name || assignment.title || '', subject: '', board: '', year: '', paperCode: '', expectedQpRows: [{ label: '', marks: '' }], expectedMsRows: [{ label: '', marks: '' }], questionPaper: null, markScheme: null }));
   const qp = indexForm.questionPaper;
   const ms = indexForm.markScheme;
   const [sourceMessage, setSourceMessage] = useState('');
@@ -126,7 +131,9 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     try {
       await assertPdfBlob(qp,'Question paper'); await assertPdfBlob(ms,'Mark scheme');
       const form=new FormData();
-      for (const key of ['title','subject','board','year','paperCode','expectedQpLabels','expectedMsLabels']) form.set(key,indexForm[key]);
+      for (const key of ['title','subject','board','year','paperCode']) form.set(key,indexForm[key]);
+      form.set('expectedQpLabels', textFromExpectedRows(indexForm.expectedQpRows));
+      form.set('expectedMsLabels', textFromExpectedRows(indexForm.expectedMsRows));
       form.set('partnerAssignmentId',assignmentId);form.set('questionPaper',qp);form.set('markScheme',ms);
       const {data}=await api.post(`${base}/exams`,form,{timeout:180000});
       if(!alive.current)return;
@@ -142,9 +149,29 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     const data = await startIndexingUpload(uploadKey, async report => {
       // Refresh the full assignment roster: selection may span pages/search results.
       const all=await roster.current();
-      const students=all.filter(s=>selected.has(String(s.submissionId)));
+      let students=all.filter(s=>selected.has(String(s.submissionId)));
       if(students.length!==selected.size)throw new Error('Some selected students are no longer in this assignment. Refresh the viewer and select again.');
       if(students.length>60)throw new Error('Select at most 60 students per indexing run.');
+
+      report('Checking submission page counts…');
+      const pageDecision = classroom
+        ? await confirmPageCounts({
+            assignmentId,
+            classroomId: assignment.classroomId || assignment.courseId || null,
+            students,
+          })
+        : await confirmGradingPageCounts({
+            provider,
+            assignmentId,
+            submissionIds: students.map((s) => s.submissionId),
+          });
+      students = applyPageCountDecision(students, pageDecision);
+      if (!students?.length) return null; // cancelled or nothing left
+      const dropped = selected.size - students.length;
+      if (dropped > 0) {
+        toast.info(`Skipping ${dropped} submission${dropped === 1 ? '' : 's'} with unexpected page count`);
+      }
+
       const form=new FormData();form.set('examId',pack.id);form.set('partnerAssignmentId',assignmentId);form.set('mode',mode);form.set('gradeModel',indexingModel);
       form.set('submissionIds',JSON.stringify(students.map(s=>String(s.submissionId))));
       form.set('studentNames',JSON.stringify(students.map(s=>s.name || `Submission ${s.submissionId}`)));
@@ -221,5 +248,6 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       </form>
     </div>}
     {view && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label={view.title}><div className="dpi-workspace"><div className="dpi-actions"><strong>{view.title} — {assignment.name || assignment.title || assignmentId}</strong><button type="button" onClick={()=>setView(null)}>Close</button></div><iframe title={view.title} src={`/drpeter-indexing/index.html?embedded=1&workspace=${provider}${view.hash}`} /></div></div>}
+    <PageCountCheckModal state={pageCheckModal} onResolve={resolvePageCheck} />
   </section>;
 }

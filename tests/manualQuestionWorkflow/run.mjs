@@ -34,6 +34,7 @@ import assert from "assert";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 let passed = 0;
@@ -45,7 +46,7 @@ function test(name, fn) {
 }
 
 // ---------------------------------------------------------------- load source
-const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 // Both live inside the project: esbuild resolves bare imports (pdf-lib)
 // relative to the importing FILE, so an entry in the system temp directory
@@ -64,6 +65,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
+  loader: { ".png": "dataurl" },
   outfile: bundle,
   logLevel: "silent",
   // Resolve bare imports (pdf-lib) against the project, not the temp dir the

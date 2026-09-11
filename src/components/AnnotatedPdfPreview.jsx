@@ -343,7 +343,10 @@ function LazyPdfPage({
         const maxScale = MAX_RENDER_PIXEL_WIDTH / baseViewport.width;
         scale = Math.min(scale, maxScale);
         const viewport = page.getViewport({ scale });
-        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        // Bound actual backing pixels, including DPR, for large scans and zoom.
+        const dpr = Math.min(window.devicePixelRatio || 1, 2,
+          MAX_RENDER_PIXEL_WIDTH / viewport.width,
+          Math.sqrt(8_000_000 / (viewport.width * viewport.height)));
 
         const canvas = canvasRef.current;
         if (!canvas || disposed) return;
@@ -559,6 +562,10 @@ export default function AnnotatedPdfPreview({
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
+  const attachScrollRoot = useCallback((node) => {
+    scrollRef.current = node;
+    setScrollRoot(node);
+  }, []);
   const [pdf, setPdf] = useState(null);
   const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -1126,7 +1133,6 @@ export default function AnnotatedPdfPreview({
 
     if (!root) {
       setZoomLevel(clamped);
-      setRenderZoom(clamped);
       zoomRef.current = clamped;
       return;
     }
@@ -1138,7 +1144,6 @@ export default function AnnotatedPdfPreview({
 
     setZoomLevel(clamped);
     zoomRef.current = clamped;
-    setRenderZoom(clamped);
 
     requestAnimationFrame(() => {
       root.scrollLeft = offsetX * ratio - (clientX - rect.left);
@@ -1498,10 +1503,7 @@ export default function AnnotatedPdfPreview({
       </div>
 
       <div
-        ref={(node) => {
-          scrollRef.current = node;
-          setScrollRoot(node);
-        }}
+        ref={attachScrollRoot}
         className="pdf-preview-scroll"
         title={
           placementEnabled

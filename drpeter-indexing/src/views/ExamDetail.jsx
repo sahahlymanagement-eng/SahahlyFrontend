@@ -15,6 +15,11 @@ import {
 import IndexChat from "./IndexChat.jsx";
 import MarkingGuidance from './MarkingGuidance.jsx';
 import { apiRoot } from '../workspace.js';
+import ExpectedQuestionsTable, {
+  emptyExpectedRow,
+  rowsFromExamLists,
+  textFromExpectedRows,
+} from "../components/ExpectedQuestionsTable.jsx";
 
 function cloneQuestions(rows) {
   return (rows || []).map((q, i) => ({
@@ -70,8 +75,8 @@ export default function ExamDetail({ examId, embedded = false }) {
   const [qpTotal, setQpTotal] = useState('');
   const [msTotal, setMsTotal] = useState('');
   const [extrasResolved, setExtrasResolved] = useState(false);
-  const [expectedQp, setExpectedQp] = useState("");
-  const [expectedMs, setExpectedMs] = useState("");
+  const [expectedQpRows, setExpectedQpRows] = useState([emptyExpectedRow()]);
+  const [expectedMsRows, setExpectedMsRows] = useState([emptyExpectedRow()]);
   const [expectedDirty, setExpectedDirty] = useState(false);
 
   useEffect(() => {
@@ -86,13 +91,13 @@ export default function ExamDetail({ examId, embedded = false }) {
           if (editing && dirty) return prev;
           return cloneQuestions(next.markingPack?.questions);
         });
-        setExpectedQp((prev) => {
+        setExpectedQpRows((prev) => {
           if (expectedDirty) return prev;
-          return (next.expectedQpLabels || []).join("\n");
+          return rowsFromExamLists(next.expectedQpLabels, next.expectedQpMaxMarks);
         });
-        setExpectedMs((prev) => {
+        setExpectedMsRows((prev) => {
           if (expectedDirty) return prev;
-          return (next.expectedMsLabels || []).join("\n");
+          return rowsFromExamLists(next.expectedMsLabels, next.expectedMsMaxMarks);
         });
       });
     refresh().catch((err) => {
@@ -263,8 +268,8 @@ export default function ExamDetail({ examId, embedded = false }) {
       setDirty(false);
       setExam(
         await api.reprocess(exam.id, {
-          expectedQpLabels: expectedQp,
-          expectedMsLabels: expectedMs,
+          expectedQpLabels: textFromExpectedRows(expectedQpRows),
+          expectedMsLabels: textFromExpectedRows(expectedMsRows),
         })
       );
       setExpectedDirty(false);
@@ -371,40 +376,32 @@ export default function ExamDetail({ examId, embedded = false }) {
           <div>
             <h2>Expected questions</h2>
             <p className="muted small" style={{ marginTop: 4 }}>
-              Optional target list for indexing. One label per line. Used on create and when you
-              Re-index.
+              Optional target list for indexing. Add each question and its marks, then Re-index.
             </p>
           </div>
           {expectedDirty && <span className="chip warn">unsaved for next re-index</span>}
         </div>
         <div className="expected-labels">
-          <label>
-            From question paper
-            <textarea
-              rows={5}
-              value={expectedQp}
-              disabled={working}
-              onChange={(e) => {
-                setExpectedQp(e.target.value);
-                setExpectedDirty(true);
-              }}
-              placeholder={"1\n1(a)\n1(b)\n19\n…"}
-            />
-          </label>
-          <label>
-            From mark scheme{" "}
-            <span className="muted">(blank = reuse QP list)</span>
-            <textarea
-              rows={5}
-              value={expectedMs}
-              disabled={working}
-              onChange={(e) => {
-                setExpectedMs(e.target.value);
-                setExpectedDirty(true);
-              }}
-              placeholder="Leave blank unless MS headings differ"
-            />
-          </label>
+          <ExpectedQuestionsTable
+            label="From question paper"
+            hint="Used as the indexing target"
+            rows={expectedQpRows}
+            disabled={working}
+            onChange={(rows) => {
+              setExpectedQpRows(rows);
+              setExpectedDirty(true);
+            }}
+          />
+          <ExpectedQuestionsTable
+            label="From mark scheme"
+            hint="Leave empty to reuse the QP list"
+            rows={expectedMsRows}
+            disabled={working}
+            onChange={(rows) => {
+              setExpectedMsRows(rows);
+              setExpectedDirty(true);
+            }}
+          />
         </div>
       </section>
 

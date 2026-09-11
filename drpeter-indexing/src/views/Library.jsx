@@ -1,4 +1,5 @@
 import ExamSetupFields from "../components/ExamSetupFields.jsx";
+import { emptyExpectedRow, textFromExpectedRows } from "../components/ExpectedQuestionsTable.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import {
@@ -18,8 +19,8 @@ const BLANK = {
   board: "",
   year: "",
   paperCode: "",
-  expectedQpLabels: "",
-  expectedMsLabels: "",
+  expectedQpRows: [emptyExpectedRow()],
+  expectedMsRows: [emptyExpectedRow()],
   questionPaper: null,
   markScheme: null,
 };
@@ -61,17 +62,11 @@ export default function Library() {
     setBusy(true);
     try {
       const data = new FormData();
-      for (const key of [
-        "title",
-        "subject",
-        "board",
-        "year",
-        "paperCode",
-        "expectedQpLabels",
-        "expectedMsLabels",
-      ]) {
+      for (const key of ["title", "subject", "board", "year", "paperCode"]) {
         data.set(key, form[key]);
       }
+      data.set("expectedQpLabels", textFromExpectedRows(form.expectedQpRows));
+      data.set("expectedMsLabels", textFromExpectedRows(form.expectedMsRows));
       data.set("questionPaper", form.questionPaper);
       data.set("markScheme", form.markScheme);
       const created = await api.createExam(data);

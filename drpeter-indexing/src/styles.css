@@ -2527,12 +2527,114 @@ button.icon-only {
   gap: 14px;
 }
 
-.expected-labels textarea {
-  min-height: 120px;
-  resize: vertical;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+.expected-q-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.expected-q-table-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.expected-q-table-scroll {
+  border: 1px solid var(--border, #ccd1db);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 280px;
+  background: var(--surface, #fff);
+}
+
+.expected-q-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 13px;
-  line-height: 1.4;
+}
+
+.expected-q-table th,
+.expected-q-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, #e4e7ee);
+  vertical-align: middle;
+}
+
+.expected-q-table th {
+  text-align: left;
+  font-weight: 600;
+  background: var(--surface-2, #f5f6f9);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.expected-q-table input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border, #ccd1db);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.expected-q-col-num {
+  width: 36px;
+  text-align: center !important;
+}
+
+.expected-q-col-marks {
+  width: 88px;
+}
+
+.expected-q-col-marks input {
+  text-align: center;
+}
+
+.expected-q-col-actions {
+  width: 40px;
+  text-align: center !important;
+}
+
+.expected-q-remove,
+.expected-q-add {
+  border: 1px solid var(--border, #ccd1db);
+  background: var(--surface, #fff);
+  color: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.expected-q-remove {
+  width: 28px;
+  height: 28px;
+  line-height: 1;
+  padding: 0;
+  font-size: 18px;
+}
+
+.expected-q-add {
+  padding: 6px 10px;
+  font-weight: 600;
+}
+
+.expected-q-remove:disabled,
+.expected-q-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.expected-q-table-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .expected-panel {
