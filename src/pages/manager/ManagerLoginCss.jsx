@@ -350,11 +350,17 @@ export default function ManagerLoginCss() {
   });
 
   // Download a pre-signed URL directly in the browser into a File.
-  const urlToFile = async (url, name) => {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Failed to download ${name} (HTTP ${resp.status})`);
-    const blob = await resp.blob();
-    return new File([blob], name, { type: "application/pdf" });
+  const urlToFile = async (url, name, { timeoutMs = 60_000 } = {}) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { signal: controller.signal });
+      if (!resp.ok) throw new Error(`Failed to download ${name} (HTTP ${resp.status})`);
+      const blob = await resp.blob();
+      return new File([blob], name, { type: "application/pdf" });
+    } finally {
+      clearTimeout(timer);
+    }
   };
 
   // Recursively scan a JSON object for the submission + mark-scheme URLs.
@@ -458,20 +464,59 @@ export default function ManagerLoginCss() {
   const getStudentFile = useCallback(async (submissionId) => {
     if (pdfCacheRef.current[submissionId]?.studentFile) return pdfCacheRef.current[submissionId].studentFile;
     if (studentFetchesRef.current.has(submissionId)) return studentFetchesRef.current.get(submissionId);
-    // The script preview must not wait for a slow or missing mark scheme.
+    // Never fall through to fetchPdfs — Promise.all waits on mark scheme too.
     const request = withPdfFetchRetry(async () => {
       const { data } = await api.get(`/external-grading/submissions/${submissionId}/pdfs/submission`, {
-        responseType: "blob", timeout: 120000,
+        responseType: "blob", timeout: 90_000,
       });
       await assertPdfBlob(data, "Student submission");
       const studentFile = new File([data], `submission_${submissionId}.pdf`, { type: "application/pdf" });
       pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], studentFile };
       return studentFile;
-    }).catch(async () => (await fetchPdfs(submissionId)).studentFile)
-      .finally(() => studentFetchesRef.current.delete(submissionId));
+    }, { attempts: 3 }).catch(async () => {
+      const entry = await fetchPdfsViaSubmission(submissionId);
+      pdfCacheRef.current[submissionId] = {
+        ...pdfCacheRef.current[submissionId],
+        studentFile: entry.studentFile,
+        ...(entry.msFile ? { msFile: entry.msFile } : {}),
+      };
+      return entry.studentFile;
+    }).finally(() => studentFetchesRef.current.delete(submissionId));
     studentFetchesRef.current.set(submissionId, request);
     return request;
-  }, [fetchPdfs]);
+  }, []);
+
+  const fetchMarkSchemeForPreview = useCallback(async (submissionId) => {
+    const cached = pdfCacheRef.current[submissionId]?.msFile;
+    if (cached) return cached;
+    try {
+      const msFile = await withPdfFetchRetry(async () => {
+        const res = await api.get(`/external-grading/submissions/${submissionId}/pdfs/markScheme`, {
+          responseType: "blob",
+          timeout: 45_000,
+        });
+        return new File([res.data], `markscheme_${submissionId}.pdf`, { type: "application/pdf" });
+      }, { attempts: 2 });
+      await assertPdfBlob(msFile, "Mark scheme");
+      pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], msFile };
+      return msFile;
+    } catch (err) {
+      try {
+        const entry = await fetchPdfsViaSubmission(submissionId);
+        if (entry?.msFile) {
+          pdfCacheRef.current[submissionId] = {
+            ...pdfCacheRef.current[submissionId],
+            studentFile: entry.studentFile,
+            msFile: entry.msFile,
+          };
+          return entry.msFile;
+        }
+      } catch {
+        /* fall through */
+      }
+      throw err;
+    }
+  }, []);
 
   // Read-only mark scheme preview (right column of the results modal).
   // Mark scheme is per-submission here; source it from the cached msFile.
@@ -485,23 +530,26 @@ export default function ManagerLoginCss() {
     if (!sid) {
       setMarkSchemePreviewUrl(null);
       setMarkSchemeError(null);
+      setMarkSchemeLoading(false);
       return;
     }
     if (msPreviewRef.current.submissionId === sid && msPreviewRef.current.url) {
       setMarkSchemePreviewUrl(msPreviewRef.current.url);
+      setMarkSchemeLoading(false);
+      setMarkSchemeError(null);
       return;
     }
     let cancelled = false;
     setMarkSchemeLoading(true);
     setMarkSchemeError(null);
-    fetchPdfs(sid)
-      .then((entry) => {
+    fetchMarkSchemeForPreview(sid)
+      .then((msFile) => {
         if (cancelled) return;
-        if (!entry?.msFile) {
+        if (!msFile) {
           setMarkSchemePreviewUrl(null);
           return;
         }
-        const url = URL.createObjectURL(entry.msFile);
+        const url = URL.createObjectURL(msFile);
         if (msPreviewRef.current.url && msPreviewRef.current.submissionId !== sid) {
           URL.revokeObjectURL(msPreviewRef.current.url);
         }
@@ -516,7 +564,7 @@ export default function ManagerLoginCss() {
       })
       .finally(() => { if (!cancelled) setMarkSchemeLoading(false); });
     return () => { cancelled = true; };
-  }, [resultModal?.submissionId, fetchPdfs]);
+  }, [resultModal?.submissionId, fetchMarkSchemeForPreview]);
 
   // Revoke the cached mark scheme object URL on unmount.
   useEffect(() => () => {

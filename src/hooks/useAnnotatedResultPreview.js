@@ -33,10 +33,14 @@ async function loadAssignmentTeacherLogo(api, assignmentId) {
     teacherLogoCache.set(
       assignmentId,
       api
-        .get(`/report-logos/assignment/${assignmentId}`, { responseType: "arraybuffer" })
+        .get(`/report-logos/assignment/${assignmentId}`, {
+          responseType: "arraybuffer",
+          timeout: 12_000,
+        })
         .then((r) => r.data)
         .catch((err) => {
-          if (err?.response?.status !== 404) {
+          teacherLogoCache.delete(assignmentId);
+          if (err?.response?.status !== 404 && err?.code !== "ECONNABORTED") {
             console.warn("Unable to load teacher PDF logo", err);
           }
           return null;
@@ -314,22 +318,28 @@ export function useAnnotatedResultPreview({
         // while one modal is open, and the student's file cannot change under
         // it. See utils/studentPdfCache.js.
         const googleUserId = studentGoogleUserId(resultModalRef.current?.student);
-        const logoPromise = loadAssignmentTeacherLogo(api, assignmentId);
+        const logoPromise = loadAssignmentTeacherLogo(api, assignmentId).catch(() => null);
         const studentFile = await withTimeout(
-          fetchStudentPdf(api, {
-            assignmentId,
-            submissionId: snapshot.submissionId,
-            googleUserId: googleUserId || undefined,
-            // A dead proxy request should release quickly enough for the retry
-            // ladder to help; the outer timeout still allows the full ladder.
-            timeout: 120_000,
-          }),
-          650_000,
+          Promise.resolve(
+            snapshot.studentFile ||
+              fetchStudentPdf(api, {
+                assignmentId,
+                submissionId: snapshot.submissionId,
+                googleUserId: googleUserId || undefined,
+                timeout: 120_000,
+              })
+          ),
+          180_000,
           "Loading student PDF"
         );
         if (requestId !== previewRequestRef.current) return;
+        if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
-        const teacherLogoBytes = await logoPromise;
+        const teacherLogoBytes = await Promise.race([
+          logoPromise,
+          new Promise((resolve) => setTimeout(() => resolve(null), 12_000)),
+        ]);
+        if (requestId !== previewRequestRef.current) return;
         const pdfBytes = await withTimeout(
           buildPreviewPdf({
             studentFile,
@@ -406,12 +416,19 @@ export function useAnnotatedResultPreview({
 
     // Wait until the editor holds THIS paper — otherwise the baseline is built
     // from raw stored JSON while the cards show prepareEditingQuestions output.
-    if (editorReadySubmissionId !== openSubmissionId) return;
+    if (editorReadySubmissionId !== openSubmissionId) {
+      setPreviewLoading(false);
+      return;
+    }
 
     const snapshot =
       getEditorBaselineRef.current?.() ||
       buildSnapshotFromModal(resultModalRef.current);
-    if (!snapshot) return;
+    if (!snapshot) {
+      setPreviewLoading(false);
+      setPreviewError("Unable to build preview from this result.");
+      return;
+    }
 
     setConfirmedSnapshot(snapshot);
     generatePreview(snapshot, { lockPlacement: false });

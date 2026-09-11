@@ -201,16 +201,20 @@ export function useExternalAnnotatedPreview({
       if (!getStudentFileRef.current) {
         throw new Error("Student PDF unavailable for preview");
       }
-      const logoPromise = loadPartnerLogoBytes(api, partnerSlugRef.current);
+      const logoPromise = loadPartnerLogoBytes(api, partnerSlugRef.current).catch(() => null);
       const studentFile = await withTimeout(
         Promise.resolve(snapshot.studentFile || getStudentFileRef.current(snapshot.submissionId)),
-        650_000,
+        120_000,
         "Loading student PDF"
       );
       if (requestId !== previewRequestRef.current) return;
       if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
-      const teacherLogoBytes = await logoPromise;
+      // Never block the preview forever on a hung logo request.
+      const teacherLogoBytes = await Promise.race([
+        logoPromise,
+        new Promise((resolve) => setTimeout(() => resolve(null), 12_000)),
+      ]);
       if (requestId !== previewRequestRef.current) return;
 
       const markingMode = resultModalRef.current?.result?.markingMode || "normal";
@@ -276,12 +280,19 @@ export function useExternalAnnotatedPreview({
       return;
     }
 
-    if (editorReadySubmissionId !== openSubmissionId) return;
+    if (editorReadySubmissionId !== openSubmissionId) {
+      setPreviewLoading(false);
+      return;
+    }
 
     const snapshot =
       getEditorBaselineRef.current?.() ||
       buildSnapshotFromModal(resultModalRef.current);
-    if (!snapshot) return;
+    if (!snapshot) {
+      setPreviewLoading(false);
+      setPreviewError("Unable to build preview from this result.");
+      return;
+    }
 
     setConfirmedSnapshot(snapshot);
     generatePreview(snapshot);

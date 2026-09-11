@@ -6,10 +6,24 @@ import api from '../api/api';
 import { assertPdfBlob, getApiErrorMessage } from '../utils/markingFormData';
 import { withPdfFetchRetry } from '../utils/studentPdfCache';
 import { sahahlyModelLabel } from '../utils/markingCost';
+import { isPublished } from '../utils/gradingStatus';
 import { usePageCountCheck, applyPageCountDecision } from '../hooks/usePageCountCheck';
 import PageCountCheckModal from './PageCountCheckModal';
 import './DrPeterIndexingTools.css';
 import { getIndexingUpload, subscribeIndexingUploads, startIndexingUpload } from '../utils/indexingUploads';
+
+/** Already has a draft, published result, or saved marking — never re-index-mark. */
+function isAlreadyCorrectedPartnerRow(student) {
+  return (
+    isPublished(student) ||
+    !!student?.hasDraft ||
+    !!student?.hasMarkingResult ||
+    !!student?.draftResult ||
+    !!student?.markingResult ||
+    !!student?.pendingEdits ||
+    !!student?.pendingEditsSavedAt
+  );
+}
 
 const INDEXING_MODEL_KEY = 'sahahly.indexing.gradeModel';
 const DEFAULT_INDEXING_MODEL = 'gemini-2.5-flash';
@@ -152,6 +166,34 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       let students=all.filter(s=>selected.has(String(s.submissionId)));
       if(students.length!==selected.size)throw new Error('Some selected students are no longer in this assignment. Refresh the viewer and select again.');
       if(students.length>60)throw new Error('Select at most 60 students per indexing run.');
+
+      // Same rule as normal Instant/Batch: never download, upload, or send
+      // already-corrected papers through indexing marking.
+      report('Skipping papers that are already corrected…');
+      const beforeCorrected = students.length;
+      if (classroom) {
+        const { data: eligibleRows } = await api.post('/submission-files/eligible-for-bulk-marking', {
+          assignmentId,
+          submissions: students,
+        }, { timeout: 60000 });
+        const eligibleIds = new Set((eligibleRows || []).map((row) => String(row.submissionId)));
+        students = students.filter((s) => eligibleIds.has(String(s.submissionId)));
+      } else {
+        students = students.filter((s) => !isAlreadyCorrectedPartnerRow(s));
+      }
+      const alreadyCorrected = beforeCorrected - students.length;
+      if (alreadyCorrected > 0) {
+        toast.info(
+          `Skipping ${alreadyCorrected} already corrected submission${alreadyCorrected === 1 ? '' : 's'} — not uploaded or re-marked`
+        );
+      }
+      if (!students.length) {
+        throw new Error(
+          beforeCorrected
+            ? 'All selected submissions are already corrected. Nothing was uploaded or marked.'
+            : 'No submissions left to mark.'
+        );
+      }
 
       report('Checking submission page counts…');
       const pageDecision = classroom

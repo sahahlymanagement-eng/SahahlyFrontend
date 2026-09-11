@@ -8,6 +8,7 @@
  * owner is the partner slug instead. See PartnerLogoPanel for the upload side.
  */
 const partnerLogoCache = new Map();
+const LOGO_TIMEOUT_MS = 12_000;
 
 /**
  * @param {object} api   axios instance
@@ -23,10 +24,13 @@ export async function loadPartnerLogoBytes(api, slug) {
         .get(`/report-logos/partner/${slug}`, {
           params: { variant: "pdf" },
           responseType: "arraybuffer",
+          timeout: LOGO_TIMEOUT_MS,
         })
         .then((r) => r.data)
         .catch((err) => {
-          if (err?.response?.status !== 404) {
+          // Never keep a rejected/hanging promise in cache — next open should retry.
+          partnerLogoCache.delete(slug);
+          if (err?.response?.status !== 404 && err?.code !== "ECONNABORTED") {
             console.warn("Unable to load partner PDF logo", err);
           }
           return null;
