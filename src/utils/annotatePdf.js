@@ -1790,6 +1790,9 @@ export async function annotatePdf({
   // Legacy callers may still pass totalMarks; cover totals are always recomputed.
   totalMarks: _totalMarksInput,
   teacherLogoBytes = null,
+  // Dedicated preview workers can run continuously without blocking the UI.
+  // Keep pdf-lib's cooperative scheduling for main-thread export callers.
+  dedicatedWorker = false,
 }) {
   const cleanedInput = dropGhostDuplicateQuestions(
     clearImplausiblePrintedQuestionNumbers(
@@ -1817,7 +1820,10 @@ export async function annotatePdf({
       : Math.max(1, Number(maxTotalMarks) || 1);
 
   const buf = await studentFile.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
+  const pdfDoc = await PDFDocument.load(buf, {
+    ignoreEncryption: true,
+    ...(dedicatedWorker ? { parseSpeed: Infinity } : {}),
+  });
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const sahahlyLogoBytes = await loadSahahlyLogoBytes();
@@ -2037,7 +2043,10 @@ export async function annotatePdf({
   // reference" in the submission viewer even though the in-memory document was
   // otherwise valid. The final-return path still runs Ghostscript compression;
   // previews favor reliable parsing over a temporary blob being a few KB smaller.
-  const rawBytes = await pdfDoc.save({ useObjectStreams: false });
+  const rawBytes = await pdfDoc.save({
+    useObjectStreams: false,
+    ...(dedicatedWorker ? { objectsPerTick: Infinity } : {}),
+  });
   const bytes = skipCompress
     ? rawBytes
     : await compressAnnotatedPdf(rawBytes);
