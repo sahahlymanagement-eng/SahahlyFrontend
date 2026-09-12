@@ -1,10 +1,26 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "react-toastify";
+import api from "../api/api";
+import { assertPdfBlob, getApiErrorMessage } from "../utils/markingFormData";
 import {
   PAPER_METADATA_FIELDS,
   paperMetadataDraft,
   paperMetadataPatch,
   hasPaperMetadata,
 } from "../constants/paperMetadataFields";
+import {
+  markSchemeUploadPath,
+  markSchemeFilePath,
+  providerMarkSchemePath,
+} from "../hooks/useGradingAssignmentSettings";
+
+/** Fetch a PDF through Sahahly (auth'd) and open it in a new tab as a blob. */
+async function openPdfInNewTab(path, label) {
+  const res = await api.get(path, { responseType: "blob", timeout: 60000 });
+  const file = new File([res.data], `${label}.pdf`, { type: "application/pdf" });
+  await assertPdfBlob(file, label);
+  window.open(URL.createObjectURL(file), "_blank", "noopener,noreferrer");
+}
 
 // Inline editor for a grading partner's per-assignment settings.
 //
@@ -25,12 +41,66 @@ import {
 const hasAnySetting = (s) =>
   s.expectedPages != null || s.maxGrade != null || hasPaperMetadata(s);
 
-export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
-  const { settings, saving, save } = state;
+export default function GradingAssignmentSettingsBar({ state, partnerGrade, provider, assignmentId }) {
+  const { settings, saving, save, refresh } = state;
   const [editing, setEditing] = useState(false);
   const [pagesInput, setPagesInput] = useState("");
   const [gradeInput, setGradeInput] = useState("");
   const [paperInputs, setPaperInputs] = useState(() => paperMetadataDraft(null));
+  const [viewingProviderMs, setViewingProviderMs] = useState(false);
+  const [viewingUploadedMs, setViewingUploadedMs] = useState(false);
+  const [uploadingMs, setUploadingMs] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const canManageMarkScheme = assignmentId != null;
+
+  const viewProviderMarkScheme = async () => {
+    setViewingProviderMs(true);
+    try {
+      await openPdfInNewTab(
+        providerMarkSchemePath(provider, assignmentId),
+        `mark-scheme-${assignmentId}`
+      );
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "No mark scheme found from the provider for this assignment");
+    } finally {
+      setViewingProviderMs(false);
+    }
+  };
+
+  const viewUploadedMarkScheme = async () => {
+    setViewingUploadedMs(true);
+    try {
+      await openPdfInNewTab(
+        markSchemeFilePath(provider, assignmentId),
+        `mark-scheme-${assignmentId}`
+      );
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to open the uploaded mark scheme");
+    } finally {
+      setViewingUploadedMs(false);
+    }
+  };
+
+  const pickMarkSchemeFile = () => fileInputRef.current?.click();
+
+  const uploadMarkScheme = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingMs(true);
+    try {
+      const fd = new FormData();
+      fd.append("markScheme", file);
+      await api.post(markSchemeUploadPath(provider, assignmentId), fd);
+      toast.success("Mark scheme uploaded — it will be used instead of the provider's for marking");
+      await refresh?.();
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to upload mark scheme");
+    } finally {
+      setUploadingMs(false);
+    }
+  };
 
   // Seed the drafts from the saved values on open, so the editor never shows a
   // stale draft from a previous edit or a different assignment.
@@ -74,6 +144,54 @@ export default function GradingAssignmentSettingsBar({ state, partnerGrade }) {
         flexWrap: "wrap",
       }}
     >
+      {canManageMarkScheme && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            style={{ display: "none" }}
+            onChange={uploadMarkScheme}
+          />
+          <button
+            className="ma-send-btn"
+            style={{ fontSize: 11, padding: "4px 10px" }}
+            onClick={viewProviderMarkScheme}
+            disabled={viewingProviderMs}
+            title="Open the mark scheme the provider attached to this assignment"
+          >
+            {viewingProviderMs ? "Opening…" : "📖 View provider mark scheme"}
+          </button>
+          <button
+            className="ma-send-btn"
+            style={{ fontSize: 11, padding: "4px 10px" }}
+            onClick={pickMarkSchemeFile}
+            disabled={uploadingMs}
+            title="Upload a mark scheme from our side — overrides the provider's for marking"
+          >
+            {uploadingMs
+              ? "Uploading…"
+              : settings.ourMarkSchemeAvailable
+              ? "🔁 Replace uploaded mark scheme"
+              : "⬆️ Upload mark scheme"}
+          </button>
+          {settings.ourMarkSchemeAvailable && (
+            <button
+              className="ma-send-btn"
+              style={{ fontSize: 11, padding: "4px 10px" }}
+              onClick={viewUploadedMarkScheme}
+              disabled={viewingUploadedMs}
+              title={
+                settings.ourMarkSchemeUploadedAt
+                  ? `Uploaded ${new Date(settings.ourMarkSchemeUploadedAt).toLocaleString()}`
+                  : undefined
+              }
+            >
+              {viewingUploadedMs ? "Opening…" : "👁 View uploaded PDF"}
+            </button>
+          )}
+        </>
+      )}
       {!editing ? (
         <>
           {chip("📄 Expected pages:", settings.expectedPages, "")}

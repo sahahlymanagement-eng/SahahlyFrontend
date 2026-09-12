@@ -261,6 +261,10 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   // entirely and the assignment list behaves exactly as it did before.
   const [classes, setClasses] = useState([]);
   const [classSearch, setClassSearch] = useState("");
+  // Shared between the two group-name pick lists ("By School"'s sub-group
+  // step and the top-level "By Group" tab) — they're never both on screen at
+  // once, same reasoning as reusing classSearch across groupBy modes.
+  const [groupSearch, setGroupSearch] = useState("");
 
   // ── "Assign Assistant to Class" (a provider-manager sub-delegating an
   // Assistant - <this provider> to one class within an assignment they
@@ -274,18 +278,30 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     deadline: "",
   });
   const [savingAssistantAssignment, setSavingAssistantAssignment] = useState(false);
-  // { groupId, groupName } — groupId is null for the synthetic "No class"
-  // bucket (assignments predating the classroom field, or never assigned to
-  // one). Two-step drill-down mirroring ManagerSubmissionViewer's
-  // classroom -> assignment flow, not a filter you can clear.
+  // { schoolKey, schoolName, ... } — schoolKey is null for the synthetic "No
+  // class" bucket (assignments predating the classroom field, or never
+  // assigned to one). First step of the "By School" (groupBy "class") drill:
+  // School -> Sub-group -> Assignment.
   const [selectedClass, setSelectedClass] = usePersistedState(`${workflowKey}:class`, null);
+  // { groupKey, groupName, groupIds, ... } — the sub-group step WITHIN the
+  // selected school (groupBy "class" only). groupIds is every real
+  // classroom.group_id sharing this normalized group_name inside this one
+  // school (see buildGroupOptions) — a school can mint more than one group_id
+  // for what a teacher displays as the same group name, same duplication
+  // pattern normalizeSchoolName already works around for schools.
+  const [selectedSchoolGroup, setSelectedSchoolGroup] = usePersistedState(`${workflowKey}:schoolGroup`, null);
+  // Same shape as selectedSchoolGroup, but for groupBy "group": groupIds there
+  // spans every school whose groups share this normalized name, not just one
+  // school's — "all groups named 1A" network-wide.
+  const [selectedTopGroup, setSelectedTopGroup] = usePersistedState(`${workflowKey}:topGroup`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`${workflowKey}:assignment`, null);
-  // "class" (default) drills Class -> Assignment, as above. "assignment"
-  // skips the class step entirely and lists one row per assignment id,
-  // summed across every class it was given to — for a multi-class assignment
-  // (IGSpaces lets a teacher post one assignment to several classes at once)
-  // that's the whole thing to batch-mark in one go, rather than hunting it
-  // down class by class and marking each slice separately.
+  // "class" (default, labeled "By School" in the UI) drills School -> Sub-
+  // group -> Assignment. "group" drills Group -> Assignment, merging every
+  // school's sub-group of that name into one bucket. "assignment" skips both
+  // and lists one row per assignment id, summed across every class it was
+  // given to — for a multi-class assignment (IGSpaces lets a teacher post one
+  // assignment to several classes at once) that's the whole thing to batch-mark
+  // in one go, rather than hunting it down class by class.
   const [groupBy, setGroupBy] = usePersistedState(`${workflowKey}:groupBy`, "class");
   // Read by loadAll and the mount effect so neither has to re-create itself
   // every time the selection changes. Seeded with the persisted value, then
@@ -972,6 +988,26 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     }
   }, [BASE]);
 
+  // Which group(s) an assignment row's submissions should be narrowed to, as
+  // the `classroomGroupId` param the backend already understands (a single
+  // numeric id, OR a comma-separated list — see buildFilter in
+  // gradingSubmissionQuery.js). A raw "By Class" row (single real group_id) and
+  // an "By Assignment"/collapsed-across-everything row (classroom null by
+  // construction) both predate this; a "By School" sub-group or "By Group" row
+  // carries `classroom.groupIds` instead — one or more real group_ids merged
+  // under one display name (see buildGroupOptions) — and all of them, not just
+  // one, must be excluded from the fetch or a merged bucket would silently
+  // drop half its own submissions.
+  function classroomGroupIdParam(assignment) {
+    if (assignment.classroom?.group_id != null) {
+      return { classroomGroupId: assignment.classroom.group_id };
+    }
+    if (assignment.classroom?.groupIds?.length) {
+      return { classroomGroupId: assignment.classroom.groupIds.join(",") };
+    }
+    return {};
+  }
+
   // ONE page of ONE assignment's submissions.
   //
   // Paged on the server rather than downloading the assignment and slicing in
@@ -989,13 +1025,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
       const { data } = await api.get(`${BASE}/submissions`, {
         params: {
           ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
-          // Only a "By Class" row carries a real classroom (the collapsed
-          // "By Assignment" row's is null by construction) — narrows the
-          // fetch to that one class instead of every class the assignment
-          // was given to.
-          ...(assignment.classroom?.group_id != null
-            ? { classroomGroupId: assignment.classroom.group_id }
-            : {}),
+          ...classroomGroupIdParam(assignment),
           page: pageNum,
           per_page: PER_PAGE,
         },
@@ -1037,11 +1067,10 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     const { data } = await api.get(`${BASE}/submissions`, {
       params: {
         ...(assignment.id != null ? { assignmentId: assignment.id } : {}),
-        // See loadAssignmentSubmissions — same class scoping, so bulk/batch
-        // marking from a "By Class" row only ever touches that class.
-        ...(assignment.classroom?.group_id != null
-          ? { classroomGroupId: assignment.classroom.group_id }
-          : {}),
+        // See classroomGroupIdParam / loadAssignmentSubmissions — same
+        // scoping, so bulk/batch marking from a School/Group row only ever
+        // touches that sub-group's submissions.
+        ...classroomGroupIdParam(assignment),
         per_page: 1000,
       },
       timeout: 120000,
@@ -2375,6 +2404,9 @@ toast.success("Result cleared — you can mark again");
 
   const selectClass = (c) => {
     setSelectedClass(c);
+    // A school picked under the old selection doesn't carry its sub-group over
+    // — a different school has a different set of groups.
+    setSelectedSchoolGroup(null);
     setSelectedAssignment(null);
     setAssignmentSearch("");
     setAssignmentPage(1);
@@ -2382,6 +2414,45 @@ toast.success("Result cleared — you can mark again");
 
   const backToClasses = () => {
     setSelectedClass(null);
+    setSelectedSchoolGroup(null);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+    setSearch("");
+    setPage(1);
+    applySearchRoster(null);
+    setSubmissions([]);
+  };
+
+  const selectSchoolGroup = (g) => {
+    setSelectedSchoolGroup(g);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+  };
+
+  // Back up ONE level — to the sub-group list within the same school — rather
+  // than all the way to the school list (that's backToClasses).
+  const backToSchoolGroups = () => {
+    setSelectedSchoolGroup(null);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+    setSearch("");
+    setPage(1);
+    applySearchRoster(null);
+    setSubmissions([]);
+  };
+
+  const selectTopGroup = (g) => {
+    setSelectedTopGroup(g);
+    setSelectedAssignment(null);
+    setAssignmentSearch("");
+    setAssignmentPage(1);
+  };
+
+  const backToTopGroups = () => {
+    setSelectedTopGroup(null);
     setSelectedAssignment(null);
     setAssignmentSearch("");
     setAssignmentPage(1);
@@ -2394,9 +2465,11 @@ toast.success("Result cleared — you can mark again");
   const switchGroupBy = (mode) => {
     if (mode === groupBy) return;
     setGroupBy(mode);
-    // A class/assignment picked under the old grouping doesn't carry over —
-    // "By Assignment" has no class step, and "By Class" needs one re-picked.
+    // A class/group/assignment picked under the old grouping doesn't carry
+    // over — each mode has its own drill-down step(s) to re-pick.
     setSelectedClass(null);
+    setSelectedSchoolGroup(null);
+    setSelectedTopGroup(null);
     setSelectedAssignment(null);
     setAssignmentSearch("");
     setAssignmentPage(1);
@@ -2436,23 +2509,36 @@ toast.success("Result cleared — you can mark again");
     return trimmed ? trimmed.toLowerCase() : null;
   }
 
+  // Same duplicate-minting behaviour as school_name/school_id, one level
+  // down: a partner can reuse a group display name ("1A") across several
+  // distinct group_ids (a fresh one per cohort/intake, same as schools). Every
+  // group-level grouping below — the "By School" sub-group step AND the
+  // top-level "By Group" tab — keys on this normalized NAME so all of them
+  // merge into one bucket instead of scattering across near-duplicate rows.
+  function normalizeGroupName(name) {
+    const trimmed = (name || "").trim();
+    return trimmed ? trimmed.toLowerCase() : null;
+  }
+
   // One row per assignment id, count/graded/marked summed across every input
   // row that shares that id (assignmentIndex carries one row per (assignment,
   // group) — see gradingSubmissionQuery.js's listAssignmentSummary). Used by
-  // BOTH "By Assignment" mode (collapses across every class network-wide) and
-  // the "By Class" school step below (collapses across every group WITHIN one
-  // school — a school can have several groups, e.g. "1A"/"1B"/"1C" all under
-  // school_name "Gp1", and the group-level distinction is not shown to the
-  // user at all, so an assignment given to three of that school's groups must
-  // still appear as exactly one row here, not three).
+  // "By Assignment" mode (collapses across every class network-wide, `{ type:
+  // "all" }`) and by both group-scoped views — the "By School" sub-group step
+  // and the top-level "By Group" tab (`{ type: "group", groupKey, groupIds }`,
+  // groupIds being every real classroom.group_id merged under that one
+  // display name — see buildGroupOptions) — so an assignment given to several
+  // of the merged group_ids still appears as exactly one row here.
   //
-  // `scope` tags which collapse this is so a later re-open
-  // (selectedAssignmentStats) knows the right subset to re-derive stats from:
-  // `{ type: "all" }` sums across the WHOLE assignmentIndex; `{ type: "school",
-  // schoolKey }` (normalizeSchoolName's output) sums every row from every
-  // school_id sharing that name.
+  // `scope` also rides along as `collapseScope` on every produced row, and its
+  // `groupIds` becomes the row's `classroom.groupIds` — see
+  // classroomGroupIdParam, which is what actually narrows the submissions
+  // fetch to this bucket once the row is opened. A `{ type: "all" }` row keeps
+  // `classroom: null`, unchanged from before: opening it still means "every
+  // class this assignment was given to", not narrowed to anything.
   function collapseAssignments(rows, scope) {
-    const scopeKey = scope.type === "school" ? `school:${scope.schoolKey ?? "none"}` : "__all__";
+    const scopeKey = scope.type === "group" ? `group:${scope.groupKey ?? "none"}` : "__all__";
+    const scopeClassroom = scope.type === "group" ? { groupIds: scope.groupIds } : null;
     const byId = new Map();
     for (const a of rows) {
       const mapKey = a.id != null ? String(a.id) : "__none__";
@@ -2461,7 +2547,7 @@ toast.success("Result cleared — you can mark again");
         byId.set(mapKey, {
           ...a,
           key: a.id != null ? `${a.id}:${scopeKey}` : "__none__",
-          classroom: null,
+          classroom: scopeClassroom,
           classCount: 1,
           count: a.count ?? 0,
           graded: a.graded ?? 0,
@@ -2478,11 +2564,13 @@ toast.success("Result cleared — you can mark again");
     return [...byId.values()];
   }
 
-  // Picking a row from either collapsed list opens the same cross-class
-  // submission set (the backend filters submissions by assignmentId alone,
-  // never by class), so collapsing is purely a faster way to FIND the
-  // assignment when you want to work — or batch-mark — the whole thing rather
-  // than one group's slice of it.
+  // Picking a row from the "By Assignment" list opens the same cross-class
+  // submission set (classroom stays null — see collapseAssignments), so
+  // collapsing there is purely a faster way to FIND the assignment when you
+  // want to work — or batch-mark — the whole thing rather than one group's
+  // slice of it. A group-scoped row (School sub-group / top-level Group) is
+  // different: opening it DOES narrow the fetch, to exactly its merged
+  // group_ids.
   const collapsedByAssignment = useMemo(
     () => collapseAssignments(assignments, { type: "all" }),
     [assignments]
@@ -2501,7 +2589,7 @@ toast.success("Result cleared — you can mark again");
       const scope = selectedAssignment.collapseScope;
       const rows = assignmentIndex.filter((a) => {
         if (a.id !== selectedAssignment.id) return false;
-        if (scope.type === "school") return normalizeSchoolName(a.classroom?.school_name) === scope.schoolKey;
+        if (scope.type === "group") return scope.groupIds?.includes(a.classroom?.group_id);
         return true;
       });
       if (!rows.length) return selectedAssignment;
@@ -2512,7 +2600,7 @@ toast.success("Result cleared — you can mark again");
           graded: acc.graded + (r.graded ?? 0),
           marked: acc.marked + (r.marked ?? 0),
         }),
-        { ...rows[0], key: selectedAssignment.key, classroom: null, count: 0, graded: 0, marked: 0 }
+        { ...rows[0], key: selectedAssignment.key, classroom: selectedAssignment.classroom, count: 0, graded: 0, marked: 0 }
       );
     }
 
@@ -2595,6 +2683,67 @@ toast.success("Result cleared — you can mark again");
     ? classOptions.filter((c) => c.schoolName.toLowerCase().includes(cq))
     : classOptions;
 
+  // Sub-group options for a set of assignment-index rows, keyed by normalized
+  // group_name (normalizeGroupName) exactly the way classOptions keys by
+  // normalized school_name — merging every real classroom.group_id that
+  // shares a display name into one bucket. Used for BOTH the "By School"
+  // sub-group step (rows pre-filtered to one school) and the top-level "By
+  // Group" tab (rows = every assignment network-wide).
+  //
+  // Rows with no group_id are skipped rather than given a synthetic "No
+  // group" bucket (contrast classOptions' "No class"): there is no group_id
+  // left to narrow the submissions fetch to, so a merged bucket for them
+  // could only ever show the same "every class" result "By Assignment"
+  // already gives — they remain reachable there instead.
+  function buildGroupOptions(rows) {
+    const map = new Map();
+    for (const a of rows) {
+      const groupId = a.classroom?.group_id;
+      if (groupId == null) continue;
+      const rawName = a.classroom?.group_name;
+      const key = normalizeGroupName(rawName) ?? `id:${groupId}`;
+      const entry = map.get(key) || {
+        groupName: rawName || `Group #${groupId}`,
+        groupIds: new Set(),
+        assignmentIds: new Set(),
+        submissionCount: 0,
+      };
+      entry.groupIds.add(groupId);
+      if (a.id != null) entry.assignmentIds.add(a.id);
+      entry.submissionCount += a.count ?? 0;
+      map.set(key, entry);
+    }
+    return [...map.entries()]
+      .map(([groupKey, entry]) => ({
+        groupKey,
+        groupName: entry.groupName,
+        groupIds: [...entry.groupIds],
+        assignmentCount: entry.assignmentIds.size,
+        submissionCount: entry.submissionCount,
+      }))
+      .sort((a, b) => a.groupName.localeCompare(b.groupName));
+  }
+
+  const schoolGroupOptions = useMemo(() => {
+    if (!selectedClass) return [];
+    const rows = assignments.filter(
+      (a) => normalizeSchoolName(a.classroom?.school_name) === selectedClass.schoolKey
+    );
+    return buildGroupOptions(rows);
+  }, [assignments, selectedClass]);
+
+  // Every group, network-wide — "all groups named 1A" regardless of which
+  // school they belong to. Powers the top-level "By Group" tab.
+  const topGroupOptions = useMemo(() => buildGroupOptions(assignments), [assignments]);
+
+  const gq = groupSearch.trim().toLowerCase();
+  const filteredSchoolGroupOptions = gq
+    ? schoolGroupOptions.filter((g) => g.groupName.toLowerCase().includes(gq))
+    : schoolGroupOptions;
+  const filteredTopGroupOptions = gq
+    ? topGroupOptions.filter((g) => g.groupName.toLowerCase().includes(gq))
+    : topGroupOptions;
+
   // 'loading' avoids flashing the assignment list before classes are known to
   // exist at all (see the mount effect); 'skip' means nothing to group by —
   // no synced classes and every assignment is classless — so the picker
@@ -2608,33 +2757,67 @@ toast.success("Result cleared — you can mark again");
     loadingClasses || loadingAssignments ? "loading" : classOptions.length > 0 ? "show" : "skip";
   // The groupBy toggle only makes sense when there's actually a class
   // dimension to switch away from ("skip" means every assignment is
-  // classless already, so "By Class"/"By Assignment" would be identical).
+  // classless already, so every mode would be identical) — in which case the
+  // assignment list falls back to the flat, ungrouped `assignments`, exactly
+  // as it did before this feature existed.
   const canGroupByAssignment = classStepStatus !== "skip";
-  const showClassStep = classStepStatus === "show" && (groupBy !== "assignment" || !canGroupByAssignment);
+  // "By School" (groupBy "class"): School -> Sub-group -> Assignment.
+  const showSchoolFlow = classStepStatus === "show" && groupBy === "class";
+  // "By Group": Group -> Assignment, merged across every school.
+  const showTopGroupFlow = classStepStatus === "show" && groupBy === "group";
 
-  // Selecting a school collapses its assignments across every one of that
-  // school's groups (see the doc comment above statsBySchool) rather than
-  // listing one row per (assignment, group) — the group split is never shown
-  // to the user in this flow, so a duplicate-looking row per group would just
-  // be confusing.
-  const schoolFilteredAssignments = useMemo(() => {
-    if (!selectedClass) return [];
+  // The assignment list scoped to exactly the selected sub-group WITHIN the
+  // selected school — not collapsed across the whole school like the old "By
+  // Class" behaviour, so opening an assignment here only ever touches this
+  // one sub-group's submissions (classroomGroupIdParam reads the `groupIds`
+  // collapseAssignments attaches).
+  const schoolGroupFilteredAssignments = useMemo(() => {
+    if (!selectedClass || !selectedSchoolGroup) return [];
     const rows = assignments.filter(
-      (a) => normalizeSchoolName(a.classroom?.school_name) === selectedClass.schoolKey
+      (a) =>
+        normalizeSchoolName(a.classroom?.school_name) === selectedClass.schoolKey &&
+        selectedSchoolGroup.groupIds.includes(a.classroom?.group_id)
     );
-    return collapseAssignments(rows, { type: "school", schoolKey: selectedClass.schoolKey });
-  }, [assignments, selectedClass]);
+    return collapseAssignments(rows, {
+      type: "group",
+      groupKey: selectedSchoolGroup.groupKey,
+      groupIds: selectedSchoolGroup.groupIds,
+    });
+  }, [assignments, selectedClass, selectedSchoolGroup]);
+
+  // Same idea, but for the top-level "By Group" tab: every assignment from
+  // every school whose group shares this normalized name.
+  const topGroupFilteredAssignments = useMemo(() => {
+    if (!selectedTopGroup) return [];
+    const rows = assignments.filter((a) => selectedTopGroup.groupIds.includes(a.classroom?.group_id));
+    return collapseAssignments(rows, {
+      type: "group",
+      groupKey: selectedTopGroup.groupKey,
+      groupIds: selectedTopGroup.groupIds,
+    });
+  }, [assignments, selectedTopGroup]);
 
   const aq = assignmentSearch.trim().toLowerCase();
-  const classFiltered =
-    groupBy === "assignment" && canGroupByAssignment
+  const classFiltered = !canGroupByAssignment
+    ? assignments
+    : groupBy === "assignment"
       ? collapsedByAssignment
-      : showClassStep
-        ? schoolFilteredAssignments
-        : assignments;
+      : showTopGroupFlow
+        ? (selectedTopGroup ? topGroupFilteredAssignments : [])
+        : (selectedClass && selectedSchoolGroup ? schoolGroupFilteredAssignments : []);
   const filteredAssignments = aq
     ? classFiltered.filter((a) => (a.name || "").toLowerCase().includes(aq))
     : classFiltered;
+
+  // Whether the assignment picker (list or collapsed chip) renders at all —
+  // only once every step ahead of it in the active mode has been resolved:
+  // no class dimension at all, "By Assignment" (no steps ahead of it), or
+  // past BOTH steps of "By School" / the one step of "By Group".
+  const showAssignmentStep =
+    !canGroupByAssignment ||
+    groupBy === "assignment" ||
+    (showSchoolFlow && !!selectedClass && !!selectedSchoolGroup) ||
+    (showTopGroupFlow && !!selectedTopGroup);
 
   // Client-side pagination of the assignment selection list (search filters the
   // whole list first, then we slice into pages).
@@ -2815,7 +2998,7 @@ toast.success("Result cleared — you can mark again");
             {/* Neither list is known yet — avoids flashing the assignment
                 picker for an instant before the class step (once loaded)
                 turns out to apply and replaces it. */}
-            {classStepStatus === "loading" && !selectedClass && !selectedAssignment ? (
+            {classStepStatus === "loading" && !selectedClass && !selectedTopGroup && !selectedAssignment ? (
               <div className="ma-column">
                 <p className="ma-section-label msv-section-header-expanded">▼ Select Class</p>
                 <p className="ma-loading-msg">Loading…</p>
@@ -2833,8 +3016,17 @@ toast.success("Result cleared — you can mark again");
                   type="button"
                   className={`msv-groupby-btn${groupBy === "class" ? " active" : ""}`}
                   onClick={() => switchGroupBy("class")}
+                  title="School -> sub-group -> assignment, scoped to exactly that sub-group's submissions"
                 >
-                  By Class
+                  By School
+                </button>
+                <button
+                  type="button"
+                  className={`msv-groupby-btn${groupBy === "group" ? " active" : ""}`}
+                  onClick={() => switchGroupBy("group")}
+                  title="Every sub-group sharing a display name (e.g. every '1A'), merged across schools"
+                >
+                  By Group
                 </button>
                 <button
                   type="button"
@@ -2846,18 +3038,18 @@ toast.success("Result cleared — you can mark again");
                 </button>
               </div>
             )}
-            {/* ── CLASS SELECTION ──
+            {/* ── SCHOOL SELECTION (groupBy "class" / "By School") ──
                 IGSpaces-connected providers only (mariamgabalawy, drpeter) —
                 skipped entirely when there is nothing to group by (LoginCSS,
-                or a provider whose discovery sync hasn't run yet), or when
-                groupBy is "assignment" (see canGroupByAssignment above). */}
-            {showClassStep && (
+                or a provider whose discovery sync hasn't run yet), or when a
+                different tab is active. */}
+            {showSchoolFlow && (
               !selectedClass ? (
                 <div className="ma-column">
-                  <p className="ma-section-label msv-section-header-expanded">▼ Select Class</p>
+                  <p className="ma-section-label msv-section-header-expanded">▼ Select School</p>
                   <input
                     className="ma-search-input"
-                    placeholder="Search classes..."
+                    placeholder="Search schools..."
                     value={classSearch}
                     onChange={(e) => setClassSearch(e.target.value)}
                   />
@@ -2866,7 +3058,7 @@ toast.success("Result cleared — you can mark again");
                       <p className="ma-loading-msg">Loading…</p>
                     ) : filteredClassOptions.length === 0 ? (
                       <p className="ma-empty-msg">
-                        {classSearch ? "No classes match your search." : "No classes found."}
+                        {classSearch ? "No schools match your search." : "No schools found."}
                       </p>
                     ) : (
                       filteredClassOptions.map((c) => (
@@ -2898,7 +3090,7 @@ toast.success("Result cleared — you can mark again");
                   tabIndex={0}
                 >
                   <span className="msv-section-collapsed-chevron">▶</span>
-                  <span className="msv-section-collapsed-text">Class: {selectedClass.schoolName}</span>
+                  <span className="msv-section-collapsed-text">School: {selectedClass.schoolName}</span>
                   <button
                     type="button"
                     className="msv-section-change"
@@ -2910,8 +3102,126 @@ toast.success("Result cleared — you can mark again");
               )
             )}
 
+            {/* ── SUB-GROUP SELECTION, WITHIN THE SELECTED SCHOOL (groupBy "class") ── */}
+            {showSchoolFlow && selectedClass && (
+              !selectedSchoolGroup ? (
+                <div className="ma-column">
+                  <p className="ma-section-label msv-section-header-expanded">▼ Select Group</p>
+                  <input
+                    className="ma-search-input"
+                    placeholder="Search groups..."
+                    value={groupSearch}
+                    onChange={(e) => setGroupSearch(e.target.value)}
+                  />
+                  <div className="ma-scroll-list">
+                    {filteredSchoolGroupOptions.length === 0 ? (
+                      <p className="ma-empty-msg">
+                        {groupSearch ? "No groups match your search." : "No groups found in this school."}
+                      </p>
+                    ) : (
+                      filteredSchoolGroupOptions.map((g) => (
+                        <div
+                          key={g.groupKey}
+                          className="ma-classroom-card"
+                          onClick={() => selectSchoolGroup(g)}
+                        >
+                          <div className="ma-classroom-icon"><FiUsers size={15} /></div>
+                          <div className="ma-classroom-info">
+                            <span className="ma-classroom-name">{g.groupName}</span>
+                            <span className="ma-classroom-section">
+                              {g.assignmentCount} assignment{g.assignmentCount === 1 ? "" : "s"}
+                              {" · "}
+                              {g.submissionCount} submission{g.submissionCount === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="msv-section-collapsed"
+                  onClick={backToSchoolGroups}
+                  onKeyDown={(e) => e.key === "Enter" && backToSchoolGroups()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="msv-section-collapsed-chevron">▶</span>
+                  <span className="msv-section-collapsed-text">Group: {selectedSchoolGroup.groupName}</span>
+                  <button
+                    type="button"
+                    className="msv-section-change"
+                    onClick={(e) => { e.stopPropagation(); backToSchoolGroups(); }}
+                  >
+                    [change]
+                  </button>
+                </div>
+              )
+            )}
+
+            {/* ── GROUP SELECTION, NETWORK-WIDE (groupBy "group" / "By Group") ── */}
+            {showTopGroupFlow && (
+              !selectedTopGroup ? (
+                <div className="ma-column">
+                  <p className="ma-section-label msv-section-header-expanded">▼ Select Group</p>
+                  <input
+                    className="ma-search-input"
+                    placeholder="Search groups..."
+                    value={groupSearch}
+                    onChange={(e) => setGroupSearch(e.target.value)}
+                  />
+                  <div className="ma-scroll-list">
+                    {loadingAssignments && !topGroupOptions.length ? (
+                      <p className="ma-loading-msg">Loading…</p>
+                    ) : filteredTopGroupOptions.length === 0 ? (
+                      <p className="ma-empty-msg">
+                        {groupSearch ? "No groups match your search." : "No groups found."}
+                      </p>
+                    ) : (
+                      filteredTopGroupOptions.map((g) => (
+                        <div
+                          key={g.groupKey}
+                          className="ma-classroom-card"
+                          onClick={() => selectTopGroup(g)}
+                        >
+                          <div className="ma-classroom-icon"><FiUsers size={15} /></div>
+                          <div className="ma-classroom-info">
+                            <span className="ma-classroom-name">{g.groupName}</span>
+                            <span className="ma-classroom-section">
+                              {g.assignmentCount} assignment{g.assignmentCount === 1 ? "" : "s"}
+                              {" · "}
+                              {g.submissionCount} submission{g.submissionCount === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="msv-section-collapsed"
+                  onClick={backToTopGroups}
+                  onKeyDown={(e) => e.key === "Enter" && backToTopGroups()}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <span className="msv-section-collapsed-chevron">▶</span>
+                  <span className="msv-section-collapsed-text">Group: {selectedTopGroup.groupName}</span>
+                  <button
+                    type="button"
+                    className="msv-section-change"
+                    onClick={(e) => { e.stopPropagation(); backToTopGroups(); }}
+                  >
+                    [change]
+                  </button>
+                </div>
+              )
+            )}
+
             {/* ── ASSIGNMENT SELECTION ── */}
-            {(!showClassStep || selectedClass) && (
+            {showAssignmentStep && (
               !selectedAssignment ? (
                 <div className="ma-column">
                   <p className="ma-section-label msv-section-header-expanded">
@@ -2919,9 +3229,11 @@ toast.success("Result cleared — you can mark again");
                     <span className="ma-panel-count" style={{ marginLeft: 8 }}>
                       {filteredAssignments.length} assignment{filteredAssignments.length === 1 ? "" : "s"}
                       {" · "}
-                      {showClassStep
-                        ? statsBySchool.get(selectedClass?.schoolKey ?? null)?.submissionCount ?? 0
-                        : listTotal}{" "}
+                      {showSchoolFlow
+                        ? selectedSchoolGroup?.submissionCount ?? 0
+                        : showTopGroupFlow
+                          ? selectedTopGroup?.submissionCount ?? 0
+                          : listTotal}{" "}
                       submissions
                     </span>
                   </p>
@@ -2940,7 +3252,7 @@ toast.success("Result cleared — you can mark again");
                       </p>
                     ) : filteredAssignments.length === 0 ? (
                       <p className="ma-empty-msg">
-                        {assignmentSearch ? "No assignments match your search." : "No assignments in this class."}
+                        {assignmentSearch ? "No assignments match your search." : "No assignments here."}
                       </p>
                     ) : (
                       visibleAssignments.map((a) => (
@@ -2955,7 +3267,9 @@ toast.success("Result cleared — you can mark again");
                             <span className="ma-assignment-due">
                               {a.id != null ? `#${a.id} · ` : ""}
                               {a.count} submission{a.count === 1 ? "" : "s"}
-                              {a.classCount > 1 ? ` across ${a.classCount} classes` : ""}
+                              {a.classCount > 1
+                                ? ` across ${a.classCount} ${a.collapseScope?.type === "group" ? "sub-groups" : "classes"}`
+                                : ""}
                               {a.grade != null ? ` · /${a.grade}` : ""}
                               {a.dueDate ? (
                                 <>
@@ -3249,6 +3563,8 @@ toast.success("Result cleared — you can mark again");
                   <GradingAssignmentSettingsBar
                     state={assignmentSettings}
                     partnerGrade={selectedAssignment.grade ?? null}
+                    provider={PROVIDER}
+                    assignmentId={selectedAssignment.id}
                   />
                 )}
 

@@ -35,22 +35,48 @@ const EMPTY = {
   paperNumber: null,
   inventoryMaxMarks: null,
   inventoryItemCount: 0,
+  ourMarkSchemeAvailable: false,
+  ourMarkSchemeFileName: null,
+  ourMarkSchemeUploadedAt: null,
 };
 
-/** Editable fields the PUT endpoint accepts (inventory* are read-only from the server). */
+/** Editable fields the PUT endpoint accepts (inventory / ourMarkScheme fields are read-only from the server). */
 const EDITABLE_FIELDS = ["expectedPages", "maxGrade", "board", "paperCode", "paperNumber"];
 
 /** Every field the GET endpoint may return. */
-const FIELDS = [...EDITABLE_FIELDS, "inventoryMaxMarks", "inventoryItemCount"];
+const FIELDS = [
+  ...EDITABLE_FIELDS,
+  "inventoryMaxMarks",
+  "inventoryItemCount",
+  "ourMarkSchemeAvailable",
+  "ourMarkSchemeFileName",
+  "ourMarkSchemeUploadedAt",
+];
 
-/** Pick the known fields out of a response, defaulting each to null / 0. */
+/** Pick the known fields out of a response, defaulting each to null / 0 / false. */
 function readSettings(data) {
   return Object.fromEntries(
     FIELDS.map((f) => [
       f,
-      data?.[f] ?? (f === "inventoryItemCount" ? 0 : null),
+      data?.[f] ?? (f === "inventoryItemCount" ? 0 : f === "ourMarkSchemeAvailable" ? false : null),
     ])
   );
+}
+
+// `provider` null/undefined = LoginCSS; any slug goes through /grading/:provider.
+// Shared by the settings hook below and GradingAssignmentSettingsBar's mark-
+// scheme buttons, so both agree on where the assignment's mark-scheme
+// endpoints live.
+export function markSchemeUploadPath(provider, assignmentId) {
+  return provider
+    ? `/grading/${provider}/assignments/${assignmentId}/mark-scheme`
+    : `/external-grading/assignments/${assignmentId}/mark-scheme`;
+}
+export function markSchemeFilePath(provider, assignmentId) {
+  return `${markSchemeUploadPath(provider, assignmentId)}/file`;
+}
+export function providerMarkSchemePath(provider, assignmentId) {
+  return `${markSchemeUploadPath(provider, assignmentId)}/provider`;
 }
 
 /**
@@ -111,9 +137,13 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
             ...prev,
             [assignmentId]: {
               ...next,
-              // PUT does not re-emit inventory fields — keep the last GET values.
+              // PUT does not re-emit inventory/mark-scheme fields — keep the
+              // last GET values.
               inventoryMaxMarks: next.inventoryMaxMarks ?? prevRow.inventoryMaxMarks,
               inventoryItemCount: next.inventoryItemCount || prevRow.inventoryItemCount,
+              ourMarkSchemeAvailable: prevRow.ourMarkSchemeAvailable,
+              ourMarkSchemeFileName: prevRow.ourMarkSchemeFileName,
+              ourMarkSchemeUploadedAt: prevRow.ourMarkSchemeUploadedAt,
             },
           };
         });
@@ -129,5 +159,17 @@ export function useGradingAssignmentSettings(provider, assignmentId, initial) {
     [provider, assignmentId]
   );
 
-  return { settings, saving, save };
+  // Re-fetch from the server — used after uploading a mark scheme, since that
+  // goes through its own multipart endpoint rather than `save` above.
+  const refresh = useCallback(async () => {
+    if (assignmentId == null) return;
+    try {
+      const { data } = await api.get(gradingSettingsPath(provider, assignmentId));
+      setByAssignment((prev) => ({ ...prev, [assignmentId]: readSettings(data) }));
+    } catch {
+      // Same rationale as the initial load above: never surface this.
+    }
+  }, [provider, assignmentId]);
+
+  return { settings, saving, save, refresh };
 }
