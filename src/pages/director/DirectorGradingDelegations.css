@@ -1,7 +1,91 @@
 /* Extras for the grading-partner delegation page. The page reuses the shared
    .dm-* director table styling (DirectorClassroomManagers.css); everything here
    is what that sheet has no equivalent for: the partner tab strip, the delegate
-   tags, and the three-control assign cell. */
+   tags, the three-control assign cell, and the provider-defaults section. */
+
+/* ─── Provider defaults ─── */
+
+.dgd-defaults {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+
+.dgd-defaults-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.dgd-defaults-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+
+.dgd-defaults-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.dgd-defaults-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 76ch;
+}
+
+.dgd-defaults-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.dgd-defaults-field {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.dgd-defaults-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.dgd-defaults-save {
+  align-self: flex-end;
+}
+
+.dgd-defaults-current {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .dgd-defaults-grid {
+    flex-direction: column;
+  }
+
+  .dgd-defaults-field,
+  .dgd-defaults-save {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
 
 .dgd-tabs {
   display: flex;
