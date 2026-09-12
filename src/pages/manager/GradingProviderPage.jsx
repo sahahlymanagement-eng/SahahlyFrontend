@@ -3563,6 +3563,8 @@ toast.success("Result cleared — you can mark again");
                   <GradingAssignmentSettingsBar
                     state={assignmentSettings}
                     partnerGrade={selectedAssignment.grade ?? null}
+                    provider={PROVIDER}
+                    assignmentId={selectedAssignment.id}
                   />
                 )}
 

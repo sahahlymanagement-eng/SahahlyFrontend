@@ -2490,6 +2490,8 @@ export default function ManagerLoginCss() {
                   <GradingAssignmentSettingsBar
                     state={assignmentSettings}
                     partnerGrade={selectedAssignment.grade ?? null}
+                    provider={PROVIDER}
+                    assignmentId={selectedAssignment.id}
                   />
                 )}
 
