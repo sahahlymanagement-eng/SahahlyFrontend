@@ -83,7 +83,7 @@ export default function Grade({ examId }) {
   }, [selected]);
 
   const readyExams = useMemo(
-    () => (exams || []).filter((exam) => exam.status === "ready"),
+    () => (exams || []).filter((exam) => ["ready", "needs_review"].includes(exam.status)),
     [exams]
   );
   const maxPapers = health?.maxPapersPerRun || 60;

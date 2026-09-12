@@ -43,7 +43,7 @@ export default function Library() {
     const rows = exams || [];
     return {
       packs: rows.length,
-      ready: rows.filter((exam) => exam.status === "ready").length,
+      ready: rows.filter((exam) => ["ready", "needs_review"].includes(exam.status)).length,
       questions: rows.reduce((sum, exam) => sum + (exam.questionCount || 0), 0),
       marks: rows.reduce((sum, exam) => sum + (exam.totalMarks || 0), 0),
       spend: rows.reduce((sum, exam) => sum + (exam.cost?.egp || 0), 0),
@@ -138,7 +138,7 @@ export default function Library() {
         <section className="panel">
           <h2>New exam pack</h2>
           <p className="muted" style={{ marginBottom: 18 }}>
-            Index the original PDFs once. Review and approve the pack before marking.
+            Index the original PDFs once, then use the index for marking.
           </p>
 
           <form onSubmit={onSubmit} className="stack">

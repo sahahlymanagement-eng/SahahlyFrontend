@@ -24,7 +24,7 @@ const MAX_ATTEMPTS = 5;
 // surfacing an error (or making the user reopen the paper) immediately.
 const RETRY_DELAYS_MS = [1_000, 3_000, 7_000, 15_000];
 
-/** key -> Blob */
+/** key -> File (stable identity also allows annotated-preview cache hits). */
 const blobs = new Map();
 /** key -> Promise<Blob>, so two previews starting at once share one download. */
 const inflight = new Map();
@@ -93,20 +93,17 @@ export async function fetchStudentPdf(
 ) {
   const key = cacheKey(assignmentId, submissionId);
 
-  const toFile = (blob) =>
-    new File([blob], `${submissionId}.pdf`, { type: "application/pdf" });
-
   const cached = blobs.get(key);
   if (cached) {
     // Refresh recency — Map preserves insertion order, so re-inserting moves it
     // to the end and keeps the eviction above honest.
     blobs.delete(key);
     blobs.set(key, cached);
-    return toFile(cached);
+    return cached;
   }
 
   const pending = inflight.get(key);
-  if (pending) return toFile(await pending);
+  if (pending) return pending;
 
   const request = withPdfFetchRetry(async () => {
     const res = await api.get("/submission-files/pdf", {
@@ -119,17 +116,21 @@ export async function fetchStudentPdf(
       timeout,
     });
     await assertPdfBlob(res.data, "Student submission");
-    return res.data;
+    return new File([res.data], `${submissionId}.pdf`, { type: "application/pdf" });
   });
 
   inflight.set(key, request);
   try {
     const blob = await request;
-    blobs.set(key, blob);
-    evictOldest();
-    return toFile(blob);
+    // An invalidation/new fetch may have happened while this download ran.
+    // Do not let the older request repopulate the cache with a stale paper.
+    if (inflight.get(key) === request) {
+      blobs.set(key, blob);
+      evictOldest();
+    }
+    return blob;
   } finally {
-    inflight.delete(key);
+    if (inflight.get(key) === request) inflight.delete(key);
   }
 }
 

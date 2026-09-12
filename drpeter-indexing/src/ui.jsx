@@ -156,8 +156,8 @@ const STEP_LABELS = {
 
 export function statusLabel(item) {
   if (!item) return "";
-  if (item.status === "ready") return item.studentFilename || item.paperCount != null ? "Completed" : "Reviewed";
-  if (item.status === "needs_review") return "Needs review";
+  if (item.status === "ready") return item.studentFilename || item.paperCount != null ? "Completed" : "Ready";
+  if (item.status === "needs_review") return "Ready";
   if (item.status === "partial") return "Partly done";
   if (item.status === "cancelled") return "Cancelled";
   if (item.status === "error") return "Failed";
@@ -174,7 +174,7 @@ export function statusLabel(item) {
 }
 
 export function statusKind(status) {
-  if (status === "ready") return "ok";
+  if (status === "ready" || status === "needs_review") return "ok";
   if (status === "error") return "bad";
   if (status === "partial" || status === "needs_review") return "warn";
   if (status === "cancelled") return "neutral";

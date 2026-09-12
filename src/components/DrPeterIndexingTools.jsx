@@ -37,7 +37,7 @@ function readIndexingModel(fallback) {
   return DEFAULT_INDEXING_MODEL;
 }
 
-const stateLabel = state => ({ ready: 'Completed', needs_review: 'Needs review', queued: 'Queued', processing: 'Processing', error: 'Failed', partial: 'Partly completed', cancelled: 'Cancelled' }[state] || state);
+const stateLabel = state => ({ ready: 'Completed', needs_review: 'Ready', queued: 'Queued', processing: 'Processing', error: 'Failed', partial: 'Partly completed', cancelled: 'Cancelled' }[state] || state);
 export default function DrPeterIndexingTools({ assignment, selectedIds, canMark, gradeModel, loadRoster, onResultsReady, provider = 'drpeter' }) {
   const classroom = provider === 'classroom';
   const root = `/${provider}-indexing`;
@@ -158,7 +158,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
 
   async function mark(mode) {
     const selected = new Set([...selectedIds].map(String));
-    if (!selected.size || !pack || pack.status !== 'ready' || !indexingModels.length) return;
+    if (!selected.size || !pack || !['ready', 'needs_review'].includes(pack.status) || !indexingModels.length) return;
     setError('');
     const data = await startIndexingUpload(uploadKey, async report => {
       // Refresh the full assignment roster: selection may span pages/search results.
@@ -247,14 +247,14 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   return <section className="dpi-tools" aria-label="Assignment indexing">
     <div className="dpi-actions">
       <button type="button" className="msv-btn-ai" onClick={openIndex} disabled={loading || !!busy || (!canMark && !pack)}>Index assignment</button>
-      <span>{loading ? 'Checking assignment index…' : pack ? `Index: ${pack.status==='ready'?'Reviewed':stateLabel(pack.status)} · ${pack.questionCount} questions · ${pack.totalMarks ?? '?'} marks` : 'Not indexed yet'}</span>
+      <span>{loading ? 'Checking assignment index…' : pack ? `Index: ${['ready', 'needs_review'].includes(pack.status)?'Ready':stateLabel(pack.status)} · ${pack.questionCount} questions · ${pack.totalMarks ?? '?'} marks` : 'Not indexed yet'}</span>
       {!!selectedIds.size && canMark && <>
         <label className="dpi-model">
           <span>Indexing model</span>
           <select
             value={indexingModel}
             onChange={e => chooseIndexingModel(e.target.value)}
-            disabled={!!busy || pack?.status !== 'ready' || !indexingModels.length}
+            disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}
             aria-label="Indexing marking model"
           >
             {!indexingModels.length && <option value={indexingModel}>Loading indexing models…</option>}
@@ -263,9 +263,9 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
             ))}
           </select>
         </label>
-        <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || pack?.status!=='ready' || !indexingModels.length}>Mark with indexing (Instant)</button>
-        <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || pack?.status!=='ready' || !indexingModels.length}>Mark with indexing (Batch)</button>
-        <span>{selectedIds.size} selected · {sahahlyModelLabel(indexingModel)}{pack?.status!=='ready'?' — index and approve this assignment first':''}</span>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Instant)</button>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Batch)</button>
+        <span>{selectedIds.size} selected · {sahahlyModelLabel(indexingModel)}{!['ready', 'needs_review'].includes(pack?.status)?' — index this assignment first':''}</span>
       </>}
     </div>
     {busy && <p role="status">{busy}</p>}

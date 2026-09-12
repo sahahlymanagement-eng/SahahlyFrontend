@@ -1819,6 +1819,9 @@ export async function annotatePdf({
       ? Math.max(1, Number(finalMaximumMarks))
       : Math.max(1, Number(maxTotalMarks) || 1);
 
+  // Fetch the logo while reading/parsing the source instead of adding a
+  // separate network wait after parsing has finished.
+  const logoPromise = loadSahahlyLogoBytes();
   const buf = await studentFile.arrayBuffer();
   const pdfDoc = await PDFDocument.load(buf, {
     ignoreEncryption: true,
@@ -1826,7 +1829,7 @@ export async function annotatePdf({
   });
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const reg = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const sahahlyLogoBytes = await loadSahahlyLogoBytes();
+  const sahahlyLogoBytes = await logoPromise;
   let sahahlyLogo = null;
   let teacherLogo = null;
   try {

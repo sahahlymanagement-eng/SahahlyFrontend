@@ -320,14 +320,14 @@ export default function ExamDetail({ examId, embedded = false }) {
         <h2>Source verification</h2>
         {exam.generatedPack && <details><summary>Compare regenerated evidence (saved corrections remain active)</summary><pre style={{ whiteSpace: "pre-wrap", maxHeight: 400, overflow: "auto" }}>{JSON.stringify(exam.generatedPack, null, 2)}</pre></details>}
         <p><a href={`${apiRoot}/api/exams/${exam.id}/qp.pdf`} target="_blank" rel="noreferrer">Open original question paper</a> · <a href={`${apiRoot}/api/exams/${exam.id}/ms.pdf`} target="_blank" rel="noreferrer">Open original mark scheme</a></p>
-        <p>Compare each row with its physical source pages. Correct discrepancies, verify totals, then save and approve. Saved corrections survive repair and re-indexing.</p>
+        <p>Compare each row with its physical source pages. Correct discrepancies, verify totals, then save any changes. Saved corrections survive repair and re-indexing.</p>
         <label>Question-paper total <input type="number" min="1" disabled={!editing} value={editing ? qpTotal : (pack?.questionPaperTotalMarks ?? '')} onChange={e => { setQpTotal(e.target.value); setDirty(true); }} /></label>
         <label>Mark-scheme total <input type="number" min="1" disabled={!editing} value={editing ? msTotal : (pack?.markSchemeTotalMarks ?? '')} onChange={e => { setMsTotal(e.target.value); setDirty(true); }} /></label>
         {pack?.outOfScope?.length > 0 && <><pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(pack.outOfScope, null, 2)}</pre><label><input type="checkbox" disabled={!editing} checked={extrasResolved} onChange={e => { setExtrasResolved(e.target.checked); setDirty(true); }} /> I reviewed every extra/conflicting MS entry and incorporated relevant criteria into the correct rows.</label></>}
       </div>
       {pack?.reviewIssues?.length > 0 && (
         <section className="panel">
-          <h2>Index needs review</h2>
+          <h2>Index notes</h2>
           <p>Resolve these matches before marking scripts.</p>
           <ul>{pack.reviewIssues.map((issue, i) => <li key={i}>{issue.label ? `${issue.label}: ` : ""}{issue.reason}</li>)}</ul>
         </section>
@@ -427,7 +427,7 @@ export default function ExamDetail({ examId, embedded = false }) {
               ) : (
                 <>
                   <Icon name="save" size={15} />
-                  Save and approve index
+                  Save index
                 </>
               )}
             </button>
