@@ -281,7 +281,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     {runs.length>0 && <details><summary>Indexing results ({runs.length} runs)</summary><div className="dpi-runs">{runs.map(run=><button type="button" key={run.id} onClick={()=>setView({title:'Indexing results',hash:`#/runs/${run.id}`})}>{stateLabel(run.status)} · {run.mode} · {run.readyCount}/{run.paperCount} completed{run.failedCount?` · ${run.failedCount} failed`:''} · {new Date(run.createdAt).toLocaleString()}</button>)}</div></details>}
     {setup && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label="Index assignment">
       <form className="dpi-dialog" onSubmit={createIndex}>
-        <div className="dpi-actions"><h2>Index assignment — {assignment.name || assignmentId}</h2><button type="button" onClick={()=>setSetup(false)} disabled={!!busy}>Close</button></div>
+        <div className="dpi-modal-header"><h2>Index assignment — {assignment.name || assignmentId}</h2><button type="button" className="dpi-close" onClick={()=>setSetup(false)} disabled={!!busy} aria-label="Close index assignment">×<span>Close</span></button></div>
         <p>Use the original blank question paper and mark scheme. Connected source PDFs load automatically when available. Saved indexing is reused for this assignment’s selected students.</p>
         {sourceMessage && <p>{sourceMessage}</p>}
         <ExamSetupFields form={indexForm} setForm={setIndexForm} disabled={!!busy} />
@@ -289,7 +289,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         <button className="msv-btn-ai" disabled={!!busy || !qp || !ms}>Index assignment</button>
       </form>
     </div>}
-    {view && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label={view.title}><div className="dpi-workspace"><div className="dpi-actions"><strong>{view.title} — {assignment.name || assignment.title || assignmentId}</strong><button type="button" onClick={()=>setView(null)}>Close</button></div><iframe title={view.title} src={`/drpeter-indexing/index.html?embedded=1&workspace=${provider}${view.hash}`} /></div></div>}
+    {view && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label={view.title}><div className="dpi-workspace"><div className="dpi-modal-header"><strong>{view.title} — {assignment.name || assignment.title || assignmentId}</strong><button type="button" className="dpi-close" onClick={()=>setView(null)} aria-label="Close indexing workspace">×<span>Close</span></button></div><iframe title={view.title} src={`/drpeter-indexing/index.html?embedded=1&workspace=${provider}${view.hash}`} /></div></div>}
     <PageCountCheckModal state={pageCheckModal} onResolve={resolvePageCheck} />
   </section>;
 }
