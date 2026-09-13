@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import api from '../api/api';
 import { assertPdfBlob, getApiErrorMessage } from '../utils/markingFormData';
-import { withPdfFetchRetry } from '../utils/studentPdfCache';
 import { sahahlyModelLabel } from '../utils/markingCost';
 import { isPublished } from '../utils/gradingStatus';
-import { usePageCountCheck, applyPageCountDecision } from '../hooks/usePageCountCheck';
+import { usePageCountCheck } from '../hooks/usePageCountCheck';
 import PageCountCheckModal from './PageCountCheckModal';
 import './DrPeterIndexingTools.css';
 import { getIndexingUpload, subscribeIndexingUploads, startIndexingUpload } from '../utils/indexingUploads';
@@ -42,7 +41,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const classroom = provider === 'classroom';
   const root = `/${provider}-indexing`;
   const base = `${root}/api`;
-  const { pageCheckModal, confirmPageCounts, confirmGradingPageCounts, resolvePageCheck } = usePageCountCheck();
+  const { pageCheckModal, resolvePageCheck } = usePageCountCheck();
   const [pack, setPack] = useState(null);
   const [runs, setRuns] = useState([]);
   const [error, setError] = useState('');
@@ -82,7 +81,8 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       if (!job || job === previous) return;
       previous = job;
       setBusy(job.active ? job.message : '');
-      if (job.error) getApiErrorMessage(job.error).then(setError);
+      if (job.active || job.result) setError('');
+      else if (job.error) getApiErrorMessage(job.error).then(setError);
     };
     refresh();
     return subscribeIndexingUploads(refresh);
@@ -170,6 +170,12 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       // Same rule as normal Instant/Batch: never download, upload, or send
       // already-corrected papers through indexing marking.
       report('Skipping papers that are already corrected…');
+      const beforeSelected = students.length;
+      const withoutAttachment = students.filter((student) => student.hasAttachment === false);
+      students = students.filter((student) => student.hasAttachment !== false);
+      if (withoutAttachment.length) {
+        toast.info(`Skipping ${withoutAttachment.length} student${withoutAttachment.length === 1 ? '' : 's'} without an attached PDF`);
+      }
       const beforeCorrected = students.length;
       if (classroom) {
         const { data: eligibleRows } = await api.post('/submission-files/eligible-for-bulk-marking', {
@@ -188,54 +194,20 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         );
       }
       if (!students.length) {
-        throw new Error(
-          beforeCorrected
+        throw new Error(beforeSelected
+          ? (beforeCorrected
             ? 'All selected submissions are already corrected. Nothing was uploaded or marked.'
-            : 'No submissions left to mark.'
-        );
+            : 'No selected submissions have an attached PDF and are still eligible for marking.')
+          : 'No submissions left to mark.');
       }
 
-      report('Checking submission page counts…');
-      const pageDecision = classroom
-        ? await confirmPageCounts({
-            assignmentId,
-            classroomId: assignment.classroomId || assignment.courseId || null,
-            students,
-          })
-        : await confirmGradingPageCounts({
-            provider,
-            assignmentId,
-            submissionIds: students.map((s) => s.submissionId),
-          });
-      students = applyPageCountDecision(students, pageDecision);
-      if (!students?.length) return null; // cancelled or nothing left
-      const dropped = selected.size - students.length;
-      if (dropped > 0) {
-        toast.info(`Skipping ${dropped} submission${dropped === 1 ? '' : 's'} with unexpected page count`);
-      }
-
-      const form=new FormData();form.set('examId',pack.id);form.set('partnerAssignmentId',assignmentId);form.set('mode',mode);form.set('gradeModel',indexingModel);
-      form.set('submissionIds',JSON.stringify(students.map(s=>String(s.submissionId))));
-      form.set('studentNames',JSON.stringify(students.map(s=>s.name || `Submission ${s.submissionId}`)));
-      const papers = new Array(students.length);
-      let next = 0, loaded = 0;
-      const loadPaper = async () => { while (next < students.length) {
-        const i = next++;
-        const student=students[i];
-        const {data}=await withPdfFetchRetry(()=>api.get(classroom ? '/submission-files/pdf' : `/grading/${provider}/submissions/${student.submissionId}/pdfs/submission`,{params:classroom ? {assignmentId,submissionId:student.submissionId,googleUserId:student.googleUserId || student.studentGoogleUserId} : undefined,responseType:'blob',timeout:120000}));
-        await assertPdfBlob(data,`Submission ${student.submissionId}`);
-        papers[i] = new File([data],`submission_${student.submissionId}.pdf`,{type:'application/pdf'});
-        report(`Loaded student PDFs ${++loaded}/${students.length}… You can navigate to another app tab.`);
-      }};
-      const downloads = await Promise.allSettled(Array.from({length:Math.min(3,students.length)},loadPaper));
-      const failed = downloads.find(result=>result.status==='rejected');
-      if (failed) throw failed.reason;
-      papers.forEach(paper=>form.append('studentPapers',paper));
-      report(`Uploading ${students.length} papers for ${mode} marking…`);
-      const {data}=await api.post(`${base}/runs`,form,{timeout:900000,
-        onUploadProgress: event => report(event.total && event.loaded < event.total
-          ? `Uploading papers: ${Math.round(event.loaded / event.total * 100)}%`
-          : 'Upload sent — validating and saving the marking run…')});
+      report(`Sending ${students.length} student selections to the server…`);
+      const {data}=await api.post(`${base}/runs/server-submissions`, {
+        examId: pack.id, partnerAssignmentId: assignmentId, mode, gradeModel: indexingModel,
+        submissionIds: students.map(s => String(s.submissionId)),
+        studentNames: students.map(s => s.name || `Submission ${s.submissionId}`),
+        students,
+      }, { timeout: 900000 });
       return data;
     });
     if(data && alive.current) {
