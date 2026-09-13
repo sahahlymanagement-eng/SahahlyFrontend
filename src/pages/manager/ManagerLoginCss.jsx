@@ -904,9 +904,17 @@ export default function ManagerLoginCss() {
     setSelectingMarkingAll(true);
     try {
       const roster = await fetchAssignmentRoster(selectedAssignment);
-      const ids = roster.map((s) => s.submissionId).filter((id) => id != null);
+      const ids = roster
+        .filter(
+          (s) =>
+            s.submissionId != null &&
+            !isPublished(s) &&
+            !s.hasDraft &&
+            !results[s.submissionId]?.result
+        )
+        .map((s) => s.submissionId);
       markingSelection.selectIds(ids);
-      toast.success(`Selected ${ids.length} submission(s)`);
+      toast.success(`Selected ${ids.length} unmarked submission(s)`);
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || "Failed to load all submissions");
     } finally {
@@ -2116,10 +2124,17 @@ export default function ManagerLoginCss() {
     : filteredSubmissions;
 
   // "Select page" only ever covers the rows on screen; "Select all" (above)
-  // reaches the rest of the assignment.
+  // reaches the rest of the assignment. Both skip submissions already marked
+  // (draft or published) so a select-all doesn't re-queue finished papers.
   const pageSelectableIds = visibleSubmissions
-    .map((s) => s.submissionId)
-    .filter((id) => id != null);
+    .filter(
+      (s) =>
+        s.submissionId != null &&
+        !isPublished(s) &&
+        !s.hasDraft &&
+        !results[s.submissionId]?.result
+    )
+    .map((s) => s.submissionId);
   const pageAllMarkingSelected =
     pageSelectableIds.length > 0 &&
     pageSelectableIds.every((id) => markingSelection.isSelected(id));

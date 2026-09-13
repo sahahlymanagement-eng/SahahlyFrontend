@@ -562,8 +562,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   }, [assignmentId]);
 
   const pageSelectableIds = useMemo(
-    () => students.filter((s) => s.submissionId).map((s) => s.submissionId),
-    [students]
+    () =>
+      students
+        .filter(
+          (s) =>
+            s.submissionId &&
+            !savedRowHasMarkingResult(savedResults[s.submissionId])
+        )
+        .map((s) => s.submissionId),
+    [students, savedResults]
   );
 
   const pageAllMarkingSelected = useMemo(
@@ -590,9 +597,15 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
     setSelectingMarkingAll(true);
     try {
       const all = await fetchAllPaginated(api, studentsMarkingUrl, {}, "students");
-      const ids = all.filter((s) => s.submissionId).map((s) => s.submissionId);
+      const ids = all
+        .filter(
+          (s) =>
+            s.submissionId &&
+            !savedRowHasMarkingResult(savedResults[s.submissionId])
+        )
+        .map((s) => s.submissionId);
       markingSelection.selectIds(ids);
-      toast.success(`Selected ${ids.length} student(s)`);
+      toast.success(`Selected ${ids.length} unmarked student(s)`);
     } catch {
       toast.error("Failed to load all students");
     } finally {
