@@ -237,12 +237,13 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         </label>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Instant)</button>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Batch)</button>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('flex')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length} title="Half-price marking with variable waiting time">Mark with indexing (Flex)</button>
         <span>{selectedIds.size} selected · {sahahlyModelLabel(indexingModel)}{!['ready', 'needs_review'].includes(pack?.status)?' — index this assignment first':''}</span>
       </>}
     </div>
     {busy && <p role="status">{busy}</p>}
     {runs.filter(run=>['queued','processing'].includes(run.status)).map(run=><div key={run.id} role="status">
-      <strong>{run.mode === 'instant' ? 'Instant marking' : 'Batch marking'}: {run.readyCount}/{run.paperCount} completed · {run.failedCount || 0} failed</strong>
+      <strong>{{ instant: 'Instant marking', batch: 'Batch marking', flex: 'Flex marking' }[run.mode] || 'Marking'}: {run.readyCount}/{run.paperCount} completed · {run.failedCount || 0} failed</strong>
       <progress value={run.readyCount + (run.failedCount || 0)} max={run.paperCount || 1} />
       <button type="button" onClick={()=>setView({title:'Marking progress',hash:`#/runs/${run.id}`})}>View live progress</button>
       <p>Marking continues on the server when you leave this tab.</p>

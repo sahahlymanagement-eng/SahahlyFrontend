@@ -163,7 +163,7 @@ export default function RunDetail({ runId }) {
         </a>
         <div className="card-head">
           <div>
-            <p className="eyebrow">{run.mode === "batch" ? "Batch · half price" : "Instant · full price"}</p>
+            <p className="eyebrow">{run.mode === "batch" ? "Batch · half price" : run.mode === 'flex' ? 'Flex · half price' : "Instant · full price"}</p>
             <h1>
               {run.paperCount} paper{run.paperCount === 1 ? "" : "s"} marked
             </h1>
@@ -201,7 +201,7 @@ export default function RunDetail({ runId }) {
             "Waiting on Gemini's batch queue. This page keeps polling, and you can safely close it — the run continues on the server."}
         </p>
       )}
-      {working && run.mode === "instant" && (
+      {working && ['instant', 'flex'].includes(run.mode) && (
         <p className="pulse" style={{ marginBottom: 0 }}>
           Marking {Math.min(done + 1, run.paperCount)} of {run.paperCount}…
         </p>
