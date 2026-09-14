@@ -59,6 +59,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`reports:${variant}:assignment`, null);
   const [summaryMap, setSummaryMap] = useState({});
   const [reportCart, setReportCart] = useState({});
+  const [noAiAnalytics, setNoAiAnalytics] = useState(false);
   const [sending, setSending] = useState(false);
   const activeSendIdRef = useRef(null);
   const [classroomSearch, setClassroomSearch] = useState("");
@@ -770,6 +771,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
 
         return {
           ...item,
+          noAiAnalytics,
           assignmentId: item.assignmentId || asgId || selectedAssignment?._id,
           submissionId,
           state: liveStudent?.state ?? item.state,
@@ -1979,6 +1981,14 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
               </div>
             </div>
             <div className="ma-cart-bar-actions">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={noAiAnalytics} disabled={sending}
+                  onChange={(event) => {
+                    setNoAiAnalytics(event.target.checked);
+                    closePreview();
+                  }} />
+                No AI analytics in report
+              </label>
               <button
                 className="ma-send-btn ma-send-btn--ghost"
                 onClick={() => {

@@ -115,6 +115,12 @@ export function ToastHost({ children }) {
     }, entry.duration || 4200);
   }, []);
 
+  useEffect(() => {
+    const handler = () => push({ kind: 'bad', title: 'AI provider credits depleted', body: 'An administrator needs to top up the provider billing account before AI processing can continue.', duration: 12000 });
+    window.addEventListener('ai-provider-credits-depleted', handler);
+    return () => window.removeEventListener('ai-provider-credits-depleted', handler);
+  }, [push]);
+
   const glyph = { ok: "\u2713", bad: "!", info: "i" };
 
   return (

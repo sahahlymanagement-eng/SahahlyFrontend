@@ -207,6 +207,11 @@ export default function AssignmentSubmissionViewer() {
   const [bulkProgress,     setBulkProgress]     = useState({});
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
+  useEffect(() => {
+    const stopForCredits = () => { bulkStopRef.current = true; };
+    window.addEventListener('ai-provider-processing-blocked', stopForCredits);
+    return () => window.removeEventListener('ai-provider-processing-blocked', stopForCredits);
+  }, []);
 
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);

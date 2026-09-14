@@ -1,5 +1,9 @@
 import axios from "axios";
 import { endSession } from "../utils/session";
+import { toast } from 'react-toastify';
+import { CREDIT_EVENT, CREDIT_MESSAGE, notifyDepletedCredits, hasDepletedCredits } from '../utils/aiCreditNotice';
+
+window.addEventListener(CREDIT_EVENT, () => toast.error(CREDIT_MESSAGE, { toastId: CREDIT_EVENT, autoClose: 12000 }));
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:6001/api"
@@ -23,8 +27,18 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    notifyDepletedCredits(response.data);
+    if (response.config.method === 'post' && hasDepletedCredits(response.data)) {
+      const error = new Error(CREDIT_MESSAGE);
+      error.code = 'AI_CREDITS_DEPLETED';
+      error.response = { ...response, status: 402 };
+      return Promise.reject(error);
+    }
+    return response;
+  },
   (error) => {
+    notifyDepletedCredits(error.response?.data || error.message);
     if (error.response?.status === 401) {
       error.isSessionExpired = true;
       const serverMsg = error.response?.data?.message || error.response?.data?.error;
@@ -45,4 +59,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-    

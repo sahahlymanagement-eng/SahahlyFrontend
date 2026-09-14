@@ -1,6 +1,8 @@
 import { apiRoot } from './workspace.js';
+import { notifyDepletedCredits } from '../../src/utils/aiCreditNotice';
 const json = async (res) => {
   const data = await res.json().catch(() => ({}));
+  notifyDepletedCredits(data);
   if (!res.ok) throw new Error(data.error || data.message || res.statusText || "Request failed");
   return data;
 };

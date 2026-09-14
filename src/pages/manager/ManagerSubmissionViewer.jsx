@@ -427,6 +427,11 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [bulkProgress,     setBulkProgress]     = useState({});
   const [bulkLocked, setBulkLocked] = useState(false);
   const bulkStopRef = useRef(false);
+  useEffect(() => {
+    const stopForCredits = () => { bulkStopRef.current = true; };
+    window.addEventListener('ai-provider-processing-blocked', stopForCredits);
+    return () => window.removeEventListener('ai-provider-processing-blocked', stopForCredits);
+  }, []);
 
   // Priority (synchronous, no polling)
   const [priorityBulkRunning, setPriorityBulkRunning] = useState(false);
