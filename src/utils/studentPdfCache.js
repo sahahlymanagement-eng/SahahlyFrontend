@@ -13,6 +13,7 @@
  */
 
 import { assertPdfBlob } from "./markingFormData";
+import { fetchStudentPdfDirect } from "./presignedPdf";
 
 // Moving through a class commonly revisits more than four papers (and opening
 // the same paper can trigger a normalized-preview rebuild). Retain a modest
@@ -121,7 +122,32 @@ export async function fetchStudentPdf(
   const pending = inflight.get(key);
   if (pending) return pending;
 
+  // Tried once, outside the retry loop below — a direct-from-R2 miss (CORS,
+  // mirror not ready, network) should fall back to the proxy immediately,
+  // not repeat the same failing fetch on every one of withPdfFetchRetry's
+  // attempts. Declared here (not inside the retried function) so it persists
+  // across those attempts.
+  let directAttempted = false;
+
   const request = withPdfFetchRetry(async () => {
+    if (!directAttempted) {
+      directAttempted = true;
+      // Runs before any stall timer/AbortController exists below — doing
+      // this after arming them would abort fetchStudentPdfDirect's own
+      // unrelated request on the proxy's stall budget and start the proxy
+      // call with an already-aborted signal.
+      const direct = await fetchStudentPdfDirect(api, {
+        assignmentId,
+        submissionId,
+        googleUserId,
+        onProgress,
+      });
+      if (direct) return direct;
+      // null = "use the proxy"; a genuine no-attachment case throws and
+      // propagates from here (not retried, matching the proxy's own 404
+      // behavior below).
+    }
+
     const controller = new AbortController();
     let stalled = false;
     let stallTimer = null;

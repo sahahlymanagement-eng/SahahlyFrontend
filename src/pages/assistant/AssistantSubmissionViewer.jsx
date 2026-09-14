@@ -174,6 +174,7 @@ import {
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
 import { invalidateStudentPdf } from "../../utils/studentPdfCache";
+import { fetchMarkSchemeFile, invalidateMarkSchemeFile } from "../../utils/presignedPdf";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 
 export default function AssignmentSubmissionViewer() {
@@ -270,18 +271,22 @@ export default function AssignmentSubmissionViewer() {
       setMarkSchemePreviewUrl(msPreviewRef.current.url);
       return;
     }
-    // AbortController (not just an ignore-flag) so a re-render mid-fetch cancels the
-    // in-flight 6MB request instead of leaving it running alongside a fresh duplicate.
-    // Two concurrent blob GETs for the same large file was producing net::ERR_FAILED.
-    const controller = new AbortController();
+    // fetchMarkSchemeFile dedupes concurrent calls for the same assignment
+    // (a re-render mid-fetch used to fire two concurrent blob GETs for the
+    // same large file, producing net::ERR_FAILED), so an ignore-flag is
+    // enough here; there is no duplicate network request left to cancel.
+    let ignore = false;
     setMarkSchemeLoading(true);
     setMarkSchemeError(null);
-    api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-      responseType: "blob",
-      signal: controller.signal,
-    })
-      .then((res) => {
-        const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    fetchMarkSchemeFile(api, assignmentId)
+      .then((file) => {
+        if (ignore) return;
+        if (!file) {
+          setMarkSchemeError("Failed to load mark scheme");
+          setMarkSchemePreviewUrl(null);
+          return;
+        }
+        const url = URL.createObjectURL(file);
         if (msPreviewRef.current.url && msPreviewRef.current.assignmentId !== assignmentId) {
           URL.revokeObjectURL(msPreviewRef.current.url);
         }
@@ -289,15 +294,17 @@ export default function AssignmentSubmissionViewer() {
         setMarkSchemePreviewUrl(url);
       })
       .catch((err) => {
-        if (controller.signal.aborted) return;
+        if (ignore) return;
         console.error("[markscheme preview]", err);
         setMarkSchemeError("Failed to load mark scheme");
         setMarkSchemePreviewUrl(null);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setMarkSchemeLoading(false);
+        if (!ignore) setMarkSchemeLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      ignore = true;
+    };
   }, [resultModalOpen, assignmentId, msInfo?.fileId]);
 
   // Revoke the cached mark scheme object URL on unmount.
@@ -342,6 +349,7 @@ export default function AssignmentSubmissionViewer() {
   const [geminiModels, setGeminiModels] = useState([]);
   const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
   const [refreshing, setRefreshing] = useState(false);
+  const [syncingPdfMirror, setSyncingPdfMirror] = useState(false);
   const [exportingGrades, setExportingGrades] = useState(false);
   const [studentSearch, setStudentSearch] = useState("");
   const [deletingCorrection, setDeletingCorrection] = useState({});
@@ -1162,6 +1170,34 @@ const refreshStudents = async () => {
   }
 };
 
+// Manual "Sync PDFs" — mirrors this assignment's submission PDFs to R2 right
+// now instead of waiting for the 30-min cron sweep. No-ops quietly (with an
+// explanatory toast) when this classroom is not yet in the mirror's pilot
+// scope (CLASSROOM_PDF_MIRROR_CLASSROOM_IDS).
+const syncPdfMirror = async () => {
+  if (!assignmentId) return;
+  setSyncingPdfMirror(true);
+  try {
+    const res = await api.post("/submission-files/mirror-sync", { assignmentId });
+    const data = res.data || {};
+    if (data.skipped) {
+      toast.info(
+        data.skipped === "out_of_scope"
+          ? "PDF mirroring is not enabled for this classroom yet"
+          : "Nothing to sync right now"
+      );
+    } else {
+      toast.success(
+        `PDF sync: ${data.ready || 0} ready, ${data.built || 0} built, ${data.failed || 0} failed`
+      );
+    }
+  } catch (err) {
+    toast.error(err.response?.data?.message || "PDF sync failed");
+  } finally {
+    setSyncingPdfMirror(false);
+  }
+};
+
 const handleExportGradesExcel = async () => {
   if (!assignmentId) return;
 
@@ -1251,7 +1287,14 @@ const deleteCorrection = async (student) => {
       );
 
     setMsInfo({ fileId: res.data.fileId, webLink: res.data.webLink });
-    // setCachedMsFile(file); 
+    // setCachedMsFile(file);
+      // A new upload gets a new Drive/R2 file — drop any cached copy of the
+      // old one so the results-modal pane re-fetches instead of showing it.
+      invalidateMarkSchemeFile(assignmentId);
+      if (msPreviewRef.current.assignmentId === assignmentId) {
+        if (msPreviewRef.current.url) URL.revokeObjectURL(msPreviewRef.current.url);
+        msPreviewRef.current = { assignmentId: null, url: null };
+      }
       toast.success("Mark scheme uploaded");
     } catch (err) {
       toast.error(err.response?.data?.message || "Upload failed");
@@ -3386,6 +3429,15 @@ return (
                 >
                   <FiRefreshCw size={13} className={refreshing ? "msv-spin" : ""} />
                   <span className="msv-refresh-btn-label">{refreshing ? "Refreshing…" : "Refresh"}</span>
+                </button>
+                <button
+                  className="msv-refresh-btn"
+                  onClick={syncPdfMirror}
+                  disabled={syncingPdfMirror}
+                  title="Mirror this assignment's submission PDFs to R2 now, instead of waiting for the automatic sweep"
+                >
+                  <FiRefreshCw size={13} className={syncingPdfMirror ? "msv-spin" : ""} />
+                  <span className="msv-refresh-btn-label">{syncingPdfMirror ? "Syncing PDFs…" : "Sync PDFs"}</span>
                 </button>
 </div>
 
