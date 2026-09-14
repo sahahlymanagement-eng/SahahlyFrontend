@@ -822,6 +822,7 @@ const resolvePdfSummary = (submissionId, result) =>
     retryPreview,
     handlePreviewDocumentLoaded,
     reportPageCount,
+    prefetchPreview,
   } = useAnnotatedResultPreview({
     api,
     assignmentId: selectedAssignment?._id,
@@ -844,6 +845,25 @@ const resolvePdfSummary = (submissionId, result) =>
         : null,
     getEditorBaseline,
   });
+
+  // Warm the next paper's PDF + preview caches while this one is still open
+  // for review, so moving on to it is a cache hit instead of a fresh Drive
+  // fetch + pdf-lib build. Same-page neighbor only — the next page's rows
+  // aren't loaded client-side until that page is actually fetched.
+  useEffect(() => {
+    const openId = resultModalSubmissionId;
+    if (!openId) return;
+    const idx = students.findIndex((s) => s.submissionId === openId);
+    if (idx === -1) return;
+    const next = students[idx + 1];
+    const nextResult = next?.submissionId ? savedResults[next.submissionId]?.result : null;
+    if (!nextResult) return;
+    prefetchPreview({
+      submissionId: next.submissionId,
+      result: nextResult,
+      googleUserId: studentGoogleUserId(next),
+    });
+  }, [resultModalSubmissionId, students, savedResults, prefetchPreview]);
 
   const handleAnnotationPlacementChange = useCallback((change) => {
     setEditingQuestions((prev) => applyPlacementChange(prev, change));

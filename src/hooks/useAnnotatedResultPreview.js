@@ -115,6 +115,53 @@ function rememberCompletedPreview(cacheKey, signature, bytes) {
   }
 }
 
+// Module-level so concurrent prefetches for the same submission (e.g. the
+// effect re-firing on an unrelated re-render) share one in-flight build
+// instead of spinning up a second pdf-lib worker for identical work.
+const prefetchInFlight = new Map(); // cacheKey -> Promise<void>
+
+/**
+ * Baseline (no-pending-edits) snapshot for a submission that has NOT been
+ * opened in the modal yet — used only for prefetching. Deliberately does not
+ * read this hook's editingMaxTotal/editingTotal refs: those describe whatever
+ * paper is CURRENTLY open, and applying them to a different, not-yet-opened
+ * submission would bake the wrong paper's edits into its prefetched preview.
+ *
+ * If this ever produces a snapshot that doesn't exactly match what the real
+ * open path (buildSnapshotFromModal) builds for the same paper, the content
+ * hash in previewSnapshotSignature simply won't match on open and
+ * readCompletedPreview misses — the paper is then built fresh, same as if it
+ * had never been prefetched. A mismatch can only cost a wasted prefetch, not
+ * show wrong content.
+ */
+function buildBaselineSnapshot({ assignmentMaxPoints, resolvePdfSummary, submissionId, result }) {
+  const questions = (result?.questions || []).map((q) => ({ ...q }));
+  const maxTotal = resolveDisplayMaxTotal({
+    assignmentMaxPoints,
+    result,
+    editingMaxTotal: null,
+  });
+  const summary = resolvePdfSummary(submissionId, result);
+  const outOfScopeNotes = (result?.outOfScopeNotes || []).map((n) => ({ ...n }));
+  const teacherAnnotations = getTeacherAnnotations(result).map((a) => ({ ...a }));
+  const criteriaGrade = cloneCriteriaGrade(result?.criteriaGrade);
+  const finalObtainedMarks = questions.reduce(
+    (s, q) => s + (Number(q.marksAwarded) || 0),
+    0
+  );
+  return {
+    submissionId,
+    questions,
+    maxTotal,
+    summary,
+    outOfScopeNotes,
+    teacherAnnotations,
+    criteriaGrade,
+    finalObtainedMarks,
+    finalMaximumMarks: maxTotal,
+  };
+}
+
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
@@ -392,6 +439,76 @@ export function useAnnotatedResultPreview({
         if (requestId === previewRequestRef.current) {
           setPreviewLoading(false);
         }
+      }
+    },
+    [api, assignmentId]
+  );
+
+  /**
+   * Warm the shared PDF + preview caches for a submission that is NOT open in
+   * this modal — call it for "the next paper in the list" while the current
+   * one is still being reviewed/edited, so opening it later hits
+   * completedPreviewCache instead of paying a fresh Drive download + pdf-lib
+   * build. Never touches this hook's displayed state (annotatedPreviewUrl,
+   * previewLoading, …) and never throws — worst case is a normal-speed open,
+   * exactly like before this existed.
+   */
+  const prefetchPreview = useCallback(
+    async ({ submissionId, result, googleUserId } = {}) => {
+      if (!assignmentId || !submissionId || !result) return;
+      try {
+        const markingMode = result?.markingMode || "normal";
+        const snapshot = buildBaselineSnapshot({
+          assignmentMaxPoints: assignmentMaxPointsRef.current,
+          resolvePdfSummary: resolvePdfSummaryRef.current,
+          submissionId,
+          result,
+        });
+        const cacheKey = `${assignmentId}:${submissionId}:${markingMode}:false`;
+        const signature = previewSnapshotSignature(snapshot, markingMode, false);
+
+        if (readCompletedPreview(cacheKey, signature)) return; // already warm
+        const existing = prefetchInFlight.get(cacheKey);
+        if (existing) return existing;
+
+        const task = (async () => {
+          const studentFile = await fetchStudentPdf(api, {
+            assignmentId,
+            submissionId,
+            googleUserId: googleUserId || undefined,
+            timeout: 120_000,
+          });
+          const teacherLogoBytes = await loadAssignmentTeacherLogo(api, assignmentId).catch(
+            () => null
+          );
+          const pdfBytes = await buildPreviewPdf({
+            studentFile,
+            questions: snapshot.questions,
+            maxTotalMarks: snapshot.maxTotal,
+            summary: snapshot.summary,
+            outOfScopeNotes: snapshot.outOfScopeNotes,
+            teacherAnnotations: snapshot.teacherAnnotations,
+            criteriaGrade: snapshot.criteriaGrade,
+            markingMode,
+            finalObtainedMarks: snapshot.finalObtainedMarks,
+            finalMaximumMarks: snapshot.finalMaximumMarks,
+            skipCompress: true,
+            lockPlacement: false,
+            teacherLogoBytes,
+          });
+          if (hasPdfHeader(pdfBytes)) {
+            rememberCompletedPreview(cacheKey, signature, pdfBytes);
+          }
+        })();
+
+        prefetchInFlight.set(cacheKey, task);
+        try {
+          await task;
+        } finally {
+          prefetchInFlight.delete(cacheKey);
+        }
+      } catch (err) {
+        console.warn("[preview-prefetch]", err?.message || err);
       }
     },
     [api, assignmentId]
@@ -755,5 +872,6 @@ export function useAnnotatedResultPreview({
     handlePreviewDocumentLoaded,
     reportPageCount,
     refreshPreviewFromQuestions,
+    prefetchPreview,
   };
 }
