@@ -16,6 +16,7 @@ export function hasDepletedCredits(value, errorContext = false, depth = 0) {
 let lastNotice = -Infinity;
 export function notifyDepletedCredits(payload) {
   if (!hasDepletedCredits(payload, typeof payload === 'string')) return;
+  if (typeof window === 'undefined') return; // worker context: nobody to notify
   window.dispatchEvent(new CustomEvent('ai-provider-processing-blocked'));
   const now = Date.now();
   if (now - lastNotice < 60000) return;

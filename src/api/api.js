@@ -3,7 +3,13 @@ import { endSession } from "../utils/session";
 import { toast } from 'react-toastify';
 import { CREDIT_EVENT, CREDIT_MESSAGE, notifyDepletedCredits, hasDepletedCredits } from '../utils/aiCreditNotice';
 
-window.addEventListener(CREDIT_EVENT, () => toast.error(CREDIT_MESSAGE, { toastId: CREDIT_EVENT, autoClose: 12000 }));
+// This module is also bundled into Web Workers (utils/previewPdf.worker.js
+// via annotatePdf → compressAnnotatedPdf), where `window` does not exist. A
+// bare top-level `window.` reference there kills the worker while its modules
+// are still loading, which surfaces as "PDF preview worker failed to start".
+if (typeof window !== "undefined") {
+  window.addEventListener(CREDIT_EVENT, () => toast.error(CREDIT_MESSAGE, { toastId: CREDIT_EVENT, autoClose: 12000 }));
+}
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:6001/api"

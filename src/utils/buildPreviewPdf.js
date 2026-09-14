@@ -39,7 +39,20 @@ export async function buildPreviewPdf(options, { signal } = {}) {
       worker = new Worker(new URL("./previewPdf.worker.js", import.meta.url), { type: "module" });
       signal?.addEventListener("abort", abort, { once: true });
       timer = setTimeout(() => finish(new Error("Building PDF preview timed out")), 300_000);
-      worker.onerror = () => finish(new Error("PDF preview worker failed to start. Refresh the page and retry."));
+      // `error` fires for ANY uncaught error in the worker — a module that
+      // fails to load, or a throw outside annotatePdf's try/catch — not only a
+      // failed start. Keep the browser's message so the real cause is visible.
+      worker.onerror = (event) => {
+        event?.preventDefault?.();
+        const detail = String(event?.message || "").trim();
+        finish(
+          new Error(
+            detail
+              ? `PDF preview worker error: ${detail}`
+              : "PDF preview worker failed to start. Refresh the page and retry."
+          )
+        );
+      };
       worker.onmessage = ({ data }) => {
         if (data.error) return finish(new Error(data.error));
         data.bytes.reportPageCount = data.reportPageCount;
