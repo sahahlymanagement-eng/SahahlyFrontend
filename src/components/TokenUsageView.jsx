@@ -38,6 +38,7 @@ const TABS = [
   { id: "assistant", label: "Staff" },
   { id: "assignment", label: "Assignments" },
   { id: "reports", label: "Reports & Analytics" },
+  { id: "gemini", label: "Gemini Requests" },
 ];
 
 const MANAGER_TABS = [
@@ -45,6 +46,7 @@ const MANAGER_TABS = [
   { id: "assistant", label: "Assistants" },
   { id: "assignment", label: "Assignments" },
   { id: "reports", label: "Reports & Analytics" },
+  { id: "gemini", label: "Gemini Requests" },
 ];
 
 const REPORT_BREAKDOWN_OPTIONS = [
@@ -362,6 +364,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
   const [classroomDetail, setClassroomDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [requestLimit, setRequestLimit] = useState(null);
+  const [geminiRequests, setGeminiRequests] = useState([]);
 
   const yearOptions = useMemo(() => buildYearOptions(), []);
   const dayOptions = useMemo(() => {
@@ -475,6 +478,10 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         const res = await api.get(`${apiBase}/by-assignment`, { params });
         setByAssignment(res.data);
         setRequestLimit(res.data?.requestLimit ?? null);
+      } else if (tab === "gemini") {
+        const res = await api.get(`${apiBase}/gemini-requests`, { params: { limit: 200 } });
+        setGeminiRequests(res.data?.rows || []);
+        setRequestLimit(null);
       } else {
         const res = await api.get(`${apiBase}/reports-analytics`, { params });
         setReportsAnalytics(res.data);
@@ -1095,6 +1102,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
             </>
           )}
         </>
+      )}
+      {!loading && tab === "gemini" && (
+        <div className="tu-table-wrap"><table className="tu-table"><thead><tr><th>Time</th><th>User</th><th>Type</th><th>State</th><th>Model</th><th>Tier</th><th>Tokens</th><th>Error</th></tr></thead><tbody>
+          {geminiRequests.map((r) => <tr key={r.requestId}><td>{r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'}</td><td>{r.userEmail || '—'}</td><td>{r.type}</td><td>{r.state}</td><td>{r.model || '—'}</td><td>{r.serviceTier || 'standard'}</td><td>{Number(r.totalTokens || 0).toLocaleString()}</td><td>{r.error || '—'}</td></tr>)}
+          {!geminiRequests.length && <tr><td colSpan="8">No Gemini requests recorded yet.</td></tr>}
+        </tbody></table></div>
       )}
 
       {!loading && tab === "reports" && selectedReportSource && (
