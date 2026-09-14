@@ -812,6 +812,7 @@ const resolvePdfSummary = (submissionId, result) =>
   const {
     annotatedPreviewUrl,
     previewLoading,
+    previewStatus,
     previewError,
     confirmingEdits,
     hasPendingEdits,
@@ -5977,7 +5978,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                       {previewLoading ? (
                         <div style={{ color: "var(--muted)", fontSize: 13 }}>
-                          Generating preview…
+                          {previewStatus || "Generating preview…"}
                         </div>
                       ) : previewError ? (
                         <div

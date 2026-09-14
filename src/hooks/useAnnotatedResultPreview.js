@@ -206,6 +206,10 @@ export function useAnnotatedResultPreview({
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+  // Human-readable stage shown instead of a bare "Generating preview…" while
+  // previewLoading — mostly download progress, which on a slow link is where
+  // nearly all of the wait goes and used to look like a hang.
+  const [previewStatus, setPreviewStatus] = useState(null);
   const [confirmingEdits, setConfirmingEdits] = useState(false);
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
   const [reportPageCount, setReportPageCount] = useState(0);
@@ -331,6 +335,7 @@ export function useAnnotatedResultPreview({
       previewBuildRef.current = buildController;
       setPreviewLoading(true);
       setPreviewError(null);
+      setPreviewStatus(null);
 
       try {
         const markingMode = resultModalRef.current?.result?.markingMode || "normal";
@@ -366,21 +371,33 @@ export function useAnnotatedResultPreview({
         // it. See utils/studentPdfCache.js.
         const googleUserId = studentGoogleUserId(resultModalRef.current?.student);
         const logoPromise = loadAssignmentTeacherLogo(api, assignmentId).catch(() => null);
-        const studentFile = await withTimeout(
-          Promise.resolve(
-            snapshot.studentFile ||
-              fetchStudentPdf(api, {
-                assignmentId,
-                submissionId: snapshot.submissionId,
-                googleUserId: googleUserId || undefined,
-                timeout: 120_000,
-              })
-          ),
-          180_000,
-          "Loading student PDF"
+        // No total-time cap here: fetchStudentPdf aborts on its own when the
+        // download stalls, and a large paper on a slow link legitimately needs
+        // longer than any fixed number we could pick.
+        if (!snapshot.studentFile) setPreviewStatus("Downloading student PDF…");
+        const studentFile = await Promise.resolve(
+          snapshot.studentFile ||
+            fetchStudentPdf(api, {
+              assignmentId,
+              submissionId: snapshot.submissionId,
+              googleUserId: googleUserId || undefined,
+              onProgress: ({ loaded, total }) => {
+                if (requestId !== previewRequestRef.current) return;
+                const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+                setPreviewStatus(
+                  total > 0
+                    ? `Downloading student PDF… ${mb(loaded)} / ${mb(total)} MB (${Math.min(
+                        100,
+                        Math.round((loaded / total) * 100)
+                      )}%)`
+                    : `Downloading student PDF… ${mb(loaded)} MB`
+                );
+              },
+            })
         );
         if (requestId !== previewRequestRef.current) return;
         if (!studentFile) throw new Error("Student PDF unavailable for preview");
+        setPreviewStatus("Building annotated preview…");
 
         const teacherLogoBytes = await Promise.race([
           logoPromise,
@@ -438,6 +455,7 @@ export function useAnnotatedResultPreview({
       } finally {
         if (requestId === previewRequestRef.current) {
           setPreviewLoading(false);
+          setPreviewStatus(null);
         }
       }
     },
@@ -860,6 +878,7 @@ export function useAnnotatedResultPreview({
   return {
     annotatedPreviewUrl,
     previewLoading,
+    previewStatus,
     previewError,
     confirmingEdits,
     hasPendingEdits,

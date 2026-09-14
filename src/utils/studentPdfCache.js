@@ -23,6 +23,14 @@ const MAX_ATTEMPTS = 5;
 // than a second. Keep retrying the one PDF with a useful backoff instead of
 // surfacing an error (or making the user reopen the paper) immediately.
 const RETRY_DELAYS_MS = [1_000, 3_000, 7_000, 15_000];
+// A total-time limit was the wrong shape for this download: scanned papers
+// are tens of MB and teachers are often on slow links (measured 200–300 KB/s
+// in the field), so a 30 MB paper that was streaming perfectly well got cut
+// off at 120 s, thrown away, and restarted from zero on every retry. Abort
+// only when the connection actually stops delivering bytes; keep a generous
+// absolute ceiling so a runaway can never hang the modal forever.
+const STALL_TIMEOUT_MS = 60_000;
+const ABSOLUTE_TIMEOUT_MS = 15 * 60_000;
 
 /** key -> File (stable identity also allows annotated-preview cache hits). */
 const blobs = new Map();
@@ -89,7 +97,15 @@ export async function withPdfFetchRetry(fn, { attempts = MAX_ATTEMPTS } = {}) {
  */
 export async function fetchStudentPdf(
   api,
-  { assignmentId, submissionId, googleUserId, timeout = 90_000 }
+  {
+    assignmentId,
+    submissionId,
+    googleUserId,
+    // Kept for callers that pass it; now the STALL budget, not a total budget.
+    timeout = STALL_TIMEOUT_MS,
+    /** ({ loaded, total }) → void, called as bytes arrive. */
+    onProgress = null,
+  }
 ) {
   const key = cacheKey(assignmentId, submissionId);
 
@@ -106,17 +122,57 @@ export async function fetchStudentPdf(
   if (pending) return pending;
 
   const request = withPdfFetchRetry(async () => {
-    const res = await api.get("/submission-files/pdf", {
-      params: {
-        assignmentId,
-        submissionId,
-        ...(googleUserId ? { googleUserId } : {}),
-      },
-      responseType: "blob",
-      timeout,
-    });
-    await assertPdfBlob(res.data, "Student submission");
-    return new File([res.data], `${submissionId}.pdf`, { type: "application/pdf" });
+    const controller = new AbortController();
+    let stalled = false;
+    let stallTimer = null;
+    const armStall = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        controller.abort();
+      }, timeout);
+    };
+    const ceiling = setTimeout(() => {
+      stalled = true;
+      controller.abort();
+    }, ABSOLUTE_TIMEOUT_MS);
+    armStall();
+    try {
+      const res = await api.get("/submission-files/pdf", {
+        params: {
+          assignmentId,
+          submissionId,
+          ...(googleUserId ? { googleUserId } : {}),
+        },
+        responseType: "blob",
+        signal: controller.signal,
+        onDownloadProgress: (evt) => {
+          armStall();
+          if (onProgress) {
+            try {
+              onProgress({ loaded: evt.loaded || 0, total: evt.total || 0 });
+            } catch {
+              /* progress display is best-effort */
+            }
+          }
+        },
+      });
+      await assertPdfBlob(res.data, "Student submission");
+      return new File([res.data], `${submissionId}.pdf`, { type: "application/pdf" });
+    } catch (err) {
+      if (stalled) {
+        // Surface as a timeout so withPdfFetchRetry treats it as transient.
+        const e = new Error(
+          `Student PDF download stalled (no data for ${Math.round(timeout / 1000)}s)`
+        );
+        e.code = "ECONNABORTED";
+        throw e;
+      }
+      throw err;
+    } finally {
+      clearTimeout(stallTimer);
+      clearTimeout(ceiling);
+    }
   });
 
   inflight.set(key, request);

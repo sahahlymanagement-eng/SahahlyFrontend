@@ -802,6 +802,7 @@ const recordStudentMarkingError = (submissionId, message, raw = null, title = nu
   const {
     annotatedPreviewUrl,
     previewLoading,
+    previewStatus,
     previewError,
     confirmingEdits,
     hasPendingEdits,
@@ -4482,7 +4483,7 @@ return (
 
                       {previewLoading ? (
                         <div style={{ color: "var(--muted)", fontSize: 13 }}>
-                          Generating preview…
+                          {previewStatus || "Generating preview…"}
                         </div>
                       ) : previewError ? (
                         <div
