@@ -173,7 +173,7 @@ import {
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
-import { invalidateStudentPdf } from "../../utils/studentPdfCache";
+import { fetchStudentPdf, invalidateStudentPdf } from "../../utils/studentPdfCache";
 import { fetchMarkSchemeFile, invalidateMarkSchemeFile } from "../../utils/presignedPdf";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 
@@ -1303,14 +1303,13 @@ const deleteCorrection = async (student) => {
 
   const openPdf = async (student) => {
     try {
-      const res = await api.get("/submission-files/pdf", {
-        params: { assignmentId, submissionId: student.submissionId },
-        responseType: "blob"
-      })
-
-const blob = new Blob([res.data], { type: "application/pdf" });
-const url = URL.createObjectURL(blob);
-window.open(url);
+      const file = await fetchStudentPdf(api, {
+        assignmentId,
+        submissionId: student.submissionId,
+        googleUserId: studentGoogleUserId(student),
+      });
+      const url = URL.createObjectURL(file);
+      window.open(url);
     } catch {
       toast.error("Failed to open PDF");
     }
@@ -1318,13 +1317,12 @@ window.open(url);
 
   const downloadPdf = async (student) => {
     try {
-      const res = await api.get("/submission-files/pdf", {
-        params: { assignmentId, submissionId: student.submissionId },
-        responseType: "blob"
+      const file = await fetchStudentPdf(api, {
+        assignmentId,
+        submissionId: student.submissionId,
+        googleUserId: studentGoogleUserId(student),
       });
-
-      const blob = new Blob([res.data], { type: "application/pdf" });
-      downloadBlob(blob, `${student.name || "submission"}.pdf`);
+      downloadBlob(file, `${student.name || "submission"}.pdf`);
     } catch {
       toast.error("Download failed");
     }

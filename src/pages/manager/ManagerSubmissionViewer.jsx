@@ -165,7 +165,7 @@ import {
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import { engineBasePath, isV2, canUseGradingV2 } from "../../utils/markingEngines";
-import { invalidateStudentPdf } from "../../utils/studentPdfCache";
+import { fetchStudentPdf, invalidateStudentPdf } from "../../utils/studentPdfCache";
 import { fetchMarkSchemeFile, invalidateMarkSchemeFile } from "../../utils/presignedPdf";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 import "./ManagerSubmissionViewer.css";
@@ -3947,31 +3947,31 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const openPdf = async (student) => {
     const googleUserId = studentGoogleUserId(student);
-    api.get("/submission-files/pdf", {
-      params: {
+    try {
+      const file = await fetchStudentPdf(api, {
         assignmentId: selectedAssignment._id,
         submissionId: student.submissionId,
         googleUserId: googleUserId || undefined,
-      },
-      responseType: "blob"
-    }).then(res => {
-      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      });
+      const url = URL.createObjectURL(file);
       window.open(url, "_blank");
-    }).catch(async (err) => toast.error((await getApiErrorMessage(err)) || "Failed to load PDF"));
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to load PDF");
+    }
   };
 
-  const downloadPdf = (student) => {
+  const downloadPdf = async (student) => {
     const googleUserId = studentGoogleUserId(student);
-    api.get("/submission-files/pdf", {
-      params: {
+    try {
+      const file = await fetchStudentPdf(api, {
         assignmentId: selectedAssignment._id,
         submissionId: student.submissionId,
         googleUserId: googleUserId || undefined,
-      },
-      responseType: "blob"
-    }).then(res => {
-      downloadBlob(new Blob([res.data], { type: "application/pdf" }), `${student.name || "submission"}.pdf`);
-    }).catch(async (err) => toast.error((await getApiErrorMessage(err)) || "Failed to download PDF"));
+      });
+      downloadBlob(file, `${student.name || "submission"}.pdf`);
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to download PDF");
+    }
   };
 
   const filteredAssignments = assignments;
