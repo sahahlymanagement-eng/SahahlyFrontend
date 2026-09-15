@@ -475,7 +475,7 @@ export function useAnnotatedResultPreview({
    * exactly like before this existed.
    */
   const prefetchPreview = useCallback(
-    async ({ submissionId, result, googleUserId } = {}) => {
+    async ({ submissionId, result, googleUserId, directUrl, directExpiresAt } = {}) => {
       if (!assignmentId || !submissionId || !result) return;
       try {
         const markingMode = result?.markingMode || "normal";
@@ -497,6 +497,8 @@ export function useAnnotatedResultPreview({
             assignmentId,
             submissionId,
             googleUserId: googleUserId || undefined,
+            directUrl: directUrl || undefined,
+            directExpiresAt: directExpiresAt || undefined,
             timeout: 120_000,
           });
           const teacherLogoBytes = await loadAssignmentTeacherLogo(api, assignmentId).catch(

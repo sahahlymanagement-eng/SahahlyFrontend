@@ -870,6 +870,8 @@ const resolvePdfSummary = (submissionId, result) =>
       submissionId: next.submissionId,
       result: nextResult,
       googleUserId: studentGoogleUserId(next),
+      directUrl: next.pdfDirectUrl,
+      directExpiresAt: next.pdfDirectExpiresAt,
     });
   }, [resultModalSubmissionId, students, savedResults, prefetchPreview]);
 
