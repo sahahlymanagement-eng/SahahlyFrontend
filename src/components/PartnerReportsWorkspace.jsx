@@ -794,7 +794,11 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
               onClick={() => setClassFilter(c.groupId)}
               title={c.schoolName || undefined}
             >
-              {c.groupName} ({activeCountByClass.get(c.groupId)})
+              {c.groupName}
+              {/* Same group name can be minted once per exam session (e.g. "1A"
+                  under Nov26 AND J27) — each is still its own real group_id/
+                  chip here, this just tells two same-named chips apart. */}
+              {c.subjectName ? ` · ${c.subjectName}` : ""} ({activeCountByClass.get(c.groupId)})
             </button>
           ))}
         </div>

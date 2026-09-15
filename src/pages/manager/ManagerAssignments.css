@@ -599,6 +599,13 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+/* Session/cohort disambiguator for a group name IGSpaces reused across more
+   than one exam session (e.g. "1A" · "Nov26 OL camb") — only rendered when
+   that name is actually ambiguous, see GradingProviderPage's buildGroupOptions. */
+.ma-classroom-subject {
+  font-weight: 400;
+  color: var(--muted);
+}
 
 /* Assignment cards */
 .ma-assignment-list { display: flex; flex-direction: column; gap: 8px; }

@@ -149,9 +149,15 @@ export default function ManagerGradingAssistants({ slug, label }) {
     }
   };
 
+  // A group name can be minted once per exam session (e.g. "1A" under both
+  // Nov26 and J27, each its own real groupId) — appending subjectName when
+  // present is what tells two same-named classes apart here.
+  const classLabel = (c) => (c.subjectName ? `${c.groupName} · ${c.subjectName}` : c.groupName);
+
   const classNameFor = (assignmentId, groupId) => {
     const classes = classesByAssignment[assignmentId] || [];
-    return classes.find((c) => c.groupId === groupId)?.groupName || (groupId == null ? "Whole assignment" : `Class #${groupId}`);
+    const match = classes.find((c) => c.groupId === groupId);
+    return match ? classLabel(match) : groupId == null ? "Whole assignment" : `Class #${groupId}`;
   };
 
   return (
@@ -283,7 +289,7 @@ export default function ManagerGradingAssistants({ slug, label }) {
                           >
                             <option value="">Select class…</option>
                             {classes.map((c) => (
-                              <option key={c.groupId} value={c.groupId}>{c.groupName}</option>
+                              <option key={c.groupId} value={c.groupId}>{classLabel(c)}</option>
                             ))}
                           </select>
 

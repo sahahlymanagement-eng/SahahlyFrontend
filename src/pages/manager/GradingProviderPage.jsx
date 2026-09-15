@@ -2529,6 +2529,21 @@ toast.success("Result cleared — you can mark again");
     return trimmed ? trimmed.toLowerCase() : null;
   }
 
+  // A group name can itself be reused across more than one exam
+  // session/cohort — seen live: "1A" minted once under school_id 133 for
+  // "Nov26 OL camb" and again under school_id 138 for "J27", same display
+  // name, genuinely different students/assignments. IGSpaces only exposes
+  // this as `classroom.subject_name` on GET /classes (never on the
+  // assignment's own classroom block — the backend fills it in from the
+  // synced discovery feed, see igspacesDiscoverySync.js). buildGroupOptions
+  // below only splits a name across sessions when it actually is ambiguous,
+  // so a ordinary single-session group keeps behaving exactly as it did
+  // before this field existed.
+  function normalizeSubjectName(name) {
+    const trimmed = (name || "").trim();
+    return trimmed ? trimmed.toLowerCase() : null;
+  }
+
   // One row per assignment id, count/graded/marked summed across every input
   // row that shares that id (assignmentIndex carries one row per (assignment,
   // group) — see gradingSubmissionQuery.js's listAssignmentSummary). Used by
@@ -2705,32 +2720,74 @@ toast.success("Result cleared — you can mark again");
   // could only ever show the same "every class" result "By Assignment"
   // already gives — they remain reachable there instead.
   function buildGroupOptions(rows) {
-    const map = new Map();
+    // First pass: every real group_id seen, with its name/session and how
+    // many of the input rows (assignments) belong to it.
+    const byGroupId = new Map();
     for (const a of rows) {
       const groupId = a.classroom?.group_id;
       if (groupId == null) continue;
-      const rawName = a.classroom?.group_name;
-      const key = normalizeGroupName(rawName) ?? `id:${groupId}`;
-      const entry = map.get(key) || {
-        groupName: rawName || `Group #${groupId}`,
+      const entry = byGroupId.get(groupId) || {
+        rawName: a.classroom?.group_name,
+        subjectName: a.classroom?.subject_name || null,
+        assignmentIds: new Set(),
+        submissionCount: 0,
+      };
+      if (a.id != null) entry.assignmentIds.add(a.id);
+      entry.submissionCount += a.count ?? 0;
+      byGroupId.set(groupId, entry);
+    }
+
+    // Second pass: only a NAME that actually spans more than one distinct
+    // session needs splitting (the live "1A" Nov26/J27 case) — every other
+    // name keeps exactly the single merged bucket it had before sessions
+    // were tracked at all.
+    const subjectsByName = new Map();
+    for (const entry of byGroupId.values()) {
+      const nameKey = normalizeGroupName(entry.rawName);
+      if (nameKey == null) continue;
+      if (!subjectsByName.has(nameKey)) subjectsByName.set(nameKey, new Set());
+      subjectsByName.get(nameKey).add(normalizeSubjectName(entry.subjectName));
+    }
+
+    const map = new Map();
+    for (const [groupId, entry] of byGroupId.entries()) {
+      const nameKey = normalizeGroupName(entry.rawName) ?? `id:${groupId}`;
+      const ambiguous = (subjectsByName.get(nameKey)?.size || 0) > 1;
+      const subjectKey = ambiguous ? normalizeSubjectName(entry.subjectName) : null;
+      const key = ambiguous ? `${nameKey}::${subjectKey ?? ""}` : nameKey;
+
+      const bucket = map.get(key) || {
+        groupKey: nameKey,
+        groupName: entry.rawName || `Group #${groupId}`,
+        // Display-only disambiguator, e.g. "1A" + "Nov26 OL camb" — only set
+        // when this name was actually ambiguous; an ordinary group's label
+        // and merge behavior are unchanged.
+        subjectName: ambiguous ? entry.subjectName : null,
         groupIds: new Set(),
         assignmentIds: new Set(),
         submissionCount: 0,
       };
-      entry.groupIds.add(groupId);
-      if (a.id != null) entry.assignmentIds.add(a.id);
-      entry.submissionCount += a.count ?? 0;
-      map.set(key, entry);
+      bucket.groupIds.add(groupId);
+      for (const id of entry.assignmentIds) bucket.assignmentIds.add(id);
+      bucket.submissionCount += entry.submissionCount;
+      map.set(key, bucket);
     }
     return [...map.entries()]
-      .map(([groupKey, entry]) => ({
-        groupKey,
+      .map(([mapKey, entry]) => ({
+        // React list key / persisted-state identity — unique even when two
+        // buckets share a groupKey (the ambiguous-name split case). groupKey
+        // itself stays the plain normalized name, unchanged, since that's
+        // what the group-defaults picker (gradingPartnerGroupDefaults.js)
+        // matches on.
+        key: mapKey,
+        groupKey: entry.groupKey,
         groupName: entry.groupName,
+        subjectName: entry.subjectName,
         groupIds: [...entry.groupIds],
         assignmentCount: entry.assignmentIds.size,
         submissionCount: entry.submissionCount,
       }))
-      .sort((a, b) => a.groupName.localeCompare(b.groupName));
+      .sort((a, b) => a.groupName.localeCompare(b.groupName) || (a.subjectName || "").localeCompare(b.subjectName || ""));
   }
 
   const schoolGroupOptions = useMemo(() => {
@@ -3138,13 +3195,16 @@ toast.success("Result cleared — you can mark again");
                     ) : (
                       filteredSchoolGroupOptions.map((g) => (
                         <div
-                          key={g.groupKey}
+                          key={g.key}
                           className="ma-classroom-card"
                           onClick={() => selectSchoolGroup(g)}
                         >
                           <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                           <div className="ma-classroom-info">
-                            <span className="ma-classroom-name">{g.groupName}</span>
+                            <span className="ma-classroom-name">
+                              {g.groupName}
+                              {g.subjectName && <span className="ma-classroom-subject"> · {g.subjectName}</span>}
+                            </span>
                             <span className="ma-classroom-section">
                               {g.assignmentCount} assignment{g.assignmentCount === 1 ? "" : "s"}
                               {" · "}
@@ -3165,7 +3225,10 @@ toast.success("Result cleared — you can mark again");
                   tabIndex={0}
                 >
                   <span className="msv-section-collapsed-chevron">▶</span>
-                  <span className="msv-section-collapsed-text">Group: {selectedSchoolGroup.groupName}</span>
+                  <span className="msv-section-collapsed-text">
+                    Group: {selectedSchoolGroup.groupName}
+                    {selectedSchoolGroup.subjectName ? ` · ${selectedSchoolGroup.subjectName}` : ""}
+                  </span>
                   <button
                     type="button"
                     className="msv-section-change"
@@ -3198,13 +3261,16 @@ toast.success("Result cleared — you can mark again");
                     ) : (
                       filteredTopGroupOptions.map((g) => (
                         <div
-                          key={g.groupKey}
+                          key={g.key}
                           className="ma-classroom-card"
                           onClick={() => selectTopGroup(g)}
                         >
                           <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                           <div className="ma-classroom-info">
-                            <span className="ma-classroom-name">{g.groupName}</span>
+                            <span className="ma-classroom-name">
+                              {g.groupName}
+                              {g.subjectName && <span className="ma-classroom-subject"> · {g.subjectName}</span>}
+                            </span>
                             <span className="ma-classroom-section">
                               {g.assignmentCount} assignment{g.assignmentCount === 1 ? "" : "s"}
                               {" · "}
@@ -3225,7 +3291,10 @@ toast.success("Result cleared — you can mark again");
                   tabIndex={0}
                 >
                   <span className="msv-section-collapsed-chevron">▶</span>
-                  <span className="msv-section-collapsed-text">Group: {selectedTopGroup.groupName}</span>
+                  <span className="msv-section-collapsed-text">
+                    Group: {selectedTopGroup.groupName}
+                    {selectedTopGroup.subjectName ? ` · ${selectedTopGroup.subjectName}` : ""}
+                  </span>
                   <button
                     type="button"
                     className="msv-section-change"
