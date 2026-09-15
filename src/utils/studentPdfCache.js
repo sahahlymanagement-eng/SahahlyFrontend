@@ -106,6 +106,12 @@ export async function fetchStudentPdf(
     timeout = STALL_TIMEOUT_MS,
     /** ({ loaded, total }) → void, called as bytes arrive. */
     onProgress = null,
+    // From the student list response (manager-assignments /full,
+    // assignment-submissions /students) when it already carried a presigned
+    // URL for this submission — skips the GET /pdf-url round-trip. Optional;
+    // a stale/expired one just falls back to the normal resolution.
+    directUrl = null,
+    directExpiresAt = null,
   }
 ) {
   const key = cacheKey(assignmentId, submissionId);
@@ -141,6 +147,8 @@ export async function fetchStudentPdf(
         submissionId,
         googleUserId,
         onProgress,
+        directUrl,
+        directExpiresAt,
       });
       if (direct) return direct;
       // null = "use the proxy"; a genuine no-attachment case throws and

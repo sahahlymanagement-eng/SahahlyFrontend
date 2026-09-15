@@ -4,7 +4,7 @@
 
 import { buildReturnAllQueue } from "./returnAllQueue";
 import { getApiErrorMessage } from "./markingFormData";
-import { invalidateStudentPdf } from "./studentPdfCache";
+import { fetchStudentPdf, invalidateStudentPdf } from "./studentPdfCache";
 import { getMarkingIntegrityPublishGate } from "./markingIntegrityPublish";
 
 import {
@@ -63,22 +63,20 @@ async function resolveStudentPdfFile({
   api,
   assignmentId,
   submissionId,
-  studentName,
   googleUserId,
   existingFile,
+  directUrl,
+  directExpiresAt,
 }) {
   if (isPdfFileLike(existingFile)) return existingFile;
 
-  const pdfRes = await api.get("/submission-files/pdf", {
-    params: { assignmentId, submissionId, googleUserId: googleUserId || undefined },
-    responseType: "blob",
+  return fetchStudentPdf(api, {
+    assignmentId,
+    submissionId,
+    googleUserId: googleUserId || undefined,
+    directUrl,
+    directExpiresAt,
   });
-
-  return new File(
-    [pdfRes.data],
-    `${studentName || "student"}.pdf`,
-    { type: "application/pdf" }
-  );
 }
 
 /**
@@ -154,9 +152,10 @@ export async function runReturnAllQueue({
             api,
             assignmentId,
             submissionId: liveSubmissionId,
-            studentName: student?.name,
             googleUserId,
             existingFile,
+            directUrl: student?.pdfDirectUrl,
+            directExpiresAt: student?.pdfDirectExpiresAt,
           });
         } catch (err) {
           // Nothing was attached to annotate. That is not a return failure —

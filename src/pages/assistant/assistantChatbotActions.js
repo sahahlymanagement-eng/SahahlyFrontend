@@ -3,11 +3,13 @@ import { fetchAllPaginated } from "../../utils/fetchAllStudents";
 import { loadEligibleStudentsForMarking } from "../../utils/markingStudentSelection";
 import {
   appendMarkingContext,
-  assertPdfBlob,
   buildBatchMarkingResult,
   guidanceForForm,
   resolveTotalMarksFromResult,
 } from "../../utils/markingFormData";
+import { fetchStudentPdf } from "../../utils/studentPdfCache";
+import { fetchMarkSchemeFile } from "../../utils/presignedPdf";
+import { studentGoogleUserId } from "../../utils/returnAllExecution";
 import {
   DEFAULT_GEMINI_MODEL,
   parseGeminiModelsResponse,
@@ -312,30 +314,16 @@ async function markSingleStudent({
   guidanceValue,
   geminiModel,
 }) {
-  const [studentPdfRes, msPdfRes] = await Promise.all([
-    api.get("/submission-files/pdf", {
-      params: { assignmentId, submissionId: student.submissionId },
-      responseType: "blob",
+  const [studentFile, msFile] = await Promise.all([
+    fetchStudentPdf(api, {
+      assignmentId,
+      submissionId: student.submissionId,
+      googleUserId: studentGoogleUserId(student) || undefined,
+      directUrl: student.pdfDirectUrl || undefined,
+      directExpiresAt: student.pdfDirectExpiresAt || undefined,
     }),
-    api.get(`/manager-assignments/${assignmentId}/markscheme-file`, {
-      responseType: "blob",
-    }),
+    fetchMarkSchemeFile(api, assignmentId),
   ]);
-
-  await assertPdfBlob(
-    studentPdfRes.data,
-    `${student.name || "Student"} submission`
-  );
-  await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-  const studentFile = new File(
-    [studentPdfRes.data],
-    `${student.name || "student"}.pdf`,
-    { type: "application/pdf" }
-  );
-  const msFile = new File([msPdfRes.data], "markscheme.pdf", {
-    type: "application/pdf",
-  });
 
   const fd = new FormData();
   fd.append("studentPdf", studentFile);

@@ -369,7 +369,8 @@ export function useAnnotatedResultPreview({
         // Cached per paper for the session: a preview is rebuilt several times
         // while one modal is open, and the student's file cannot change under
         // it. See utils/studentPdfCache.js.
-        const googleUserId = studentGoogleUserId(resultModalRef.current?.student);
+        const student = resultModalRef.current?.student;
+        const googleUserId = studentGoogleUserId(student);
         const logoPromise = loadAssignmentTeacherLogo(api, assignmentId).catch(() => null);
         // No total-time cap here: fetchStudentPdf aborts on its own when the
         // download stalls, and a large paper on a slow link legitimately needs
@@ -381,6 +382,8 @@ export function useAnnotatedResultPreview({
               assignmentId,
               submissionId: snapshot.submissionId,
               googleUserId: googleUserId || undefined,
+              directUrl: student?.pdfDirectUrl || undefined,
+              directExpiresAt: student?.pdfDirectExpiresAt || undefined,
               onProgress: ({ loaded, total }) => {
                 if (requestId !== previewRequestRef.current) return;
                 const mb = (n) => (n / (1024 * 1024)).toFixed(1);

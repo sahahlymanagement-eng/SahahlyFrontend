@@ -75,8 +75,27 @@ export function isNoAttachmentPayload(data) {
  * Throws only when the backend says there is genuinely no downloadable
  * attachment (`{noAttachment: true}`), so callers keep their existing
  * no-submission handling.
+ *
+ * `directUrl`/`directExpiresAt`, when passed, come from the student list
+ * response (manager-assignments /full, assignment-submissions /students) —
+ * both already attach a presigned URL for every submission with a ready,
+ * matching mirror. Using it here skips the GET /pdf-url round-trip
+ * entirely; a stale/expired/rejected URL just falls through to the normal
+ * resolution below rather than failing outright.
  */
-export async function fetchStudentPdfDirect(api, { assignmentId, submissionId, googleUserId, onProgress } = {}) {
+export async function fetchStudentPdfDirect(
+  api,
+  { assignmentId, submissionId, googleUserId, onProgress, directUrl, directExpiresAt } = {}
+) {
+  const directUrlUsable = directUrl && (!directExpiresAt || new Date(directExpiresAt).getTime() - Date.now() > 30_000);
+  if (directUrlUsable) {
+    try {
+      return await urlToFile(directUrl, `${submissionId}.pdf`, { onProgress });
+    } catch {
+      // Fall through to resolving a fresh URL below.
+    }
+  }
+
   let data;
   try {
     const res = await api.get("/submission-files/pdf-url", {

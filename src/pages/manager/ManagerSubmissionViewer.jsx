@@ -29,7 +29,6 @@ import ExamBoardGuidanceFields from "../../components/ExamBoardGuidanceFields";
 import { useExamBoardGuidance } from "../../hooks/useExamBoardGuidance";
 import {
   appendMarkingContext,
-  assertPdfBlob,
   buildFinalMarkingResult,
   buildBatchMarkingResult,
   buildV2MarkingResult,
@@ -1789,25 +1788,16 @@ useEffect(() => {
     setAiReviewProgress((prev) => ({ ...prev, [submissionId]: "reviewing" }));
 
     try {
-      const [studentPdfRes, msPdfRes] = await Promise.all([
-        api.get("/submission-files/pdf", {
-          params: { assignmentId: selectedAssignment._id, submissionId },
-          responseType: "blob",
+      const [studentFile, msFile] = await Promise.all([
+        fetchStudentPdf(api, {
+          assignmentId: selectedAssignment._id,
+          submissionId,
+          googleUserId: studentGoogleUserId(student) || undefined,
+          directUrl: student.pdfDirectUrl || undefined,
+          directExpiresAt: student.pdfDirectExpiresAt || undefined,
         }),
-        api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-          responseType: "blob",
-        }),
+        fetchMarkSchemeFile(api, selectedAssignment._id),
       ]);
-
-      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-      await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-      const studentFile = new File(
-        [studentPdfRes.data],
-        `${student.name || "student"}.pdf`,
-        { type: "application/pdf" }
-      );
-      const msFile = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
 
       const fd = new FormData();
       fd.append("studentPdf", studentFile);
@@ -1833,9 +1823,7 @@ useEffect(() => {
         return;
       }
 
-      const pdfUrl = URL.createObjectURL(
-        new Blob([studentPdfRes.data], { type: "application/pdf" })
-      );
+      const pdfUrl = URL.createObjectURL(studentFile);
 
       setAiReviewModal({
         student,
@@ -1974,21 +1962,16 @@ useEffect(() => {
       const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
       if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
-      const [studentPdfRes, msPdfRes] = await Promise.all([
-        api.get("/submission-files/pdf", {
-          params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
-          responseType: "blob"
+      const [studentFile, msFile] = await Promise.all([
+        fetchStudentPdf(api, {
+          assignmentId: selectedAssignment._id,
+          submissionId: student.submissionId,
+          googleUserId: studentGoogleUserId(student) || undefined,
+          directUrl: student.pdfDirectUrl || undefined,
+          directExpiresAt: student.pdfDirectExpiresAt || undefined,
         }),
-        api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-          responseType: "blob"
-        })
+        fetchMarkSchemeFile(api, selectedAssignment._id),
       ]);
-
-      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-      await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-      const studentFile = new File([studentPdfRes.data], `${student.name || "student"}.pdf`, { type: "application/pdf" });
-      const msFile      = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
 
       const fd = new FormData();
       fd.append("studentPdf",    studentFile);
@@ -2112,21 +2095,16 @@ useEffect(() => {
       const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
       if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
-      const [studentPdfRes, msPdfRes] = await Promise.all([
-        api.get("/submission-files/pdf", {
-          params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
-          responseType: "blob"
+      const [studentFile, msFile] = await Promise.all([
+        fetchStudentPdf(api, {
+          assignmentId: selectedAssignment._id,
+          submissionId: student.submissionId,
+          googleUserId: studentGoogleUserId(student) || undefined,
+          directUrl: student.pdfDirectUrl || undefined,
+          directExpiresAt: student.pdfDirectExpiresAt || undefined,
         }),
-        api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-          responseType: "blob"
-        })
+        fetchMarkSchemeFile(api, selectedAssignment._id),
       ]);
-
-      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-      await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-      const studentFile = new File([studentPdfRes.data], `${student.name || "student"}.pdf`, { type: "application/pdf" });
-      const msFile      = new File([msPdfRes.data], "markscheme.pdf", { type: "application/pdf" });
 
       const fd = new FormData();
       fd.append("studentPdf",    studentFile);
@@ -2257,16 +2235,13 @@ useEffect(() => {
       const selectedModel = pickValidGeminiModel(geminiModels, geminiModel);
       if (selectedModel !== geminiModel) setGeminiModel(selectedModel);
 
-      const studentPdfRes = await api.get("/submission-files/pdf", {
-        params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
-        responseType: "blob",
+      const studentFile = await fetchStudentPdf(api, {
+        assignmentId: selectedAssignment._id,
+        submissionId: student.submissionId,
+        googleUserId: studentGoogleUserId(student) || undefined,
+        directUrl: student.pdfDirectUrl || undefined,
+        directExpiresAt: student.pdfDirectExpiresAt || undefined,
       });
-      await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-      const studentFile = new File(
-        [studentPdfRes.data],
-        `${student.name || "student"}.pdf`,
-        { type: "application/pdf" }
-      );
 
       const { data } = await api.post(
         "/gradingv2/mark-live",
@@ -2410,29 +2385,16 @@ useEffect(() => {
       let msFile;
 
       try {
-        const [studentPdfRes, msPdfRes] = await Promise.all([
-          api.get("/submission-files/pdf", {
-            params: { assignmentId: selectedAssignment._id, submissionId: student.submissionId },
-            responseType: "blob"
+        [studentFile, msFile] = await Promise.all([
+          fetchStudentPdf(api, {
+            assignmentId: selectedAssignment._id,
+            submissionId: student.submissionId,
+            googleUserId: studentGoogleUserId(student) || undefined,
+            directUrl: student.pdfDirectUrl || undefined,
+            directExpiresAt: student.pdfDirectExpiresAt || undefined,
           }),
-          api.get(`/manager-assignments/${selectedAssignment._id}/markscheme-file`, {
-            responseType: "blob"
-          }),
+          fetchMarkSchemeFile(api, selectedAssignment._id),
         ]);
-
-        await assertPdfBlob(studentPdfRes.data, `${student.name || "Student"} submission`);
-        await assertPdfBlob(msPdfRes.data, "Mark scheme");
-
-        studentFile = new File(
-          [studentPdfRes.data],
-          `${student.name || "student"}.pdf`,
-          { type: "application/pdf" }
-        );
-        msFile = new File(
-          [msPdfRes.data],
-          "markscheme.pdf",
-          { type: "application/pdf" }
-        );
       } catch (err) {
       const status = err?.response?.status;
       const loadMessage = await getApiErrorMessage(err);
@@ -3465,19 +3427,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         resultModal?.student?.submissionId ||
         db?.submissionId;
 
-      const pdfRes = await api.get("/submission-files/pdf", {
-        params: {
-          assignmentId: selectedAssignment._id,
-          submissionId: submissionId
-        },
-        responseType: "blob",
-        timeout: 120_000,
+      const studentFile = await fetchStudentPdf(api, {
+        assignmentId: selectedAssignment._id,
+        submissionId,
+        googleUserId: studentGoogleUserId(resultModal.student) || undefined,
+        directUrl: resultModal.student?.pdfDirectUrl || undefined,
+        directExpiresAt: resultModal.student?.pdfDirectExpiresAt || undefined,
       });
-      const studentFile = new File(
-        [pdfRes.data],
-        "student.pdf",
-        { type: "application/pdf" }
-      );
 
       const pdfBytes = await annotatePdf({
         studentFile,
@@ -3766,19 +3722,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       if (!gradeOnly && !studentFile && submissionId) {
         try {
-          const pdfRes = await api.get("/submission-files/pdf", {
-            params: {
-              assignmentId: selectedAssignment._id,
-              submissionId,
-              googleUserId: googleUserId || undefined,
-            },
-            responseType: "blob",
+          studentFile = await fetchStudentPdf(api, {
+            assignmentId: selectedAssignment._id,
+            submissionId,
+            googleUserId: googleUserId || undefined,
+            directUrl: resultModal.student?.pdfDirectUrl || undefined,
+            directExpiresAt: resultModal.student?.pdfDirectExpiresAt || undefined,
           });
-          studentFile = new File(
-            [pdfRes.data],
-            `${resultModal.student?.name || "student"}.pdf`,
-            { type: "application/pdf" }
-          );
         } catch (err) {
           if (await isNoAttachmentError(err)) gradeOnly = true;
           else throw err;
