@@ -190,6 +190,21 @@ const PREVIEW_BADGE_BLOCK_H_RATIO = 52 / 842;
 const PREVIEW_PAGE_STRIP_RATIO = 28 / 842;
 const PREVIEW_BADGE_GAP = 14;
 
+/** Reference page height (A4 in points) the badge dimensions below were tuned for. */
+const BADGE_REFERENCE_HEIGHT = 842;
+
+/**
+ * Submissions come in at wildly different page sizes (A3 scans, oversized
+ * exports, phone-photo PDFs with huge mediaboxes). A badge sized for A4 reads
+ * as illegibly tiny on a much taller page, so every badge dimension — box,
+ * font sizes, tick/cross strokes — scales with the page's own height. Clamped
+ * so a corrupt/huge mediabox can't blow the badge up past usefulness either.
+ */
+export function badgeScaleForPageHeight(pageHeight) {
+  const scale = (Number(pageHeight) || BADGE_REFERENCE_HEIGHT) / BADGE_REFERENCE_HEIGHT;
+  return Math.min(2.2, Math.max(0.7, scale));
+}
+
 /**
  * Resolve badge Y positions with the same collision logic as annotatePdf.js,
  * returned as yPercent for preview overlay handles.
@@ -203,7 +218,7 @@ export function resolveBadgeYPercentsForPage(questionsOnPage, pageHeight = 842) 
   const height = pageHeight;
   const PAGE_BOTTOM = height * PREVIEW_PAGE_STRIP_RATIO + 6;
   const PAGE_TOP = height - 8;
-  const badgeBlockH = height * PREVIEW_BADGE_BLOCK_H_RATIO;
+  const badgeBlockH = BADGE_REFERENCE_HEIGHT * PREVIEW_BADGE_BLOCK_H_RATIO * badgeScaleForPageHeight(height);
 
   const sortedQs = [...questionsOnPage].sort(
     (a, b) =>

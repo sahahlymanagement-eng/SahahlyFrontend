@@ -400,10 +400,42 @@ function LazyPdfPage({
       { root: scrollRoot, rootMargin: "320px 0px", threshold: 0.01 }
     );
 
+    // A rendered canvas is never freed on its own — on a long scanned
+    // submission (30+ pages) every page a reader has scrolled past stays
+    // fully rendered at up to ~8M backing pixels each, and the growing
+    // canvas memory eventually crashes/reloads the tab mid-scroll. Once a
+    // page falls well outside this wider margin, drop its backing store
+    // (keep the CSS width/height so layout and scroll position don't jump)
+    // so only pages actually near the viewport hold pixels; it re-renders
+    // through the observer above when scrolled back near.
+    const unloadObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => !e.isIntersecting) && renderedRef.current) {
+          if (renderTaskRef.current) {
+            try {
+              renderTaskRef.current.cancel();
+            } catch {
+              // ignore
+            }
+          }
+          const canvas = canvasRef.current;
+          if (canvas) {
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+          renderedRef.current = false;
+          setRendered(false);
+        }
+      },
+      { root: scrollRoot, rootMargin: "1600px 0px", threshold: 0 }
+    );
+
     observer.observe(el);
+    unloadObserver.observe(el);
     return () => {
       disposed = true;
       observer.disconnect();
+      unloadObserver.disconnect();
       if (retryTimer) clearTimeout(retryTimer);
       if (renderTaskRef.current) {
         try {

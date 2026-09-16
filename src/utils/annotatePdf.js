@@ -11,6 +11,7 @@ import {
   labelAliases,
 } from "./markingQuestionDedupe";
 import {
+  badgeScaleForPageHeight,
   compareQuestionNumbers,
   normalizeQuestionPlacement,
   paperAnchorY,
@@ -1920,10 +1921,14 @@ export async function annotatePdf({
 
     const PAGE_BOTTOM = STRIP_H + 6;
     const PAGE_TOP = height - 8;
-    const badgeH = 18;
+    // Submissions vary hugely in page size (A3 scans, phone-photo exports).
+    // A badge sized for A4 reads as tiny on a much taller page, so every
+    // badge dimension below scales with the page's own height.
+    const badgeScale = badgeScaleForPageHeight(height);
+    const badgeH = 18 * badgeScale;
     // Score box + Q label above + tick/cross/MCQ letter below — keep in sync
     // with PREVIEW_BADGE_BLOCK_H_RATIO in normalizeQuestionPlacement.js.
-    const badgeBlockH = badgeH + 34;
+    const badgeBlockH = badgeH + 34 * badgeScale;
 
     const sortedQs = [...qs].sort(
       (a, b) => yPercentOf(a) - yPercentOf(b) || compareQuestionNumbers(a.questionNumber, b.questionNumber)
@@ -1938,7 +1943,7 @@ export async function annotatePdf({
       {
         minCenter: PAGE_BOTTOM + badgeBlockH / 2,
         maxCenter: PAGE_TOP - badgeBlockH / 2,
-        gap: 14,
+        gap: 14 * badgeScale,
       }
     );
 
@@ -1951,8 +1956,9 @@ export async function annotatePdf({
       const notAttempted = q.studentAnswer === "Not attempted" || isBlankQuestion(q);
 
       const scoreTxt = `${q.marksAwarded}/${q.maxMarks}`;
-      const badgeW = Math.max(34, bold.widthOfTextAtSize(scoreTxt, 10) + 10);
-      const badgeX = 3;
+      const scoreSize = 11 * badgeScale;
+      const badgeW = Math.max(34 * badgeScale, bold.widthOfTextAtSize(scoreTxt, scoreSize) + 10 * badgeScale);
+      const badgeX = 3 * badgeScale;
       const badgeY = anchorY - badgeH / 2;
 
       page.drawRectangle({
@@ -1962,56 +1968,56 @@ export async function annotatePdf({
         height: badgeH,
         color: bg,
         borderColor: col,
-        borderWidth: 1.2,
+        borderWidth: 1.2 * badgeScale,
       });
 
       page.drawText(scoreTxt, {
-        x: badgeX + 5,
-        y: badgeY + 5,
-        size: 11,
+        x: badgeX + 5 * badgeScale,
+        y: badgeY + 5 * badgeScale,
+        size: scoreSize,
         font: bold,
         color: col,
       });
 
       page.drawText(san(overlayQText(q)).substring(0, 16), {
         x: badgeX,
-        y: badgeY + badgeH + 3,
-        size: 9,
+        y: badgeY + badgeH + 3 * badgeScale,
+        size: 9 * badgeScale,
         font: bold,
         color: NAVY,
       });
 
       const mcq = mcqChoiceSummary(q);
-      const symbolY = badgeY - 18;
+      const symbolY = badgeY - 18 * badgeScale;
 
       const isSplit = q.continuesOnNextPage === true || looksLikePageSplitDeferral(q);
 
       if (isSplit) {
-        page.drawText("...", { x: badgeX + 5, y: symbolY + 2, size: 12, font: bold, color: AMBER });
+        page.drawText("...", { x: badgeX + 5 * badgeScale, y: symbolY + 2 * badgeScale, size: 12 * badgeScale, font: bold, color: AMBER });
       } else if (notAttempted) {
-        page.drawText("?", { x: badgeX + 9, y: symbolY + 2, size: 14, font: bold, color: AMBER });
+        page.drawText("?", { x: badgeX + 9 * badgeScale, y: symbolY + 2 * badgeScale, size: 14 * badgeScale, font: bold, color: AMBER });
       } else if (mcq.isMcq && mcq.student) {
         const letter = extractOptionLetter(mcq.student) || san(mcq.student).substring(0, 6);
         const choiceColor = full ? GREEN : RED;
         const tag = full ? letter : `${letter} X`;
         page.drawText(san(tag), {
-          x: badgeX + 2,
-          y: symbolY + 2,
-          size: 9,
+          x: badgeX + 2 * badgeScale,
+          y: symbolY + 2 * badgeScale,
+          size: 9 * badgeScale,
           font: bold,
           color: choiceColor,
         });
       } else if (full) {
-        drawTick(page, badgeX + 3, symbolY, 14, GREEN);
+        drawTick(page, badgeX + 3 * badgeScale, symbolY, 14 * badgeScale, GREEN);
       } else if (none) {
-        drawCross(page, badgeX + 3, symbolY, 13, RED);
+        drawCross(page, badgeX + 3 * badgeScale, symbolY, 13 * badgeScale, RED);
       }
       // Partial marks: amber score badge only — never a tick and a cross together.
 
       page.drawLine({
         start: { x: badgeX + badgeW, y: anchorY },
         end: { x: LM + 2, y: anchorY },
-        thickness: 0.85,
+        thickness: 0.85 * badgeScale,
         color: col,
         dashArray: [2, 2],
         dashPhase: 0,
