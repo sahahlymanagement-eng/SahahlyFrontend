@@ -1,22 +1,24 @@
 /**
  * Publish All — send every marked-but-unpublished submission of one grading
- * partner assignment back to the partner, one after another.
+ * partner assignment back to the partner.
  *
- * Publishing a single submission has always been a browser-side job: the PDF
- * the partner receives is rendered here by annotatePdf from the marking result,
- * and the backend's /upload endpoint takes that finished file. So this is the
- * one-at-a-time flow in a loop rather than anything new — same annotation, same
- * grade resolution, same endpoint — with the queue coming from the backend
- * (GET /submissions/publishable) so it covers the WHOLE assignment and not just
- * the page of rows currently on screen.
+ * Two implementations live here, selected by `base`:
  *
- * Deliberately sequential: each item downloads a submission PDF, renders it and
- * uploads it again, and the partner's API is on the far end of every one. A
- * failure never stops the run — it is collected and reported at the end, the
- * same contract as Return All in the classroom viewer.
+ *  - Registry providers (mariamgabalawy / drpeter, base "/grading/:slug"):
+ *    the work now runs server-side (POST .../publish-all starts a background
+ *    run — see SahahlyBackend/src/services/gradingPublishRun.js, which
+ *    renders with a ported, hand-synced copy of this file's own annotatePdf
+ *    call). This module just starts that job and polls it. Because progress
+ *    lives server-side, navigating away and back (or a full reload) resumes
+ *    polling — the run was never tied to this tab.
  *
- * Shared by the LoginCSS tab and every registry provider tab; the only
- * difference is `base` (/external-grading vs /grading/:slug).
+ *  - LoginCSS (base "/external-grading"): still the original browser-driven
+ *    loop below (render here, upload, repeat) — LoginCSS keeps its own
+ *    separate /api/external-grading integration untouched for now.
+ *
+ * Both are exposed under the one `runGradingPublishAll` name so neither
+ * caller (GradingProviderPage.jsx / ManagerLoginCss.jsx) needs to know which
+ * implementation it's getting.
  */
 
 import { annotatePdf } from "./annotatePdf";
@@ -52,36 +54,21 @@ function resolveQueuedMarks(result, questions) {
   return questions.reduce((sum, q) => sum + (Number(q.marksAwarded) || 0), 0);
 }
 
-// How many submissions to have in flight at once. Each one is a real chain
-// of work (fetch the draft, render the annotated PDF, upload it, wait on R2 +
-// the partner's own API on the far end), and running them one-at-a-time meant
-// a 100-submission assignment paid every one of those round trips serially.
-// Most of that chain is waiting on the network, not the browser's CPU, so a
-// handful running together overlaps the waiting instead of the rendering.
+// How many submissions to have in flight at once (browser-loop path only).
+// Each one is a real chain of work (fetch the draft, render the annotated
+// PDF, upload it, wait on R2 + the partner's own API on the far end), and
+// running them one-at-a-time meant a 100-submission assignment paid every one
+// of those round trips serially. Most of that chain is waiting on the
+// network, not the browser's CPU, so a handful running together overlaps the
+// waiting instead of the rendering.
 const PUBLISH_CONCURRENCY = 3;
 
 /**
- * Publish every submission in `queue`.
- *
- * @param {object}   opts
- * @param {object}   opts.api
- * @param {string}   opts.base
- * @param {Array}    opts.queue            rows from fetchPublishQueue
- * @param {number|null} opts.assignmentMaxPoints  configured maxGrade / partner total
- * @param {string|null} [opts.partnerSlug] "logincss" | "mariamgabalawy" | "drpeter" —
- *        resolves the partner's report logo, drawn on the summary page the same
- *        way a classroom teacher's logo is. Omit to draw Sahahly's logo alone.
- * @param {function} opts.getStudentFile   (submissionId) => Promise<File>
- * @param {function} [opts.releaseStudentFile] drop a published submission's cached
- *        PDFs — without it a long run keeps every downloaded PDF in memory
- * @param {function} [opts.onProgress]     ({ done, total, current }) per item —
- *        `current` is a " · "-free, comma-joined label of whatever is in
- *        flight right now (there may be more than one)
- * @param {function} [opts.shouldStop]     () => boolean, checked before each
- *        item starts — items already in flight are left to finish
- * @returns {Promise<{successCount:number, failures:Array, publishedIds:Array, stopped:boolean}>}
+ * Original browser-driven Publish All (LoginCSS only — see module header).
+ * Renders every annotated PDF in this tab and uploads it; the caller must
+ * keep the tab open for the whole run.
  */
-export async function runGradingPublishAll({
+async function runGradingPublishAllInBrowser({
   api,
   base,
   queue = [],
@@ -208,6 +195,96 @@ export async function runGradingPublishAll({
   await Promise.all(Array.from({ length: workerCount }, worker));
 
   return { successCount, failures, publishedIds, stopped };
+}
+
+const POLL_MS = 2000;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Server-backgrounded Publish All (registry providers — see module header).
+ */
+async function runGradingPublishAllOnServer({
+  api,
+  base,
+  assignmentId = null,
+  queue = [],
+  onProgress,
+  shouldStop,
+}) {
+  const submissionIds = queue.map((row) => row.submissionId);
+
+  const { data: startResult } = await api.post(
+    `${base}/publish-all`,
+    { assignmentId, submissionIds },
+    { timeout: 30000 }
+  );
+
+  if (startResult?.alreadyRunning) {
+    throw new Error(
+      "A Publish All run is already in progress for this assignment — wait for it to finish."
+    );
+  }
+  if (!startResult?.started) {
+    return { successCount: 0, failures: [], publishedIds: [], stopped: false };
+  }
+
+  let stopSent = false;
+
+  for (;;) {
+    await wait(POLL_MS);
+
+    const { data: status } = await api.get(`${base}/publish-all/status`, {
+      params: assignmentId != null ? { assignmentId } : {},
+      timeout: 30000,
+    });
+
+    onProgress?.({
+      done: status.done ?? 0,
+      total: status.total ?? queue.length,
+      current: status.current || null,
+    });
+
+    if (!stopSent && shouldStop?.()) {
+      stopSent = true;
+      await api
+        .post(
+          `${base}/publish-all/stop`,
+          {},
+          { params: assignmentId != null ? { assignmentId } : {}, timeout: 15000 }
+        )
+        .catch(() => {});
+    }
+
+    if (!status.running) {
+      return {
+        successCount: status.successCount ?? 0,
+        failures: status.failures || [],
+        publishedIds: status.publishedIds || [],
+        stopped: Boolean(status.stopped),
+      };
+    }
+  }
+}
+
+/**
+ * Publish every submission in `queue`. Dispatches to the server-backgrounded
+ * job for registry providers (base starts with "/grading/") and to the
+ * original browser loop for LoginCSS (base "/external-grading") — see the
+ * module header for why the two still differ.
+ *
+ * @returns {Promise<{successCount:number, failures:Array, publishedIds:Array, stopped:boolean}>}
+ */
+export async function runGradingPublishAll(opts) {
+  if (!opts.queue?.length) {
+    return { successCount: 0, failures: [], publishedIds: [], stopped: false };
+  }
+  if (opts.base?.startsWith("/grading/")) {
+    return runGradingPublishAllOnServer(opts);
+  }
+  return runGradingPublishAllInBrowser(opts);
 }
 
 /** Human-readable outcome for the toast at the end of a run. */

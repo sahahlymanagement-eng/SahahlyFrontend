@@ -2284,23 +2284,14 @@ toast.success("Result cleared — you can mark again");
 
     setPublishAll({ done: 0, total: queued.length, current: null, loading: false });
 
+    // Rendering + upload now run server-side (gradingPublishRun.js), so this
+    // just starts that job and polls it — the assignment's max marks and the
+    // partner logo are resolved on the server, not here.
     const { successCount, failures, publishedIds, stopped } = await runGradingPublishAll({
       api,
       base: BASE,
-      partnerSlug: slug,
+      assignmentId: selectedAssignment.id ?? null,
       queue: queued,
-      assignmentMaxPoints:
-        assignmentSettings.settings.maxGrade != null
-          ? assignmentSettings.settings.maxGrade
-          : resolvePartnerAssignmentMax({
-              maxGrade: null,
-              inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
-              partnerGrade: selectedAssignment?.grade,
-            }),
-      getStudentFile,
-      // A run over a whole assignment would otherwise leave every downloaded
-      // submission PDF sitting in the cache for the rest of the session.
-      releaseStudentFile: (sid) => { delete pdfCacheRef.current[sid]; },
       onProgress: ({ done, total, current }) =>
         setPublishAll((prev) => (prev ? { ...prev, done, total, current } : prev)),
       shouldStop: () => publishStopRef.current,
