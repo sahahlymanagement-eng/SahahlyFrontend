@@ -26,13 +26,15 @@ function isAlreadyCorrectedPartnerRow(student) {
 
 const INDEXING_MODEL_KEY = 'sahahly.indexing.gradeModel';
 const DEFAULT_INDEXING_MODEL = 'gemini-2.5-flash';
+const RETIRED_INDEXING_MODELS = /^(gemini-1(\.|$)|gemini-1\.5)/i;
 
 function readIndexingModel(fallback) {
   try {
     const remembered = localStorage.getItem(INDEXING_MODEL_KEY);
-    if (remembered) return remembered;
+    if (remembered && !RETIRED_INDEXING_MODELS.test(remembered)) return remembered;
+    if (remembered) localStorage.removeItem(INDEXING_MODEL_KEY);
   } catch { /* private mode */ }
-  if (fallback) return fallback;
+  if (fallback && !RETIRED_INDEXING_MODELS.test(fallback)) return fallback;
   return DEFAULT_INDEXING_MODEL;
 }
 

@@ -206,7 +206,7 @@ export async function runReturnAllQueue({
         fallbackTotal: total,
       });
 
-      await api.post("/submission-files/return-marked", fd, {
+      const { data: returnResult } = await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000,
       });
@@ -225,6 +225,7 @@ export async function runReturnAllQueue({
         bulk,
         batch,
         returnedAt: new Date().toISOString(),
+        attachmentWarning: returnResult?.attachmentWarning || null,
       };
     } catch (err) {
       console.error(`Return failed for ${label}:`, err);
@@ -267,6 +268,10 @@ export async function runReturnAllQueue({
   }
 
   return { successCount, failures, outcomes, total: bulkQueue.length + batchQueue.length };
+}
+
+export function countAttachmentWarnings(outcomes = []) {
+  return (outcomes || []).filter((row) => row?.attachmentWarning).length;
 }
 
 export function emptyReturnAllMessage(savedResults = {}) {

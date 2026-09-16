@@ -3787,7 +3787,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         });
       }
 
-      await api.post("/submission-files/return-marked", fd, {
+      const { data: returnResult } = await api.post("/submission-files/return-marked", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000,
       });
@@ -3812,7 +3812,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
         };
       });
 
-      toast.success("Marked paper returned to student");
+      if (returnResult?.attachmentWarning) {
+        toast.warn(returnResult.attachmentWarning, { autoClose: 14000 });
+      } else {
+        toast.success(returnResult?.message || "Marked paper returned to student");
+      }
       setResultModal(null);
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || "Failed to return paper");
@@ -3865,16 +3869,22 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       await saveReturnSummaries(api, assignmentId, queue, resolvePdfSummary);
 
-      const { successCount, failures } = await returnAllToStudents(queue, freshSaved);
+      const { successCount, failures, outcomes } = await returnAllToStudents(queue, freshSaved);
 
       await fetchSavedResults();
 
+      const attachBlocked = (outcomes || []).filter((row) => row?.attachmentWarning).length;
       if (successCount === 0) {
         toast.error(failures[0]?.reason || "Return all failed");
       } else if (failures.length) {
         toast.warn(formatReturnFailuresMessage(successCount, failures), {
           autoClose: 12000,
         });
+      } else if (attachBlocked) {
+        toast.warn(
+          `Returned ${successCount} paper${successCount === 1 ? "" : "s"}. Google blocked attaching the marked PDF on ${attachBlocked} (assignment not created by Sahahly) — grade was still returned; attach the Drive/Sahahly PDF manually.`,
+          { autoClose: 14000 }
+        );
       } else {
         toast.success(
           `Returned ${successCount} graded paper${successCount === 1 ? "" : "s"}`
