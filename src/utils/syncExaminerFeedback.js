@@ -147,6 +147,14 @@ export function alignExaminerFeedbackToMarks(question, mode = "full", opts = {})
 
   if (full) {
     next.missingKeywords = [];
+    // Full marks with every MP still false (common after indexing exact-match
+    // failures) — tick them so Results / PDF stop showing contradictory red Xs.
+    if (Array.isArray(next.markPoints) && next.markPoints.length) {
+      const anyAwarded = next.markPoints.some((p) => p?.awarded === true);
+      if (!anyAwarded) {
+        next.markPoints = next.markPoints.map((p) => ({ ...p, awarded: true }));
+      }
+    }
   }
 
   if (awarded > 0) {

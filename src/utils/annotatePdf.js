@@ -129,7 +129,10 @@ function enrichPointRowsForDisplay(q, pts) {
 function markPointSummaries(q) {
   const pts = Array.isArray(q?.markPoints) ? q.markPoints : [];
   const enriched = enrichPointRowsForDisplay(q, pts.filter(Boolean));
-  return enriched
+  const fullMarks =
+    Number(q?.maxMarks) > 0 && Number(q?.marksAwarded) >= Number(q?.maxMarks);
+  const blank = isBlankQuestion(q);
+  let rows = enriched
     .map((p) => {
       const code = String(p.code || "").trim();
       const detail = String(p._detail || "").trim();
@@ -140,6 +143,18 @@ function markPointSummaries(q) {
       };
     })
     .filter((p) => p.text);
+
+  // Indexing often awards full marks while leaving markPoints unticked (exact
+  // code/text match failed). A wall of red Xs next to "Full marks awarded"
+  // is wrong — match native indexing annotate: no missed rows on full marks.
+  if (!blank && fullMarks && rows.length) {
+    if (rows.some((p) => p.awarded)) {
+      rows = rows.filter((p) => p.awarded);
+    } else {
+      rows = rows.map((p) => ({ ...p, awarded: true }));
+    }
+  }
+  return rows;
 }
 
 function extractOptionLetter(text) {

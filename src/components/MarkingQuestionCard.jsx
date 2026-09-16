@@ -258,6 +258,39 @@ export default function MarkingQuestionCard({
           Zero
         </button>
 
+        {(() => {
+          const n = Math.round(Number(q.confidence));
+          if (!Number.isFinite(n)) return null;
+          const band =
+            n >= 80
+              ? { label: "High", color: "var(--success)", bg: "var(--success)" }
+              : n >= 55
+                ? { label: "Med", color: "var(--warning)", bg: "var(--warning)" }
+                : { label: "Low", color: "var(--danger)", bg: "var(--danger)" };
+          return (
+            <span
+              title={
+                q.confidenceReason
+                  ? `${n}% confidence — ${q.confidenceReason}`
+                  : `${n}% marking confidence`
+              }
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: `1px solid color-mix(in srgb, ${band.bg} 40%, transparent)`,
+                background: `color-mix(in srgb, ${band.bg} 12%, transparent)`,
+                color: band.color,
+                whiteSpace: "nowrap",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {band.label} {n}%
+            </span>
+          );
+        })()}
+
         <div
           style={{
             flex: 1,
@@ -345,6 +378,24 @@ export default function MarkingQuestionCard({
           Flagged for review — a critical digit, sign, or choice could not be read reliably
         </div>
       )}
+
+      {Number.isFinite(Number(q.confidence)) &&
+        Number(q.confidence) < 80 &&
+        q.confidenceReason && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--muted)",
+              marginBottom: 8,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+            }}
+          >
+            Confidence note: {q.confidenceReason}
+          </div>
+        )}
 
       {Array.isArray(q.markPoints) && q.markPoints.length > 0 && (
         <div style={{ marginBottom: 10 }}>
