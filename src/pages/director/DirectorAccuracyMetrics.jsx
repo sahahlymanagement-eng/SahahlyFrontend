@@ -690,6 +690,57 @@ function AssignmentAccuracyDetailModal({ detail, loading, onClose }) {
               />
             </div>
 
+            {(detail.editors || []).length > 0 && (
+              <details className="dam-collapsible">
+                <summary className="dam-collapsible-summary">
+                  Edits by person
+                  <span className="dam-muted"> ({detail.editors.length})</span>
+                </summary>
+                <p className="dam-note">
+                  Measured per save, so a paper an assistant touched and a
+                  quality reviewer then corrected credits both — these rows do
+                  not have to add up to the totals above.
+                </p>
+                <div className="dam-table-wrap">
+                  <table className="dam-table sah-table--cards">
+                    <thead>
+                      <tr>
+                        <th>Person</th>
+                        <th title="1 − (mark edits ÷ marks available on the papers they touched)">
+                          Accuracy
+                        </th>
+                        <th title="Marks or feedback this person changed, including repeats and reverts">
+                          Correction Edits
+                        </th>
+                        <th title="Annotations this person dragged to a new place">
+                          Mapping Edits
+                        </th>
+                        <th>Papers touched</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.editors.map((e) => (
+                        <tr key={e.personId}>
+                          <td data-label="Person">
+                            <strong>{e.name}</strong>
+                            {e.email ? (
+                              <span className="dam-muted"> · {e.email}</span>
+                            ) : null}
+                          </td>
+                          <td data-label="Accuracy">
+                            <AccuracyBar value={e.accuracyRate} hint={marksHint(e)} />
+                          </td>
+                          <td data-label="Correction Edits">{formatNum(e.totalEdits)}</td>
+                          <td data-label="Mapping Edits">{formatNum(e.placementChanges)}</td>
+                          <td data-label="Papers touched">{formatNum(e.papers)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+
             <div className="dam-table-wrap">
               <table className="dam-table sah-table--cards">
                 <thead>
@@ -705,7 +756,9 @@ function AssignmentAccuracyDetailModal({ detail, loading, onClose }) {
                       Mapping Edits
                     </th>
                     <th>Marks moved</th>
-                    <th>Edited by</th>
+                    <th title="Everyone measured on this paper, e.g. an assistant's pass and a quality reviewer's follow-up — not just the most recent saver">
+                      Edited by
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -723,15 +776,35 @@ function AssignmentAccuracyDetailModal({ detail, loading, onClose }) {
                       </td>
                       <td data-label="Marks moved">{formatNum(s.marksDelta)}</td>
                       <td data-label="Edited by">
-                        {s.editedByName || <span className="dam-muted">—</span>}
-                        {s.attribution === "backfill" && s.editedByName ? (
-                          <span
-                            className="dam-chip dam-chip--muted"
-                            title="Historical row — attributed to the assigned assistant, not recorded at edit time"
-                          >
-                            estimated
+                        {(s.editors || []).length ? (
+                          <span className="dam-editors">
+                            {s.editors.map((e) => (
+                              <span
+                                key={e.personId}
+                                className="dam-chip"
+                                title={`${e.name}: ${formatNum(e.edits)} correction edit(s)${
+                                  e.placementEdits
+                                    ? `, ${formatNum(e.placementEdits)} mapping edit(s)`
+                                    : ""
+                                }`}
+                              >
+                                {e.name} · {formatNum(e.edits)}
+                              </span>
+                            ))}
                           </span>
-                        ) : null}
+                        ) : (
+                          <>
+                            {s.editedByName || <span className="dam-muted">—</span>}
+                            {s.attribution === "backfill" && s.editedByName ? (
+                              <span
+                                className="dam-chip dam-chip--muted"
+                                title="Historical row — attributed to the assigned assistant, not recorded at edit time"
+                              >
+                                estimated
+                              </span>
+                            ) : null}
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}

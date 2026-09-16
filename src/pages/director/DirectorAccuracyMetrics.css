@@ -457,6 +457,43 @@
   opacity: 0.85;
 }
 
+/* Collapsed by default — the per-editor breakdown is a drill-in, not part of
+   the modal's first read. */
+.dam-collapsible {
+  margin: -8px 0 18px;
+}
+
+.dam-collapsible-summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.dam-collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dam-collapsible-summary::before {
+  content: "▸";
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.dam-collapsible[open] .dam-collapsible-summary::before {
+  transform: rotate(90deg);
+}
+
+.dam-collapsible .dam-note {
+  margin-top: 8px;
+}
+
 /* ── Assignments Metrics ─────────────────────────────────────────────────────
  *
  * The metrics tables carry counts and averages rather than accuracy bars, and
