@@ -29,6 +29,16 @@ const GRADING_PARTNERS = [
   { slug: "drpeter", label: "Dr Peter" },
 ];
 
+/**
+ * `${groupKey}::${subjectKey||''}` — must match the backend's
+ * gradingPartnerGroupDefaults.js catalogEntryKey exactly, since it's used
+ * both as the picker's option value AND to look the row up in whatever
+ * `GET /grading-partner-group-defaults` returns (keyed the same way).
+ */
+function catalogEntryKey(groupKey, subjectKey) {
+  return `${groupKey}::${subjectKey || ""}`;
+}
+
 /** "2026-07-30T14:00" for a datetime-local input, in the browser's own zone. */
 function toLocalInputValue(date) {
   const d = new Date(date);
@@ -72,13 +82,41 @@ export default function DirectorGradingDelegations() {
   // accounts only. Any brand new (assignment, group) pairing matching that
   // sub-group auto-assigns these people. Reloaded per partner tab, since the
   // group catalog is provider-specific.
-  const [groupCatalog, setGroupCatalog] = useState([]); // [{groupKey, groupName, assignmentCount}]
+  //
+  // A display name like "1A" can be ambiguous — IGSpaces mints a fresh
+  // group_id per exam session (Nov26 vs J27) but keeps reusing the same
+  // name — so listGroupCatalog only splits an entry into per-session rows
+  // when the name genuinely spans more than one session; every other name
+  // still gets exactly one unscoped entry (subjectKey/subjectName both
+  // null), same as before this existed. The picker is keyed by
+  // catalogEntryKey (groupKey + subjectKey), not groupKey alone, since two
+  // rows can share a groupKey once a name is split.
+  const [groupCatalog, setGroupCatalog] = useState([]); // [{groupKey, groupName, subjectKey, subjectName, assignmentCount}]
   const [groupCatalogLoading, setGroupCatalogLoading] = useState(false);
-  const [groupDefaultsMap, setGroupDefaultsMap] = useState({}); // { [groupKey]: {managers, assistants} }
-  const [selectedDefaultGroupKey, setSelectedDefaultGroupKey] = useState("");
+  const [groupDefaultsMap, setGroupDefaultsMap] = useState({}); // { [catalogEntryKey]: {managers, assistants} }
+  const [selectedDefaultEntryKey, setSelectedDefaultEntryKey] = useState("");
   const [defaultGroupManagersSelected, setDefaultGroupManagersSelected] = useState([]);
   const [defaultGroupAssistantsSelected, setDefaultGroupAssistantsSelected] = useState([]);
   const [groupDefaultsSaving, setGroupDefaultsSaving] = useState(false);
+
+  // Every default this partner has EVER had saved — not just the ones whose
+  // group currently has a live submission (groupCatalog only shows those).
+  // Lets the director see and manage a default whose group has gone quiet,
+  // or a wildcard (subjectKey: null) row an ambiguous name's split picker can
+  // no longer select directly, both of which would otherwise be invisible.
+  const [savedGroupDefaults, setSavedGroupDefaults] = useState([]); // [{groupKey, groupName, subjectKey, subjectName, managers, assistants}]
+  const [savedDefaultsLoading, setSavedDefaultsLoading] = useState(false);
+  const [deletingEntryKey, setDeletingEntryKey] = useState(null);
+
+  // Inline row-edit state for the saved-defaults table — lets a director
+  // change WHICH sub-group/session a saved default's people are assigned to
+  // (not just who they are) without leaving the row. Only one row edits at a
+  // time, so this doesn't need to be keyed by entry.
+  const [editingEntryKey, setEditingEntryKey] = useState(null);
+  const [editRowTargetEntryKey, setEditRowTargetEntryKey] = useState("");
+  const [editRowManagers, setEditRowManagers] = useState([]);
+  const [editRowAssistants, setEditRowAssistants] = useState([]);
+  const [editRowSaving, setEditRowSaving] = useState(false);
 
   const partnerLabel =
     GRADING_PARTNERS.find((p) => p.slug === partner)?.label || partner;
@@ -178,8 +216,9 @@ export default function DirectorGradingDelegations() {
       setGroupCatalog(groups);
 
       if (groups.length) {
+        const refs = groups.map((g) => ({ groupKey: g.groupKey, subjectKey: g.subjectKey || null }));
         const { data: defaultsData } = await api.get("/grading-partner-group-defaults", {
-          params: { provider: partner, groupKeys: groups.map((g) => g.groupKey).join(",") },
+          params: { provider: partner, refs: JSON.stringify(refs) },
         });
         setGroupDefaultsMap(defaultsData || {});
       } else {
@@ -198,20 +237,80 @@ export default function DirectorGradingDelegations() {
     loadGroupDefaults();
   }, [loadGroupDefaults]);
 
-  // Re-derive the two selects whenever the chosen sub-group or the loaded
-  // defaults change.
+  // The saved-defaults list, for the CURRENT partner tab — reloaded whenever
+  // the catalog is (same trigger, kept as a separate request since it's a
+  // different read: every row ever saved, not just live-group ones).
+  const loadSavedGroupDefaults = useCallback(async () => {
+    setSavedDefaultsLoading(true);
+    try {
+      const { data } = await api.get(`/grading-partner-group-defaults/${partner}`);
+      const rows = data?.defaults || [];
+      setSavedGroupDefaults(rows);
+      // Merge into groupDefaultsMap so editing a saved entry (even one whose
+      // group has gone quiet, or an ambiguous name's wildcard row the picker
+      // no longer lists directly) prefills the selects without a second
+      // fetch keyed by refs it was never asked for.
+      setGroupDefaultsMap((prev) => {
+        const next = { ...prev };
+        for (const row of rows) {
+          next[catalogEntryKey(row.groupKey, row.subjectKey)] = {
+            managers: row.managers,
+            assistants: row.assistants,
+          };
+        }
+        return next;
+      });
+    } catch (err) {
+      setSavedGroupDefaults([]);
+      toast.error(err.response?.data?.message || `Failed to load saved ${partnerLabel} defaults`);
+    } finally {
+      setSavedDefaultsLoading(false);
+    }
+  }, [partner, partnerLabel]);
+
   useEffect(() => {
-    const bucket = groupDefaultsMap[selectedDefaultGroupKey] || { managers: [], assistants: [] };
+    loadSavedGroupDefaults();
+  }, [loadSavedGroupDefaults]);
+
+  // The picker's options: every live-submission group (groupCatalog) PLUS any
+  // saved default whose entry isn't among them — a stale group, or an
+  // ambiguous name's wildcard row — so every saved default stays reachable
+  // and editable even after the live catalog moves on.
+  const combinedGroupOptions = useMemo(() => {
+    const byKey = new Map(
+      groupCatalog.map((g) => [catalogEntryKey(g.groupKey, g.subjectKey), { ...g, saved: true, stale: false }])
+    );
+    for (const row of savedGroupDefaults) {
+      const key = catalogEntryKey(row.groupKey, row.subjectKey);
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        groupKey: row.groupKey,
+        groupName: row.groupName,
+        subjectKey: row.subjectKey,
+        subjectName: row.subjectName,
+        assignmentCount: 0,
+        stale: true,
+      });
+    }
+    return [...byKey.values()];
+  }, [groupCatalog, savedGroupDefaults]);
+
+  // Re-derive the two selects whenever the chosen sub-group (+session) or the
+  // loaded defaults change.
+  useEffect(() => {
+    const bucket = groupDefaultsMap[selectedDefaultEntryKey] || { managers: [], assistants: [] };
     const toOption = (r) => ({
       value: r.personId?._id || r.personId,
       label: r.personId?.name || "Person",
     });
     setDefaultGroupManagersSelected((bucket.managers || []).map(toOption).filter((o) => o.value));
     setDefaultGroupAssistantsSelected((bucket.assistants || []).map(toOption).filter((o) => o.value));
-  }, [selectedDefaultGroupKey, groupDefaultsMap]);
+  }, [selectedDefaultEntryKey, groupDefaultsMap]);
 
   const saveGroupDefaults = async () => {
-    const group = groupCatalog.find((g) => g.groupKey === selectedDefaultGroupKey);
+    const group = combinedGroupOptions.find(
+      (g) => catalogEntryKey(g.groupKey, g.subjectKey) === selectedDefaultEntryKey
+    );
     if (!group) return;
     try {
       setGroupDefaultsSaving(true);
@@ -219,23 +318,135 @@ export default function DirectorGradingDelegations() {
         `/grading-partner-group-defaults/${partner}/${group.groupKey}`,
         {
           groupName: group.groupName,
+          subjectName: group.subjectName || null,
           managerIds: defaultGroupManagersSelected.map((o) => o.value),
           assistantIds: defaultGroupAssistantsSelected.map((o) => o.value),
         }
       );
+      const entryKey = catalogEntryKey(group.groupKey, group.subjectKey);
       setGroupDefaultsMap((prev) => ({
         ...prev,
-        [group.groupKey]: data?.defaults || { managers: [], assistants: [] },
+        [entryKey]: data?.defaults || { managers: [], assistants: [] },
       }));
+      const label = group.subjectName ? `${group.groupName} · ${group.subjectName}` : group.groupName;
       toast.success(
         defaultGroupManagersSelected.length || defaultGroupAssistantsSelected.length
-          ? `${group.groupName} defaults saved — new assignments to this group will auto-assign these accounts`
-          : `${group.groupName} defaults cleared`
+          ? `${label} defaults saved — new assignments to this ${group.subjectName ? "sub-group/session" : "group"} will auto-assign these accounts`
+          : `${label} defaults cleared`
       );
+      await loadSavedGroupDefaults();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to save group defaults");
     } finally {
       setGroupDefaultsSaving(false);
+    }
+  };
+
+  const savedRowToOption = (r) => ({
+    value: r.personId?._id || r.personId,
+    label: r.personId?.name || "Person",
+  });
+
+  const startEditSavedGroupDefault = (row) => {
+    const entryKey = catalogEntryKey(row.groupKey, row.subjectKey);
+    setEditingEntryKey(entryKey);
+    setEditRowTargetEntryKey(entryKey);
+    setEditRowManagers((row.managers || []).map(savedRowToOption).filter((o) => o.value));
+    setEditRowAssistants((row.assistants || []).map(savedRowToOption).filter((o) => o.value));
+  };
+
+  const cancelEditSavedGroupDefault = () => {
+    setEditingEntryKey(null);
+    setEditRowTargetEntryKey("");
+    setEditRowManagers([]);
+    setEditRowAssistants([]);
+  };
+
+  /**
+   * Save the row being edited. When the director picked a DIFFERENT
+   * sub-group/session than the one this default was originally saved
+   * against, this MOVES it: writes the new target, then deletes the
+   * original entry — never leaving the same people assigned in both places.
+   * Refuses to move into a target that already has its own saved defaults
+   * (setGroupDefaults fully replaces a target's set, so moving in would
+   * silently wipe out whoever was already there) — edit that row directly
+   * instead.
+   */
+  const saveEditSavedGroupDefault = async (originalRow) => {
+    const originalEntryKey = catalogEntryKey(originalRow.groupKey, originalRow.subjectKey);
+    const target = combinedGroupOptions.find(
+      (g) => catalogEntryKey(g.groupKey, g.subjectKey) === editRowTargetEntryKey
+    );
+    if (!target) return;
+
+    const moved = editRowTargetEntryKey !== originalEntryKey;
+    if (moved) {
+      const occupied = savedGroupDefaults.find(
+        (r) =>
+          catalogEntryKey(r.groupKey, r.subjectKey) === editRowTargetEntryKey &&
+          ((r.managers && r.managers.length) || (r.assistants && r.assistants.length))
+      );
+      if (occupied) {
+        const occupiedLabel = target.subjectName ? `${target.groupName} · ${target.subjectName}` : target.groupName;
+        toast.error(`${occupiedLabel} already has defaults saved — edit that row directly instead of moving into it`);
+        return;
+      }
+    }
+
+    setEditRowSaving(true);
+    try {
+      await api.put(`/grading-partner-group-defaults/${partner}/${target.groupKey}`, {
+        groupName: target.groupName,
+        subjectName: target.subjectName || null,
+        managerIds: editRowManagers.map((o) => o.value),
+        assistantIds: editRowAssistants.map((o) => o.value),
+      });
+
+      if (moved) {
+        await api.delete(`/grading-partner-group-defaults/${partner}/${originalRow.groupKey}`, {
+          params: originalRow.subjectKey ? { subjectKey: originalRow.subjectKey } : {},
+        });
+      }
+
+      await loadSavedGroupDefaults();
+      // Keep the top picker in sync if it was pointed at whatever just moved.
+      if (selectedDefaultEntryKey === originalEntryKey) {
+        setSelectedDefaultEntryKey(moved ? editRowTargetEntryKey : originalEntryKey);
+      }
+
+      const label = target.subjectName ? `${target.groupName} · ${target.subjectName}` : target.groupName;
+      toast.success(moved ? `Moved to ${label}` : `${label} defaults updated`);
+      cancelEditSavedGroupDefault();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save changes");
+    } finally {
+      setEditRowSaving(false);
+    }
+  };
+
+  const deleteSavedGroupDefault = async (row) => {
+    const entryKey = catalogEntryKey(row.groupKey, row.subjectKey);
+    setDeletingEntryKey(entryKey);
+    try {
+      await api.delete(`/grading-partner-group-defaults/${partner}/${row.groupKey}`, {
+        params: row.subjectKey ? { subjectKey: row.subjectKey } : {},
+      });
+      setSavedGroupDefaults((prev) =>
+        prev.filter((r) => catalogEntryKey(r.groupKey, r.subjectKey) !== entryKey)
+      );
+      setGroupDefaultsMap((prev) => {
+        const next = { ...prev };
+        delete next[entryKey];
+        return next;
+      });
+      if (selectedDefaultEntryKey === entryKey) setSelectedDefaultEntryKey("");
+      if (editingEntryKey === entryKey) cancelEditSavedGroupDefault();
+      const label = row.subjectName ? `${row.groupName} · ${row.subjectName}` : row.groupName;
+      toast.success(`${label} default deleted`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete default");
+    } finally {
+      setDeletingEntryKey(null);
     }
   };
 
@@ -250,7 +461,11 @@ export default function DirectorGradingDelegations() {
     setRowManager({});
     setRowAssistant({});
     setRowDeadline({});
-    setSelectedDefaultGroupKey("");
+    setSelectedDefaultEntryKey("");
+    setEditingEntryKey(null);
+    setEditRowTargetEntryKey("");
+    setEditRowManagers([]);
+    setEditRowAssistants([]);
   };
 
   // Two separate pools, never overlapping:
@@ -464,36 +679,48 @@ export default function DirectorGradingDelegations() {
         </div>
         <p className="dgd-defaults-hint">
           Pick a sub-group (e.g. every class displayed as <strong>1A</strong>, merged across
-          schools) and a default {partnerLabel} manager and/or assistant <strong>provider
+          schools) — and, when that name is used for more than one exam session (e.g. "1A"
+          exists for both Nov26 and J27), the specific <strong>subject/session</strong> within
+          it — and a default {partnerLabel} manager and/or assistant <strong>provider
           account</strong> for it. Any <strong>new</strong> assignment sent to that sub-group
-          auto-assigns them — with <strong>no deadline</strong>, since a provider account works
-          off whatever {partnerLabel} sends. Use the table below for a Sahahly account on one
-          specific assignment instead.
+          (and, if picked, that exact session) auto-assigns them — with <strong>no
+          deadline</strong>, since a provider account works off whatever {partnerLabel} sends.
+          A name with only one session skips the subject picker entirely and applies to it the
+          same way it always has. Use the table below for a Sahahly account on one specific
+          assignment instead.
         </p>
         <div className="dgd-defaults-grid">
           <div className="dgd-defaults-field">
-            <label htmlFor="dgd-default-group">Sub-group</label>
+            <label htmlFor="dgd-default-group">Sub-group / subject</label>
             <Select
               inputId="dgd-default-group"
               styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
               menuPortalTarget={document.body}
               menuPosition="fixed"
               placeholder={groupCatalogLoading ? "Loading groups…" : "Select sub-group…"}
-              options={groupCatalog.map((g) => ({
-                value: g.groupKey,
-                label: `${g.groupName} (${g.assignmentCount} assignment${g.assignmentCount === 1 ? "" : "s"})`,
-              }))}
+              options={combinedGroupOptions.map((g) => {
+                const entryKey = catalogEntryKey(g.groupKey, g.subjectKey);
+                const name = g.subjectName ? `${g.groupName} · ${g.subjectName}` : g.groupName;
+                const countLabel = g.stale
+                  ? "saved default, no live submissions"
+                  : `${g.assignmentCount} assignment${g.assignmentCount === 1 ? "" : "s"}`;
+                return {
+                  value: entryKey,
+                  label: `${name} (${countLabel})`,
+                };
+              })}
               value={
-                selectedDefaultGroupKey
-                  ? {
-                      value: selectedDefaultGroupKey,
-                      label:
-                        groupCatalog.find((g) => g.groupKey === selectedDefaultGroupKey)?.groupName ||
-                        selectedDefaultGroupKey,
-                    }
+                selectedDefaultEntryKey
+                  ? (() => {
+                      const g = combinedGroupOptions.find(
+                        (g) => catalogEntryKey(g.groupKey, g.subjectKey) === selectedDefaultEntryKey
+                      );
+                      const name = g?.subjectName ? `${g.groupName} · ${g.subjectName}` : g?.groupName;
+                      return { value: selectedDefaultEntryKey, label: name || selectedDefaultEntryKey };
+                    })()
                   : null
               }
-              onChange={(opt) => setSelectedDefaultGroupKey(opt?.value || "")}
+              onChange={(opt) => setSelectedDefaultEntryKey(opt?.value || "")}
               isClearable
               isDisabled={groupCatalogLoading}
             />
@@ -506,13 +733,13 @@ export default function DirectorGradingDelegations() {
               menuPortalTarget={document.body}
               menuPosition="fixed"
               placeholder={
-                selectedDefaultGroupKey ? "Select manager account(s)…" : "Choose a sub-group first"
+                selectedDefaultEntryKey ? "Select manager account(s)…" : "Choose a sub-group first"
               }
               options={providerManagerOptions}
               value={defaultGroupManagersSelected}
               onChange={(opts) => setDefaultGroupManagersSelected(opts || [])}
               isMulti
-              isDisabled={!selectedDefaultGroupKey}
+              isDisabled={!selectedDefaultEntryKey}
               closeMenuOnSelect={false}
             />
           </div>
@@ -524,20 +751,20 @@ export default function DirectorGradingDelegations() {
               menuPortalTarget={document.body}
               menuPosition="fixed"
               placeholder={
-                selectedDefaultGroupKey ? "Select assistant account(s)…" : "Choose a sub-group first"
+                selectedDefaultEntryKey ? "Select assistant account(s)…" : "Choose a sub-group first"
               }
               options={providerAssistantOptions}
               value={defaultGroupAssistantsSelected}
               onChange={(opts) => setDefaultGroupAssistantsSelected(opts || [])}
               isMulti
-              isDisabled={!selectedDefaultGroupKey}
+              isDisabled={!selectedDefaultEntryKey}
               closeMenuOnSelect={false}
             />
           </div>
           <button
             type="button"
             className="dm-assign dgd-defaults-save"
-            disabled={!selectedDefaultGroupKey || groupDefaultsSaving || groupCatalogLoading}
+            disabled={!selectedDefaultEntryKey || groupDefaultsSaving || groupCatalogLoading}
             onClick={saveGroupDefaults}
           >
             {groupDefaultsSaving ? "Saving…" : "Save defaults"}
@@ -549,7 +776,7 @@ export default function DirectorGradingDelegations() {
             has at least one, same as the Grading tab's "By School"/"By Group" pickers.
           </p>
         )}
-        {selectedDefaultGroupKey &&
+        {selectedDefaultEntryKey &&
           (defaultGroupManagersSelected.length > 0 || defaultGroupAssistantsSelected.length > 0) && (
             <p className="dgd-defaults-current">
               Currently:{" "}
@@ -558,6 +785,164 @@ export default function DirectorGradingDelegations() {
                 .join(", ")}
             </p>
           )}
+
+        <h3 className="dgd-defaults-subtitle">Saved {partnerLabel} sub-group defaults</h3>
+        <p className="dgd-defaults-hint">
+          Every default saved for {partnerLabel}, including one whose group has since gone
+          quiet or a wildcard row (an older default that still applies to <strong>every</strong>{" "}
+          session of an ambiguous name — pick "Edit" to narrow it to one session instead).
+          Deleting an entry removes it entirely; it stops auto-assigning as soon as it's gone.
+        </p>
+        {savedDefaultsLoading ? (
+          <p className="dgd-defaults-current">Loading saved defaults…</p>
+        ) : !savedGroupDefaults.length ? (
+          <p className="dgd-defaults-current">No {partnerLabel} sub-group defaults saved yet.</p>
+        ) : (
+          <div className="dm-table-box">
+            <div className="sah-table-scroll">
+              <table className="dm-table sah-table--cards">
+                <thead>
+                  <tr>
+                    <th>Sub-group</th>
+                    <th>Subject / session</th>
+                    <th>Manager(s)</th>
+                    <th>Assistant(s)</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {savedGroupDefaults.map((row) => {
+                    const entryKey = catalogEntryKey(row.groupKey, row.subjectKey);
+                    const busy = deletingEntryKey === entryKey;
+                    const isEditing = editingEntryKey === entryKey;
+
+                    if (isEditing) {
+                      return (
+                        <tr key={entryKey}>
+                          <td data-label="Sub-group" colSpan={2}>
+                            <Select
+                              styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                              menuPortalTarget={document.body}
+                              menuPosition="fixed"
+                              placeholder="Select sub-group…"
+                              options={combinedGroupOptions.map((g) => {
+                                const key = catalogEntryKey(g.groupKey, g.subjectKey);
+                                const name = g.subjectName ? `${g.groupName} · ${g.subjectName}` : g.groupName;
+                                return { value: key, label: name };
+                              })}
+                              value={
+                                editRowTargetEntryKey
+                                  ? (() => {
+                                      const g = combinedGroupOptions.find(
+                                        (g) => catalogEntryKey(g.groupKey, g.subjectKey) === editRowTargetEntryKey
+                                      );
+                                      const name = g?.subjectName ? `${g.groupName} · ${g.subjectName}` : g?.groupName;
+                                      return { value: editRowTargetEntryKey, label: name || editRowTargetEntryKey };
+                                    })()
+                                  : null
+                              }
+                              onChange={(opt) => setEditRowTargetEntryKey(opt?.value || "")}
+                              isDisabled={editRowSaving}
+                            />
+                          </td>
+                          <td data-label="Manager(s)">
+                            <Select
+                              styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                              menuPortalTarget={document.body}
+                              menuPosition="fixed"
+                              placeholder="Select manager account(s)…"
+                              options={providerManagerOptions}
+                              value={editRowManagers}
+                              onChange={(opts) => setEditRowManagers(opts || [])}
+                              isMulti
+                              isDisabled={editRowSaving}
+                              closeMenuOnSelect={false}
+                            />
+                          </td>
+                          <td data-label="Assistant(s)">
+                            <Select
+                              styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                              menuPortalTarget={document.body}
+                              menuPosition="fixed"
+                              placeholder="Select assistant account(s)…"
+                              options={providerAssistantOptions}
+                              value={editRowAssistants}
+                              onChange={(opts) => setEditRowAssistants(opts || [])}
+                              isMulti
+                              isDisabled={editRowSaving}
+                              closeMenuOnSelect={false}
+                            />
+                          </td>
+                          <td data-label="Actions">
+                            <div className="dgd-assign-cell">
+                              <button
+                                type="button"
+                                className="dm-assign"
+                                onClick={() => saveEditSavedGroupDefault(row)}
+                                disabled={editRowSaving || !editRowTargetEntryKey}
+                              >
+                                {editRowSaving ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                className="dm-assign"
+                                onClick={cancelEditSavedGroupDefault}
+                                disabled={editRowSaving}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return (
+                      <tr key={entryKey}>
+                        <td data-label="Sub-group">{row.groupName}</td>
+                        <td data-label="Subject / session">
+                          {row.subjectName || (
+                            <span className="dgd-empty">All sessions (wildcard)</span>
+                          )}
+                        </td>
+                        <td data-label="Manager(s)">
+                          {row.managers?.length
+                            ? row.managers.map((m) => m.personId?.name || "Unknown").join(", ")
+                            : <span className="dgd-empty">None</span>}
+                        </td>
+                        <td data-label="Assistant(s)">
+                          {row.assistants?.length
+                            ? row.assistants.map((a) => a.personId?.name || "Unknown").join(", ")
+                            : <span className="dgd-empty">None</span>}
+                        </td>
+                        <td data-label="Actions">
+                          <div className="dgd-assign-cell">
+                            <button
+                              type="button"
+                              className="dm-assign"
+                              onClick={() => startEditSavedGroupDefault(row)}
+                              disabled={busy || (editingEntryKey && !isEditing)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="dm-assign dgd-delete-btn"
+                              onClick={() => deleteSavedGroupDefault(row)}
+                              disabled={busy || (editingEntryKey && !isEditing)}
+                            >
+                              {busy ? "Deleting…" : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="dgd-defaults" aria-label={`${partnerLabel} Sahahly accounts defaults`}>

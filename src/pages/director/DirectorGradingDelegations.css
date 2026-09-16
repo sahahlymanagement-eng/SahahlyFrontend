@@ -75,6 +75,23 @@
   color: var(--muted);
 }
 
+.dgd-defaults-subtitle {
+  margin: 20px 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dgd-delete-btn {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.dgd-delete-btn:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
 @media (max-width: 640px) {
   .dgd-defaults-grid {
     flex-direction: column;
