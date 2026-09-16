@@ -155,6 +155,13 @@ function markPointSummaries(q) {
       rows = rows.map((p) => ({ ...p, awarded: true }));
     }
   }
+
+  // Partial credit must not show every scheme row green (common when pack
+  // codes are all "MP" or awardedPoints dumped the whole mark scheme).
+  if (!blank && !fullMarks && rows.length && rows.every((p) => p.awarded)) {
+    const budget = Math.max(0, Math.round(Number(q?.marksAwarded) || 0));
+    rows = rows.map((p, i) => ({ ...p, awarded: i < budget }));
+  }
   return rows;
 }
 

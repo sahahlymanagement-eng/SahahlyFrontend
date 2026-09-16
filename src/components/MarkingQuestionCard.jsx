@@ -271,8 +271,8 @@ export default function MarkingQuestionCard({
             <span
               title={
                 q.confidenceReason
-                  ? `${n}% confidence — ${q.confidenceReason}`
-                  : `${n}% marking confidence`
+                  ? `${n}% safe to accept without review — ${q.confidenceReason}`
+                  : `${n}% safe to accept without review`
               }
               style={{
                 fontSize: 11,
