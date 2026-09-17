@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { flushSync } from "react-dom";
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -1322,13 +1323,25 @@ export default function AnnotatedPdfPreview({
     const offsetX = clientX - rect.left + root.scrollLeft;
     const offsetY = clientY - rect.top + root.scrollTop;
 
-    setZoomLevel(clamped);
     zoomRef.current = clamped;
 
-    requestAnimationFrame(() => {
-      root.scrollLeft = offsetX * ratio - (clientX - rect.left);
-      root.scrollTop = offsetY * ratio - (clientY - rect.top);
+    // flushSync, not requestAnimationFrame: a wheel or pinch gesture calls
+    // this many times in a row, faster than a frame apart. The old code read
+    // scrollLeft/scrollTop above (fine) but deferred the write to the next
+    // frame — so a second call in the same frame read the SAME
+    // not-yet-written scroll position as the first, computed its own
+    // target from that stale value, and whichever deferred write landed
+    // last won, discarding the other. That's what was landing on the wrong
+    // page after zooming. flushSync commits the zoomLevel-driven layout
+    // (the scaled width/height this scroll math depends on) before this
+    // function returns, so the scrollTop/scrollLeft write below always
+    // lands against up-to-date layout, and the next call in the same burst
+    // starts from the position THIS call actually wrote, every time.
+    flushSync(() => {
+      setZoomLevel(clamped);
     });
+    root.scrollLeft = offsetX * ratio - (clientX - rect.left);
+    root.scrollTop = offsetY * ratio - (clientY - rect.top);
   }, []);
 
   const zoomOut = () => {
