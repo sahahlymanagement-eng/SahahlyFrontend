@@ -118,6 +118,14 @@ const CANVAS_PIXEL_BUDGET = IS_LOW_MEMORY_CANVAS_DEVICE ? 3_000_000 : 8_000_000;
 // freed (see the unload observer in LazyPdfPage). Smaller on low-memory
 // devices so fewer pages stay resident at once for a given scroll position.
 const UNLOAD_MARGIN_PX = IS_LOW_MEMORY_CANVAS_DEVICE ? 600 : 1600;
+// How far ahead of the viewport a page starts rasterizing, so it's
+// (hopefully) already done by the time it's actually visible instead of the
+// reader catching it mid-render. Kept comfortably below UNLOAD_MARGIN_PX so
+// a page doesn't render and get freed again in the same breath.
+const RENDER_MARGIN_PX = IS_LOW_MEMORY_CANVAS_DEVICE ? 450 : 800;
+// Width of the cached low-res placeholder image (see thumbnail state in
+// LazyPdfPage) — tiny on purpose, this is a blurry stand-in, not a preview.
+const THUMBNAIL_WIDTH_PX = 96;
 const RENDER_ZOOM_DEBOUNCE_MS = 120;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4;
@@ -125,6 +133,11 @@ const ZOOM_STEP_BTN = 0.1;
 const ZOOM_WHEEL_STEP = 0.08;
 const DEFAULT_ZOOM = 1;
 const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+// How far EACH contact in a two-pointer gesture must move from its own
+// starting point before the gesture is treated as a pinch (see
+// handleScrollAreaPointerMove) rather than a scroll with an incidental
+// second, resting contact.
+const PINCH_MIN_PER_POINTER_MOVE_PX = 10;
 
 function clampZoom(value) {
   const n = Number(value);
@@ -345,6 +358,13 @@ function LazyPdfPage({
   const renderTaskRef = useRef(null);
   const renderedRef = useRef(false);
   const [rendered, setRendered] = useState(false);
+  // A tiny downscaled copy of the last successful render, kept for this
+  // component instance's whole lifetime (survives the unload observer
+  // freeing the full-res canvas — only a fresh document/page remounts this
+  // component and resets it). Shown in place of a blank canvas so revisiting
+  // an unloaded page looks instant instead of visibly re-rendering from
+  // scratch.
+  const [thumbnail, setThumbnail] = useState(null);
   // Real PDF page height in points — a scanned/photographed submission page
   // can be several times taller than a normal ~842pt page, so a box's
   // estimated height must be rescaled to it (see estimateNoteBoxHeightPercent).
@@ -437,6 +457,27 @@ function LazyPdfPage({
         if (disposed) return;
         renderedRef.current = true;
         setRendered(true);
+
+        // Grab a cheap low-res copy of what was just rendered — reusing
+        // these already-painted pixels, not a second pdf.js render — before
+        // this canvas is possibly freed below or later by the unload
+        // observer. Shown as an instant placeholder next time this page's
+        // full canvas is empty, so revisiting it reads as "already there,
+        // just sharpening" instead of "loading again from nothing".
+        try {
+          const thumbW = THUMBNAIL_WIDTH_PX;
+          const thumbH = Math.max(1, Math.round((canvas.height / canvas.width) * thumbW));
+          const thumbCanvas = document.createElement("canvas");
+          thumbCanvas.width = thumbW;
+          thumbCanvas.height = thumbH;
+          thumbCanvas
+            .getContext("2d", { alpha: false })
+            .drawImage(canvas, 0, 0, thumbW, thumbH);
+          setThumbnail(thumbCanvas.toDataURL("image/jpeg", 0.6));
+        } catch {
+          // Best-effort — worst case this page just has no placeholder yet.
+        }
+
         // page.render() is async; a fast scroll can carry this page back out
         // of the keep-alive zone before it resolves. The unload observer's
         // "left the zone" event already fired while renderedRef was still
@@ -474,7 +515,7 @@ function LazyPdfPage({
           renderPage();
         }
       },
-      { root: scrollRoot, rootMargin: "320px 0px", threshold: 0.01 }
+      { root: scrollRoot, rootMargin: `${RENDER_MARGIN_PX}px 0px`, threshold: 0.01 }
     );
 
     // A rendered canvas is never freed on its own — on a long scanned
@@ -528,6 +569,13 @@ function LazyPdfPage({
       // is collapsed to that placeholder size instead of its true height.
       style={pageAspect?.w && pageAspect?.h ? { aspectRatio: `${pageAspect.w} / ${pageAspect.h}` } : undefined}
     >
+      {thumbnail && (
+        // Sits behind the canvas (DOM order + matching absolute position —
+        // see .pdf-preview-thumb/.pdf-preview-canvas in the stylesheet) so
+        // it shows through whenever the canvas is empty, and gets covered
+        // the instant the canvas has real pixels again.
+        <img src={thumbnail} className="pdf-preview-thumb" alt="" aria-hidden="true" />
+      )}
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
       {showColumnResize && (
         <div
@@ -1421,6 +1469,11 @@ export default function AnnotatedPdfPreview({
         startZoom: zoomRef.current,
         centerX: (pts[0].x + pts[1].x) / 2,
         centerY: (pts[0].y + pts[1].y) / 2,
+        // Each contact's own starting position, so a move handler can tell
+        // whether BOTH of them have actually moved (see below) before ever
+        // acting on this as a pinch.
+        starts: new Map(pointersRef.current),
+        confirmed: false,
       };
     }
 
@@ -1446,11 +1499,39 @@ export default function AnnotatedPdfPreview({
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointersRef.current.size !== 2 || !pinchRef.current) return;
-    e.preventDefault();
+    const pinch = pinchRef.current;
 
+    if (!pinch.confirmed) {
+      // Require BOTH contacts to have actually moved from where they first
+      // touched down before this counts as a pinch. One finger scrolling
+      // near a second, essentially-stationary contact — a resting thumb or
+      // palm while holding the tablet one-handed and scrolling with the
+      // other hand — changes the gap between the two points too, so
+      // checking only that gap (an earlier version of this check) still let
+      // a scroll get misread as a pinch. Until confirmed here, this handler
+      // never calls preventDefault or touches zoom/scroll, so a false start
+      // costs nothing — native scrolling runs completely unimpeded for as
+      // long as it takes to tell the difference, instead of being hijacked
+      // and then handed back mid-gesture (which is what was causing pages
+      // to get skipped: the browser's own scroll math doesn't know we'd
+      // been overwriting scrollTop out from under it).
+      let minMove = Infinity;
+      for (const [id, start] of pinch.starts) {
+        const current = pointersRef.current.get(id);
+        if (!current) {
+          minMove = 0;
+          break;
+        }
+        minMove = Math.min(minMove, pointerDistance(current, start));
+      }
+      if (minMove < PINCH_MIN_PER_POINTER_MOVE_PX) return;
+      pinch.confirmed = true;
+    }
+
+    e.preventDefault();
     const pts = [...pointersRef.current.values()];
     const dist = pointerDistance(pts[0], pts[1]);
-    const { startDistance, startZoom, centerX, centerY } = pinchRef.current;
+    const { startDistance, startZoom, centerX, centerY } = pinch;
     if (startDistance <= 0) return;
 
     applyZoomAtPoint(clampZoom(startZoom * (dist / startDistance)), centerX, centerY);

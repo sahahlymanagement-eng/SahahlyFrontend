@@ -584,12 +584,22 @@ export default function DirectorGradingDelegations() {
     }
   };
 
-  const unassign = async (assignment, delegation) => {
+  // Removes every row passed in (one tag can now represent several
+  // class-scoped rows for the same person — see renderDelegates below) as one
+  // action, then reloads once rather than per-row.
+  const unassignRows = async (assignment, delegationRows) => {
     setBusyId(assignment.id);
     try {
-      await api.delete(`/grading-delegations/${delegation._id}`);
+      for (const d of delegationRows) {
+        await api.delete(`/grading-delegations/${d._id}`);
+      }
       await loadAssignments();
-      toast.success(`Removed ${delegation.personId?.name || "delegate"}`);
+      const name = delegationRows[0]?.personId?.name || "delegate";
+      toast.success(
+        delegationRows.length > 1
+          ? `Removed ${name} from ${delegationRows.length} groups`
+          : `Removed ${name}`
+      );
     } catch (err) {
       toast.error(err.response?.data?.message || "Remove failed");
     } finally {
@@ -601,14 +611,37 @@ export default function DirectorGradingDelegations() {
     const rows = (assignment.delegations || []).filter((d) => d.role === role);
     if (!rows.length) return <span className="dgd-empty">Not assigned</span>;
 
+    // A person can hold several class-scoped rows on the same assignment now
+    // (one per group their default/manual assignment matched) — collapse them
+    // into one tag per person instead of a duplicate tag per group.
+    const byPerson = new Map();
+    for (const d of rows) {
+      const personId = d.personId?._id || d.personId;
+      if (!byPerson.has(personId)) byPerson.set(personId, []);
+      byPerson.get(personId).push(d);
+    }
+
     return (
       <div className="dgd-tags">
-        {rows.map((d) => {
-          const due = d.deadline ? new Date(d.deadline) : null;
-          const overdue = due && d.status !== "DONE" && due.getTime() < now;
+        {[...byPerson.entries()].map(([personId, personRows]) => {
+          const name = personRows[0].personId?.name || "Unknown";
+          const groupCount = personRows.length;
+
+          // Earliest deadline among this person's rows, if any carry one
+          // (a provider account's group-default rows never do).
+          const withDeadline = personRows
+            .filter((d) => d.deadline)
+            .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+          const soonest = withDeadline[0];
+          const due = soonest ? new Date(soonest.deadline) : null;
+          const overdue = due && soonest.status !== "DONE" && due.getTime() < now;
+
           return (
-            <span key={d._id} className={`dgd-tag dgd-tag--${role}`}>
-              <strong>{d.personId?.name || "Unknown"}</strong>
+            <span key={personId} className={`dgd-tag dgd-tag--${role}`}>
+              <strong>{name}</strong>
+              {groupCount > 1 && (
+                <span className="dgd-tag-count">{groupCount} groups</span>
+              )}
               {due && (
                 <span className={`dgd-tag-due ${overdue ? "dgd-tag-due--overdue" : ""}`}>
                   <FiClock size={10} aria-hidden /> {due.toLocaleString()}
@@ -617,8 +650,12 @@ export default function DirectorGradingDelegations() {
               <button
                 type="button"
                 className="dgd-tag-remove"
-                title={`Remove ${d.personId?.name || "this delegate"}`}
-                onClick={() => unassign(assignment, d)}
+                title={
+                  groupCount > 1
+                    ? `Remove ${name} from all ${groupCount} groups`
+                    : `Remove ${name}`
+                }
+                onClick={() => unassignRows(assignment, personRows)}
                 disabled={busyId === assignment.id}
               >
                 <FiTrash2 size={11} />

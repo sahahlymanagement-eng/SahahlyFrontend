@@ -1052,6 +1052,18 @@
   display: block;
   width: auto;
   height: auto;
+  /* position:relative (kept in normal flow, no offset) so this paints above
+     the absolutely-positioned .pdf-preview-thumb sibling that precedes it in
+     the DOM — same stacking-context painting group, DOM order decides. */
+  position: relative;
+}
+
+.pdf-preview-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
 }
 
 .pdf-preview-root--placeable .pdf-preview-page {
