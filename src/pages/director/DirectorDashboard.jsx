@@ -682,6 +682,10 @@ export default function DirectorDashboard() {
       )}
 
       {/* ── Manager deletion requests ────────────────────────────────── */}
+      {/* Gated on !loading like every other section below so these two
+          panels don't pop in ahead of the stat tiles / managers / assistants
+          while the main dashboard payload is still in flight. */}
+      {!loading && (
       <section className="directorDashSection">
         <div className="directorDashSectionHeader">
           <div className="directorDashTitleWrap">
@@ -758,8 +762,10 @@ export default function DirectorDashboard() {
           </div>
         )}
       </section>
+      )}
 
       {/* ── Hidden dashboard rows ────────────────────────────────────── */}
+      {!loading && (
       <section className="directorDashSection">
         <div className="directorDashSectionHeader">
           <div className="directorDashTitleWrap">
@@ -826,6 +832,7 @@ export default function DirectorDashboard() {
           </div>
         )}
       </section>
+      )}
 
       {/* ── Teachers at risk ─────────────────────────────────────────── */}
       {!loading && data?.teachersAtRisk?.length > 0 && (

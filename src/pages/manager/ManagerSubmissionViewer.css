@@ -1037,6 +1037,11 @@
   border-radius: 2px;
   overflow: hidden;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+  /* A4-ish guess so an unrendered page reserves roughly the right height
+     instead of the browser's 300x150 canvas default; overridden inline with
+     the exact ratio once AnnotatedPdfPreview's page-dimension prefetch
+     resolves for this page. */
+  aspect-ratio: 1 / 1.414;
 }
 
 .pdf-preview-page--ready {

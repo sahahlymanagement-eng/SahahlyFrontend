@@ -95,8 +95,29 @@ async function loadPdfDocumentFromUrl(url) {
   return loadingTask.promise;
 }
 
+// iOS/iPadOS Safari (WKWebView) enforces a per-tab canvas memory ceiling far
+// below desktop Chrome's — well documented around ~200-300MB combined vs.
+// several GB — and blows past it silently: the tab is killed by the OS and
+// Safari auto-reloads it, which is exactly the "scroll glitches and the page
+// refreshes" symptom, and only on a large (image-heavy) PDF because that's
+// what pushes total live canvas memory over that lower ceiling. iPadOS
+// reports its UA as a Mac, so the standard sniff is touch points on a Mac
+// platform string; regular Macs (mouse/trackpad only) report maxTouchPoints 0.
+const IS_LOW_MEMORY_CANVAS_DEVICE =
+  typeof navigator !== "undefined" &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
 const MAX_RENDER_WIDTH = 720;
-const MAX_RENDER_PIXEL_WIDTH = 3200;
+const MAX_RENDER_PIXEL_WIDTH = IS_LOW_MEMORY_CANVAS_DEVICE ? 1600 : 3200;
+// Backing-pixel budget per rendered page canvas (width*height, before DPR
+// already folded in below). Halved on the low-memory devices above so the
+// same page count/size holds far less live canvas memory at once.
+const CANVAS_PIXEL_BUDGET = IS_LOW_MEMORY_CANVAS_DEVICE ? 3_000_000 : 8_000_000;
+// How far outside the viewport a rendered page is kept before its canvas is
+// freed (see the unload observer in LazyPdfPage). Smaller on low-memory
+// devices so fewer pages stay resident at once for a given scroll position.
+const UNLOAD_MARGIN_PX = IS_LOW_MEMORY_CANVAS_DEVICE ? 600 : 1600;
 const RENDER_ZOOM_DEBOUNCE_MS = 120;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4;
@@ -121,6 +142,17 @@ function clampYPercent(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return 30;
   return Math.min(92, Math.max(5, Math.round(v * 100) / 100));
+}
+
+/** Whether `el` is currently within `marginPx` of `root`'s viewport — used to
+ * make the same "is this near the viewport" call the unload IntersectionObserver
+ * makes, but synchronously, for the race described where a render finishes
+ * after the observer's "left the zone" event already fired. */
+function isElementNearRoot(el, root, marginPx) {
+  if (!el || !root) return true;
+  const elRect = el.getBoundingClientRect();
+  const rootRect = root.getBoundingClientRect();
+  return elRect.bottom >= rootRect.top - marginPx && elRect.top <= rootRect.bottom + marginPx;
 }
 
 function LabelEditor({ initial, onCommit, onCancel }) {
@@ -306,6 +338,7 @@ function LazyPdfPage({
   onCancelLabelEdit,
   onQuestionRemove,
   showRemove,
+  pageAspect,
 }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -315,12 +348,25 @@ function LazyPdfPage({
   // Real PDF page height in points — a scanned/photographed submission page
   // can be several times taller than a normal ~842pt page, so a box's
   // estimated height must be rescaled to it (see estimateNoteBoxHeightPercent).
-  const [pageHeightPt, setPageHeightPt] = useState(842);
+  // Seeded from the parent's page-dimension prefetch (pageAspect) when it's
+  // already known, so placement boxes aren't sized for a wrong 842pt guess
+  // on an oversized scanned page before this page has rendered even once.
+  const [pageHeightPt, setPageHeightPt] = useState(() => pageAspect?.h || 842);
 
   useEffect(() => {
     renderedRef.current = false;
     setRendered(false);
   }, [pdf, pageNumber, renderWidth]);
+
+  // The prefetch in the parent resolves after this page has already mounted
+  // (it's one Promise.all over every page in the document), so pick up the
+  // real height as soon as it lands — as long as an actual render hasn't
+  // already supplied a definitive one.
+  useEffect(() => {
+    if (pageAspect?.h && !renderedRef.current) {
+      setPageHeightPt(pageAspect.h);
+    }
+  }, [pageAspect]);
 
   useEffect(() => {
     if (!pdf || !wrapRef.current || !scrollRoot) return;
@@ -330,6 +376,26 @@ function LazyPdfPage({
     let rendering = false;
     let retryCount = 0;
     let retryTimer = null;
+
+    // Shared by the unload observer below and by the post-render check in
+    // renderPage: cancels any in-flight render and drops the canvas's
+    // backing store (CSS width/height stay put so layout doesn't jump).
+    const freeCanvas = () => {
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {
+          // ignore
+        }
+      }
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+      renderedRef.current = false;
+      setRendered(false);
+    };
 
     const renderPage = async () => {
       if (disposed || renderedRef.current || rendering) return;
@@ -346,7 +412,7 @@ function LazyPdfPage({
         // Bound actual backing pixels, including DPR, for large scans and zoom.
         const dpr = Math.min(window.devicePixelRatio || 1, 2,
           MAX_RENDER_PIXEL_WIDTH / viewport.width,
-          Math.sqrt(8_000_000 / (viewport.width * viewport.height)));
+          Math.sqrt(CANVAS_PIXEL_BUDGET / (viewport.width * viewport.height)));
 
         const canvas = canvasRef.current;
         if (!canvas || disposed) return;
@@ -371,6 +437,17 @@ function LazyPdfPage({
         if (disposed) return;
         renderedRef.current = true;
         setRendered(true);
+        // page.render() is async; a fast scroll can carry this page back out
+        // of the keep-alive zone before it resolves. The unload observer's
+        // "left the zone" event already fired while renderedRef was still
+        // false (so it was a no-op), and won't fire again on its own since
+        // nothing has crossed the threshold since — without this check the
+        // canvas would stay resident indefinitely outside the intended
+        // window, silently eating back the memory the unload observer exists
+        // to free.
+        if (!isElementNearRoot(el, scrollRoot, UNLOAD_MARGIN_PX)) {
+          freeCanvas();
+        }
       } catch (err) {
         if (!disposed && err?.name !== "RenderingCancelledException") {
           console.warn("[AnnotatedPdfPreview] page render:", err);
@@ -411,23 +488,10 @@ function LazyPdfPage({
     const unloadObserver = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => !e.isIntersecting) && renderedRef.current) {
-          if (renderTaskRef.current) {
-            try {
-              renderTaskRef.current.cancel();
-            } catch {
-              // ignore
-            }
-          }
-          const canvas = canvasRef.current;
-          if (canvas) {
-            canvas.width = 0;
-            canvas.height = 0;
-          }
-          renderedRef.current = false;
-          setRendered(false);
+          freeCanvas();
         }
       },
-      { root: scrollRoot, rootMargin: "1600px 0px", threshold: 0 }
+      { root: scrollRoot, rootMargin: `${UNLOAD_MARGIN_PX}px 0px`, threshold: 0 }
     );
 
     observer.observe(el);
@@ -455,6 +519,14 @@ function LazyPdfPage({
       className={`pdf-preview-page${rendered ? " pdf-preview-page--ready" : ""}`}
       data-page={pageNumber}
       data-student-page={studentPageNumber > 0 ? studentPageNumber : undefined}
+      // Reserves this page's real height before its canvas ever paints (CSS
+      // falls back to an A4-ish guess until pageAspect resolves — see
+      // .pdf-preview-page in the stylesheet). Without this, an unrendered
+      // page sits at the browser's default 300x150 canvas box, so jumping to
+      // a page number or a page far from the current scroll position lands
+      // scrollIntoView() on the wrong offset because everything in between
+      // is collapsed to that placeholder size instead of its true height.
+      style={pageAspect?.w && pageAspect?.h ? { aspectRatio: `${pageAspect.w} / ${pageAspect.h}` } : undefined}
     >
       <canvas ref={canvasRef} className="pdf-preview-canvas" />
       {showColumnResize && (
@@ -600,6 +672,13 @@ export default function AnnotatedPdfPreview({
   }, []);
   const [pdf, setPdf] = useState(null);
   const [numPages, setNumPages] = useState(0);
+  // Page dims (PDF points, scale 1) prefetched right after the doc loads —
+  // index i holds page i+1's {w, h}, or undefined until it resolves. Lets
+  // each LazyPdfPage reserve its real box height before it ever renders (see
+  // pageAspect below), instead of the browser's 300x150 canvas default,
+  // which otherwise threw off scrollIntoView() for any jump to a page that
+  // hadn't rendered yet.
+  const [pageAspects, setPageAspects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [loadNonce, setLoadNonce] = useState(0);
@@ -621,6 +700,7 @@ export default function AnnotatedPdfPreview({
   const pinchRef = useRef(null);
   const pointersRef = useRef(new Map());
   const lastTapRef = useRef({ time: 0, x: 0, y: 0 });
+  const scrollRafRef = useRef(null);
   const zoomRef = useRef(DEFAULT_ZOOM);
   const pdfSessionRef = useRef(null);
   const currentPageRef = useRef(1);
@@ -777,6 +857,7 @@ export default function AnnotatedPdfPreview({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setPageAspects([]);
     if (!sameSession) {
       setCurrentPage(1);
       currentPageRef.current = 1;
@@ -802,6 +883,25 @@ export default function AnnotatedPdfPreview({
           setCurrentPage(restore);
           currentPageRef.current = restore;
         }
+
+        // Fire-and-forget: prefetch every page's real dimensions (cheap —
+        // the whole file is already local bytes, this just reads each page's
+        // MediaBox, it doesn't rasterize anything) so LazyPdfPage can reserve
+        // accurate placeholder heights via pageAspect before a page has ever
+        // rendered. Doesn't block `loading`; the preview is usable either way.
+        Promise.all(
+          Array.from({ length: doc.numPages || 0 }, (_, i) =>
+            doc
+              .getPage(i + 1)
+              .then((page) => {
+                const vp = page.getViewport({ scale: 1 });
+                return { w: vp.width, h: vp.height };
+              })
+              .catch(() => undefined)
+          )
+        ).then((dims) => {
+          if (!cancelled) setPageAspects(dims);
+        });
       } catch (err) {
         if (!cancelled) {
           console.error("[AnnotatedPdfPreview] load:", err);
@@ -1363,6 +1463,39 @@ export default function AnnotatedPdfPreview({
     }
   }, []);
 
+  // Tracks "current page" for the toolbar's page indicator. The native
+  // scroll event can fire many times per animation frame (especially a
+  // touch fling), and this was running unthrottled — a querySelectorAll
+  // plus a getBoundingClientRect() per page, forcing a layout, on every
+  // single one of those events. Coalescing to one pass per frame keeps the
+  // same responsiveness while cutting that layout-thrash way down, which
+  // matters most on the lower-powered tablets this file already works
+  // around elsewhere (IS_LOW_MEMORY_CANVAS_DEVICE).
+  const handleScroll = useCallback(() => {
+    if (scrollRafRef.current != null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const root = scrollRef.current;
+      if (!root) return;
+      const mid = root.getBoundingClientRect().top + root.clientHeight * 0.35;
+      const pages = root.querySelectorAll("[data-page]");
+      for (const node of pages) {
+        const rect = node.getBoundingClientRect();
+        if (mid >= rect.top && mid < rect.bottom) {
+          const p = Number(node.getAttribute("data-page"));
+          setCurrentPage((prev) => (p && p !== prev ? p : prev));
+          break;
+        }
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
   if (loading) {
     return <div className="pdf-preview-status">Loading preview pages…</div>;
   }
@@ -1546,20 +1679,7 @@ export default function AnnotatedPdfPreview({
         onPointerMove={handleScrollAreaPointerMove}
         onPointerUp={handleScrollAreaPointerUp}
         onPointerCancel={handleScrollAreaPointerUp}
-        onScroll={() => {
-          const root = scrollRef.current;
-          if (!root) return;
-          const mid = root.getBoundingClientRect().top + root.clientHeight * 0.35;
-          const pages = root.querySelectorAll("[data-page]");
-          for (const node of pages) {
-            const rect = node.getBoundingClientRect();
-            if (mid >= rect.top && mid < rect.bottom) {
-              const p = Number(node.getAttribute("data-page"));
-              if (p && p !== currentPage) setCurrentPage(p);
-              break;
-            }
-          }
-        }}
+        onScroll={handleScroll}
       >
         <div
           className="pdf-preview-zoom-spacer"
@@ -1587,11 +1707,20 @@ export default function AnnotatedPdfPreview({
                   : null;
               return (
                 <LazyPdfPage
-                  key={`${url}-p${pageNumber}-w${effectiveRenderWidth}`}
+                  // No renderWidth in the key: LazyPdfPage's own effects already
+                  // re-render its canvas at the new width in place (see the
+                  // renderWidth-keyed effects inside it). Keying on renderWidth
+                  // forced every page to fully unmount/remount on each zoom
+                  // step, which for an instant briefly collapsed every page's
+                  // canvas back to its unstyled default size — shrinking the
+                  // measured scroll-content height enough that the browser
+                  // clamped scrollTop back near 0, i.e. "zooming jumps to page 1".
+                  key={`${url}-p${pageNumber}`}
                   pdf={pdf}
                   pageNumber={pageNumber}
                   renderWidth={effectiveRenderWidth}
                   scrollRoot={scrollRoot}
+                  pageAspect={pageAspects[i]}
                   studentPageNumber={studentPageNumber}
                   pageQuestions={pageQuestions}
                   labelGuidance={labelGuidance}
