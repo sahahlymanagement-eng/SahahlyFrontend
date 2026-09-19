@@ -329,6 +329,49 @@
   color: var(--primary);
 }
 
+.tchat-student-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.tchat-student-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.tchat-select-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.tchat-select-bar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.tchat-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.tchat-link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .tchat-preview-textarea {
   width: 100%;
   box-sizing: border-box;

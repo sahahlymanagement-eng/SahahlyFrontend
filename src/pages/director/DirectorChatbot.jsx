@@ -21,6 +21,7 @@ import {
   sendTeacherCollectiveReport,
   startBatchMarking,
   startPriorityMarking,
+  startIndexingMarking,
   verifyMarkScheme,
   generateAssignmentPrompt,
   cancelBatchJob,
@@ -45,14 +46,12 @@ import "../teacher/TeacherChatbot.css";
 
 const SUGGESTIONS = [
   "Give me today's briefing",
+  "Which students need help in Grade 10A?",
+  "Mark with indexing Instant for Quiz 2 in Grade 10 — I'll pick students",
+  "Send assignment reports for Quiz 2 in Grade 10 to parents",
   "List students who submitted late and we haven't corrected, with their classes",
   "Show manager workload across the organization",
   "Who are the top and bottom performing assistants?",
-  "Assign Sara as classroom manager for Grade 10A",
-  "Schedule a WhatsApp message to the Parents group tomorrow at 6pm",
-  "Show me the submissions for the Physics test in Grade 10A",
-  "Create a new person named Ahmed with email ahmed@school.com",
-  "List all managers",
   "Batch-mark the last homework in Chemistry",
   "Priority-mark Omar's Physics test right now",
 ];
@@ -126,6 +125,8 @@ function confirmLabelFor(type) {
       return "Start batch marking";
     case "start_priority_marking":
       return "Start marking now";
+    case "start_indexing_marking":
+      return "Start indexing marking";
     case "verify_mark_scheme":
       return "Verify mark scheme";
     case "generate_assignment_prompt":
@@ -210,6 +211,7 @@ export default function DirectorChatbot() {
   const [briefing, setBriefing] = useState(null);
   const [actionProposal, setActionProposal] = useState(null);
   const [editPreview, setEditPreview] = useState(null);
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [executing, setExecuting] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -252,28 +254,79 @@ export default function DirectorChatbot() {
   const clearActionState = () => {
     setActionProposal(null);
     setEditPreview(null);
+    setSelectedKeys(new Set());
   };
+
+  const toggleSelectedKey = (key) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const selectAllPreviewKeys = () => {
+    if (!editPreview?.items?.length) return;
+    setSelectedKeys(new Set(editPreview.items.map((item) => item.key)));
+  };
+
+  const clearAllPreviewKeys = () => setSelectedKeys(new Set());
 
   const loadPreviewsForProposal = useCallback(async (proposal) => {
     if (!proposal) return;
 
+    const markingTypes = [
+      "start_batch_marking",
+      "start_priority_marking",
+      "start_indexing_marking",
+    ];
+    if (markingTypes.includes(proposal.type)) {
+      const students = proposal.execute?.students || [];
+      const items = students.map((s) => ({
+        key: String(s.submissionId),
+        name: s.studentName || `Submission ${s.submissionId}`,
+        submissionId: s.submissionId,
+        studentId: s.studentId,
+        selected: s.selected !== false,
+        kind: "student",
+      }));
+      setEditPreview({ loading: false, items, kind: "marking" });
+      setSelectedKeys(
+        new Set(items.filter((i) => i.selected !== false).map((i) => i.key))
+      );
+      return;
+    }
+
     if (proposal.type === "send_assignment_report") {
       setEditPreview({ loading: true, items: [] });
       try {
+        const reports = proposal.execute.reports || [];
         const previews = await previewAssignmentReport(
           proposal.execute.classroomId,
-          proposal.execute.reports
+          reports
         );
-        setEditPreview({
-          loading: false,
-          items: previews.map((p) => ({
-            key: previewKey(p),
+        const selectedById = new Map(
+          reports.map((r) => [String(r.studentId || ""), r.selected !== false])
+        );
+        const items = previews.map((p) => {
+          const key = previewKey(p);
+          return {
+            key,
             studentId: p.studentId,
             name: p.name,
             message: p.message || p.error || "(No message)",
             error: p.error,
-          })),
+            selected: selectedById.has(String(p.studentId || ""))
+              ? selectedById.get(String(p.studentId || ""))
+              : true,
+            kind: "report",
+          };
         });
+        setEditPreview({ loading: false, items, kind: "report" });
+        setSelectedKeys(
+          new Set(items.filter((i) => i.selected !== false).map((i) => i.key))
+        );
       } catch (err) {
         setEditPreview({
           loading: false,
@@ -287,10 +340,16 @@ export default function DirectorChatbot() {
     if (proposal.type === "send_monthly_report") {
       const items = (proposal.execute.previews || []).map((p) => ({
         key: String(p.studentId),
+        studentId: p.studentId,
         name: p.studentName,
         message: p.whatsappMessage || "",
+        selected: p.selected !== false,
+        kind: "report",
       }));
-      setEditPreview({ loading: false, items });
+      setEditPreview({ loading: false, items, kind: "report" });
+      setSelectedKeys(
+        new Set(items.filter((i) => i.selected !== false).map((i) => i.key))
+      );
     }
   }, []);
 
@@ -365,6 +424,7 @@ export default function DirectorChatbot() {
     if (!editPreview?.items?.length) return null;
     const overrides = {};
     for (const item of editPreview.items) {
+      if (selectedKeys.size && !selectedKeys.has(item.key)) continue;
       const text = String(item.message || "").trim();
       if (!text) continue;
       if (item.studentId) overrides[String(item.studentId)] = text;
@@ -382,10 +442,40 @@ export default function DirectorChatbot() {
       const ex = actionProposal.execute;
       let successMsg = "Done.";
 
+      const selectedReportItems = () =>
+        (editPreview?.items || []).filter((item) => selectedKeys.has(item.key));
+
+      const selectedMarkingStudents = () => {
+        const fromPreview = (editPreview?.items || [])
+          .filter((item) => selectedKeys.has(item.key))
+          .map((item) => ({
+            submissionId: item.submissionId,
+            studentId: item.studentId,
+            studentName: item.name,
+          }));
+        if (fromPreview.length) return fromPreview;
+        return (ex.students || []).filter(
+          (s) => selectedKeys.has(String(s.submissionId)) || s.selected !== false
+        );
+      };
+
       switch (actionProposal.type) {
         case "send_assignment_report": {
+          const chosen = selectedReportItems();
+          if (!chosen.length) {
+            throw new Error("Select at least one student before sending.");
+          }
+          const reportById = new Map(
+            (ex.reports || []).map((r) => [String(r.studentId || ""), r])
+          );
+          const reports = chosen
+            .map((item) => reportById.get(String(item.studentId || item.key)))
+            .filter(Boolean);
+          if (!reports.length) {
+            throw new Error("No matching report payloads for the selected students.");
+          }
           const overrides = buildMessageOverrides();
-          let result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides);
+          let result = await sendAssignmentReport(ex.classroomId, reports, overrides);
           const skipped = result.skippedCount || 0;
           if (skipped > 0) {
             const sent = result.sentCount ?? 0;
@@ -401,7 +491,7 @@ export default function DirectorChatbot() {
               }
             );
             if (confirmed) {
-              result = await sendAssignmentReport(ex.classroomId, ex.reports, overrides, {
+              result = await sendAssignmentReport(ex.classroomId, reports, overrides, {
                 forceResend: true,
               });
             } else if (sent === 0) {
@@ -416,16 +506,23 @@ export default function DirectorChatbot() {
           break;
         }
         case "send_monthly_report": {
+          const chosen = selectedReportItems();
+          const studentIds = chosen.length
+            ? chosen.map((item) => String(item.studentId || item.key))
+            : (ex.studentIds || []).filter((id) => selectedKeys.has(String(id)));
+          if (!studentIds.length) {
+            throw new Error("Select at least one student before sending.");
+          }
           const overrides = buildMessageOverrides();
           const result = await sendMonthly({
             personId: user.id,
             classroomId: ex.classroomId,
             year: ex.year,
             month: ex.month,
-            studentIds: ex.studentIds,
+            studentIds,
             messageOverrides: overrides,
           });
-          const sent = result.sent ?? result.successCount ?? ex.studentIds.length;
+          const sent = result.sent ?? result.successCount ?? studentIds.length;
           successMsg = `Monthly report send completed (${sent} recipient(s)).`;
           break;
         }
@@ -482,20 +579,24 @@ export default function DirectorChatbot() {
           break;
         }
         case "start_batch_marking": {
+          const students = selectedMarkingStudents();
+          if (!students.length) throw new Error("Select at least one student to mark.");
           const result = await startBatchMarking({
             personId: user.id,
             assignmentId: ex.assignmentId,
-            students: ex.students,
+            students,
             markingMode: ex.markingMode,
           });
           successMsg = `Batch job **${result.jobId}** submitted for **${ex.assignmentTitle}** (${result.queuedCount} submission(s)). It finishes in the background — check the Grading page for progress.`;
           break;
         }
         case "start_priority_marking": {
+          const students = selectedMarkingStudents();
+          if (!students.length) throw new Error("Select at least one student to mark.");
           const result = await startPriorityMarking({
             personId: user.id,
             assignmentId: ex.assignmentId,
-            students: ex.students,
+            students,
             markingMode: ex.markingMode,
           });
           const saved = result?.savedCount ?? 0;
@@ -503,6 +604,19 @@ export default function DirectorChatbot() {
           successMsg = `Marked **${saved}** submission(s) now for **${ex.assignmentTitle}**${
             failed ? `, ${failed} failed` : ""
           }.`;
+          break;
+        }
+        case "start_indexing_marking": {
+          const students = selectedMarkingStudents();
+          if (!students.length) throw new Error("Select at least one student to mark with indexing.");
+          const result = await startIndexingMarking({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            examId: ex.examId,
+            mode: ex.mode || "instant",
+            students,
+          });
+          successMsg = `Indexing **${ex.mode || "instant"}** run **${result.runId}** started for **${ex.assignmentTitle}** (${result.paperCount} paper(s)). Track it in the Submission Viewer indexing runs.`;
           break;
         }
         case "verify_mark_scheme": {
@@ -748,16 +862,30 @@ export default function DirectorChatbot() {
     (actionProposal.type === "send_assignment_report" ||
       actionProposal.type === "send_monthly_report");
 
+  const showStudentPicker =
+    actionProposal &&
+    (showPreviewEditor ||
+      actionProposal.type === "start_batch_marking" ||
+      actionProposal.type === "start_priority_marking" ||
+      actionProposal.type === "start_indexing_marking");
+
+  const selectedCount = selectedKeys.size;
+
   const confirmLabel = actionProposal
     ? confirmLabelFor(actionProposal.type)
     : "Confirm";
+
+  const confirmDisabled =
+    executing ||
+    editPreview?.loading ||
+    (showStudentPicker && selectedCount === 0);
 
   return (
     <div className="tch-page tch-page--wide tchat-page">
       <TeacherPageHeader
         eyebrow="AI Assistant"
         title="AI Agent"
-        subtitle="Ask questions or instruct me to do anything in your director account — people, managers, reports, WhatsApp, submissions, and more."
+        subtitle="Ask questions or instruct me to do anything in your director account — indexing mark with student pickers, parent reports, students needing help, people, managers, and more. Powered by Gemini."
         actions={
           messages.length > 0 ? (
             <button type="button" className="tch-btn tch-btn--ghost" onClick={newChat}>
@@ -881,27 +1009,65 @@ export default function DirectorChatbot() {
                   {editPreview?.error && (
                     <p className="tchat-action-card-error">{editPreview.error}</p>
                   )}
-                  {showPreviewEditor && editPreview?.items?.length > 0 && (
-                    <div className="tchat-preview-list">
-                      {editPreview.items.map((item) => (
-                        <label key={item.key} className="tchat-preview-item">
-                          <span className="tchat-preview-name">{item.name}</span>
-                          <textarea
-                            className="tchat-preview-textarea"
-                            value={item.message}
-                            rows={Math.min(
-                              12,
-                              Math.max(4, String(item.message || "").split("\n").length + 1)
+                  {showStudentPicker && editPreview?.items?.length > 0 && (
+                    <>
+                      <div className="tchat-select-bar">
+                        <span className="tchat-action-card-hint">
+                          {selectedCount} of {editPreview.items.length} selected
+                        </span>
+                        <div className="tchat-select-bar-actions">
+                          <button
+                            type="button"
+                            className="tchat-link-btn"
+                            onClick={selectAllPreviewKeys}
+                            disabled={executing}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            className="tchat-link-btn"
+                            onClick={clearAllPreviewKeys}
+                            disabled={executing}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      <div className="tchat-preview-list">
+                        {editPreview.items.map((item) => (
+                          <div key={item.key} className="tchat-preview-item">
+                            <label className="tchat-student-check">
+                              <input
+                                type="checkbox"
+                                checked={selectedKeys.has(item.key)}
+                                onChange={() => toggleSelectedKey(item.key)}
+                                disabled={executing}
+                              />
+                              <span className="tchat-preview-name">{item.name}</span>
+                            </label>
+                            {showPreviewEditor && (
+                              <textarea
+                                className="tchat-preview-textarea"
+                                value={item.message}
+                                rows={Math.min(
+                                  12,
+                                  Math.max(
+                                    4,
+                                    String(item.message || "").split("\n").length + 1
+                                  )
+                                )}
+                                onChange={(e) =>
+                                  updatePreviewMessage(item.key, e.target.value)
+                                }
+                              />
                             )}
-                            onChange={(e) =>
-                              updatePreviewMessage(item.key, e.target.value)
-                            }
-                          />
-                        </label>
-                      ))}
-                    </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
-                  {!showPreviewEditor && (
+                  {!showStudentPicker && (
                     <p className="tchat-action-card-hint">
                       Review and confirm to proceed.
                     </p>
@@ -911,7 +1077,7 @@ export default function DirectorChatbot() {
                       type="button"
                       className="tch-btn tch-btn--primary"
                       onClick={confirmAction}
-                      disabled={executing || editPreview?.loading}
+                      disabled={confirmDisabled}
                     >
                       {executing ? "Working…" : confirmLabel}
                     </button>
