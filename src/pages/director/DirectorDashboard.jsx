@@ -26,6 +26,8 @@ import {
 import { toast } from "react-toastify";
 import DashboardPeriodFilter from "../../components/DashboardPeriodFilter";
 import { useDashboardPeriod } from "../../hooks/useDashboardPeriod";
+import { isDirectorLikeRole } from "../../utils/directorLikeAccess";
+import { getRoleName } from "../../utils/authRoutes";
 
 function readStoredUser() {
   try {
@@ -179,7 +181,8 @@ export default function DirectorDashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!user || !token || user?.roleId?.name?.toLowerCase() !== "admin") {
+    const roleName = getRoleName(user);
+    if (!user || !token || !isDirectorLikeRole(roleName)) {
       navigate("/login", { replace: true });
     }
   }, [user, navigate]);
@@ -208,38 +211,54 @@ export default function DirectorDashboard() {
     };
   }, [user, period.params.from, period.params.to]);
 
-  const fetchHiddenRows = useCallback(async () => {
+  const fetchHiddenRows = useCallback(async (signal) => {
     setHiddenLoading(true);
     try {
-      const res = await api.get("/director/dashboard/rows/hidden");
-      setHiddenRows(res.data?.rows || []);
+      const res = await api.get("/director/dashboard/rows/hidden", {
+        signal: signal || undefined,
+      });
+      if (!signal?.aborted) setHiddenRows(res.data?.rows || []);
     } catch (err) {
+      if (signal?.aborted || err?.code === "ERR_CANCELED" || err?.name === "CanceledError") {
+        return;
+      }
       toast.error(err.response?.data?.message || "Failed to load hidden rows");
     } finally {
-      setHiddenLoading(false);
+      if (!signal?.aborted) setHiddenLoading(false);
     }
   }, []);
 
-  const fetchDeletionRequests = useCallback(async () => {
+  const fetchDeletionRequests = useCallback(async (signal) => {
     setRequestsLoading(true);
     try {
       const res = await api.get("/director/dashboard/deletion-requests", {
         params: { status: "pending" },
+        signal: signal || undefined,
       });
-      setDeletionRequests(res.data?.rows || []);
+      if (!signal?.aborted) setDeletionRequests(res.data?.rows || []);
     } catch (err) {
+      if (signal?.aborted || err?.code === "ERR_CANCELED" || err?.name === "CanceledError") {
+        return;
+      }
       toast.error(err.response?.data?.message || "Failed to load deletion requests");
     } finally {
-      setRequestsLoading(false);
+      if (!signal?.aborted) setRequestsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (!user) return;
+    const roleName = getRoleName(user);
+    if (!isDirectorLikeRole(roleName)) return;
+
+    const controller = new AbortController();
     (async () => {
-      await fetchHiddenRows();
-      await fetchDeletionRequests();
+      await fetchHiddenRows(controller.signal);
+      if (!controller.signal.aborted) {
+        await fetchDeletionRequests(controller.signal);
+      }
     })();
+    return () => controller.abort();
   }, [user, fetchHiddenRows, fetchDeletionRequests]);
 
   // Re-fetch whichever bucket is open + the tile counts after a row is

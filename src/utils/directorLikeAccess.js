@@ -12,7 +12,7 @@ export function isDirectorLikeVariant(variant) {
 export function roleShellPath(role) {
   const r = String(role || "").toLowerCase();
   if (r === "backup") return "/backup";
-  if (r === "admin") return "/director";
+  if (r === "admin" || r === "director") return "/director";
   if (r === "manager") return "/manager";
   if (r === "teacher") return "/teacher";
   return "/";
