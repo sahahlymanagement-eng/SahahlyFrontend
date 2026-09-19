@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import SessionRefresher from "./components/SessionRefresher";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -148,8 +149,9 @@ function App() {
       {/* Keeps the access token rolling while the app is open, and pulls role /
           delegation changes into this browser without a re-login. */}
       <SessionRefresher />
+      <AppErrorBoundary>
       <Routes>
-        
+
         <Route path="/" element={<HomeToLanding />} />
         <Route path="/privacy-security" element={<PrivacySecurityPolicy />} />
         <Route path="/privacy" element={<Navigate to="/privacy-security" replace />} />
@@ -434,6 +436,7 @@ function App() {
 
     
       </Routes>
+      </AppErrorBoundary>
     </BrowserRouter>
     </ThemeProvider>
   );

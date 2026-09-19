@@ -6,7 +6,7 @@ import "./ManagerStudents.css";
 import {
   FiHome, FiUsers, FiSearch, FiX, FiEdit2, FiTrash2,
   FiCheck, FiChevronRight, FiLogOut, FiMenu,
-  FiPhone, FiMail, FiUser, FiRefreshCw,
+  FiPhone, FiMail, FiUser, FiRefreshCw, FiUpload,
   FiChevronLeft, FiChevronDown,FiClipboard
 } from "react-icons/fi";
 import { PhoneInput } from "react-international-phone";
@@ -50,6 +50,9 @@ export default function ManagerStudents({ scope = "manager" }) {
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [classroomSearch, setClassroomSearch] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importReport, setImportReport] = useState(null);
+  const importInputRef = useRef(null);
 
   /* AUTH */
   useEffect(() => {
@@ -133,6 +136,7 @@ export default function ManagerStudents({ scope = "manager" }) {
     setSelectedClassroom(classroom);
     setEditingId(null);
     setSearch("");
+    setImportReport(null);
   };
 
   const refreshStudents = async () => {
@@ -145,6 +149,37 @@ export default function ManagerStudents({ scope = "manager" }) {
       toast.success(`Students refreshed (${result.total} on Google Classroom${removedNote})`);
     } else {
       toast.warn("Could not refresh from Google Classroom — showing saved list");
+    }
+  };
+
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0];
+    // Clear the input straight away so picking the SAME file again still fires
+    // a change event.
+    event.target.value = "";
+    if (!file || !selectedClassroom?._id) return;
+
+    const form = new FormData();
+    form.append("file", file);
+
+    setImporting(true);
+    setImportReport(null);
+    try {
+      const { data } = await api.post(
+        `/students/classroom/${selectedClassroom._id}/contacts/import`,
+        form
+      );
+      setImportReport(data);
+      if (data.updated > 0) {
+        toast.success(`Updated contacts for ${data.updated} student(s)`);
+        await fetchPage(pageRef.current);
+      } else {
+        toast.warn("Nothing was updated — check the names and column headings");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Import failed");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -422,7 +457,64 @@ export default function ManagerStudents({ scope = "manager" }) {
                           <FiRefreshCw className={syncing ? "ms-spin" : ""} />
                           {syncing ? "Refreshing…" : "Refresh students"}
                         </button>
+                        <button
+                          type="button"
+                          className="ma-send-btn"
+                          onClick={() => importInputRef.current?.click()}
+                          disabled={importing}
+                          title="Fill student/parent phone, parent name and (if blank) email from an Excel or CSV file — matches by exact student name already in this class only"
+                        >
+                          <FiUpload />
+                          {importing ? "Importing…" : "Import contacts"}
+                        </button>
+                        <input
+                          ref={importInputRef}
+                          type="file"
+                          accept=".xlsx,.xls,.csv"
+                          onChange={handleImportFile}
+                          style={{ display: "none" }}
+                        />
                     </div>
+
+                    <p className="ms-import-note">
+                      Import matches rows to students already in this class by <strong>exact name</strong> —
+                      it never creates a new student and skips any name that doesn&apos;t match exactly one
+                      student here. Accepted headings: <code>Student Name</code>, <code>Parent Name</code>,{" "}
+                      <code>Parent Phone</code>, <code>Student Phone</code> and <code>Email</code> (any
+                      capitalisation, any order). Phone/parent-name columns overwrite the saved value; an{" "}
+                      <code>Email</code> column only fills students who don&apos;t have one yet — it never
+                      overwrites an existing email.
+                    </p>
+
+                    {importReport && (
+                      <div className="ms-import-report">
+                        <div className="ms-import-report-head">
+                          <strong>
+                            Import result: {importReport.updated} updated, {importReport.skipped} skipped
+                          </strong>
+                          <button
+                            type="button"
+                            className="ms-import-report-close"
+                            onClick={() => setImportReport(null)}
+                          >
+                            <FiX size={14} />
+                          </button>
+                        </div>
+                        {importReport.results?.some((r) => r.status === "skipped") && (
+                          <ul className="ms-import-skipped">
+                            {importReport.results
+                              .filter((r) => r.status === "skipped")
+                              .slice(0, 30)
+                              .map((r) => (
+                                <li key={r.row}>
+                                  Row {r.row}
+                                  {r.studentName ? ` (${r.studentName})` : ""}: {r.reason}
+                                </li>
+                              ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
 
                     {/* KEEP YOUR EXISTING TABLE HERE */}
                     <div className="ms-table-wrap">
