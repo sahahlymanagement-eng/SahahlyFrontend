@@ -454,8 +454,21 @@ function appendExaminerColumn(page, stripH, colW = EXAMINER_COL_W) {
   const { width: paperW, height } = page.getSize();
   const colWidthPt = Math.max(96, Math.min(480, Number(colW) || EXAMINER_COL_W));
 
-  // setSize keeps existing student content at (0,0); only extends width to the right.
-  page.setSize(paperW + colWidthPt, height);
+  // Some submitted PDFs (notably InDesign exports) have a CropBox smaller
+  // than their MediaBox. `setSize` only expands the MediaBox, so PDF viewers
+  // that honour the old CropBox hide the entire examiner column. Keep every
+  // page boundary aligned with the finished page so the column is visible in
+  // the classroom viewer, browser downloads, and native PDF readers.
+  const totalW = paperW + colWidthPt;
+  for (const setBox of [
+    page.setMediaBox,
+    page.setCropBox,
+    page.setBleedBox,
+    page.setTrimBox,
+    page.setArtBox,
+  ]) {
+    setBox.call(page, 0, 0, totalW, height);
+  }
 
   const colLeft = paperW;
   const colTop = height - stripH - 4;
@@ -485,7 +498,7 @@ function appendExaminerColumn(page, stripH, colW = EXAMINER_COL_W) {
 
   return {
     paperW,
-    totalW: paperW + colWidthPt,
+    totalW,
     colX: colLeft + COL_PAD,
     colWidth: colWidthPt - COL_PAD * 2,
     colLeft,
