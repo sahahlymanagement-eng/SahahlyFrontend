@@ -183,6 +183,11 @@ export async function runReturnAllQueue({
   const failures = [];
   let successCount = 0;
 
+  // returnOne reports its own outcome rather than pushing to failures/outcomes
+  // directly — with several workers in flight at once (see CONCURRENCY below),
+  // that keeps each worker's bookkeeping self-contained instead of relying on
+  // "the last thing pushed to a shared array was mine", which is only true
+  // because of a JS microtask-ordering subtlety that's easy to break later.
   const returnOne = async ({
     submissionId,
     storedSubmissionId,
@@ -198,14 +203,12 @@ export async function runReturnAllQueue({
     const googleUserId = studentGoogleUserId(student);
 
     if (!result) {
-      failures.push({ submissionId, label, reason: "Missing marking data" });
-      return;
+      return { ok: false, submissionId, label, reason: "Missing marking data", quotaExhausted: false };
     }
 
     const integrityGate = getMarkingIntegrityPublishGate(result);
     if (integrityGate?.level === "block") {
-      failures.push({ submissionId, label, reason: integrityGate.message });
-      return;
+      return { ok: false, submissionId, label, reason: integrityGate.message, quotaExhausted: false };
     }
 
     try {
@@ -284,8 +287,8 @@ export async function runReturnAllQueue({
       // cached download is no longer necessarily what /pdf would hand back.
       invalidateStudentPdf(assignmentId, storedSubmissionId || submissionId);
 
-      successCount += 1;
       return {
+        ok: true,
         submissionId: liveSubmissionId,
         // The key the caller's local state is under — NOT the live id, or a
         // paper whose submission moved never clears its "not returned" flag.
@@ -300,13 +303,13 @@ export async function runReturnAllQueue({
     } catch (err) {
       console.error(`Return failed for ${label}:`, err);
       const quotaExhausted = await isQuotaExhaustedError(err);
-      failures.push({
+      return {
+        ok: false,
         submissionId,
         label,
         reason: (await getApiErrorMessage(err)) || err?.message || "Return failed",
         quotaExhausted,
-      });
-      return null;
+      };
     }
   };
 
@@ -331,9 +334,17 @@ export async function runReturnAllQueue({
     }
   };
 
-  for (const { submissionId, storedSubmissionId, student, bulk } of bulkQueue) {
-    if (breaker.tripped) break;
-    const outcome = await returnOne({
+  // A strictly one-at-a-time loop meant total wall time was N students ×
+  // (per-student work + pace), even though each student's fetch/annotate
+  // (client CPU) and network round trip don't actually depend on any other
+  // student's. A few workers pulling from one shared queue lets that work
+  // genuinely overlap. The pacer and breaker above are shared across every
+  // worker (plain closures — safe with no locking, since JS never runs two
+  // of these workers' synchronous steps at once), so a quota signal from ANY
+  // worker slows or stops ALL of them, not just the one that hit it.
+  const CONCURRENCY = 3;
+  const workItems = [
+    ...bulkQueue.map(({ submissionId, storedSubmissionId, student, bulk }) => ({
       submissionId,
       storedSubmissionId,
       student,
@@ -341,46 +352,57 @@ export async function runReturnAllQueue({
       studentFile: bulk?.studentFile,
       source: "bulk",
       bulk,
-    });
-    if (outcome) {
-      outcomes.push(outcome);
-      pacer.recordOutcome({ backoffMs: outcome.quotaBackoffMs });
-      feedBreaker(outcome.quotaBackoffMs > 0);
-    } else {
-      pacer.recordOutcome({ failed: true });
-      feedBreaker(Boolean(failures[failures.length - 1]?.quotaExhausted));
-    }
-    if (breaker.tripped) break;
-    await pacer.wait();
-  }
-
-  for (const { submissionId, storedSubmissionId, student, batch } of batchQueue) {
-    if (breaker.tripped) break;
-    const outcome = await returnOne({
+    })),
+    ...batchQueue.map(({ submissionId, storedSubmissionId, student, batch }) => ({
       submissionId,
       storedSubmissionId,
       student,
       result: batch?.result,
       source: "batch",
       batch,
-    });
-    if (outcome) {
-      outcomes.push(outcome);
-      pacer.recordOutcome({ backoffMs: outcome.quotaBackoffMs });
-      feedBreaker(outcome.quotaBackoffMs > 0);
-    } else {
-      pacer.recordOutcome({ failed: true });
-      feedBreaker(Boolean(failures[failures.length - 1]?.quotaExhausted));
+    })),
+  ];
+
+  let cursor = 0;
+  const nextItem = () => (cursor < workItems.length ? workItems[cursor++] : null);
+
+  const worker = async () => {
+    for (;;) {
+      if (breaker.tripped) return;
+      const item = nextItem();
+      if (!item) return;
+
+      const result = await returnOne(item);
+      if (result.ok) {
+        successCount += 1;
+        outcomes.push(result);
+        pacer.recordOutcome({ backoffMs: result.quotaBackoffMs });
+        feedBreaker(result.quotaBackoffMs > 0);
+      } else {
+        failures.push({
+          submissionId: result.submissionId,
+          label: result.label,
+          reason: result.reason,
+          quotaExhausted: result.quotaExhausted,
+        });
+        pacer.recordOutcome({ failed: true });
+        feedBreaker(result.quotaExhausted);
+      }
+
+      if (breaker.tripped) return;
+      await pacer.wait();
     }
-    if (breaker.tripped) break;
-    await pacer.wait();
-  }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, workItems.length) }, () => worker())
+  );
 
   return {
     successCount,
     failures,
     outcomes,
-    total: bulkQueue.length + batchQueue.length,
+    total: workItems.length,
     stoppedEarly: breaker.tripped,
     stopReason,
   };
