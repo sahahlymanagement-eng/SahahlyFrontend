@@ -53,7 +53,8 @@ const SUGGESTIONS = [
   "Show me the submissions for the Physics test in Grade 10A",
   "Create a new person named Ahmed with email ahmed@school.com",
   "List all managers",
-  "Run automation on the last homework in Chemistry",
+  "Batch-mark the last homework in Chemistry",
+  "Priority-mark Omar's Physics test right now",
 ];
 
 const STORAGE_KEY = "sahahly-director-ai-agent";

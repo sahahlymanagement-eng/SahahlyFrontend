@@ -3869,12 +3869,18 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
       await saveReturnSummaries(api, assignmentId, queue, resolvePdfSummary);
 
-      const { successCount, failures, outcomes } = await returnAllToStudents(queue, freshSaved);
+      const { successCount, failures, outcomes, stoppedEarly, stopReason } = await returnAllToStudents(queue, freshSaved);
 
       await fetchSavedResults();
 
       const attachBlocked = (outcomes || []).filter((row) => row?.attachmentWarning).length;
-      if (successCount === 0) {
+      if (stoppedEarly) {
+        toast.error(
+          `${stopReason || "Return All stopped early after repeated Google Classroom failures."} ` +
+            `(${successCount} returned before stopping.)`,
+          { autoClose: 18000 }
+        );
+      } else if (successCount === 0) {
         toast.error(failures[0]?.reason || "Return all failed");
       } else if (failures.length) {
         toast.warn(formatReturnFailuresMessage(successCount, failures), {
@@ -4009,7 +4015,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
     const mergedSaved = { ...savedResults, ...(freshSavedResults || {}) };
 
-    const { successCount, failures, outcomes } = await runReturnAllQueue({
+    const { successCount, failures, outcomes, stoppedEarly, stopReason } = await runReturnAllQueue({
       api,
       assignmentId,
       bulkQueue,
@@ -4065,7 +4071,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       }
     }
 
-    return { successCount, failures };
+    return { successCount, failures, outcomes, stoppedEarly, stopReason };
   };
 
   if (!user) {

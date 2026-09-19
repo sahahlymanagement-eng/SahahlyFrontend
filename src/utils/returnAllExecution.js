@@ -42,6 +42,18 @@ function isGradeOnlyReturn(result) {
   return Boolean(result?.noSubmission);
 }
 
+/** True when /return-marked's own error body says Google quota is exhausted (not a one-off transient hiccup). */
+async function isQuotaExhaustedError(err) {
+  const data = err?.response?.data;
+  if (data?.quotaExhausted === true) return true;
+  if (!(data instanceof Blob)) return false;
+  try {
+    return JSON.parse(await data.text())?.quotaExhausted === true;
+  } catch {
+    return false;
+  }
+}
+
 /** True when /submission-files/pdf says the submission carries nothing to download. */
 export async function isNoAttachmentError(err) {
   if (err?.response?.status !== 404) return false;
@@ -80,6 +92,66 @@ async function resolveStudentPdfFile({
 }
 
 /**
+ * Classroom applies per-user/project quotas across patch, attachment and
+ * return calls. A flat delay between every paper used to guess a worst-case
+ * gap regardless of load — a 5-student class and a 50-student class paid the
+ * exact same per-paper tax. The backend's own retry (withGoogleApiRetry)
+ * already holds off for real when it hits actual quota pressure and reports
+ * how long it waited as `quotaBackoffMs` on the response — that is real
+ * backpressure, not a guess. This starts fast and only slows down when that
+ * signal (or an outright failure) shows up, then eases back down after a run
+ * of clean returns.
+ */
+function createReturnPacer({ minDelayMs = 1000, maxDelayMs = 10000, easeAfterCleanCount = 3 } = {}) {
+  let delayMs = minDelayMs;
+  let cleanStreak = 0;
+
+  return {
+    wait: () => new Promise((resolve) => setTimeout(resolve, delayMs)),
+    recordOutcome({ backoffMs = 0, failed = false } = {}) {
+      if (failed || backoffMs > 0) {
+        cleanStreak = 0;
+        // The request itself already had to wait out Google's backoff (or
+        // failed outright after exhausting it) — that's direct evidence
+        // we're at the limit, so jump straight to the ceiling instead of
+        // doubling gradually into more 429s.
+        delayMs = maxDelayMs;
+        return;
+      }
+      cleanStreak += 1;
+      if (cleanStreak >= easeAfterCleanCount) {
+        cleanStreak = 0;
+        delayMs = Math.max(minDelayMs, Math.round(delayMs * 0.6));
+      }
+    },
+  };
+}
+
+/**
+ * Trips after `threshold` quota-pressure signals IN A ROW (a quota-tagged
+ * failure, or a success that still had to wait out backend backoff). One
+ * such signal is normal noise; several consecutive ones mean the account is
+ * genuinely blocked right now, and continuing through the rest of the class
+ * would just repeat the same failure at the same cost, one student at a time.
+ */
+function createQuotaCircuitBreaker(threshold = 3) {
+  let streak = 0;
+  const breaker = {
+    tripped: false,
+    record(isQuotaSignal) {
+      if (!isQuotaSignal) {
+        streak = 0;
+        return breaker.tripped;
+      }
+      streak += 1;
+      if (streak >= threshold) breaker.tripped = true;
+      return breaker.tripped;
+    },
+  };
+  return breaker;
+}
+
+/**
  * Return every item in the queue. Continues after individual failures and reports a summary.
  */
 export async function runReturnAllQueue({
@@ -96,10 +168,7 @@ export async function runReturnAllQueue({
   appendClassroomGradeToFormData,
   resolveTotalMarksFromResult,
 }) {
-  // Classroom applies per-user/project quotas across patch, attachment and
-  // return calls. A small gap prevents Return All from exhausting the short
-  // burst quota even though papers are already processed sequentially.
-  const paceNextReturn = () => new Promise((resolve) => setTimeout(resolve, 4000));
+  const pacer = createReturnPacer();
   const computeReturnMarks = (result, editingQs) => ({
     total:
       resolveTotalMarksFromResult(result) ??
@@ -226,21 +295,44 @@ export async function runReturnAllQueue({
         batch,
         returnedAt: new Date().toISOString(),
         attachmentWarning: returnResult?.attachmentWarning || null,
+        quotaBackoffMs: returnResult?.quotaBackoffMs || 0,
       };
     } catch (err) {
       console.error(`Return failed for ${label}:`, err);
+      const quotaExhausted = await isQuotaExhaustedError(err);
       failures.push({
         submissionId,
         label,
         reason: (await getApiErrorMessage(err)) || err?.message || "Return failed",
+        quotaExhausted,
       });
       return null;
     }
   };
 
   const outcomes = [];
+  // Backend now fails a sustained quota block fast (~1 retry) instead of the
+  // ~17 minutes/student it used to take grinding through 5 full retries —
+  // but that alone still means N students × ~1 quota-shaped failure each.
+  // If several IN A ROW show real quota pressure, the account is blocked for
+  // more than a moment and burning through the rest of the class the exact
+  // same losing way would still turn a bad minute into a bad hour. Stop the
+  // whole run instead and say why, rather than silently working through
+  // every remaining paper.
+  const breaker = createQuotaCircuitBreaker();
+  let stopReason = null;
+
+  const feedBreaker = (isQuotaSignal) => {
+    if (breaker.record(isQuotaSignal)) {
+      stopReason =
+        "Stopped Return All: Google Classroom kept rejecting requests for this account " +
+        "(quota/rate limit) across several papers in a row. The remaining papers were not " +
+        "attempted — try again in a few minutes.";
+    }
+  };
 
   for (const { submissionId, storedSubmissionId, student, bulk } of bulkQueue) {
+    if (breaker.tripped) break;
     const outcome = await returnOne({
       submissionId,
       storedSubmissionId,
@@ -250,11 +342,20 @@ export async function runReturnAllQueue({
       source: "bulk",
       bulk,
     });
-    if (outcome) outcomes.push(outcome);
-    await paceNextReturn();
+    if (outcome) {
+      outcomes.push(outcome);
+      pacer.recordOutcome({ backoffMs: outcome.quotaBackoffMs });
+      feedBreaker(outcome.quotaBackoffMs > 0);
+    } else {
+      pacer.recordOutcome({ failed: true });
+      feedBreaker(Boolean(failures[failures.length - 1]?.quotaExhausted));
+    }
+    if (breaker.tripped) break;
+    await pacer.wait();
   }
 
   for (const { submissionId, storedSubmissionId, student, batch } of batchQueue) {
+    if (breaker.tripped) break;
     const outcome = await returnOne({
       submissionId,
       storedSubmissionId,
@@ -263,11 +364,26 @@ export async function runReturnAllQueue({
       source: "batch",
       batch,
     });
-    if (outcome) outcomes.push(outcome);
-    await paceNextReturn();
+    if (outcome) {
+      outcomes.push(outcome);
+      pacer.recordOutcome({ backoffMs: outcome.quotaBackoffMs });
+      feedBreaker(outcome.quotaBackoffMs > 0);
+    } else {
+      pacer.recordOutcome({ failed: true });
+      feedBreaker(Boolean(failures[failures.length - 1]?.quotaExhausted));
+    }
+    if (breaker.tripped) break;
+    await pacer.wait();
   }
 
-  return { successCount, failures, outcomes, total: bulkQueue.length + batchQueue.length };
+  return {
+    successCount,
+    failures,
+    outcomes,
+    total: bulkQueue.length + batchQueue.length,
+    stoppedEarly: breaker.tripped,
+    stopReason,
+  };
 }
 
 export function countAttachmentWarnings(outcomes = []) {

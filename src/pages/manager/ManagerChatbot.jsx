@@ -43,7 +43,9 @@ const SUGGESTIONS = [
   "Which questions did Class 9B struggle with most?",
   "List the scheduled WhatsApp messages",
   "Which students are missing a parent phone number in Grade 10A?",
-  "Run automation on the last homework in Chemistry",
+  "Batch-mark the last homework in Chemistry",
+  "Priority-mark Omar's Physics test right now",
+  "Verify the mark scheme for the Physics test before marking",
 ];
 
 const STORAGE_KEY = "sahahly-manager-ai-agent";
