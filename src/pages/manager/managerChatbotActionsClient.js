@@ -152,6 +152,31 @@ export async function runAutomation(body) {
   return data;
 }
 
+export async function startBatchMarking(body) {
+  const { data } = await api.post("/manager-chatbot/actions/start-batch-marking", body);
+  return data;
+}
+
+export async function startPriorityMarking(body) {
+  const { data } = await api.post("/manager-chatbot/actions/start-priority-marking", body);
+  return data;
+}
+
+export async function verifyMarkScheme(body) {
+  const { data } = await api.post("/manager-chatbot/actions/verify-mark-scheme", body);
+  return data;
+}
+
+export async function generateAssignmentPrompt(body) {
+  const { data } = await api.post("/manager-chatbot/actions/generate-assignment-prompt", body);
+  return data;
+}
+
+export async function cancelBatchJob(body) {
+  const { data } = await api.post("/manager-chatbot/actions/cancel-batch-job", body);
+  return data;
+}
+
 export async function pushClassroomGrades(body) {
   const { data } = await api.post(
     "/manager-chatbot/actions/push-classroom-grades",

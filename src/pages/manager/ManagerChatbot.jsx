@@ -19,6 +19,11 @@ import {
   sendExecutiveReport,
   sendMonthly,
   sendTeacherCollectiveReport,
+  startBatchMarking,
+  startPriorityMarking,
+  verifyMarkScheme,
+  generateAssignmentPrompt,
+  cancelBatchJob,
   syncClassroom,
   syncCourseworkFromGoogle,
   syncStudentRoster,
@@ -106,6 +111,16 @@ function confirmLabelFor(type) {
       return "Remove assistant";
     case "run_automation":
       return "Start automation";
+    case "start_batch_marking":
+      return "Start batch marking";
+    case "start_priority_marking":
+      return "Start marking now";
+    case "verify_mark_scheme":
+      return "Verify mark scheme";
+    case "generate_assignment_prompt":
+      return "Generate prompt";
+    case "cancel_batch_job":
+      return "Cancel job";
     case "push_classroom_grades":
       return "Push grades";
     case "sync_classroom":
@@ -433,6 +448,57 @@ export default function ManagerChatbot() {
             force: ex.force,
           });
           successMsg = result.message || `Automation started for **${ex.assignmentTitle}**. Poll Automation tab for status.`;
+          break;
+        }
+        case "start_batch_marking": {
+          const result = await startBatchMarking({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            students: ex.students,
+            markingMode: ex.markingMode,
+          });
+          successMsg = `Batch job **${result.jobId}** submitted for **${ex.assignmentTitle}** (${result.queuedCount} submission(s)). It finishes in the background — check the Grading page for progress.`;
+          break;
+        }
+        case "start_priority_marking": {
+          const result = await startPriorityMarking({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            students: ex.students,
+            markingMode: ex.markingMode,
+          });
+          const saved = result?.savedCount ?? 0;
+          const failed = result?.failedCount ?? 0;
+          successMsg = `Marked **${saved}** submission(s) now for **${ex.assignmentTitle}**${
+            failed ? `, ${failed} failed` : ""
+          }.`;
+          break;
+        }
+        case "verify_mark_scheme": {
+          const result = await verifyMarkScheme({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+          });
+          successMsg = `Mark scheme verification for **${ex.assignmentTitle}**: ${
+            result.verdict || result.status || "done"
+          }${result.summary ? ` — ${result.summary}` : ""}`;
+          break;
+        }
+        case "generate_assignment_prompt": {
+          await generateAssignmentPrompt({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+          });
+          successMsg = `Marking prompt generated for **${ex.assignmentTitle}**.`;
+          break;
+        }
+        case "cancel_batch_job": {
+          await cancelBatchJob({
+            personId: user.id,
+            assignmentId: ex.assignmentId,
+            jobId: ex.jobId,
+          });
+          successMsg = `Batch job **${ex.jobId}** cancelled for **${ex.assignmentTitle}**.`;
           break;
         }
         case "push_classroom_grades":
