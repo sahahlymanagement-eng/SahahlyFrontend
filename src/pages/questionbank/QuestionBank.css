@@ -384,3 +384,33 @@
   display: inline-block;
 }
 @keyframes qb-spin { to { transform: rotate(360deg); } }
+
+/* Phones only — desktop Question Bank layout stays unchanged. */
+@media (max-width: 640px) {
+  .qb-page {
+    padding: 14px 12px 40px;
+  }
+
+  .qb-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .qb-filter-group {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .qb-filter-group select,
+  .qb-filter-group input {
+    width: 100%;
+    font-size: 16px;
+  }
+
+  .qb-modal {
+    width: calc(100vw - 16px);
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+  }
+}

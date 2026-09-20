@@ -1411,6 +1411,11 @@ select.ma-search-input option {
 /* .ma-table is shared by ReportsWorkspace; the submission viewers use the
    older .ma-table--cards pattern in ManagerSubmissionViewer.css instead. */
 @media (max-width: 1024px) {
+  .ma-table.sah-table--cards {
+    min-width: 0;
+    width: 100%;
+  }
+
   /* .ma-row--selected tints the <td>s with !important, which paints over the
      card. Move the selected state onto the card and clear the cell tint. */
   .ma-table.sah-table--cards tbody tr.ma-row--selected {

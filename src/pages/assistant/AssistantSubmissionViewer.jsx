@@ -158,6 +158,7 @@ import {
 import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
 import { sortStudentsBySubmittedAt } from "../../utils/sortStudentsBySubmittedAt";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
+import DrPeterIndexingTools from "../../components/DrPeterIndexingTools";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import {
   MARKING_MAX_ATTEMPTS,
@@ -3487,6 +3488,19 @@ return (
                   <span className="msv-refresh-btn-label">{syncingPdfMirror ? "Syncing PDFs…" : "Sync PDFs"}</span>
                 </button>
 </div>
+
+              {assignmentId && (
+                <DrPeterIndexingTools
+                  key={assignmentId}
+                  provider="classroom"
+                  assignment={paperMeta || { _id: assignmentId, title: "Assignment" }}
+                  selectedIds={markingSelection.selectedIds}
+                  canMark
+                  gradeModel={pickValidGeminiModel(geminiModels, geminiModel)}
+                  loadRoster={() => fetchAllPaginated(api, studentsMarkingUrl, {}, "students")}
+                  onResultsReady={fetchSavedResults}
+                />
+              )}
 
               <MarkingSelectionBar
                 selectedCount={markingSelection.selectedCount}

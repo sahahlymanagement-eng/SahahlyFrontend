@@ -28,6 +28,12 @@ const INDEXING_MODEL_KEY = 'sahahly.indexing.gradeModel';
 const DEFAULT_INDEXING_MODEL = 'gemini-2.5-flash';
 const RETIRED_INDEXING_MODELS = /^(gemini-1(\.|$)|gemini-1\.5)/i;
 
+const IMPORT_SOURCE_OPTIONS = [
+  { id: 'classroom', label: 'Classroom' },
+  { id: 'drpeter', label: 'Dr Peter' },
+  { id: 'mariamgabalawy', label: 'Mariam Gabalawy' },
+];
+
 function readIndexingModel(fallback) {
   try {
     const remembered = localStorage.getItem(INDEXING_MODEL_KEY);
@@ -50,6 +56,12 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [setup, setSetup] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSourceProvider, setImportSourceProvider] = useState('classroom');
+  const [importSources, setImportSources] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importSelectedId, setImportSelectedId] = useState('');
+  const [importSearch, setImportSearch] = useState('');
   const [indexForm, setIndexForm] = useState(() => ({ title: assignment.name || assignment.title || '', subject: '', board: '', year: '', paperCode: '', expectedQpRows: [{ label: '', marks: '' }], expectedMsRows: [{ label: '', marks: '' }], questionPaper: null, markScheme: null }));
   const qp = indexForm.questionPaper;
   const ms = indexForm.markScheme;
@@ -102,7 +114,8 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     async function poll() {
       try {
         const { data } = await api.get(`${base}/exams`, { params:{partnerAssignmentId:assignmentId}, timeout: 30000 });
-        const linked = data.filter(row => row.partnerProvider === provider && row.partnerAssignmentId === assignmentId);
+        const linked = data.filter(row => row.partnerProvider === provider && row.partnerAssignmentId === assignmentId)
+          .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
         const latest = linked[0] || null;
         const runLists = await Promise.all(linked.map(row => api.get(`${base}/runs`, { params: { examId: row.id }, timeout: 30000 })));
         if (!alive.current) return;
@@ -117,6 +130,44 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     poll();
     return () => { alive.current = false; clearTimeout(timer); };
   }, [assignmentId, base, provider]);
+
+  useEffect(() => {
+    if (!importOpen || !canMark) return undefined;
+    let cancelled = false;
+    setImportLoading(true);
+    setImportSources([]);
+    setImportSelectedId('');
+    api
+      .get(`${base}/exams/import-sources`, {
+        params: {
+          sourceProvider: importSourceProvider,
+          excludeAssignmentId: assignmentId,
+        },
+        timeout: 60000,
+      })
+      .then(({ data }) => {
+        if (!cancelled) setImportSources(Array.isArray(data) ? data : []);
+      })
+      .catch(async (err) => {
+        if (cancelled) return;
+        setImportSources([]);
+        toast.error((await getApiErrorMessage(err)) || 'Failed to load indexes to import');
+      })
+      .finally(() => {
+        if (!cancelled) setImportLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [importOpen, importSourceProvider, base, assignmentId, canMark]);
+
+  const filteredImportSources = importSources.filter((row) => {
+    const q = importSearch.trim().toLowerCase();
+    if (!q) return true;
+    return String(row.importLabel || row.title || '')
+      .toLowerCase()
+      .includes(q);
+  });
 
   async function openIndex() {
     setError('');
@@ -139,6 +190,34 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       if (alive.current) setSourceMessage(notes.filter(Boolean).join(' '));
     } catch(err) { if(alive.current) setSourceMessage(await getApiErrorMessage(err)); }
     finally { if(alive.current) setBusy(''); }
+  }
+
+  async function importIndex(event) {
+    event?.preventDefault?.();
+    if (!importSelectedId || !canMark) return;
+    setBusy('Importing index…');
+    setError('');
+    try {
+      const { data } = await api.post(
+        `${base}/exams/import`,
+        { sourceExamId: importSelectedId, partnerAssignmentId: assignmentId },
+        { timeout: 120000 }
+      );
+      if (!alive.current) return;
+      setPack(data);
+      setImportOpen(false);
+      setImportSelectedId('');
+      toast.success('Index imported — you can mark with indexing on this assignment now');
+      setView({ title: 'Review imported index', hash: `#/exams/${data.id}` });
+    } catch (err) {
+      const message = await getApiErrorMessage(err);
+      if (alive.current) {
+        setError(message);
+        toast.error(message || 'Import failed');
+      }
+    } finally {
+      if (alive.current) setBusy('');
+    }
   }
 
   async function createIndex(event) {
@@ -221,6 +300,21 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   return <section className="dpi-tools" aria-label="Assignment indexing">
     <div className="dpi-actions">
       <button type="button" className="msv-btn-ai" onClick={openIndex} disabled={loading || !!busy || (!canMark && !pack)}>Index assignment</button>
+      {canMark && (
+        <button
+          type="button"
+          className="msv-btn-ai"
+          onClick={() => {
+            setImportOpen(true);
+            setImportSearch('');
+            setImportSelectedId('');
+            setError('');
+          }}
+          disabled={loading || !!busy}
+        >
+          Import index from another assignment
+        </button>
+      )}
       <span>{loading ? 'Checking assignment index…' : pack ? `Index: ${['ready', 'needs_review'].includes(pack.status)?'Ready':stateLabel(pack.status)} · ${pack.questionCount} questions · ${pack.totalMarks ?? '?'} marks` : 'Not indexed yet'}</span>
       {!!selectedIds.size && canMark && <>
         <label className="dpi-model">
@@ -264,6 +358,90 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         <button className="msv-btn-ai" disabled={!!busy || !qp || !ms}>Index assignment</button>
       </form>
     </div>}
+    {importOpen && (
+      <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label="Import index from another assignment">
+        <form className="dpi-dialog dpi-import-dialog" onSubmit={importIndex}>
+          <div className="dpi-modal-header">
+            <h2>Import index — {assignment.name || assignment.title || assignmentId}</h2>
+            <button
+              type="button"
+              className="dpi-close"
+              onClick={() => setImportOpen(false)}
+              disabled={!!busy}
+              aria-label="Close import index"
+            >
+              ×<span>Close</span>
+            </button>
+          </div>
+          <p>
+            Choose a ready index from Classroom, Dr Peter, or Mariam Gabalawy. The pack and
+            QP/MS PDFs are copied onto this assignment so you can mark with indexing without
+            re-indexing.
+          </p>
+          <label className="dpi-import-field">
+            Source
+            <select
+              value={importSourceProvider}
+              onChange={(e) => setImportSourceProvider(e.target.value)}
+              disabled={!!busy || importLoading}
+            >
+              {IMPORT_SOURCE_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="dpi-import-field">
+            Search
+            <input
+              type="search"
+              value={importSearch}
+              onChange={(e) => setImportSearch(e.target.value)}
+              placeholder="Filter by classroom or assignment name"
+              disabled={!!busy || importLoading}
+            />
+          </label>
+          <div className="dpi-import-list" role="listbox" aria-label="Indexes available to import">
+            {importLoading && <p role="status">Loading ready indexes…</p>}
+            {!importLoading && filteredImportSources.length === 0 && (
+              <p>No ready indexes found for this source (or none you can access).</p>
+            )}
+            {!importLoading &&
+              filteredImportSources.map((row) => (
+                <label
+                  key={row.id}
+                  className={`dpi-import-option ${importSelectedId === row.id ? 'dpi-import-option--on' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="import-exam"
+                    value={row.id}
+                    checked={importSelectedId === row.id}
+                    onChange={() => setImportSelectedId(row.id)}
+                    disabled={!!busy}
+                  />
+                  <span>
+                    <strong>{row.importLabel || row.title || 'Untitled index'}</strong>
+                    <em>
+                      {row.questionCount || 0} questions · {row.totalMarks ?? '?'} marks ·{' '}
+                      {stateLabel(row.status)}
+                      {row.updatedAt ? ` · ${new Date(row.updatedAt).toLocaleString()}` : ''}
+                    </em>
+                  </span>
+                </label>
+              ))}
+          </div>
+          {busy && <p role="status">{busy}</p>}
+          {error && <p role="alert" className="dpi-error">{error}</p>}
+          <button
+            type="submit"
+            className="msv-btn-ai"
+            disabled={!!busy || importLoading || !importSelectedId}
+          >
+            Import selected index
+          </button>
+        </form>
+      </div>
+    )}
     {view && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label={view.title}><div className="dpi-workspace"><div className="dpi-modal-header"><strong>{view.title} — {assignment.name || assignment.title || assignmentId}</strong><button type="button" className="dpi-close" onClick={()=>setView(null)} aria-label="Close indexing workspace">×<span>Close</span></button></div><iframe title={view.title} src={`/drpeter-indexing/index.html?embedded=1&workspace=${provider}${view.hash}`} /></div></div>}
     <PageCountCheckModal state={pageCheckModal} onResolve={resolvePageCheck} />
   </section>;

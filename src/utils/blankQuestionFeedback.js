@@ -243,6 +243,8 @@ export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
   if (!q) return false;
   const isStub =
     q._backfilled === true ||
+    q.questionPresent === false ||
+    q.notOnScript === true ||
     (typeof isBackfilledStub === "function" && isBackfilledStub(q));
   if (isStub) return false;
   const pageOk = Number(q.pageNumber) >= 1;

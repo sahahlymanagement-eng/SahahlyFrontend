@@ -166,6 +166,326 @@ body.ast-body--drawer-open {
   }
 }
 
+/* ─── Phone safety net ────────────────────────────────────────────────────
+ * Most role pages have their own responsive rules, but they do not all share
+ * the same layout vocabulary. Keep this deliberately structural: it only
+ * applies on phones and prevents a long label, a wide data table, or a dialog
+ * from pushing controls outside the viewport. Desktop declarations remain the
+ * source of truth above 640px — never put desktop layout overrides here.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  html,
+  body {
+    width: 100%;
+    /* Keep the *page* from scrolling sideways. Wide tables scroll inside their
+       local wrappers below — overflow-x:auto on body made whole screens slide. */
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Flex and grid children otherwise retain their intrinsic desktop width. */
+  .ast-root,
+  .ast-main,
+  .ast-main > *,
+  .ast-main > * > *,
+  .login-container,
+  .login-content,
+  .forgot-page,
+  .reset-page,
+  .setup-page {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Notch / home-indicator safe areas on the shell chrome. */
+  .ast-mobile-topbar {
+    padding-top: env(safe-area-inset-top);
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    min-height: calc(56px + env(safe-area-inset-top));
+  }
+
+  .ast-sidebar,
+  .msb-sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Keep full-page content comfortably inside a phone viewport. */
+  .ast-page,
+  .tch-page,
+  .qt-main,
+  .qm2-main,
+  .qb-page,
+  .director-page {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+
+  .ast-page-header,
+  .ast-page-header-row,
+  .ast-hero {
+    min-width: 0;
+  }
+
+  .ast-page-header-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .ast-page-header-row > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Auth pages (outside RoleShell). Page CSS may load after this file, so
+     prefer .login-container … selectors; Login.css also has a ≤640 block. */
+  .login-container {
+    align-items: flex-start;
+    justify-content: flex-start;
+    overflow-y: auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+
+  .login-container .login-content {
+    max-width: 100%;
+  }
+
+  .login-container .login-box {
+    padding: 22px 16px;
+    border-radius: 14px;
+  }
+
+  .login-container .login-logo {
+    max-width: min(200px, 70vw);
+  }
+
+  .login-container .login-header {
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  .login-container .login-footer-links {
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .login-container .login-footer-link {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .login-container .login-theme-toggle {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+  }
+
+  .forgot-page .forgot-card,
+  .reset-page .reset-card,
+  .setup-page .setup-card {
+    max-width: 100%;
+    padding: 22px 16px;
+  }
+
+  /* 16px inputs prevent iOS focus-zoom. Do NOT force every icon button to 44px
+     — that blows up dense table actions and chips. */
+  .ast-root :is(input, select, textarea),
+  .login-container :is(input, select, textarea),
+  .forgot-page :is(input, select, textarea),
+  .reset-page :is(input, select, textarea),
+  .setup-page :is(input, select, textarea) {
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  .ast-root :is(
+    input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='file']),
+    select,
+    textarea
+  ),
+  .login-container :is(input:not([type='checkbox']):not([type='radio']), select, textarea),
+  .forgot-page :is(input, select, textarea),
+  .reset-page :is(input, select, textarea),
+  .setup-page :is(input, select, textarea) {
+    min-height: 44px;
+  }
+
+  .ast-root :is(img, video, canvas) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Toolbars / filter strips / action rows — wrap instead of overflowing. */
+  .ast-root :is(
+    .ast-filters,
+    .dpi-actions,
+    .msv-mark-select-bar,
+    .msv-ms-bar,
+    .ma-toolbar,
+    .ma-filters,
+    .ms-filters,
+    .md-filters,
+    .qb-filter-row,
+    .qb-filter-group,
+    .prw-toolbar,
+    .rw-toolbar,
+    .pm-toolbar,
+    .tu-filters,
+    .directorDashFilters,
+    .directorPeopleFilters,
+    .tch-classroom-actions,
+    .tch-sp-analysis-actions
+  ) {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ast-root :is(
+    .qb-filter-group,
+    .ast-filter-block,
+    .ma-search-input,
+    .ms-search-input,
+    .md-search-input,
+    .pm-input,
+    .qt-select,
+    .qm2-select,
+    .msv-gemini-select,
+    .dpi-model,
+    .dpi-model select
+  ) {
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Dense 4+ column stat grids → 2 columns on phones. */
+  .ast-root :is(
+    .md-stats,
+    .qt-stats,
+    .qm2-stats,
+    .directorDashStats,
+    .tch-sp-stat-row,
+    .ma-stat-grid,
+    .ms-stat-grid
+  ) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Preserve data-table columns rather than clipping them. Existing card
+     tables switch to cards at tablet width; every other wide table gets a
+     touch-scrollable local viewport. */
+  .ast-root :is(
+    .sah-table-scroll,
+    [class*='table-wrap'],
+    [class*='table-scroll'],
+    [class*='table-container'],
+    .compare-table-wrap
+  ) {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .ast-root table:not(.sah-table--cards):not(.ma-table--cards) {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  /* Long IDs, filenames and formulae should wrap rather than force horizontal
+     page scrolling. Code/preformatted content remains scrollable by design. */
+  .ast-root :is(p, span, td, th, li, label, h1, h2, h3, h4) {
+    overflow-wrap: anywhere;
+  }
+
+  .ast-root :is(pre, code) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* Modals / overlays — full-bleed usable sheets on phones. */
+  .ast-root :is(
+    .msv-overlay,
+    .arp-overlay,
+    .prw-overlay,
+    .rarm-overlay,
+    .dam-overlay,
+    .dap-overlay,
+    .ddx-overlay,
+    .mw-overlay,
+    .dma-overlay,
+    .dt-overlay,
+    .qb-overlay,
+    .dpi-overlay
+  ) {
+    padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+    align-items: stretch;
+  }
+
+  .ast-root :is(
+    .msv-results-modal,
+    .msv-guidance-modal,
+    .msv-modal,
+    .arp-modal,
+    .prw-modal,
+    .rarm-modal,
+    .dam-modal,
+    .dap-modal,
+    .ddx-modal,
+    .mw-modal,
+    .dma-modal,
+    .dt-modal,
+    .modalCard,
+    .tc-modal-card,
+    .qb-modal,
+    .rw-summary-modal,
+    .cw-drive-modal,
+    .dpi-dialog,
+    .dpi-workspace,
+    .dpi-import-dialog
+  ) {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+
+  /* Indexing workspace iframe needs the full sheet, not a nested scroll trap. */
+  .ast-root .dpi-workspace {
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ast-root .dpi-workspace iframe {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Chat composers stay usable above the keyboard / home indicator. */
+  .ast-root :is(
+    .tch-chat-composer,
+    .ast-chat-composer,
+    .acb-composer,
+    .director-agent-composer
+  ) {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .Toastify__toast-container {
+    width: calc(100vw - 24px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+}
+
 /* Design tokens live in styles/theme.css (imported before this file);
    the --sah-* aliases there keep the rules below working. */
 

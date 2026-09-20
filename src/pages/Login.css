@@ -219,3 +219,55 @@
 .login-footer-link:hover svg {
   opacity: 1;
 }
+
+/* Phones only — desktop login layout stays unchanged above 640px. */
+@media (max-width: 640px) {
+  .login-container {
+    align-items: flex-start;
+    justify-content: flex-start;
+    overflow-y: auto;
+    height: 100dvh;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+
+  .login-content {
+    max-width: 100%;
+  }
+
+  .login-logo-section {
+    margin-bottom: 18px;
+  }
+
+  .login-logo {
+    max-width: min(200px, 70vw);
+  }
+
+  .login-box {
+    padding: 22px 16px;
+    border-radius: 14px;
+  }
+
+  .login-header {
+    font-size: 22px;
+    margin-bottom: 18px;
+  }
+
+  .input-wrapper input {
+    font-size: 16px;
+  }
+
+  .login-footer-links {
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .login-footer-link {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .login-theme-toggle {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+  }
+}

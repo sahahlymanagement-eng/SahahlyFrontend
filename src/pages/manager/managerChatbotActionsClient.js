@@ -169,6 +169,11 @@ export async function startPriorityMarking(body) {
   return data;
 }
 
+export async function startIndexingMarking(body) {
+  const { data } = await api.post("/manager-chatbot/actions/start-indexing-marking", body);
+  return data;
+}
+
 export async function verifyMarkScheme(body) {
   const { data } = await api.post("/manager-chatbot/actions/verify-mark-scheme", body);
   return data;

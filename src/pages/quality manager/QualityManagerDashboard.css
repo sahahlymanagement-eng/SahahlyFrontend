@@ -826,8 +826,8 @@ font-weight:700;
   .qm2-main { padding: 22px; }
   .qm2-page-title { font-size: 22px; }
   .qm2-stats { grid-template-columns: 1fr 1fr; }
-  .qm2-table-wrap { overflow-x: auto; }
-  .qm2-table { min-width: 1100px; }
+  .qm2-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .qm2-table:not(.sah-table--cards) { min-width: 1100px; }
   .qm2-nav { padding: 0 20px; }
   .qm2-filters-row { flex-direction: column; align-items: stretch; }
   .qm2-search-wrap { min-width: unset; }
@@ -836,4 +836,5 @@ font-weight:700;
 /* Two stat cards side by side get cramped on a narrow phone. */
 @media (max-width: 480px) {
   .qm2-stats { grid-template-columns: 1fr; }
+  .qm2-main { padding: 16px 12px 28px; }
 }
