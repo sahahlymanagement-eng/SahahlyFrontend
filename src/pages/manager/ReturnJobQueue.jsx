@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../../api/api";
+import "./ManagerAssignments.css";
 
 const SPIN_STYLE = { animation: "ma-spin 0.9s linear infinite" };
 
@@ -91,43 +92,46 @@ function StatTile({ icon, label, value, tone }) {
 
 function ItemRow({ item, now }) {
   const finishedDuration = item.startedAt && item.finishedAt ? durationText(item.startedAt, item.finishedAt) : null;
+  const noteRow = (item.attachmentWarning || item.error) && (
+    <tr className="ma-item-note-row">
+      <td colSpan={3}>
+        {item.attachmentWarning && (
+          <div style={{ color: "var(--warning, #c07a00)", fontSize: 13 }}>{item.attachmentWarning}</div>
+        )}
+        {item.error && <div style={{ color: "var(--danger)", fontSize: 13 }}>{item.error}</div>}
+      </td>
+    </tr>
+  );
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-        flexWrap: "wrap",
-        padding: "10px 14px",
-        borderTop: "1px solid var(--border)",
-      }}
-    >
-      <div style={{ minWidth: 160 }}>
-        <strong>{item.studentName || "Student"}</strong>
-        {item.gradeOnly && <span className="ma-muted" style={{ marginLeft: 8, fontSize: 12 }}>grade only — nothing to attach</span>}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        {item.status === "queued" && <span className="ma-muted">Queued {relativeTimeText(item.createdAt, now)}</span>}
-        {item.status === "running" && <span className="ma-muted">Started {relativeTimeText(item.startedAt || item.createdAt, now)}</span>}
-        {(item.status === "done" || item.status === "failed") && (
-          <span className="ma-muted">
-            {item.status === "done" ? "Returned" : "Failed"} {relativeTimeText(item.finishedAt, now)}
-            {finishedDuration && ` · took ${finishedDuration}`}
-          </span>
-        )}
-        {item.quotaExhausted && (
-          <span style={{ color: "var(--warning, #c07a00)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <FiAlertTriangle /> Google quota
-          </span>
-        )}
-        <StatusPill status={item.status} classroomBlocked={item.classroomBlocked} />
-      </div>
-      {item.attachmentWarning && (
-        <div style={{ width: "100%", color: "var(--warning, #c07a00)", fontSize: 13 }}>{item.attachmentWarning}</div>
-      )}
-      {item.error && <div style={{ width: "100%", color: "var(--danger)", fontSize: 13 }}>{item.error}</div>}
-    </div>
+    <>
+      <tr>
+        <td data-label="Student">
+          <strong>{item.studentName || "Student"}</strong>
+          {item.gradeOnly && <div className="ma-muted" style={{ fontSize: 12 }}>grade only — nothing to attach</div>}
+        </td>
+        <td className="ma-muted" data-label="Time">
+          {item.status === "queued" && <>Queued {relativeTimeText(item.createdAt, now)}</>}
+          {item.status === "running" && <>Started {relativeTimeText(item.startedAt || item.createdAt, now)}</>}
+          {(item.status === "done" || item.status === "failed") && (
+            <>
+              {item.status === "done" ? "Returned" : "Failed"} {relativeTimeText(item.finishedAt, now)}
+              {finishedDuration && ` · took ${finishedDuration}`}
+            </>
+          )}
+        </td>
+        <td data-label="Status">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            {item.quotaExhausted && (
+              <span style={{ color: "var(--warning, #c07a00)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <FiAlertTriangle /> Google quota
+              </span>
+            )}
+            <StatusPill status={item.status} classroomBlocked={item.classroomBlocked} />
+          </div>
+        </td>
+      </tr>
+      {noteRow}
+    </>
   );
 }
 
@@ -145,11 +149,13 @@ function BlockedAssignmentsBanner({ assignments, canUnblock, onUnblock, now }) {
 
   const headerText = `${assignments.length} classroom${assignments.length === 1 ? "" : "s"} blocked — not created by Sahahly`;
 
-  if (collapsed) {
-    return (
+  return (
+    <div
+      className="ma-card ma-group-card"
+      style={{ padding: 0, overflow: "hidden", borderLeft: "4px solid var(--danger)" }}
+    >
       <button
-        onClick={() => setCollapsed(false)}
-        className="ma-card"
+        onClick={() => setCollapsed((c) => !c)}
         style={{
           all: "unset",
           cursor: "pointer",
@@ -158,62 +164,45 @@ function BlockedAssignmentsBanner({ assignments, canUnblock, onUnblock, now }) {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          padding: "10px 16px",
-          borderLeft: "4px solid var(--danger)",
-          color: "var(--danger)",
-          fontWeight: 700,
+          padding: "12px 16px",
+          width: "100%",
+          flexWrap: "wrap",
         }}
       >
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--danger)", fontWeight: 700 }}>
+          {collapsed ? <FiChevronRight /> : <FiChevronDown />}
           <FiLock /> {headerText}
         </span>
-        <span className="ma-muted" style={{ fontWeight: 400, fontSize: 12 }}>Click to show</span>
+        <span className="ma-muted" style={{ fontWeight: 400, fontSize: 12 }}>
+          {collapsed ? "Click to show" : "Click to hide"}
+        </span>
       </button>
-    );
-  }
-
-  return (
-    <div className="ma-card" style={{ padding: 16, borderLeft: "4px solid var(--danger)", display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--danger)" }}>
-          <FiLock /> {headerText}
-        </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          title="Collapse — it'll come back next time you open this tab"
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            display: "flex",
-            color: "var(--muted)",
-            padding: 4,
-          }}
-        >
-          <FiX />
-        </button>
-      </div>
-      <div className="ma-muted" style={{ fontSize: 13 }}>
-        Google refuses to attach marked PDFs (or return grades) for these until the assignment is recreated through
-        Sahahly. Return All is disabled for them in the Submission Viewer.
-      </div>
-      <div style={{ display: "grid", gap: 8 }}>
-        {assignments.map((a) => (
-          <div
-            key={a.assignmentId}
-            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
-          >
-            <div>
-              <strong>{a.assignmentTitle}</strong>
-              <span className="ma-muted"> · {a.classroomName} · blocked {relativeTimeText(a.blockedAt, now)}</span>
-            </div>
-            {canUnblock && (
-              <button className="msv-btn-ai" onClick={() => onUnblock(a.assignmentId)}>
-                I fixed it — Unblock
-              </button>
-            )}
+      {!collapsed && (
+        <div style={{ padding: "0 16px 16px", display: "grid", gap: 10 }}>
+          <div className="ma-muted" style={{ fontSize: 13 }}>
+            Google refuses to attach marked PDFs (or return grades) for these until the assignment is recreated
+            through Sahahly. Return All is disabled for them in the Submission Viewer.
           </div>
-        ))}
-      </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {assignments.map((a) => (
+              <div
+                key={a.assignmentId}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
+              >
+                <div>
+                  <strong>{a.assignmentTitle}</strong>
+                  <span className="ma-muted"> · {a.classroomName} · blocked {relativeTimeText(a.blockedAt, now)}</span>
+                </div>
+                {canUnblock && (
+                  <button className="msv-btn-ai" onClick={() => onUnblock(a.assignmentId)}>
+                    I fixed it — Unblock
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -247,7 +236,7 @@ function AssignmentGroup({ group, now, defaultOpen }) {
   const duration = groupDurationText(group, now);
 
   return (
-    <div className="ma-card" style={{ padding: 0, overflow: "hidden" }}>
+    <div className="ma-card ma-group-card" style={{ padding: 0, overflow: "hidden" }}>
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -272,43 +261,52 @@ function AssignmentGroup({ group, now, defaultOpen }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div className="ma-group-stats">
           {activeCount > 0 && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--primary)" }}>
+            <span className="ma-group-stat-chip ma-group-stat-chip--active">
               <FiLoader style={SPIN_STYLE} /> {activeCount} in progress
             </span>
           )}
           {failedCount > 0 && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--danger)" }}>
+            <span className="ma-group-stat-chip ma-group-stat-chip--danger">
               <FiX /> {failedCount} failed
             </span>
           )}
           {duration && (
-            <span className="ma-muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span className="ma-group-stat-chip">
               <FiClock /> {duration.label} {duration.value}
             </span>
           )}
-          <span className="ma-muted">{doneCount}/{total} returned</span>
-          <div style={{ width: 90, height: 8, borderRadius: 999, overflow: "hidden", background: "var(--surface-2)" }}>
+          <span className="ma-group-stat-chip">{doneCount}/{total} returned</span>
+          <div className="ma-group-progress" title={`${percent}%`}>
             <div
-              style={{
-                height: "100%",
-                width: `${percent}%`,
-                background: failedCount > 0 ? "var(--danger)" : "var(--success, #2f9e5e)",
-                transition: "width .3s ease",
-              }}
+              className="ma-group-progress-fill"
+              style={{ width: `${percent}%`, background: failedCount > 0 ? "var(--danger)" : "var(--success, #2f9e5e)" }}
             />
           </div>
         </div>
       </button>
       {open && (
-        // Bounded height with its own scrollbar — a run of 20-30 students must
-        // not read as "only the first one shows" just because the rest are
-        // below the fold of the page's own scroll region.
-        <div style={{ maxHeight: 420, overflowY: "auto" }}>
-          {group.items.map((item) => (
-            <ItemRow key={item._id} item={item} now={now} />
-          ))}
+        // On desktop this stays bounded with its own scrollbar so a run of
+        // 20-30 students doesn't push the rest of the page down; on
+        // tablet/phone (see .ma-group-body) it grows to full height instead,
+        // since a second small scroller inside an already-short viewport is
+        // easy to miss.
+        <div className="ma-group-body">
+          <table className="ma-item-table sah-table--cards">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.items.map((item) => (
+                <ItemRow key={item._id} item={item} now={now} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -481,13 +479,13 @@ export default function ReturnJobQueue() {
         style={{
           padding: 24,
           paddingBottom: 64,
-          display: "grid",
+          display: "flex",
+          flexDirection: "column",
           gap: 18,
           flex: "1 1 auto",
           minHeight: 0,
           overflowY: "auto",
           overflowX: "hidden",
-          alignContent: "start",
           WebkitOverflowScrolling: "touch",
         }}
       >
@@ -501,14 +499,14 @@ export default function ReturnJobQueue() {
             now={now}
           />
 
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", flexShrink: 0 }}>
             <StatTile icon={<FiLoader style={SPIN_STYLE} />} label="Returning now" value={data.running?.length || 0} tone="var(--primary)" />
             <StatTile icon={<FiClock />} label="Waiting" value={data.queued?.length || 0} tone="var(--muted)" />
             <StatTile icon={<FiCheck />} label="Returned recently" value={doneRecentCount} tone="var(--success, #2f9e5e)" />
             <StatTile icon={<FiX />} label="Failed recently" value={failedRecentCount} tone="var(--danger)" />
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
             <div style={{ position: "relative", flex: "1 1 260px", maxWidth: 360 }}>
               <FiSearch style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
               <input

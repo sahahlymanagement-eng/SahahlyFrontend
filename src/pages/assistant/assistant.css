@@ -98,7 +98,8 @@
 .ast-main > .tu-embedded,
 .ast-main > .directorReportsPage,
 .ast-main > .directorGooglePage,
-.ast-main > .dmc-page {
+.ast-main > .dmc-page,
+.ast-main > .tc-root {
   flex: 1;
   min-height: 0;
   width: 100%;

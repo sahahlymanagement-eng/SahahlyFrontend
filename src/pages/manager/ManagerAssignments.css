@@ -485,6 +485,25 @@
   min-height: 0;
 }
 
+/* Generic card chrome (queue tiles, group cards, banners, error/empty
+   states...) — used everywhere as `className="ma-card"` with per-instance
+   inline styles for padding/layout, but never actually had a rule of its
+   own. Every one of those was rendering with no background, border, radius
+   or shadow at all — just plain unstyled text floating on the page. */
+.ma-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  /* These sit inside flex-column scroll lists (Return Job Queue, Partner
+     Publish Queue, Automatic Batch Queue) whose height is constrained by
+     the surrounding page layout. Flex's default flex-shrink:1 would let the
+     browser compress a card below its own content height to make everything
+     "fit" the constrained container instead of just scrolling — for a card
+     with overflow:hidden that reads as the card silently swallowing rows. */
+  flex-shrink: 0;
+}
+
 .ma-scroll-list {
   flex: 1;
   overflow-y: auto;
@@ -947,6 +966,142 @@ select.ma-search-input option {
 .ma-badge--blue   { background: color-mix(in srgb, var(--primary) 12%, transparent);  color: var(--primary); border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent); }
 .ma-badge--red    { background: var(--danger-bg); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); }
 .ma-badge--gray   { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+
+/* Queue item lists (Return Job Queue, Partner Publish Queue) — a real table
+   instead of flex rows that misalign once names/times vary in length. */
+.ma-item-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ma-item-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ma-item-table td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+  font-size: 13.5px;
+}
+
+.ma-item-table th:last-child,
+.ma-item-table td:last-child {
+  text-align: right;
+}
+
+.ma-item-note-row td {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* The collapsible assignment/publish group cards are clickable (toggle open
+   /closed) but, being plain .ma-card, gave no hover feedback at all. */
+.ma-group-card {
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.ma-group-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  box-shadow: var(--shadow);
+}
+
+/* Group header stats (Return Job Queue / Partner Publish Queue) — small
+   "cards" instead of loose inline numbers that visually float next to the
+   title with nothing to anchor them, especially once they wrap on narrow
+   screens. */
+.ma-group-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ma-group-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ma-group-stat-chip--active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--primary);
+}
+
+.ma-group-stat-chip--danger {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
+
+.ma-group-progress {
+  width: 90px;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ma-group-progress-fill {
+  height: 100%;
+  transition: width .3s ease;
+}
+
+/* The item list inside an expanded group used to be boxed into a fixed
+   420px scroller on every screen size — on phones that meant most of a
+   30-student run sat behind a second, easy-to-miss scrollbar squeezed into
+   a box that already filled most of the viewport. Keep the bounded scroller
+   on desktop (where there's room to see the rest of the page around it) and
+   let it grow to full height on tablet/phone so the page's own scroll shows
+   the whole list. */
+.ma-group-body {
+  max-height: 420px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1024px) {
+  .ma-group-body {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .ma-group-progress {
+    width: 100%;
+  }
+
+  .ma-group-stats {
+    width: 100%;
+  }
+
+  /* In card mode every <td> becomes a flex row (label + value); the
+     right-alignment below is a desktop-table convention and would fight
+     the card layout if it ever applied to inline text nodes. */
+  .ma-item-table.sah-table--cards td:last-child {
+    text-align: left;
+  }
+}
 
 /* ──────────────────────────────── MISC ── */
 .ma-loading-msg { font-size: 13px; color: var(--muted); padding: 12px 0; }
