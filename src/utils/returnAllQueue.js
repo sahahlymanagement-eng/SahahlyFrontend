@@ -24,6 +24,19 @@ export function isSubmissionAlreadyReturned({ saved }) {
   return !markingChangedSinceReturn(saved);
 }
 
+/**
+ * True when a background ReturnJobItem already exists for this submission
+ * and hasn't finished. Staging and finishing are no longer one atomic
+ * request — without this, re-clicking Return All (or a page reload that
+ * rebuilds the queue) before the background worker finishes would re-stage
+ * the same paper again, silently repeating a real Drive upload/rewrite every
+ * time, not just a harmless no-op re-check.
+ */
+export function isSubmissionQueuedOrRunning(submissionId, jobStatusBySubmissionId = {}) {
+  const status = jobStatusBySubmissionId?.[submissionId]?.status;
+  return status === "queued" || status === "running";
+}
+
 function normalizeStudentName(name) {
   return String(name || "")
     .trim()
@@ -104,10 +117,14 @@ export function buildReturnAllQueue({
   savedResults = {},
   singleProgress = {},
   allStudents = [],
+  jobStatusBySubmissionId = {},
 }) {
   const maps = buildStudentLookupMaps(allStudents, batchJob);
   const resolveStudent = (submissionId, saved) =>
     resolveStudentForReturn(submissionId, saved, maps);
+  // A queued/running background job already owns this submission — don't
+  // re-stage it and repeat a real Drive upload every time the queue rebuilds.
+  const isPending = (liveId) => isSubmissionQueuedOrRunning(liveId, jobStatusBySubmissionId);
 
   const bulkQueue = [];
   const batchQueue = [];
@@ -120,7 +137,7 @@ export function buildReturnAllQueue({
     const student = resolveStudent(submissionId, saved);
     const liveId = student?.submissionId || submissionId;
     if (!liveId || seen.has(liveId)) continue;
-    if (isSubmissionAlreadyReturned({ saved })) continue;
+    if (isSubmissionAlreadyReturned({ saved }) || isPending(liveId)) continue;
 
     bulkQueue.push({
       ...queueEntry(submissionId, saved, student, mergeBulkForReturn(bulk, saved), "bulk"),
@@ -134,7 +151,7 @@ export function buildReturnAllQueue({
     const liveId = student?.submissionId || submissionId;
     if (!liveId || seen.has(liveId)) continue;
     if (batch?.status !== "done" || !batch?.result) continue;
-    if (isSubmissionAlreadyReturned({ saved })) continue;
+    if (isSubmissionAlreadyReturned({ saved }) || isPending(liveId)) continue;
 
     batchQueue.push({
       ...queueEntry(submissionId, saved, student, mergeBatchForReturn(batch, saved), "batch"),
@@ -148,7 +165,7 @@ export function buildReturnAllQueue({
     const liveId = student?.submissionId || submissionId;
     if (!liveId || seen.has(liveId)) continue;
     if (single?.status !== "done" || !single?.result) continue;
-    if (isSubmissionAlreadyReturned({ saved })) continue;
+    if (isSubmissionAlreadyReturned({ saved }) || isPending(liveId)) continue;
 
     bulkQueue.push({
       ...queueEntry(
@@ -176,7 +193,7 @@ export function buildReturnAllQueue({
     // hasResult without a blob means hydration failed — skip rather than
     // queue a paper that Return All will immediately fail as "Missing marking".
     if (!saved?.result) continue;
-    if (isSubmissionAlreadyReturned({ saved })) continue;
+    if (isSubmissionAlreadyReturned({ saved }) || isPending(liveId)) continue;
 
     bulkQueue.push({
       ...queueEntry(

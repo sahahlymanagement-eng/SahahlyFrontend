@@ -18,6 +18,7 @@ import {
   FiEdit3,
   FiMessageCircle,
   FiSend,
+  FiClock,
 } from "react-icons/fi";
 import { BsPersonBadge } from "react-icons/bs";
 import RoleSidebar from "../../components/RoleSidebar";
@@ -63,6 +64,7 @@ function buildNavSections(counts) {
         { icon: <FiBookOpen />, label: "Course Management", path: "/director/courses" },
         { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
         { icon: <FiLayers />, label: "Automatic Batch Queue", path: "/director/automatic-batch-queue" },
+        { icon: <FiClock />, label: "Return Job Queue", path: "/director/return-job-queue" },
         {
           icon: <FiUploadCloud />,
           label: "Mariam Gabalawy",

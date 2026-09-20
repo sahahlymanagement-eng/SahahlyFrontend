@@ -6,6 +6,13 @@
 import api from "../../api/api";
 import { downloadBlob } from "../../utils/downloadBlob";
 
+export async function transcribeVoiceCommand(blob) {
+  const form = new FormData();
+  form.append("audio", blob, "voice.webm");
+  const { data } = await api.post("/teacher-chatbot/actions/transcribe-audio", form);
+  return data.text || "";
+}
+
 export function formatNumberedList(items, labelFn) {
   return items.map((item, i) => `${i + 1}. ${labelFn(item)}`).join("\n");
 }

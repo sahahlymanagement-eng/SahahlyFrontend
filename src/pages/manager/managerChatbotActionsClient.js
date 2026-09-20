@@ -24,6 +24,13 @@ export function parseYesNo(input) {
   return null;
 }
 
+export async function transcribeVoiceCommand(blob) {
+  const form = new FormData();
+  form.append("audio", blob, "voice.webm");
+  const { data } = await api.post("/manager-chatbot/actions/transcribe-audio", form);
+  return data.text || "";
+}
+
 export async function loadClassrooms(personId) {
   const { data } = await api.get("/manager-chatbot/actions/classrooms", {
     params: { personId },
