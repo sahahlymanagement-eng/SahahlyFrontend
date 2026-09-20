@@ -91,7 +91,14 @@ export function looksLikePlausibleQuestionNumber(raw) {
   if (!/\d/.test(shape)) {
     return /^[a-z]{1,4}$/i.test(shape) || /^(i{1,3}|iv|v|vi{0,3}|ix|x)$/i.test(shape);
   }
-  if (!/^\d{1,3}[a-z]{0,8}\d{0,2}[a-z]{0,4}$/i.test(shape)) return false;
+  // Digit-led MS ids: 1, 1a, 12aii…
+  // Letter-led section/booklet ids (indexing packs often use A01, B2, C12a…).
+  if (
+    !/^\d{1,3}[a-z]{0,8}\d{0,2}[a-z]{0,4}$/i.test(shape) &&
+    !/^[a-z]{1,3}\d{1,3}[a-z]{0,6}\d{0,2}[a-z]{0,4}$/i.test(shape)
+  ) {
+    return false;
+  }
   if (shape.length > 14) return false;
   const letterRun = shape.replace(/\d+/g, "");
   if (letterRun.length > 8) return false;

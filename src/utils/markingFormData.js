@@ -960,8 +960,14 @@ export function resolveMaxTotalFromItems(result) {
     : 0;
 }
 
-/** Max shown in results modal / PDF. Priority: manual edit → Classroom assignment max →
- *  sum of mark-scheme item maxes → AI headline max (last resort). */
+/** Max shown in results modal / PDF. Priority: manual edit → indexed pack total
+ *  (when present) → Classroom assignment max → sum of mark-scheme item maxes →
+ *  AI headline max (last resort).
+ *
+ * Indexed papers must keep their pack denominator (e.g. 82). Classroom
+ * maxPoints is often a separate gradebook ceiling (100) and must not stretch
+ * the cover page or Final Grade for those results.
+ */
 export function resolveDisplayMaxTotal({
   assignmentMaxPoints = null,
   result = null,
@@ -969,6 +975,16 @@ export function resolveDisplayMaxTotal({
 } = {}) {
   if (editingMaxTotal !== null && editingMaxTotal !== undefined) {
     return Math.max(1, Number(editingMaxTotal) || 1);
+  }
+  if (result?.indexingSource) {
+    const fromItems = Number(resolveMaxTotalFromItems(result));
+    if (Number.isFinite(fromItems) && fromItems > 0) {
+      return fromItems;
+    }
+    const fromResult = Number(getResultMaxTotal(result));
+    if (Number.isFinite(fromResult) && fromResult > 0) {
+      return fromResult;
+    }
   }
   const fromAssignment = Number(assignmentMaxPoints);
   if (Number.isFinite(fromAssignment) && fromAssignment > 0) {
