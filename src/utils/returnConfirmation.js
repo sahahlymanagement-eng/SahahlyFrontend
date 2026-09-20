@@ -3,13 +3,15 @@ import { confirmToast } from "./confirmToast";
 /**
  * Confirm returning a single graded paper to a student.
  */
-export function confirmReturnSingle(studentName) {
+export function confirmReturnSingle(studentName, { rereturn = false } = {}) {
   const name = (studentName || "").trim() || "this student";
   return confirmToast(
-    `Are you sure you want to return the graded paper to ${name}? The student will receive the annotated PDF via Google Classroom.`,
+    rereturn
+      ? `Return the graded paper to ${name} again? Their existing marked PDF and grade in Google Classroom will be refreshed with the current version.`
+      : `Are you sure you want to return the graded paper to ${name}? The student will receive the annotated PDF via Google Classroom.`,
     {
-      title: "Return graded paper",
-      confirmLabel: "Return",
+      title: rereturn ? "Return graded paper again" : "Return graded paper",
+      confirmLabel: rereturn ? "Return again" : "Return",
       cancelLabel: "Cancel",
       danger: true,
     }

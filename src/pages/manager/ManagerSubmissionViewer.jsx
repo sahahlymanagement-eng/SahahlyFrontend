@@ -3716,7 +3716,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       if (!okIncomplete) return;
     }
 
-    const confirmed = await confirmReturnSingle(resultModal.student?.name);
+    const existingResult = savedResults[resultModal.student?.submissionId];
+    const rereturn = Boolean(existingResult?.returnedAt || resultModal.result?.returnedAt);
+    const confirmed = await confirmReturnSingle(resultModal.student?.name, { rereturn });
     if (!confirmed) return;
 
     setReturning(true);
@@ -3777,6 +3779,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       fd.append("totalMarks", totalMarks);
       fd.append("maxTotalMarks", effectiveMaxTotal);
       fd.append("studentName", resultModal.student.name || "Student");
+      if (rereturn) fd.append("forceRereturn", "1");
       if (googleUserId) {
         fd.append("googleUserId", String(googleUserId));
       }
@@ -3827,7 +3830,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       if (returnResult?.attachmentWarning) {
         toast.warn(returnResult.attachmentWarning, { autoClose: 14000 });
       } else {
-        toast.success(returnResult?.message || "Marked paper returned to student");
+        toast.success(returnResult?.message || (rereturn ? "Marked paper returned again to student" : "Marked paper returned to student"));
       }
       setResultModal(null);
     } catch (err) {
@@ -5859,8 +5862,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <button className="ma-send-btn" onClick={downloadGradedPdf} disabled={downloading || hasPendingEdits} style={{ fontSize: 12 }} title={hasPendingEdits ? "Confirm edits first" : undefined}>
                   <FiDownload size={13} />{downloading ? "Generating…" : "Download PDF"}
                 </button>
-                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : undefined}>
-                  <FiSend size={13} />{returning ? "Returning…" : "Return to Student"}
+                <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : savedResults[resultModalSubmissionId]?.returnedAt ? "Refresh the student's marked PDF and grade" : undefined}>
+                  <FiSend size={13} />{returning ? "Returning…" : savedResults[resultModalSubmissionId]?.returnedAt ? "Return again" : "Return to Student"}
                 </button>
                 <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
               </div>
