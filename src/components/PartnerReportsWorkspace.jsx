@@ -20,6 +20,7 @@ import {
   downloadPartnerCollectivePdf,
   downloadPartnerExecutivePdf,
   downloadPartnerMonthlyPdf,
+  getPartnerPublishJobs,
   getPartnerSubmissionStatusRows,
   listPartnerAssignments,
   listPartnerClasses,
@@ -38,6 +39,8 @@ import {
   sendPartnerSubmissionStatusReport,
 } from "../api/partnerReports";
 import { canManageReportLogos, canReportOnPartner } from "../utils/gradingAccess";
+import { pollPartnerPublishJobsUntilSettled, summarizePublishJobs } from "../utils/partnerPublishJobsPoll";
+import { PARTNERS } from "../utils/partnerReportProviders";
 import { useGradingDelegations } from "../context/GradingNotificationContext";
 import { downloadBlob } from "../utils/downloadBlob";
 import { confirmToast } from "../utils/confirmToast";
@@ -66,18 +69,6 @@ import "./PartnerReports.css";
  * view), since a partner never sends a phone number. Every view therefore leads
  * with how many of the students it is about are actually reachable.
  */
-
-// `igspacesConnected` mirrors src/config/gradingProviders.js on the backend —
-// mariamgabalawy and drpeter publish assignment/monthly reports THROUGH
-// IGSpaces (R2 upload + payload with a URL) instead of WhatsApp, and only
-// they have a live roster for the Submission Status view. LoginCSS has no
-// IGSpaces platform behind it, so it keeps using WhatsApp for every report
-// kind exactly as before.
-const PARTNERS = [
-  { slug: "logincss", label: "LoginCSS", igspacesConnected: false },
-  { slug: "mariamgabalawy", label: "Mariam Gabalawy", igspacesConnected: true },
-  { slug: "drpeter", label: "Dr Peter", igspacesConnected: true },
-];
 
 const BASE_VIEWS = [
   { key: "assignment", label: "Assignment Reports", icon: FiClipboard },
@@ -424,16 +415,19 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     setSending(true);
     setPublishResults(null);
     try {
-      const summary = await publishPartnerAssignmentReportsToIgspaces(slug, {
+      const { queued, alreadyInFlight } = await publishPartnerAssignmentReportsToIgspaces(slug, {
         assignmentId,
         studentKeys: selectedKeys,
       });
-      setPublishResults(summary);
       toast.success(
-        `Published ${summary.sent}${summary.skipped ? `, skipped ${summary.skipped}` : ""}${
-          summary.failed ? `, failed ${summary.failed}` : ""
-        }`
+        `Queued ${queued} for publish` + (alreadyInFlight ? ` (${alreadyInFlight} already in progress)` : "")
       );
+      const jobParams = { provider: slug, kind: "assignment_report", assignmentId };
+      setPublishResults(summarizePublishJobs(await getPartnerPublishJobs(jobParams)));
+      pollPartnerPublishJobsUntilSettled({
+        params: jobParams,
+        onUpdate: (data) => setPublishResults(summarizePublishJobs(data)),
+      });
     } catch (err) {
       toast.error(partnerReportErr(err, "Publish to IGSpaces failed"));
     } finally {
@@ -581,17 +575,20 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
     setSending(true);
     setPublishResults(null);
     try {
-      const summary = await publishPartnerMonthlyReportsToIgspaces(slug, {
+      const { queued, alreadyInFlight } = await publishPartnerMonthlyReportsToIgspaces(slug, {
         studentKeys: selectedKeys,
         year: period.year,
         month: period.month,
       });
-      setPublishResults(summary);
       toast.success(
-        `Published ${summary.sent}${summary.skipped ? `, skipped ${summary.skipped}` : ""}${
-          summary.failed ? `, failed ${summary.failed}` : ""
-        }`
+        `Queued ${queued} for publish` + (alreadyInFlight ? ` (${alreadyInFlight} already in progress)` : "")
       );
+      const jobParams = { provider: slug, kind: "monthly_report", year: period.year, month: period.month };
+      setPublishResults(summarizePublishJobs(await getPartnerPublishJobs(jobParams)));
+      pollPartnerPublishJobsUntilSettled({
+        params: jobParams,
+        onUpdate: (data) => setPublishResults(summarizePublishJobs(data)),
+      });
     } catch (err) {
       toast.error(partnerReportErr(err, "Publish to IGSpaces failed"));
     } finally {
@@ -981,7 +978,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
           <h2 className="prw-panel-title">Published to IGSpaces</h2>
           <p className="prw-panel-sub">
             {publishResults.sent} sent
-            {publishResults.skipped ? `, ${publishResults.skipped} skipped` : ""}
+            {publishResults.inProgress ? `, ${publishResults.inProgress} still publishing` : ""}
             {publishResults.failed ? `, ${publishResults.failed} failed` : ""}.
           </p>
         </div>
@@ -1003,7 +1000,9 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
                 <div className="prw-preview-head">
                   <strong>{r.studentName || r.studentKey}</strong>
                   <span
-                    className={`prw-pill ${r.status === "skipped" ? "prw-pill--muted" : "prw-pill--warn"}`}
+                    className={`prw-pill ${
+                      r.status === "skipped" || r.status === "publishing" ? "prw-pill--muted" : "prw-pill--warn"
+                    }`}
                   >
                     {r.status}
                   </span>

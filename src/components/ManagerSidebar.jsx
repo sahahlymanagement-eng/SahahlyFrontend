@@ -41,6 +41,7 @@ const NAV_ITEMS = [
   { icon: <FiEye />,       label: "Submission Viewer",  path: "/manager/submissions"    },
   { icon: <FiLayers />,    label: "Automatic Batch Queue", path: "/manager/automatic-batch-queue" },
   { icon: <FiClock />,     label: "Return Job Queue",   path: "/manager/return-job-queue" },
+  { icon: <FiUploadCloud />, label: "Partner Publish Queue", path: "/manager/partner-publish-jobs" },
   { icon: <FiCpu />,       label: "Automation",         path: "/manager/automation"     },
   { icon: <FiBarChart2 />, label: "Token Usage",        path: "/manager/token-usage"    },
   { icon: <FiMessageSquare />, label: "Report Feedback", path: "/manager/feedback"   },

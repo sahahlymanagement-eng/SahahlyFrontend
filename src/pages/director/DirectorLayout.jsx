@@ -65,6 +65,7 @@ function buildNavSections(counts) {
         { icon: <FiBarChart2 />, label: "Submission Viewer", path: "/director/submissions" },
         { icon: <FiLayers />, label: "Automatic Batch Queue", path: "/director/automatic-batch-queue" },
         { icon: <FiClock />, label: "Return Job Queue", path: "/director/return-job-queue" },
+        { icon: <FiUploadCloud />, label: "Partner Publish Queue", path: "/director/partner-publish-jobs" },
         {
           icon: <FiUploadCloud />,
           label: "Mariam Gabalawy",
