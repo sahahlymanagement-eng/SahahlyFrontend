@@ -593,11 +593,8 @@ export default function DirectorAccuracyMetrics() {
 }
 
 /**
- * Portalled to document.body — .director-page-inner runs a fade-up animation
- * with fill-mode `both`, and the animation's final transform sticks around
- * permanently, making that ancestor a containing block for `position: fixed`
- * children. An in-place modal would anchor to the padded content column
- * instead of the viewport and scroll away with the page.
+ * Portalled to document.body so the fixed-position backdrop always anchors
+ * to the viewport, regardless of what wraps this page.
  */
 /** Escape-to-close and background scroll-lock, shared by both modals here. */
 function useModalChrome(onClose) {

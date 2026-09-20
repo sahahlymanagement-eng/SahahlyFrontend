@@ -27,7 +27,6 @@ import {
   GradingNotificationProvider,
   useGradingNotifications,
 } from "../../context/GradingNotificationContext";
-import "./directorShell.css";
 
 const GRADING_NAV_PATHS = {
   "/director/mariamgabalawy": "mariamgabalawy",
@@ -116,11 +115,7 @@ function DirectorShell() {
         />
       }
     >
-      <div className="ast-page director-page">
-        <div className="director-page-inner">
-          <Outlet />
-        </div>
-      </div>
+      <Outlet />
     </RoleShell>
   );
 }

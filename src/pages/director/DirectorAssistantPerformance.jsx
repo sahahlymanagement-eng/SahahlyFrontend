@@ -280,11 +280,8 @@ export default function DirectorAssistantPerformance() {
 }
 
 /**
- * Portalled to document.body — .director-page-inner runs a fade-up animation
- * with fill-mode `both`, and the animation's final transform sticks around
- * permanently, making that ancestor a containing block for `position: fixed`
- * children. An in-place modal would anchor to the padded content column
- * instead of the viewport and scroll away with the page.
+ * Portalled to document.body so the fixed-position backdrop always anchors
+ * to the viewport, regardless of what wraps this page.
  */
 function AssistantDetailModal({ detail, loading, onClose }) {
   const DETAIL_TEACHERS_PAGE_SIZE = 20;

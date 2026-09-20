@@ -3,6 +3,7 @@
    No literal colours — everything comes from styles/theme.css. */
 
 .dma-page {
+  padding: 28px 32px 48px;
   color: var(--text-primary);
   font-family: "Inter", sans-serif;
 }
@@ -431,11 +432,8 @@
 
 /* ── detail modal ─────────────────────────────────────────────────────────── */
 
-/* Portalled into <body> for the same reason documented in
-   DirectorTeachers.jsx's DetailModal: .director-page-inner keeps a permanent
-   transform from its fill-mode:both entrance animation, which would otherwise
-   capture a fixed-position backdrop and anchor it to the content column
-   instead of the viewport. */
+/* Portalled into <body> so the fixed-position backdrop always anchors to
+   the viewport. */
 .dma-modal-backdrop {
   position: fixed;
   inset: 0;

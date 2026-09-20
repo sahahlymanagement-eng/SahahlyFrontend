@@ -83,6 +83,31 @@
   scrollbar-gutter: stable;
 }
 
+/* Director-only pages (direct Outlet children — no internal scroll region of
+   their own, unlike .ma-root/.tch-page/.fb-main, so they need the same
+   scroll treatment .ast-page gives everyone else). Higher specificity than
+   each page's own rule, so this also overrides any min-height:100vh some of
+   them set for their own reasons. */
+.ast-main > .directorPeoplePage,
+.ast-main > .dm-page,
+.ast-main > .managerWorkloadPage,
+.ast-main > .dma-page,
+.ast-main > .dap-page,
+.ast-main > .dam-page,
+.ast-main > .dt-page,
+.ast-main > .tu-embedded,
+.ast-main > .directorReportsPage,
+.ast-main > .directorGooglePage,
+.ast-main > .dmc-page,
+.ast-main > .tc-root {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
 /* Teacher shell pages (direct Outlet children — not wrapped in .ast-page) */
 .ast-main > .tch-page {
   flex: 1;
@@ -944,10 +969,6 @@
 @media (max-width: 768px) {
   .ast-page {
     padding: 18px 14px 32px;
-  }
-
-  .ast-main > .ast-page.director-page {
-    padding: 0;
   }
 
   .ast-hero h1 {

@@ -43,7 +43,6 @@ import ResetPassword from "./pages/ResetPassword";
 import AssistantAssignments from "./pages/assistant/AssistantAssignments";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerDelegations from "./pages/manager/ManagerDelegations";
-// import TeacherManager from "./pages/director/TeacherManager";
 import TeacherManager from "./pages/director/TeacherCreation";
 import QualityTeamDashboard from "./pages/quality team/QualityTeamDashboard";
 import QualityManagerDashboard from "./pages/quality manager/QualityManagerDashboard";

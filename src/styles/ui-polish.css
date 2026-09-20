@@ -217,8 +217,7 @@ body.ast-body--drawer-open {
   .tch-page,
   .qt-main,
   .qm2-main,
-  .qb-page,
-  .director-page {
+  .qb-page {
     padding-left: max(12px, env(safe-area-inset-left));
     padding-right: max(12px, env(safe-area-inset-right));
     padding-bottom: max(24px, env(safe-area-inset-bottom));
