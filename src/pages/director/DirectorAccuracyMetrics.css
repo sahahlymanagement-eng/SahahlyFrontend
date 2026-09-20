@@ -3,6 +3,7 @@
    progress bars in DirectorManagerWorkload.css, on the shared theme vars. */
 
 .dam-page {
+  padding: 28px 32px 48px;
   color: var(--text-primary);
   font-family: "Inter", sans-serif;
 }

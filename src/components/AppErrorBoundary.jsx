@@ -17,6 +17,17 @@ class ErrorBoundaryImpl extends Component {
     console.error("[AppErrorBoundary]", error, info?.componentStack);
   }
 
+  componentDidUpdate(prevProps) {
+    // Clear the crash once navigation actually moves away from the route
+    // that threw, so children mount fresh on the new route. Doing this here
+    // (rather than via `key={pathname}` on the wrapper) means normal
+    // navigation — which changes pathname on every click — never remounts
+    // the whole app; only a real recovery-from-crash does.
+    if (this.state.error && prevProps.pathname !== this.props.pathname) {
+      this.setState({ error: null });
+    }
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -75,13 +86,21 @@ class ErrorBoundaryImpl extends Component {
 }
 
 /**
- * Resets on route change (via the `key`) so navigating away from a crashed
- * route — including with the browser back button, or the "Go to dashboard"
- * link in the fallback above — recovers the app without a full page reload.
+ * Resets on route change so navigating away from a crashed route —
+ * including with the browser back button, or the "Go to dashboard" link in
+ * the fallback above — recovers the app without a full page reload.
+ *
+ * Deliberately NOT a `key={pathname}` on the wrapper: this component sits
+ * near the root of the whole app, and keying it on pathname would remount
+ * every provider, sidebar and page on every single navigation — every
+ * sidebar click looked like a full page refresh. Passing `pathname` as a
+ * normal prop and clearing the error in `componentDidUpdate` gets the same
+ * crash-recovery behavior without remounting anything during ordinary
+ * navigation.
  */
 export default function AppErrorBoundary({ children }) {
   const location = useLocation();
   return (
-    <ErrorBoundaryImpl key={location.pathname}>{children}</ErrorBoundaryImpl>
+    <ErrorBoundaryImpl pathname={location.pathname}>{children}</ErrorBoundaryImpl>
   );
 }

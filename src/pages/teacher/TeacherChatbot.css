@@ -22,11 +22,7 @@
   max-width: 720px;
 }
 
-/* Real flex-fill instead of a guessed vh height, so this works no matter how
-   deep the page sits in a role's layout — the manager/teacher shells mount
-   .tch-page directly under .ast-main (which already gives it flex:1), but
-   the director shell nests it one level deeper inside
-   director-page-inner > Outlet, which never got that flex:1 without this. */
+/* Real flex-fill instead of a guessed vh height. */
 .tchat-page {
   display: flex;
   flex-direction: column;

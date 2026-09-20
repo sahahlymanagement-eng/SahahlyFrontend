@@ -3,6 +3,7 @@
    No literal colours — everything comes from styles/theme.css. */
 
 .dt-page {
+  padding: 28px 32px 48px;
   color: var(--text-primary);
   font-family: "Inter", sans-serif;
 }
@@ -482,12 +483,8 @@
 
 /* ── detail modal ─────────────────────────────────────────────────────────── */
 
-/* Portalled into <body>, so it sits outside .dt-page and inherits nothing from
-   it — typography has to be restated here. Being a direct child of <body> is
-   also the whole point: .director-page-inner keeps a permanent
-   `transform: translateY(0)` from its fill-mode:both animation, which would
-   otherwise capture this fixed backdrop and anchor it to the content column
-   instead of the viewport. See the comment on DetailModal. */
+/* Portalled into <body>, so it sits outside .dt-page and inherits nothing
+   from it — typography has to be restated here. */
 .dt-modal-backdrop {
   position: fixed;
   inset: 0;

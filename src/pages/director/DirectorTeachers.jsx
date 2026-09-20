@@ -608,16 +608,8 @@ export default function DirectorTeachers() {
 // ── drill-down ───────────────────────────────────────────────────────────────
 
 /**
- * Rendered through a portal into <body>, NOT in place.
- *
- * `.director-page-inner` (pages/director/directorShell.css) runs `ast-fade-up`
- * with fill-mode `both`, and that animation's final keyframe is
- * `transform: translateY(0)`. A computed transform other than `none` sticks
- * around permanently under `both` and makes the element a containing block for
- * `position: fixed` children — so an in-place backdrop anchors to the padded
- * content column beside the sidebar instead of the viewport, and the modal
- * lands off-centre. Portalling past that ancestor is the fix; the alternative
- * (dropping the shell animation) would change every director page.
+ * Rendered through a portal into <body>, NOT in place, so the fixed-position
+ * backdrop always anchors to the viewport instead of a page-column ancestor.
  */
 function DetailModal({ detail, loading, onClose, onOpenClassroom }) {
   const isTeacher = detail.kind === "teacher";

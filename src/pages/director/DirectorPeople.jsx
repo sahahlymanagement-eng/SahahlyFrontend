@@ -799,12 +799,8 @@ export default function DirectorPeople() {
           {classroomManagersSectionOpen && <DirectorClassroomManagers />}
         </section>
 
-      {/* EDIT MODAL — portalled to document.body; .director-page-inner runs a
-          fade-up animation with fill-mode `both`, and the animation's final
-          transform sticks around permanently, making that ancestor a
-          containing block for `position: fixed` children. An in-place modal
-          would anchor to the padded content column instead of the viewport
-          and scroll away with the page. */}
+      {/* EDIT MODAL — portalled to document.body so the fixed-position
+          backdrop always anchors to the viewport. */}
       {editPerson &&
         createPortal(
           <div className="modalOverlay" onClick={closeEdit}>
