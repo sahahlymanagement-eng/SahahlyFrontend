@@ -241,10 +241,14 @@ export function isReportOnlyBlankQuestion(q, { isBackfilledStub } = {}) {
  * stay placeable so unanswered work on the script can still be marked. */
 export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
   if (!q) return false;
+  const hasAwardedMarks = Number(q.marksAwarded) > 0;
   const isStub =
     q._backfilled === true ||
-    q.questionPresent === false ||
-    q.notOnScript === true ||
+    // A non-zero score contradicts a "not present" flag. Keep that assessed
+    // row placeable so its score and examiner feedback are not silently
+    // removed from the annotated PDF. Genuine unassessed zero rows remain
+    // report-only below.
+    ((q.questionPresent === false || q.notOnScript === true) && !hasAwardedMarks) ||
     (typeof isBackfilledStub === "function" && isBackfilledStub(q));
   if (isStub) return false;
   const pageOk = Number(q.pageNumber) >= 1;

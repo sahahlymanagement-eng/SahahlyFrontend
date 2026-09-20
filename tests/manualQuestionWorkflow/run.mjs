@@ -113,6 +113,21 @@ test("unscanned questions are report-only, while scanned blank answers remain pl
   assert.strictEqual(isPlaceableScriptQuestion(scannedBlank, { isBackfilledStub }), true);
 });
 
+test("REGRESSION: a scored row is not hidden by a contradictory not-present flag", () => {
+  const assessed = {
+    questionNumber: "4(a)",
+    marksAwarded: 2,
+    maxMarks: 3,
+    pageNumber: 3,
+    questionPresent: false,
+    studentAnswer: "A response was read and awarded credit.",
+    reason: "Two valid points were identified.",
+  };
+
+  assert.strictEqual(isBackfilledStub(assessed), false);
+  assert.strictEqual(isPlaceableScriptQuestion(assessed, { isBackfilledStub }), true);
+});
+
 /** What the Add-question form hands to createManualQuestion. */
 const typedByTeacher = {
   questionNumber: "7b",

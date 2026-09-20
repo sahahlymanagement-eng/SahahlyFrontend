@@ -15,11 +15,19 @@ export function isBackfilledStub(q) {
   if (!q) return false;
 
   // Some marking routes return every mark-scheme row directly rather than
-  // injecting a `_backfilled` placeholder.  `questionPresent: false` (and its
-  // legacy `notOnScript` equivalent) has the same meaning: this question was
-  // not seen anywhere in the submitted scan.  Treat it as report-only so its
-  // neutral page-1 fallback never becomes a pile of unrelated annotations.
-  if (q.questionPresent === false || q.notOnScript === true) return true;
+  // injecting a `_backfilled` placeholder. `questionPresent: false` (and its
+  // legacy `notOnScript` equivalent) normally means this question was not
+  // seen anywhere in the submitted scan, so a zero-mark row remains
+  // report-only rather than creating a pile of guessed page-1 annotations.
+  //
+  // Do not suppress a row that was nevertheless awarded marks. That is
+  // inconsistent source data, but marks plus examiner feedback mean the AI did
+  // assess something; hiding every such row makes a fully marked paper appear
+  // to have no annotations at all. Render it so staff can review its placement.
+  const hasAwardedMarks = Number(q.marksAwarded) > 0;
+  if ((q.questionPresent === false || q.notOnScript === true) && !hasAwardedMarks) {
+    return true;
+  }
 
   // Authoritative — injected by mark-scheme backfill.
   if (q._backfilled === true) return true;
