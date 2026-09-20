@@ -1,7 +1,7 @@
 import {
   FiHome, FiUsers, FiClipboard, FiFileText, FiBookOpen,
   FiZap, FiEye, FiLayers, FiBarChart2, FiUploadCloud, FiMessageSquare, FiSend, FiCpu, FiMessageCircle,
-  FiRadio, FiUser
+  FiRadio, FiUser, FiClock
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
 import {
@@ -40,6 +40,7 @@ const NAV_ITEMS = [
   { icon: <FiClipboard />, label: "Reports",            path: "/manager/assignments"    },
   { icon: <FiEye />,       label: "Submission Viewer",  path: "/manager/submissions"    },
   { icon: <FiLayers />,    label: "Automatic Batch Queue", path: "/manager/automatic-batch-queue" },
+  { icon: <FiClock />,     label: "Return Job Queue",   path: "/manager/return-job-queue" },
   { icon: <FiCpu />,       label: "Automation",         path: "/manager/automation"     },
   { icon: <FiBarChart2 />, label: "Token Usage",        path: "/manager/token-usage"    },
   { icon: <FiMessageSquare />, label: "Report Feedback", path: "/manager/feedback"   },

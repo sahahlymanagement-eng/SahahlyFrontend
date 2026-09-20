@@ -140,6 +140,8 @@ import {
   emptyReturnAllMessage,
   studentGoogleUserId,
   isNoAttachmentError,
+  pollReturnJobsUntilSettled,
+  isClassroomBlockedError,
 } from "../../utils/returnAllExecution";
 import {
   fetchSavedResultsLight,
@@ -227,6 +229,12 @@ export default function AssignmentSubmissionViewer() {
       return undefined;
     }
     return subscribeBatchJob(assignmentId, setBatchJob);
+  }, [assignmentId]);
+
+  // A block is specific to one assignment's coursework — don't let it carry
+  // over and disable Return All on a different assignment navigated to next.
+  useEffect(() => {
+    setClassroomAttachBlocked(false);
   }, [assignmentId]);
 
   const batchStarting =
@@ -320,6 +328,11 @@ export default function AssignmentSubmissionViewer() {
   const [downloading, setDownloading] = useState(false);
   const [returning,        setReturning]        = useState(false);
   const returningLockRef = useRef(false);
+  // Set the moment ANY return (single or bulk) discovers this classroom's
+  // coursework wasn't created by Sahahly — a permanent, assignment-wide
+  // condition. Once known, Return All refuses to even start rather than
+  // re-discovering the same wall on every student.
+  const [classroomAttachBlocked, setClassroomAttachBlocked] = useState(false);
   const [editingTotal, setEditingTotal] = useState(null); // null means use effectiveTotal
   const [editingMaxTotal, setEditingMaxTotal] = useState(null);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
@@ -2806,7 +2819,14 @@ const deleteCorrection = async (student) => {
       }
       setResultModal(null);
     } catch (err) {
-      toast.error((await getApiErrorMessage(err)) || "Failed to return paper");
+      const blocked = await isClassroomBlockedError(err);
+      const message = (await getApiErrorMessage(err)) || "Failed to return paper";
+      if (blocked) {
+        setClassroomAttachBlocked(true);
+        toast.error(message, { autoClose: false, toastId: `classroom-blocked-${assignmentId}` });
+      } else {
+        toast.error(message);
+      }
     } finally { setReturning(false); }
   };
 
@@ -2819,10 +2839,17 @@ const deleteCorrection = async (student) => {
     return { submissionId, name: "Student" };
   };
 
+  /**
+   * Stages every paper (fast, Drive-only) and returns as soon as that's
+   * done — the actual Classroom attach/grade/return happens later in the
+   * background (cron/returnJobWorkerCron.js) and survives this tab closing.
+   * Kicks off a background poll (not awaited) so a tab that stays open still
+   * gets live "returned"/failure updates as the worker finishes each paper.
+   */
   const returnAllToStudents = async (prebuiltQueue, freshSavedResults = null) => {
     if (!assignmentId) {
       toast.error("Assignment not loaded");
-      return { successCount: 0, failures: [{ reason: "Assignment not loaded" }] };
+      return { queuedCount: 0, failures: [{ reason: "Assignment not loaded" }] };
     }
 
     let bulkQueue;
@@ -2845,18 +2872,18 @@ const deleteCorrection = async (student) => {
         ({ bulkQueue, batchQueue } = built.queue);
       } catch {
         toast.error("Failed to load all students for return");
-        return { successCount: 0, failures: [{ reason: "Failed to load students" }] };
+        return { queuedCount: 0, failures: [{ reason: "Failed to load students" }] };
       }
     }
 
     if (!bulkQueue.length && !batchQueue.length) {
       toast.warn("No new graded students to return");
-      return { successCount: 0, failures: [] };
+      return { queuedCount: 0, failures: [] };
     }
 
     const mergedSaved = { ...savedResults, ...(freshSavedResults || {}) };
 
-    const { successCount, failures, outcomes, stoppedEarly, stopReason } = await runReturnAllQueue({
+    const { queuedCount, failures, queued, classroomBlocked, classroomBlockedReason } = await runReturnAllQueue({
       api,
       assignmentId,
       bulkQueue,
@@ -2876,49 +2903,82 @@ const deleteCorrection = async (student) => {
       resolveTotalMarksFromResult,
     });
 
-    for (const outcome of outcomes) {
-      const keys = new Set(
-        [outcome.submissionId, outcome.storedSubmissionId].filter(Boolean).map(String)
-      );
-      setSavedResults((prev) => {
-        const next = { ...prev };
-        for (const key of keys) {
-          next[key] = {
-            ...(prev[key] || {}),
-            returnedAt: outcome.returnedAt,
-          };
-        }
-        return next;
-      });
-
-      if (outcome.source === "bulk" && outcome.bulk) {
-        setBulkProgress((p) => {
-          const next = { ...p };
-          for (const key of keys) {
-            if (next[key]) {
-              next[key] = {
-                ...next[key],
-                returned: true,
-                result: outcome.bulk.result,
-              };
+    if (queued.length) {
+      pollReturnJobsUntilSettled({
+        api,
+        assignmentId,
+        items: queued,
+        onDone: (item, entry) => {
+          const keys = new Set(
+            [item.submissionId, item.storedSubmissionId].filter(Boolean).map(String)
+          );
+          setSavedResults((prev) => {
+            const next = { ...prev };
+            for (const key of keys) {
+              next[key] = { ...(prev[key] || {}), returnedAt: new Date().toISOString() };
             }
-          }
-          return next;
-        });
-      }
+            return next;
+          });
 
-      if (outcome.source === "batch" && outcome.batch) {
-        patchBatchJob(assignmentId, (prev) => ({
-          ...prev,
-          results: {
-            ...prev?.results,
-            [outcome.submissionId]: { ...outcome.batch, returned: true },
-          },
-        }));
-      }
+          if (item.source === "bulk" && item.bulk) {
+            setBulkProgress((p) => {
+              const next = { ...p };
+              for (const key of keys) {
+                if (next[key]) {
+                  next[key] = {
+                    ...next[key],
+                    returned: true,
+                    result: item.bulk.result,
+                  };
+                }
+              }
+              return next;
+            });
+          }
+
+          if (item.source === "batch" && item.batch) {
+            patchBatchJob(assignmentId, (prev) => ({
+              ...prev,
+              results: {
+                ...prev?.results,
+                [item.submissionId]: { ...item.batch, returned: true },
+              },
+            }));
+          }
+
+          if (entry.attachmentWarning) {
+            toast.warn(entry.attachmentWarning, { autoClose: 14000 });
+          }
+        },
+        onFailed: (item, entry) => {
+          if (entry.classroomBlocked) {
+            setClassroomAttachBlocked(true);
+            // One classroom, one clear toast — several students' background
+            // items can hit this at once; toastId dedupes them instead of
+            // stacking N identical "not created by Sahahly" toasts.
+            toast.error(entry.error || "This classroom's coursework was not created by Sahahly.", {
+              autoClose: false,
+              toastId: `classroom-blocked-${assignmentId}`,
+            });
+            return;
+          }
+          toast.error(
+            `Return failed for ${item.label || item.submissionId}: ${entry.error || "Unknown error"}`,
+            { autoClose: 16000 }
+          );
+        },
+      }).catch((err) => console.error("Return job polling failed:", err));
     }
 
-    return { successCount, failures, outcomes, stoppedEarly, stopReason };
+    if (classroomBlocked) {
+      toast.error(
+        classroomBlockedReason ||
+          "This classroom's coursework was not created by Sahahly — Return All was stopped. Fix it in Google Classroom, then try again.",
+        { autoClose: false, toastId: `classroom-blocked-${assignmentId}` }
+      );
+    }
+
+    return { queuedCount, failures, queued, classroomBlocked, classroomBlockedReason };
   };
 
   const getStatusBadge = (s) => <SubmissionStatusBadge student={s} />;
@@ -2951,6 +3011,14 @@ const deleteCorrection = async (student) => {
 
     if (!studentsMarkingUrl || !assignmentId) {
       toast.error("Assignment not loaded");
+      return;
+    }
+
+    if (classroomAttachBlocked) {
+      toast.error(
+        "This classroom's coursework was not created by Sahahly — Return All is blocked until this is fixed in Google Classroom.",
+        { autoClose: false, toastId: `classroom-blocked-${assignmentId}` }
+      );
       return;
     }
 
@@ -2989,31 +3057,30 @@ const deleteCorrection = async (student) => {
 
       await saveReturnSummaries(api, assignmentId, queue, resolvePdfSummary);
 
-      const { successCount, failures, outcomes, stoppedEarly, stopReason } = await returnAllToStudents(queue, freshSaved);
+      const { queuedCount, failures, classroomBlocked } = await returnAllToStudents(queue, freshSaved);
+      if (classroomBlocked) setClassroomAttachBlocked(true);
 
       await fetchSavedResults();
 
-      const attachBlocked = (outcomes || []).filter((row) => row?.attachmentWarning).length;
-      if (stoppedEarly) {
-        toast.error(
-          `${stopReason || "Return All stopped early after repeated Google Classroom failures."} ` +
-            `(${successCount} returned before stopping.)`,
-          { autoClose: 18000 }
-        );
-      } else if (successCount === 0) {
+      // The actual Classroom attach/grade/return happens later in the
+      // background (survives this tab closing) — attachment warnings and
+      // failures for individual papers surface via the toasts inside
+      // returnAllToStudents's poll as each one finishes, not here.
+      // A classroom-blocked stop already got its own clear toast in there —
+      // don't also pile a generic "Return all failed" on top of it.
+      if (classroomBlocked) {
+        // already toasted
+      } else if (queuedCount === 0) {
         toast.error(failures[0]?.reason || "Return all failed");
       } else if (failures.length) {
-        toast.warn(formatReturnFailuresMessage(successCount, failures), {
+        toast.warn(formatReturnFailuresMessage(queuedCount, failures), {
           autoClose: 12000,
         });
-      } else if (attachBlocked) {
-        toast.warn(
-          `Returned ${successCount} paper${successCount === 1 ? "" : "s"}. Google blocked attaching the marked PDF on ${attachBlocked} (assignment not created by Sahahly) — grade was still returned; attach the Drive/Sahahly PDF manually.`,
-          { autoClose: 14000 }
-        );
       } else {
         toast.success(
-          `Returned ${successCount} graded paper${successCount === 1 ? "" : "s"}`
+          `Queued ${queuedCount} graded paper${queuedCount === 1 ? "" : "s"} for return — ` +
+            "they'll finish in the background, you can leave this page.",
+          { autoClose: 10000 }
         );
       }
     } catch (err) {
@@ -3152,10 +3219,20 @@ return (
                   type="button"
                   className="msv-btn-ai"
                   onClick={handleReturnAll}
-                  disabled={returning}
-                  style={{ marginLeft: 10, background: "var(--success)", borderColor: "var(--success)", color: "#fff" }}
+                  disabled={returning || classroomAttachBlocked}
+                  title={
+                    classroomAttachBlocked
+                      ? "This classroom's coursework was not created by Sahahly — fix it in Google Classroom before returning."
+                      : undefined
+                  }
+                  style={{
+                    marginLeft: 10,
+                    background: classroomAttachBlocked ? "var(--danger)" : "var(--success)",
+                    borderColor: classroomAttachBlocked ? "var(--danger)" : "var(--success)",
+                    color: "#fff",
+                  }}
                 >
-                  {returning ? "Returning…" : "Return All"}
+                  {returning ? "Returning…" : classroomAttachBlocked ? "Return All blocked" : "Return All"}
                 </button>
                 )}
 

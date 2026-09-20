@@ -75,6 +75,7 @@ import DirectorChatbot from "./pages/director/DirectorChatbot";
 import DirectorActionsChatbot from "./pages/director/DirectorActionsChatbot";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import AutomaticBatchQueue from "./pages/manager/AutomaticBatchQueue";
+import ReturnJobQueue from "./pages/manager/ReturnJobQueue";
 import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
 import WhatsAppBroadcast from "./pages/manager/WhatsAppBroadcast";
 import ManagerAutomation from "./pages/manager/ManagerAutomation";
@@ -252,6 +253,7 @@ function App() {
           <Route path="performance" element={<AssistantPerformance />} />
           <Route path="assignments" element={<AssistantAssignments />} />
           <Route path="automation" element={<ManagerAutomation scope="assistant" />} />
+          <Route path="return-job-queue" element={<ReturnJobQueue />} />
           <Route path="assignments/:assignmentId" element={<AssistantSubmissionViewer />} />
           <Route path="assignments/:assignmentId/students" element={<AssistantStudents />} />
           <Route
@@ -300,6 +302,7 @@ function App() {
           <Route path="students" element={<ManagerStudents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
           <Route path="automatic-batch-queue" element={<AutomaticBatchQueue />} />
+          <Route path="return-job-queue" element={<ReturnJobQueue />} />
           <Route path="automation" element={<ManagerAutomation scope="manager" />} />
           <Route path="whatsapp-scheduler" element={<ManagerWhatsAppScheduler />} />
           <Route path="whatsapp-broadcast" element={<WhatsAppBroadcast />} />
@@ -397,6 +400,7 @@ function App() {
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
           <Route path="automatic-batch-queue" element={<AutomaticBatchQueue />} />
+          <Route path="return-job-queue" element={<ReturnJobQueue />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />
           <Route path="drpeter" element={<ManagerDrPeter />} />
           <Route path="drpeter-indexing" element={<ManagerDrPeterIndexing />} />

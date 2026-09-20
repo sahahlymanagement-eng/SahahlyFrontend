@@ -1,7 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../../api/api";
+import { toast } from "react-toastify";
 import { TeacherPageHeader } from "../teacher/TeacherUI";
-import { FiSend, FiPlus, FiCpu, FiUser, FiZap } from "react-icons/fi";
+import {
+  FiSend,
+  FiPlus,
+  FiCpu,
+  FiUser,
+  FiZap,
+  FiMic,
+  FiSquare,
+  FiCopy,
+  FiRefreshCw,
+  FiEdit2,
+  FiCheck,
+  FiX,
+  FiAlertTriangle,
+  FiCheckCircle,
+} from "react-icons/fi";
+import { streamAgentTurn, revealText } from "../../utils/agentStream";
+import { useVoiceCommand } from "../../utils/useVoiceCommand";
 import {
   actOnScheduledWhatsApp,
   assignAssistant,
@@ -39,6 +57,7 @@ import {
   removeClassroomManager,
   assignQualityManager,
   removeQualityManager,
+  transcribeVoiceCommand,
 } from "./directorChatbotActionsClient";
 import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
@@ -184,6 +203,36 @@ function confirmLabelFor(type) {
   }
 }
 
+const DANGER_ACTION_TYPES = new Set([
+  "cancel_batch_job",
+  "remove_assistant",
+  "remove_classroom_manager",
+  "remove_quality_manager",
+  "delete_subject",
+  "delete_scheduled_message",
+  "cancel_scheduled_message",
+  "set_person_status",
+]);
+
+const BROADCAST_ACTION_TYPES = new Set([
+  "send_assignment_report",
+  "send_monthly_report",
+  "send_teacher_collective_report",
+  "send_executive_report",
+  "schedule_whatsapp_message",
+  "send_scheduled_message_now",
+]);
+
+function actionCardMeta(type) {
+  if (DANGER_ACTION_TYPES.has(type)) {
+    return { tone: "danger", Icon: FiAlertTriangle };
+  }
+  if (BROADCAST_ACTION_TYPES.has(type)) {
+    return { tone: "broadcast", Icon: FiSend };
+  }
+  return { tone: "primary", Icon: FiCheckCircle };
+}
+
 function formatAutomationStatus(status, assignmentTitle) {
   if (!status || status.ok === false) {
     return `No automation run found for **${assignmentTitle}**.`;
@@ -213,8 +262,15 @@ export default function DirectorChatbot() {
   const [editPreview, setEditPreview] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [executing, setExecuting] = useState(false);
+  const [progressLabel, setProgressLabel] = useState(null);
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [copiedIndex, setCopiedIndex] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const revealStopRef = useRef(null);
+
+  const voice = useVoiceCommand(transcribeVoiceCommand, (text) => send(text));
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -361,52 +417,121 @@ export default function DirectorChatbot() {
     loadPreviewsForProposal(actionProposal);
   }, [actionProposal, loadPreviewsForProposal]);
 
+  const runTurn = useCallback(
+    async (nextMessages) => {
+      if (!user?.id) return;
+      clearActionState();
+      setLoading(true);
+      setLastMatched(null);
+      setProgressLabel("Thinking…");
+
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        setLoading(false);
+        setProgressLabel(null);
+        inputRef.current?.focus();
+      };
+
+      await streamAgentTurn(
+        "/director-chatbot/agent-stream",
+        {
+          personId: user.id,
+          messages: nextMessages.map(({ role, content: c }) => ({ role, content: c })),
+        },
+        {
+          onProgress: (evt) => setProgressLabel(evt.label || "Working…"),
+          onFinal: (data) => {
+            setProgressLabel(null);
+            setLastMatched(data.matched || null);
+            if (data.actionProposal) setActionProposal(data.actionProposal);
+
+            const replyText =
+              data.reply?.trim() || "I couldn't complete that request. Please try rephrasing.";
+            setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+            revealStopRef.current?.();
+            revealStopRef.current = revealText(
+              replyText,
+              (partial) => {
+                setMessages((prev) => {
+                  const next = [...prev];
+                  next[next.length - 1] = { role: "assistant", content: partial };
+                  return next;
+                });
+              },
+              finish
+            );
+          },
+          onError: (err) => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content:
+                  err.message || "Something went wrong reaching the assistant. Please try again.",
+                isError: true,
+              },
+            ]);
+            finish();
+          },
+        }
+      );
+    },
+    [user?.id]
+  );
+
   const send = useCallback(
-    async (text) => {
+    (text) => {
       const content = String(text ?? input).trim();
       if (!content || loading || !user?.id) return;
-
-      clearActionState();
       const nextMessages = [...messages, { role: "user", content }];
       setMessages(nextMessages);
       setInput("");
-      setLoading(true);
-      setLastMatched(null);
-
-      try {
-        const { data } = await api.post("/director-chatbot/agent", {
-          personId: user.id,
-          messages: nextMessages.map(({ role, content: c }) => ({
-            role,
-            content: c,
-          })),
-        });
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: data.reply },
-        ]);
-        setLastMatched(data.matched || null);
-        if (data.actionProposal) {
-          setActionProposal(data.actionProposal);
-        }
-      } catch (err) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              err.response?.data?.message ||
-              "Something went wrong reaching the assistant. Please try again.",
-            isError: true,
-          },
-        ]);
-      } finally {
-        setLoading(false);
-        inputRef.current?.focus();
-      }
+      runTurn(nextMessages);
     },
-    [input, loading, messages, user?.id]
+    [input, loading, messages, user?.id, runTurn]
   );
+
+  const retryLast = useCallback(() => {
+    if (loading) return;
+    const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
+    if (lastUserIdx === -1) return;
+    const trimmed = messages.slice(0, lastUserIdx + 1);
+    setMessages(trimmed);
+    runTurn(trimmed);
+  }, [messages, loading, runTurn]);
+
+  const startEdit = (index) => {
+    if (loading) return;
+    setEditingIndex(index);
+    setEditValue(messages[index]?.content || "");
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setEditValue("");
+  };
+
+  const saveEdit = () => {
+    const content = editValue.trim();
+    if (!content || editingIndex == null) return;
+    const trimmed = messages.slice(0, editingIndex);
+    setEditingIndex(null);
+    setEditValue("");
+    setMessages(trimmed);
+    send(content);
+  };
+
+  const copyMessage = (index, content) => {
+    navigator.clipboard
+      ?.writeText(content)
+      .then(() => {
+        setCopiedIndex(index);
+        setTimeout(() => setCopiedIndex((i) => (i === index ? null : i)), 1500);
+      })
+      .catch(() => toast.error("Couldn't copy — please select and copy manually."));
+  };
 
   const updatePreviewMessage = (key, message) => {
     setEditPreview((prev) => {
@@ -845,12 +970,16 @@ export default function DirectorChatbot() {
   };
 
   const newChat = () => {
+    revealStopRef.current?.();
     setMessages([]);
     setLastMatched(null);
+    setEditingIndex(null);
     clearActionState();
     sessionStorage.removeItem(STORAGE_KEY);
     inputRef.current?.focus();
   };
+
+  useEffect(() => () => revealStopRef.current?.(), []);
 
   const matchedChips = [
     ...(lastMatched?.classrooms || []).map((n) => ({ type: "class", name: n })),
@@ -906,7 +1035,7 @@ export default function DirectorChatbot() {
               <p>
                 Natural language works for everything — assign assistants, send reports,
                 run automation, push grades, and more. I always show a confirm step before
-                executing.
+                executing. Click the <FiMic size={12} /> mic to speak a command instead of typing.
               </p>
               {briefing?.lines?.length ? (
                 <div className="tchat-briefing-card">
@@ -944,36 +1073,113 @@ export default function DirectorChatbot() {
             </div>
           ) : (
             <div className="tchat-messages">
-              {messages.map((m, i) => (
-                <div
-                  key={`${m.at || i}-${i}`}
-                  className={`tchat-row ${m.role === "user" ? "tchat-row--user" : ""}`}
-                >
+              {messages.map((m, i) => {
+                const isLastAssistant =
+                  m.role === "assistant" && i === messages.length - 1 && !loading;
+                const isEditing = editingIndex === i;
+                return (
                   <div
-                    className={`tchat-avatar ${
-                      m.role === "user" ? "tchat-avatar--user" : ""
-                    }`}
+                    key={`${m.at || i}-${i}`}
+                    className={`tchat-row ${m.role === "user" ? "tchat-row--user" : ""}`}
                   >
-                    {m.role === "user" ? <FiUser size={14} /> : <FiCpu size={14} />}
+                    <div
+                      className={`tchat-avatar ${
+                        m.role === "user" ? "tchat-avatar--user" : ""
+                      }`}
+                    >
+                      {m.role === "user" ? <FiUser size={14} /> : <FiCpu size={14} />}
+                    </div>
+                    <div className="tchat-bubble-col">
+                      {isEditing ? (
+                        <div className="tchat-edit-row">
+                          <textarea
+                            className="tchat-input tchat-edit-textarea"
+                            value={editValue}
+                            rows={2}
+                            autoFocus
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                saveEdit();
+                              } else if (e.key === "Escape") {
+                                cancelEdit();
+                              }
+                            }}
+                          />
+                          <div className="tchat-edit-actions">
+                            <button
+                              type="button"
+                              className="tch-btn tch-btn--primary tch-btn--sm"
+                              onClick={saveEdit}
+                            >
+                              <FiCheck size={13} /> Save &amp; resend
+                            </button>
+                            <button
+                              type="button"
+                              className="tch-btn tch-btn--ghost tch-btn--sm"
+                              onClick={cancelEdit}
+                            >
+                              <FiX size={13} /> Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={`tchat-bubble ${
+                            m.role === "user" ? "tchat-bubble--user" : ""
+                          } ${m.isError ? "tchat-bubble--error" : ""}`}
+                        >
+                          {m.role === "assistant" ? (
+                            <div
+                              className="tchat-md"
+                              dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }}
+                            />
+                          ) : (
+                            m.content
+                          )}
+                        </div>
+                      )}
+                      {!isEditing && (
+                        <div className="tchat-msg-actions">
+                          {m.content ? (
+                            <button
+                              type="button"
+                              className="tchat-msg-action"
+                              onClick={() => copyMessage(i, m.content)}
+                              title="Copy"
+                            >
+                              {copiedIndex === i ? <FiCheck size={12} /> : <FiCopy size={12} />}
+                            </button>
+                          ) : null}
+                          {m.role === "user" && !loading ? (
+                            <button
+                              type="button"
+                              className="tchat-msg-action"
+                              onClick={() => startEdit(i)}
+                              title="Edit & resend"
+                            >
+                              <FiEdit2 size={12} />
+                            </button>
+                          ) : null}
+                          {isLastAssistant ? (
+                            <button
+                              type="button"
+                              className="tchat-msg-action"
+                              onClick={retryLast}
+                              title="Retry"
+                            >
+                              <FiRefreshCw size={12} />
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div
-                    className={`tchat-bubble ${
-                      m.role === "user" ? "tchat-bubble--user" : ""
-                    } ${m.isError ? "tchat-bubble--error" : ""}`}
-                  >
-                    {m.role === "assistant" ? (
-                      <div
-                        className="tchat-md"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }}
-                      />
-                    ) : (
-                      m.content
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
-              {loading && (
+              {loading && progressLabel && (
                 <div className="tchat-row">
                   <div className="tchat-avatar">
                     <FiCpu size={14} />
@@ -982,6 +1188,7 @@ export default function DirectorChatbot() {
                     <span className="tchat-dot" />
                     <span className="tchat-dot" />
                     <span className="tchat-dot" />
+                    <span className="tchat-progress-label">{progressLabel}</span>
                   </div>
                 </div>
               )}
@@ -1001,8 +1208,14 @@ export default function DirectorChatbot() {
               )}
 
               {actionProposal && (
-                <div className="tchat-action-card">
-                  <div className="tchat-action-card-title">{actionProposal.title}</div>
+                <div className={`tchat-action-card tchat-action-card--${actionCardMeta(actionProposal.type).tone}`}>
+                  <div className="tchat-action-card-title">
+                    {(() => {
+                      const { Icon } = actionCardMeta(actionProposal.type);
+                      return <Icon size={15} />;
+                    })()}
+                    {actionProposal.title}
+                  </div>
                   {editPreview?.loading && (
                     <p className="tchat-action-card-hint">Loading preview…</p>
                   )}
@@ -1096,6 +1309,7 @@ export default function DirectorChatbot() {
           )}
         </div>
 
+        {voice.micError && <div className="tchat-mic-error">{voice.micError}</div>}
         <form
           className="tchat-inputbar"
           onSubmit={(e) => {
@@ -1103,10 +1317,26 @@ export default function DirectorChatbot() {
             send();
           }}
         >
+          <button
+            type="button"
+            className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
+            onClick={voice.toggle}
+            disabled={loading || executing || voice.transcribing}
+            aria-label={voice.recording ? "Stop recording" : "Speak a command"}
+            title={voice.recording ? "Stop recording" : "Speak a command"}
+          >
+            {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
+          </button>
           <textarea
             ref={inputRef}
             className="tchat-input"
-            placeholder='Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
+            placeholder={
+              voice.recording
+                ? "Listening… click the mic to stop"
+                : voice.transcribing
+                ? "Transcribing your voice command…"
+                : 'Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
+            }
             value={input}
             rows={1}
             onChange={(e) => setInput(e.target.value)}
@@ -1116,7 +1346,7 @@ export default function DirectorChatbot() {
                 send();
               }
             }}
-            disabled={loading || executing}
+            disabled={loading || executing || voice.recording || voice.transcribing}
           />
           <button
             type="submit"

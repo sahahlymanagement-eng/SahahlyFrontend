@@ -20,6 +20,73 @@ export async function fetchSavedResultsMap(api, assignmentId) {
   return fetchSavedResultsLight(api, assignmentId);
 }
 
+/**
+ * Per-submission background-return-job status for an assignment — the
+ * actual Classroom attach/grade/return now happens later, in the
+ * cron/returnJobWorkerCron.js worker, not synchronously from Return All. Used
+ * both to gate re-staging a paper that already has a queued/running job
+ * (buildReturnAllQueue) and to poll for completion/failures while a viewer
+ * page is left open.
+ * @returns {Promise<{items: Record<string, object>, counts: Record<string, number>}>}
+ */
+export async function fetchReturnJobsSummary(api, assignmentId) {
+  try {
+    const { data } = await api.get("/submission-files/return-jobs/summary", {
+      params: { assignmentId },
+    });
+    return { items: data?.items || {}, counts: data?.counts || {} };
+  } catch (err) {
+    console.error("Failed to load return job summary:", err);
+    return { items: {}, counts: {} };
+  }
+}
+
+/**
+ * Poll GET /return-jobs/summary until every queued item in `items` reaches
+ * done/failed (or `maxPolls` is hit) — this is how a viewer page that stays
+ * open finds out the actual Classroom result, since it no longer happens
+ * synchronously in the Return All call. Safe to let this run and navigate
+ * away: it's just polling, nothing breaks if the component unmounts and the
+ * caller stops awaiting it, and the background worker finishes regardless.
+ *
+ * @param {object} params
+ * @param {Array<{submissionId: string, storedSubmissionId?: string, source?: string, bulk?: object, batch?: object}>} params.items
+ * @param {(item: object, entry: object) => void} params.onDone - called once per item when its job reports "done"
+ * @param {(item: object, entry: object) => void} params.onFailed - called once per item when its job reports "failed"
+ */
+export async function pollReturnJobsUntilSettled({
+  api,
+  assignmentId,
+  items = [],
+  onDone,
+  onFailed,
+  pollIntervalMs = 5000,
+  maxPolls = 120,
+}) {
+  const pending = new Map(
+    items.map((item) => [String(item.storedSubmissionId || item.submissionId), item])
+  );
+
+  for (let i = 0; i < maxPolls && pending.size > 0; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    const { items: statusMap } = await fetchReturnJobsSummary(api, assignmentId);
+
+    for (const [key, item] of pending) {
+      const entry = statusMap[item.submissionId] || statusMap[key];
+      if (!entry) continue; // not picked up yet — keep waiting
+
+      if (entry.status === "done") {
+        pending.delete(key);
+        onDone?.(item, entry);
+      } else if (entry.status === "failed") {
+        pending.delete(key);
+        onFailed?.(item, entry);
+      }
+      // "queued"/"running" — keep polling
+    }
+  }
+}
+
 function isPdfFileLike(file) {
   return (
     file instanceof File ||
@@ -42,18 +109,6 @@ function isGradeOnlyReturn(result) {
   return Boolean(result?.noSubmission);
 }
 
-/** True when /return-marked's own error body says Google quota is exhausted (not a one-off transient hiccup). */
-async function isQuotaExhaustedError(err) {
-  const data = err?.response?.data;
-  if (data?.quotaExhausted === true) return true;
-  if (!(data instanceof Blob)) return false;
-  try {
-    return JSON.parse(await data.text())?.quotaExhausted === true;
-  } catch {
-    return false;
-  }
-}
-
 /** True when /submission-files/pdf says the submission carries nothing to download. */
 export async function isNoAttachmentError(err) {
   if (err?.response?.status !== 404) return false;
@@ -66,6 +121,18 @@ export async function isNoAttachmentError(err) {
     return /no attachments found|no downloadable file/i.test(
       String(parsed?.message || "")
     );
+  } catch {
+    return false;
+  }
+}
+
+/** True when /return-marked(/stage)'s error body says this classroom is a permanent, known-blocked case (not created by Sahahly). */
+export async function isClassroomBlockedError(err) {
+  const data = err?.response?.data;
+  if (data?.classroomBlocked === true) return true;
+  if (!(data instanceof Blob)) return false;
+  try {
+    return JSON.parse(await data.text())?.classroomBlocked === true;
   } catch {
     return false;
   }
@@ -92,29 +159,24 @@ async function resolveStudentPdfFile({
 }
 
 /**
- * Classroom applies per-user/project quotas across patch, attachment and
- * return calls. A flat delay between every paper used to guess a worst-case
- * gap regardless of load — a 5-student class and a 50-student class paid the
- * exact same per-paper tax. The backend's own retry (withGoogleApiRetry)
- * already holds off for real when it hits actual quota pressure and reports
- * how long it waited as `quotaBackoffMs` on the response — that is real
- * backpressure, not a guess. This starts fast and only slows down when that
- * signal (or an outright failure) shows up, then eases back down after a run
- * of clean returns.
+ * Return All now only STAGES each paper here (uploads/rewrites the marked
+ * PDF on Drive) — the actual Classroom modifyAttachments/patch/return calls,
+ * the ones subject to Classroom's tight per-user quota, run later in the
+ * background (cron/returnJobWorkerCron.js on the backend), independent of
+ * this tab. That's what makes Return All survive a refresh/tab-close now.
+ * Drive's own quota is far more generous, but staging is still real network
+ * I/O per paper, so a light adaptive pace remains: start fast, back off on
+ * an outright failure, ease back down after a run of clean stages.
  */
-function createReturnPacer({ minDelayMs = 1000, maxDelayMs = 10000, easeAfterCleanCount = 3 } = {}) {
+function createReturnPacer({ minDelayMs = 300, maxDelayMs = 5000, easeAfterCleanCount = 3 } = {}) {
   let delayMs = minDelayMs;
   let cleanStreak = 0;
 
   return {
     wait: () => new Promise((resolve) => setTimeout(resolve, delayMs)),
-    recordOutcome({ backoffMs = 0, failed = false } = {}) {
-      if (failed || backoffMs > 0) {
+    recordOutcome({ failed = false } = {}) {
+      if (failed) {
         cleanStreak = 0;
-        // The request itself already had to wait out Google's backoff (or
-        // failed outright after exhausting it) — that's direct evidence
-        // we're at the limit, so jump straight to the ceiling instead of
-        // doubling gradually into more 429s.
         delayMs = maxDelayMs;
         return;
       }
@@ -125,30 +187,6 @@ function createReturnPacer({ minDelayMs = 1000, maxDelayMs = 10000, easeAfterCle
       }
     },
   };
-}
-
-/**
- * Trips after `threshold` quota-pressure signals IN A ROW (a quota-tagged
- * failure, or a success that still had to wait out backend backoff). One
- * such signal is normal noise; several consecutive ones mean the account is
- * genuinely blocked right now, and continuing through the rest of the class
- * would just repeat the same failure at the same cost, one student at a time.
- */
-function createQuotaCircuitBreaker(threshold = 3) {
-  let streak = 0;
-  const breaker = {
-    tripped: false,
-    record(isQuotaSignal) {
-      if (!isQuotaSignal) {
-        streak = 0;
-        return breaker.tripped;
-      }
-      streak += 1;
-      if (streak >= threshold) breaker.tripped = true;
-      return breaker.tripped;
-    },
-  };
-  return breaker;
 }
 
 /**
@@ -181,9 +219,9 @@ export async function runReturnAllQueue({
   });
 
   const failures = [];
-  let successCount = 0;
+  let queuedCount = 0;
 
-  // returnOne reports its own outcome rather than pushing to failures/outcomes
+  // returnOne reports its own outcome rather than pushing to failures/queued
   // directly — with several workers in flight at once (see CONCURRENCY below),
   // that keeps each worker's bookkeeping self-contained instead of relying on
   // "the last thing pushed to a shared array was mine", which is only true
@@ -203,12 +241,12 @@ export async function runReturnAllQueue({
     const googleUserId = studentGoogleUserId(student);
 
     if (!result) {
-      return { ok: false, submissionId, label, reason: "Missing marking data", quotaExhausted: false };
+      return { ok: false, submissionId, label, reason: "Missing marking data" };
     }
 
     const integrityGate = getMarkingIntegrityPublishGate(result);
     if (integrityGate?.level === "block") {
-      return { ok: false, submissionId, label, reason: integrityGate.message, quotaExhausted: false };
+      return { ok: false, submissionId, label, reason: integrityGate.message };
     }
 
     try {
@@ -278,13 +316,13 @@ export async function runReturnAllQueue({
         fallbackTotal: total,
       });
 
-      const { data: returnResult } = await api.post("/submission-files/return-marked", fd, {
+      const { data: stageResult } = await api.post("/submission-files/return-marked/stage", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         timeout: 600000,
       });
 
-      // Returning attaches (or rewrites) a marked PDF on the submission, so the
-      // cached download is no longer necessarily what /pdf would hand back.
+      // Staging rewrites/uploads the marked PDF on Drive, so the cached
+      // download is no longer necessarily what /pdf would hand back.
       invalidateStudentPdf(assignmentId, storedSubmissionId || submissionId);
 
       return {
@@ -293,55 +331,40 @@ export async function runReturnAllQueue({
         // The key the caller's local state is under — NOT the live id, or a
         // paper whose submission moved never clears its "not returned" flag.
         storedSubmissionId: storedSubmissionId || submissionId,
+        label,
         source,
         bulk,
         batch,
-        returnedAt: new Date().toISOString(),
-        attachmentWarning: returnResult?.attachmentWarning || null,
-        quotaBackoffMs: returnResult?.quotaBackoffMs || 0,
+        itemId: stageResult?.itemId || null,
+        queuedAt: new Date().toISOString(),
       };
     } catch (err) {
-      console.error(`Return failed for ${label}:`, err);
-      const quotaExhausted = await isQuotaExhaustedError(err);
+      console.error(`Stage failed for ${label}:`, err);
       return {
         ok: false,
         submissionId,
         label,
-        reason: (await getApiErrorMessage(err)) || err?.message || "Return failed",
-        quotaExhausted,
+        reason: (await getApiErrorMessage(err)) || err?.message || "Failed to queue return",
+        classroomBlocked: await isClassroomBlockedError(err),
       };
     }
   };
 
-  const outcomes = [];
-  // Backend now fails a sustained quota block fast (~1 retry) instead of the
-  // ~17 minutes/student it used to take grinding through 5 full retries —
-  // but that alone still means N students × ~1 quota-shaped failure each.
-  // If several IN A ROW show real quota pressure, the account is blocked for
-  // more than a moment and burning through the rest of the class the exact
-  // same losing way would still turn a bad minute into a bad hour. Stop the
-  // whole run instead and say why, rather than silently working through
-  // every remaining paper.
-  const breaker = createQuotaCircuitBreaker();
-  let stopReason = null;
-
-  const feedBreaker = (isQuotaSignal) => {
-    if (breaker.record(isQuotaSignal)) {
-      stopReason =
-        "Stopped Return All: Google Classroom kept rejecting requests for this account " +
-        "(quota/rate limit) across several papers in a row. The remaining papers were not " +
-        "attempted — try again in a few minutes.";
-    }
-  };
+  const queued = [];
+  // Set the moment any concurrent worker discovers this classroom's
+  // coursework wasn't created by Sahahly — a permanent, assignment-wide
+  // condition, not a per-student problem. Every worker checks this and stops
+  // claiming new items, so the run fails fast on ~CONCURRENCY students
+  // instead of rediscovering the same wall on all 30.
+  let classroomBlockedReason = null;
 
   // A strictly one-at-a-time loop meant total wall time was N students ×
   // (per-student work + pace), even though each student's fetch/annotate
   // (client CPU) and network round trip don't actually depend on any other
   // student's. A few workers pulling from one shared queue lets that work
-  // genuinely overlap. The pacer and breaker above are shared across every
-  // worker (plain closures — safe with no locking, since JS never runs two
-  // of these workers' synchronous steps at once), so a quota signal from ANY
-  // worker slows or stops ALL of them, not just the one that hit it.
+  // genuinely overlap. The pacer above is shared across every worker (a
+  // plain closure — safe with no locking, since JS never runs two of these
+  // workers' synchronous steps at once).
   const CONCURRENCY = 3;
   const workItems = [
     ...bulkQueue.map(({ submissionId, storedSubmissionId, student, bulk }) => ({
@@ -368,28 +391,28 @@ export async function runReturnAllQueue({
 
   const worker = async () => {
     for (;;) {
-      if (breaker.tripped) return;
+      if (classroomBlockedReason) return;
       const item = nextItem();
       if (!item) return;
 
       const result = await returnOne(item);
       if (result.ok) {
-        successCount += 1;
-        outcomes.push(result);
-        pacer.recordOutcome({ backoffMs: result.quotaBackoffMs });
-        feedBreaker(result.quotaBackoffMs > 0);
+        queuedCount += 1;
+        queued.push(result);
+        pacer.recordOutcome({ failed: false });
       } else {
         failures.push({
           submissionId: result.submissionId,
           label: result.label,
           reason: result.reason,
-          quotaExhausted: result.quotaExhausted,
         });
+        if (result.classroomBlocked && !classroomBlockedReason) {
+          classroomBlockedReason = result.reason;
+        }
         pacer.recordOutcome({ failed: true });
-        feedBreaker(result.quotaExhausted);
       }
 
-      if (breaker.tripped) return;
+      if (classroomBlockedReason) return;
       await pacer.wait();
     }
   };
@@ -399,17 +422,23 @@ export async function runReturnAllQueue({
   );
 
   return {
-    successCount,
+    queuedCount,
     failures,
-    outcomes,
+    queued,
     total: workItems.length,
-    stoppedEarly: breaker.tripped,
-    stopReason,
+    classroomBlocked: Boolean(classroomBlockedReason),
+    classroomBlockedReason,
   };
 }
 
-export function countAttachmentWarnings(outcomes = []) {
-  return (outcomes || []).filter((row) => row?.attachmentWarning).length;
+/**
+ * Count entries carrying an attachmentWarning. Feed it the values of a
+ * `GET /submission-files/return-jobs/summary` response's `items` map now
+ * that attach results surface later from the background worker, not
+ * synchronously from Return All itself.
+ */
+export function countAttachmentWarnings(items = []) {
+  return (items || []).filter((row) => row?.attachmentWarning).length;
 }
 
 export function emptyReturnAllMessage(savedResults = {}) {
@@ -431,17 +460,22 @@ export function emptyReturnAllMessage(savedResults = {}) {
   return { type: "warn", text: "No graded papers to return" };
 }
 
-/** Human-readable summary when some Return All items fail. */
-export function formatReturnFailuresMessage(successCount, failures = []) {
+/**
+ * Human-readable summary right after Return All's staging pass — "queued",
+ * not "returned": the actual Classroom return happens later in the
+ * background, and these failures are staging failures (couldn't even get to
+ * Drive), not final ones.
+ */
+export function formatReturnFailuresMessage(queuedCount, failures = []) {
   if (!failures.length) {
-    return `Returned ${successCount} graded paper${successCount === 1 ? "" : "s"}`;
+    return `Queued ${queuedCount} graded paper${queuedCount === 1 ? "" : "s"} for return`;
   }
   const names = failures
     .slice(0, 4)
     .map((f) => f.label || f.submissionId || "Student")
     .join(", ");
   const extra = failures.length > 4 ? ` +${failures.length - 4} more` : "";
-  return `Returned ${successCount}. Failed: ${names}${extra}. ${failures[0]?.reason || ""}`.trim();
+  return `Queued ${queuedCount} for return. Failed to queue: ${names}${extra}. ${failures[0]?.reason || ""}`.trim();
 }
 
 /** Save summaries before return; failures are logged but do not block returns. */
@@ -491,11 +525,13 @@ export async function buildFreshReturnAllQueue({
 }) {
   let allStudents = [];
   let savedResults = localSavedResults;
+  let jobStatusBySubmissionId = {};
 
   try {
-    [allStudents, savedResults] = await Promise.all([
+    [allStudents, savedResults, jobStatusBySubmissionId] = await Promise.all([
       fetchAllPaginated(api, studentsMarkingUrl, {}, "students"),
       fetchSavedResultsMap(api, assignmentId),
+      fetchReturnJobsSummary(api, assignmentId).then((s) => s.items),
     ]);
     savedResults = await hydrateSavedResultsForReturn(
       api,
@@ -512,12 +548,14 @@ export async function buildFreshReturnAllQueue({
   return {
     allStudents,
     savedResults,
+    jobStatusBySubmissionId,
     queue: buildReturnAllQueue({
       bulkProgress,
       batchJob,
       savedResults,
       singleProgress: mergedSingle,
       allStudents,
+      jobStatusBySubmissionId,
     }),
   };
 }
