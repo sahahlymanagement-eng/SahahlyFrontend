@@ -61,6 +61,68 @@ function blankPoint() {
   return { code: "M1", text: "", marks: 1, alternatives: [], notes: "" };
 }
 
+function safeDownloadName(value) {
+  const name = String(value || "exam-index")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return name || "exam-index";
+}
+
+function indexAsText(exam) {
+  const pack = exam?.markingPack || {};
+  const lines = [
+    "SAHAHLY EXAM INDEX",
+    "",
+    `Title: ${exam?.title || "Untitled exam"}`,
+    `Exam ID: ${exam?.id || ""}`,
+    `Metadata: ${[exam?.board, exam?.subject, exam?.paperCode, exam?.year].filter(Boolean).join(" · ") || "Not specified"}`,
+    `Questions: ${exam?.questionCount ?? pack.questions?.length ?? 0}`,
+    `Total marks: ${exam?.totalMarks ?? "?"}`,
+    `Question-paper total: ${pack.questionPaperTotalMarks ?? "?"}`,
+    `Mark-scheme total: ${pack.markSchemeTotalMarks ?? "?"}`,
+    "",
+    "INDEXED QUESTIONS",
+    "",
+  ];
+
+  for (const [position, question] of (pack.questions || []).entries()) {
+    lines.push(`${position + 1}. ${question.label || "Unlabelled question"} — ${question.maxMarks ?? "?"} mark(s)`);
+    lines.push(`   Stem: ${question.stem || "No stem extracted"}`);
+    lines.push(`   QP pages: ${pagesToText(question.qpPages) || "?"}`);
+    lines.push(`   MS mapping: ${question.msLabel || "Unmatched"} | MS pages: ${pagesToText(question.msPages) || "?"}`);
+    lines.push(`   Type: ${question.questionType || "Not specified"}${question.isMcq ? ` | MCQ correct answer: ${question.correctMcqLetter || "?"}` : ""}${question.hasDiagram ? " | Contains diagram" : ""}`);
+    if (question.acceptableAnswers?.length) lines.push(`   Acceptable answers: ${question.acceptableAnswers.join("; ")}`);
+    if (question.markingNotes) lines.push(`   Examiner notes: ${question.markingNotes}`);
+    if (question.studyTopic) lines.push(`   Study topic: ${question.studyTopic}`);
+    if (question.markPoints?.length) {
+      lines.push("   Mark points:");
+      question.markPoints.forEach((point, index) => {
+        lines.push(`   ${index + 1}. ${point.code || "Mark point"} (${point.marks ?? "?"} mark(s)): ${point.text || "No text"}`);
+        if (point.alternatives?.length) lines.push(`      Alternatives: ${point.alternatives.join("; ")}`);
+        if (point.notes) lines.push(`      Notes: ${point.notes}`);
+      });
+    } else {
+      lines.push("   Mark points: None stored");
+    }
+    lines.push("");
+  }
+
+  if (pack.reviewIssues?.length) {
+    lines.push("INDEX REVIEW ISSUES");
+    pack.reviewIssues.forEach((issue) => lines.push(`- ${issue.label ? `${issue.label}: ` : ""}${issue.reason || String(issue)}`));
+    lines.push("");
+  }
+  if (pack.outOfScope?.length) {
+    lines.push("OUT-OF-SCOPE / CONFLICTING MARK-SCHEME ENTRIES");
+    pack.outOfScope.forEach((item) => lines.push(`- ${typeof item === "string" ? item : JSON.stringify(item)}`));
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 export default function ExamDetail({ examId, embedded = false }) {
   const toast = useToast();
   const [exam, setExam] = useState(null);
@@ -292,6 +354,20 @@ export default function ExamDetail({ examId, embedded = false }) {
     }
   }
 
+  function downloadIndex() {
+    if (!pack) return;
+    const blob = new Blob([indexAsText(exam)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeDownloadName(exam.title)}-index.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast({ kind: "ok", title: "Index downloaded", body: "Saved as a text file." });
+  }
+
   return (
     <div className="stack exam-detail" style={{ gap: 20 }}>
       <div className="page-head" style={{ marginBottom: 0 }}>
@@ -440,6 +516,10 @@ export default function ExamDetail({ examId, embedded = false }) {
         <button type="button" className="ghost" onClick={reindex} disabled={working}>
           <Icon name="refresh" size={15} />
           Re-index{expectedDirty ? " with list" : ""}
+        </button>
+        <button type="button" className="ghost" onClick={downloadIndex} disabled={!pack}>
+          <Icon name="download" size={15} />
+          Download index (.txt)
         </button>
         <button type="button" className="danger" onClick={remove}>
           <Icon name="trash" size={15} />
