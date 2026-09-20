@@ -10,13 +10,20 @@
  * (GET /submissions/publishable) so it covers the WHOLE assignment and not just
  * the page of rows currently on screen.
  *
- * Deliberately sequential: each item downloads a submission PDF, renders it and
- * uploads it again, and the partner's API is on the far end of every one. A
- * failure never stops the run — it is collected and reported at the end, the
- * same contract as Return All in the classroom viewer.
- *
  * Shared by the LoginCSS tab and every registry provider tab; the only
  * difference is `base` (/external-grading vs /grading/:slug).
+ *
+ * Two variants, same per-item rendering:
+ *  - runGradingPublishAll (below): posts to `${base}/upload`, which uploads
+ *    AND calls the partner's postMark API AND updates the local record, all
+ *    synchronously per item. Still used by GradingProviderPage.jsx for
+ *    LoginCSS's separate `/external-grading` route, which has no queue.
+ *  - queueGradingPublishAll (further down): posts to `${base}/upload/stage`
+ *    instead — uploads and enqueues a background job
+ *    (cron/partnerPublishJobWorkerCron.js), without waiting on the partner's
+ *    API — used for every registry provider (mariamgabalawy, drpeter, …) so a
+ *    large run survives closing the tab, the marks-publishing analog of
+ *    classroom's Return All rework.
  */
 
 import { annotatePdf } from "./annotatePdf";
@@ -210,6 +217,145 @@ export async function runGradingPublishAll({
   return { successCount, failures, publishedIds, stopped };
 }
 
+/**
+ * Queued counterpart of runGradingPublishAll above — same per-item work
+ * (fetch draft, integrity gate, resolve grade, render the annotated PDF
+ * client-side, since that rendering step is unavoidably browser-side, same
+ * as classroom's stage step), but POSTs to `${base}/upload/stage` instead of
+ * `${base}/upload`: that endpoint only uploads the PDF to R2 and enqueues a
+ * PartnerPublishJobItem (kind: 'marking_publish') — it does NOT call the
+ * partner's postMark API, so this resolves as soon as staging is done rather
+ * than waiting on the partner's API for every item. cron/partnerPublishJobWorkerCron.js
+ * does the actual publish in the background — this is what lets a large
+ * "Publish All" run survive closing the tab, the marks-publishing analog of
+ * classroom's Return All rework.
+ *
+ * @returns {Promise<{queuedCount:number, alreadyInFlightCount:number, failures:Array, stopped:boolean}>}
+ */
+export async function queueGradingPublishAll({
+  api,
+  base,
+  queue = [],
+  assignmentMaxPoints = null,
+  partnerSlug = null,
+  getStudentFile,
+  releaseStudentFile,
+  onProgress,
+  shouldStop,
+}) {
+  const failures = [];
+  let queuedCount = 0;
+  let alreadyInFlightCount = 0;
+  let stopped = false;
+  let nextIndex = 0;
+  let doneCount = 0;
+  const inFlight = new Map();
+  const teacherLogoBytes = await loadPartnerLogoBytes(api, partnerSlug);
+
+  const reportProgress = () => {
+    onProgress?.({
+      done: doneCount,
+      total: queue.length,
+      current: [...inFlight.values()].join(", ") || null,
+    });
+  };
+
+  async function stageOne(row) {
+    const submissionId = row.submissionId;
+    const label = row.name || `Submission #${submissionId}`;
+    inFlight.set(submissionId, label);
+    reportProgress();
+
+    try {
+      const { data } = await api.get(`${base}/submissions/${submissionId}/draft`, {
+        timeout: 60000,
+      });
+      const result = data?.draftResult;
+      if (!result) {
+        throw new Error("No saved marking result to publish");
+      }
+
+      const integrityGate = getMarkingIntegrityPublishGate(result);
+      if (integrityGate) {
+        throw new Error(
+          integrityGate.level === "block"
+            ? integrityGate.message
+            : `Skipped — ${integrityGate.title}. Open the paper, re-mark or finish questions, then publish singly.`
+        );
+      }
+
+      const questions = result.questions || [];
+      const totalMarks = resolveQueuedMarks(result, questions);
+      const maxTotalMarks = resolveDisplayMaxTotal({ assignmentMaxPoints, result });
+      const summary = getMarkingResultSummary(result, {});
+
+      const studentFile = await getStudentFile(submissionId);
+      const pdfBytes = await annotatePdf({
+        studentFile,
+        questions,
+        maxTotalMarks,
+        summary,
+        outOfScopeNotes: getOutOfScopeNotes(result),
+        teacherAnnotations: getTeacherAnnotations(result),
+        criteriaGrade: result.criteriaGrade,
+        markingMode: result.markingMode || "normal",
+        teacherLogoBytes,
+      });
+
+      const fd = new FormData();
+      fd.append(
+        "annotatedPdf",
+        new Blob([pdfBytes], { type: "application/pdf" }),
+        `feedback_${submissionId}.pdf`
+      );
+      fd.append("submissionId", submissionId);
+      fd.append("grade", totalMarks);
+      if (summary) fd.append("comments", summary);
+      if (row.submittedAt) fd.append("submissionDate", row.submittedAt);
+      if (row.name) fd.append("studentName", row.name);
+
+      const { data: stageResult } = await api.post(`${base}/upload/stage`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 60000,
+      });
+
+      if (stageResult?.queued) queuedCount += 1;
+      else alreadyInFlightCount += 1;
+    } catch (err) {
+      console.error(`Publish (stage) failed for ${label}:`, err);
+      failures.push({
+        submissionId,
+        label,
+        reason:
+          err?.response?.data?.message || err?.message || "Publish failed",
+      });
+    } finally {
+      releaseStudentFile?.(submissionId);
+      inFlight.delete(submissionId);
+      doneCount += 1;
+      reportProgress();
+    }
+  }
+
+  async function worker() {
+    for (;;) {
+      if (shouldStop?.()) {
+        stopped = true;
+        return;
+      }
+      const i = nextIndex;
+      if (i >= queue.length) return;
+      nextIndex = i + 1;
+      await stageOne(queue[i]);
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(PUBLISH_CONCURRENCY, queue.length));
+  await Promise.all(Array.from({ length: workerCount }, worker));
+
+  return { queuedCount, alreadyInFlightCount, failures, stopped };
+}
+
 /** Human-readable outcome for the toast at the end of a run. */
 export function formatPublishAllMessage(successCount, failures = [], stopped = false) {
   const head = `${stopped ? "Stopped — published" : "Published"} ${successCount} submission${
@@ -222,4 +368,19 @@ export function formatPublishAllMessage(successCount, failures = [], stopped = f
     .join(", ");
   const extra = failures.length > 4 ? ` +${failures.length - 4} more` : "";
   return `${head}. Failed: ${names}${extra}. ${failures[0]?.reason || ""}`.trim();
+}
+
+/** Human-readable outcome for the toast right after queueGradingPublishAll finishes staging. */
+export function formatQueuePublishAllMessage(queuedCount, failures = [], stopped = false, alreadyInFlightCount = 0) {
+  const head = `${stopped ? "Stopped — queued" : "Queued"} ${queuedCount} submission${
+    queuedCount === 1 ? "" : "s"
+  } for publish`;
+  const inFlightNote = alreadyInFlightCount ? ` (${alreadyInFlightCount} already in progress)` : "";
+  if (!failures.length) return `${head}${inFlightNote}`;
+  const names = failures
+    .slice(0, 4)
+    .map((f) => f.label || f.submissionId || "Submission")
+    .join(", ");
+  const extra = failures.length > 4 ? ` +${failures.length - 4} more` : "";
+  return `${head}${inFlightNote}. Failed: ${names}${extra}. ${failures[0]?.reason || ""}`.trim();
 }

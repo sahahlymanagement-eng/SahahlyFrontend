@@ -100,9 +100,10 @@ import {
 } from "../../utils/markingStudentSelection";
 import {
   fetchPublishQueue,
-  runGradingPublishAll,
-  formatPublishAllMessage,
+  queueGradingPublishAll,
+  formatQueuePublishAllMessage,
 } from "../../utils/gradingPublishAll";
+import { pollPartnerPublishJobsUntilSettled } from "../../utils/partnerPublishJobsPoll";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
@@ -2284,7 +2285,12 @@ toast.success("Result cleared — you can mark again");
 
     setPublishAll({ done: 0, total: queued.length, current: null, loading: false });
 
-    const { successCount, failures, publishedIds, stopped } = await runGradingPublishAll({
+    // Stages every item (render + upload to R2) and enqueues a background
+    // publish job per submission — it does NOT wait for the partner's
+    // postMark API, so this resolves once staging is done, not once every
+    // submission is actually published. cron/partnerPublishJobWorkerCron.js
+    // finishes the rest even if this tab closes right after.
+    const { queuedCount, alreadyInFlightCount, failures, stopped } = await queueGradingPublishAll({
       api,
       base: BASE,
       partnerSlug: slug,
@@ -2308,36 +2314,23 @@ toast.success("Result cleared — you can mark again");
 
     setPublishAll(null);
     publishStopRef.current = false;
+    markingSelection.clear();
 
-    // Reflect the published rows immediately; loadAll then refreshes counts.
-    const gradeById = new Map(publishedIds.map((p) => [p.submissionId, p.totalMarks]));
-    if (gradeById.size) {
-      setSubmissions((prev) =>
-        prev.map((s) =>
-          gradeById.has(s.submissionId)
-            ? {
-                ...s,
-                localStatus: PUBLISHED,
-                localGrade: gradeById.get(s.submissionId),
-                hasFeedbackPdf: true,
-                hasDraft: false,
-              }
-            : s
-        )
-      );
-      setResults((prev) => {
-        const next = { ...prev };
-        for (const id of gradeById.keys()) delete next[id];
-        return next;
-      });
-      markingSelection.clear();
-    }
-
-    const message = formatPublishAllMessage(successCount, failures, stopped);
+    const message = formatQueuePublishAllMessage(queuedCount, failures, stopped, alreadyInFlightCount);
     if (failures.length) toast.warn(message);
     else toast.success(message);
 
-    loadAll();
+    // Nothing is actually published yet — these submissions stay "marked,
+    // unpublished" on screen until the background queue actually finishes
+    // them, so there's nothing for an immediate refresh to show. Poll until
+    // this assignment's queue settles, then refresh once for real (safe to
+    // navigate away in the meantime — the cron finishes regardless, see
+    // pollPartnerPublishJobsUntilSettled's own doc comment).
+    if (queuedCount > 0) {
+      pollPartnerPublishJobsUntilSettled({
+        params: { provider: slug, kind: "marking_publish", assignmentId: selectedAssignment.id },
+      }).then(() => loadAll());
+    }
   };
 
   // ── PDF row actions (student submission + mark scheme) ──
@@ -3644,7 +3637,7 @@ toast.success("Result cleared — you can mark again");
                           <span className="pm-spinner" />{" "}
                           {publishAll.loading
                             ? "Loading queue…"
-                            : `Publishing ${publishAll.done}/${publishAll.total}…`}
+                            : `Queuing ${publishAll.done}/${publishAll.total}…`}
                         </>
                       ) : (
                         <>
@@ -3687,7 +3680,7 @@ toast.success("Result cleared — you can mark again");
                   >
                     <span className="pm-spinner" style={{ width: 12, height: 12 }} />
                     <span>
-                      Publishing to {label} — {publishAll.done} of {publishAll.total} done
+                      Queuing for {label} — {publishAll.done} of {publishAll.total} staged
                       {publishAll.current ? ` · ${publishAll.current}` : ""}
                     </span>
                   </div>

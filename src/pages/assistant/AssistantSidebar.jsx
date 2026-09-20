@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { icon: <FiBookOpen />, label: "Course Management", path: "/assistant/courses" },
   { icon: <FiCpu />, label: "Automation", path: "/assistant/automation" },
   { icon: <FiClock />, label: "Return Job Queue", path: "/assistant/return-job-queue" },
+  { icon: <FiUploadCloud />, label: "Partner Publish Queue", path: "/assistant/partner-publish-jobs" },
   { icon: <FiSend />, label: "Reports", path: "/assistant/reports" },
   { icon: <FiMessageCircle />, label: "Chatbot", path: "/assistant/chatbot" },
   { icon: <FiBarChart2 />, label: "Performance", path: "/assistant/performance" },

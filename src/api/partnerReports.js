@@ -60,7 +60,13 @@ export const previewPartnerAssignmentReports = (slug, payload) =>
 export const sendPartnerAssignmentReports = (slug, payload) =>
   api.post(`${BASE}/${slug}/assignment-reports/send`, payload).then((r) => r.data);
 
-/** IGSpaces-connected partners only — publishes text reports through IGSpaces instead of WhatsApp. */
+/**
+ * IGSpaces-connected partners only — enqueues text reports to be published
+ * through IGSpaces instead of WhatsApp. Runs in the background
+ * (cron/partnerPublishJobWorkerCron.js); returns `{queued, alreadyInFlight}`
+ * immediately, not the final send outcome — poll getPartnerPublishJobs for
+ * progress.
+ */
 export const publishPartnerAssignmentReportsToIgspaces = (slug, payload) =>
   api.post(`${BASE}/${slug}/assignment-reports/publish-igspaces`, payload).then((r) => r.data);
 
@@ -94,9 +100,27 @@ export const downloadPartnerMonthlyPdf = (slug, params) =>
 export const sendPartnerMonthlyReports = (slug, payload) =>
   api.post(`${BASE}/${slug}/monthly/send`, payload).then((r) => r.data);
 
-/** IGSpaces-connected partners only — publishes the PDF (via R2) through IGSpaces instead of WhatsApp. */
+/**
+ * IGSpaces-connected partners only — enqueues the PDF (via R2) to be
+ * published through IGSpaces instead of WhatsApp. Backgrounded the same way
+ * as publishPartnerAssignmentReportsToIgspaces above.
+ */
 export const publishPartnerMonthlyReportsToIgspaces = (slug, payload) =>
   api.post(`${BASE}/${slug}/monthly/publish-igspaces`, payload).then((r) => r.data);
+
+// ── Partner publish job queue (background worker for both report kinds above
+// and "Publish All" marks/annotated-PDF publishing, src/utils/gradingPublishAll.js) ──
+
+/**
+ * @param {object} [params] optional scope filters: provider, kind,
+ *   assignmentId, year, month — omit all for the cross-provider monitor tab.
+ */
+export const getPartnerPublishJobs = (params = {}) =>
+  api.get("/partner-publish-jobs", { params }).then((r) => r.data);
+
+/** Director-only — clears a permanently-failed IGSpaces report delivery so the next publish retries it. */
+export const unblockPartnerPublishDelivery = (deliveryId) =>
+  api.post(`/partner-publish-jobs/${deliveryId}/unblock`).then((r) => r.data);
 
 // ── 4. Teacher executive analysis → group / phone ──────────────────────────
 
