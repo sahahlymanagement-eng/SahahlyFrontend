@@ -44,7 +44,7 @@ export function isBackfilledStub(q) {
     return true;
   }
 
-  return /not detected during automated marking|not (graded|marked) in this (automated )?run|marking failed/i.test(
+  return /not detected during automated marking|not (graded|marked) in this (automated )?run|not present in (the )?submitted (script|pdf|paper)|marking failed/i.test(
     `${q.studentAnswer || ""} ${q.reason || ""} ${q._staffNote || ""}`
   );
 }

@@ -252,6 +252,12 @@ export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
     (typeof isBackfilledStub === "function" && isBackfilledStub(q));
   if (isStub) return false;
   const pageOk = Number(q.pageNumber) >= 1;
+  // A blank answer frequently has no reliable physical anchor, and older
+  // marking responses use page 1 as the neutral fallback. Do not turn that
+  // fallback into a stack of red 0-mark badges on the first student page.
+  // The unanswered item remains in the report; a genuine blank with a known
+  // later-page location can still be annotated beside its question.
+  if (isBlankQuestion(q) && Number(q.pageNumber) === 1) return false;
   if (isBlankQuestion(q) && !pageOk) return false;
   return true;
 }

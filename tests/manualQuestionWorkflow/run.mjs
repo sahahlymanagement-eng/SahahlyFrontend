@@ -113,6 +113,19 @@ test("unscanned questions are report-only, while scanned blank answers remain pl
   assert.strictEqual(isPlaceableScriptQuestion(scannedBlank, { isBackfilledStub }), true);
 });
 
+test("REGRESSION: unanswered rows never use page 1 as an annotation fallback", () => {
+  const blankOnFirstPage = {
+    questionNumber: "1(a)",
+    marksAwarded: 0,
+    maxMarks: 2,
+    pageNumber: 1,
+    questionPresent: true,
+    checklist: { answerIsBlank: true },
+  };
+
+  assert.strictEqual(isPlaceableScriptQuestion(blankOnFirstPage, { isBackfilledStub }), false);
+});
+
 test("REGRESSION: a scored row is not hidden by a contradictory not-present flag", () => {
   const assessed = {
     questionNumber: "4(a)",
@@ -126,6 +139,20 @@ test("REGRESSION: a scored row is not hidden by a contradictory not-present flag
 
   assert.strictEqual(isBackfilledStub(assessed), false);
   assert.strictEqual(isPlaceableScriptQuestion(assessed, { isBackfilledStub }), true);
+});
+
+test("REGRESSION: legacy rows explicitly absent from the script stay summary-only", () => {
+  const absent = {
+    questionNumber: "13(a)(ii)",
+    marksAwarded: 0,
+    maxMarks: 1,
+    // Older results used a page-one fallback instead of questionPresent:false.
+    pageNumber: 1,
+    reason: "Awarded 0/1 marks. Not present in the submitted script.",
+  };
+
+  assert.strictEqual(isBackfilledStub(absent), true);
+  assert.strictEqual(isPlaceableScriptQuestion(absent, { isBackfilledStub }), false);
 });
 
 /** What the Add-question form hands to createManualQuestion. */
