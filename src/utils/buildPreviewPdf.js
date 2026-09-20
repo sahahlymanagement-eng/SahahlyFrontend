@@ -1,5 +1,6 @@
 // Keep expensive pdf-lib parsing/layout/serialization off the UI thread.
 // Identity-based file keys prevent a replacement upload reusing an old preview.
+import { prepareStudentFileForAnnotation } from "./annotatePdf";
 const identities = new WeakMap();
 let nextIdentity = 0;
 const cache = new Map();
@@ -21,6 +22,10 @@ export async function buildPreviewPdf(options, { signal } = {}) {
     cache.set(key, bytes);
     return bytes;
   }
+  // The preview is built in a worker. PDF.js can safely render tablet exports
+  // in the page context, then the worker only receives a conventional PDF.
+  const preparedStudentFile = await prepareStudentFileForAnnotation(options.studentFile);
+  const workerOptions = { ...options, studentFile: preparedStudentFile };
   const bytes = await new Promise((resolve, reject) => {
     let worker;
     let timer;
@@ -58,7 +63,7 @@ export async function buildPreviewPdf(options, { signal } = {}) {
         data.bytes.reportPageCount = data.reportPageCount;
         finish(null, data.bytes);
       };
-      worker.postMessage(options);
+      worker.postMessage(workerOptions);
     } catch (error) {
       finish(error);
     }

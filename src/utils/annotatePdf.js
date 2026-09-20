@@ -1818,7 +1818,54 @@ function drawTeacherAnnotationsInColumn(page, layout, notes, bold, reg) {
   }
 }
 
-export async function annotatePdf({
+// This byte-level check keeps the normal export path fast. It deliberately
+// does not try to fully parse the encryption dictionary; any PDF containing
+// an /Encrypt entry gets the safe visual rebuild instead.
+function hasPdfEncryptionEntry(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const needle = [47, 69, 110, 99, 114, 121, 112, 116]; // /Encrypt
+  for (let i = 0; i <= bytes.length - needle.length; i += 1) {
+    let matches = true;
+    for (let j = 0; j < needle.length; j += 1) {
+      if (bytes[i + j] !== needle[j]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+  return false;
+}
+
+/**
+ * Rebuild only encrypted/tablet-export PDFs before they enter the annotation
+ * writer. A Blob has the same arrayBuffer() contract as a File, so callers do
+ * not need to know whether a fallback was used.
+ */
+export async function prepareStudentFileForAnnotation(studentFile) {
+  const sourceBytes = await studentFile.arrayBuffer();
+  if (!hasPdfEncryptionEntry(sourceBytes)) return studentFile;
+
+  try {
+    const { flattenPdfForAnnotation } = await import("./flattenPdfForAnnotation");
+    const flatDocument = await flattenPdfForAnnotation(sourceBytes);
+    const flatBytes = await flatDocument.save({ useObjectStreams: false });
+    console.info("[annotatePdf] Rebuilt encrypted source PDF before annotating");
+    return new Blob([flatBytes], { type: "application/pdf" });
+  } catch (err) {
+    // Keep the existing path as a last-resort fallback. A rendering failure
+    // must never prevent an otherwise markable submission from being graded.
+    console.warn("[annotatePdf] Could not rebuild encrypted source PDF", err);
+    return studentFile;
+  }
+}
+
+export async function annotatePdf(options) {
+  const studentFile = await prepareStudentFileForAnnotation(options.studentFile);
+  return annotatePdfCore({ ...options, studentFile });
+}
+
+export async function annotatePdfCore({
   studentFile,
   questions,
   maxTotalMarks,
