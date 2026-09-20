@@ -258,6 +258,7 @@ export default function DirectorChatbot() {
   const [loading, setLoading] = useState(false);
   const [lastMatched, setLastMatched] = useState(null);
   const [briefing, setBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
   const [actionProposal, setActionProposal] = useState(null);
   const [editPreview, setEditPreview] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
@@ -281,8 +282,13 @@ export default function DirectorChatbot() {
         api
           .get("/director-chatbot/briefing", { params: { personId: parsed.id } })
           .then((res) => setBriefing(res.data))
-          .catch(() => setBriefing(null));
+          .catch(() => setBriefing(null))
+          .finally(() => setBriefingLoading(false));
+      } else {
+        setBriefingLoading(false);
       }
+    } else {
+      setBriefingLoading(false);
     }
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -1014,7 +1020,7 @@ export default function DirectorChatbot() {
       <TeacherPageHeader
         eyebrow="AI Assistant"
         title="AI Agent"
-        subtitle="Ask questions or instruct me to do anything in your director account — indexing mark with student pickers, parent reports, students needing help, people, managers, and more. Powered by Gemini."
+        subtitle="Ask questions or instruct me to do anything in your director account — indexing marking, parent reports, people, and managers."
         actions={
           messages.length > 0 ? (
             <button type="button" className="tch-btn tch-btn--ghost" onClick={newChat}>
@@ -1025,19 +1031,34 @@ export default function DirectorChatbot() {
       />
 
       <div className="tchat-shell">
+        <div className="tchat-shell-header">
+          <div className="tchat-shell-header-left">
+            <span className="tchat-shell-dot" />
+            Sahahly Director Assistant
+          </div>
+          <span className="tchat-shell-badge">AI Agent</span>
+        </div>
         <div className="tchat-scroll" ref={scrollRef}>
           {messages.length === 0 ? (
             <div className="tchat-empty">
-              <div className="tchat-empty-icon">
-                <FiCpu size={26} />
+              <div className="tchat-empty-header">
+                <div className="tchat-empty-icon">
+                  <FiCpu size={18} />
+                </div>
+                <h3>What would you like to know or do?</h3>
               </div>
-              <h3>What would you like to know or do?</h3>
               <p>
                 Natural language works for everything — assign assistants, send reports,
                 run automation, push grades, and more. I always show a confirm step before
-                executing. Click the <FiMic size={12} /> mic to speak a command instead of typing.
+                executing.
               </p>
-              {briefing?.lines?.length ? (
+              {briefingLoading ? (
+                <div className="tchat-briefing-card tchat-briefing-card--skeleton">
+                  <div className="tchat-skeleton-line tchat-skeleton-line--title" />
+                  <div className="tchat-skeleton-line" />
+                  <div className="tchat-skeleton-line" />
+                </div>
+              ) : briefing?.lines?.length ? (
                 <div className="tchat-briefing-card">
                   <div className="tchat-briefing-card-title">
                     {briefing.greeting || "Today's briefing"}
@@ -1317,45 +1338,48 @@ export default function DirectorChatbot() {
             send();
           }}
         >
-          <button
-            type="button"
-            className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
-            onClick={voice.toggle}
-            disabled={loading || executing || voice.transcribing}
-            aria-label={voice.recording ? "Stop recording" : "Speak a command"}
-            title={voice.recording ? "Stop recording" : "Speak a command"}
-          >
-            {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
-          </button>
-          <textarea
-            ref={inputRef}
-            className="tchat-input"
-            placeholder={
-              voice.recording
-                ? "Listening… click the mic to stop"
-                : voice.transcribing
-                ? "Transcribing your voice command…"
-                : 'Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
-            }
-            value={input}
-            rows={1}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
+          <div className="tchat-inputbar-row">
+            <button
+              type="button"
+              className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
+              onClick={voice.toggle}
+              disabled={loading || executing || voice.transcribing}
+              aria-label={voice.recording ? "Stop recording" : "Speak a command"}
+              title={voice.recording ? "Stop recording" : "Speak a command"}
+            >
+              {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
+            </button>
+            <textarea
+              ref={inputRef}
+              className="tchat-input"
+              placeholder={
+                voice.recording
+                  ? "Listening… click the mic to stop"
+                  : voice.transcribing
+                  ? "Transcribing your voice command…"
+                  : 'Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
               }
-            }}
-            disabled={loading || executing || voice.recording || voice.transcribing}
-          />
-          <button
-            type="submit"
-            className="tchat-send"
-            disabled={loading || executing || !input.trim()}
-            aria-label="Send message"
-          >
-            <FiSend size={16} />
-          </button>
+              value={input}
+              rows={1}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              disabled={loading || executing || voice.recording || voice.transcribing}
+            />
+            <button
+              type="submit"
+              className="tchat-send"
+              disabled={loading || executing || !input.trim()}
+              aria-label="Send message"
+            >
+              <FiSend size={16} />
+            </button>
+          </div>
+          <div className="tchat-hint">Enter to send · Shift+Enter for a new line · 🎤 to speak a command</div>
         </form>
       </div>
     </div>

@@ -134,6 +134,7 @@ export default function TeacherChatbot() {
   const [loading, setLoading] = useState(false);
   const [lastMatched, setLastMatched] = useState(null);
   const [briefing, setBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
   const [actionProposal, setActionProposal] = useState(null);
   const [editPreview, setEditPreview] = useState(null);
   const [executing, setExecuting] = useState(false);
@@ -156,8 +157,13 @@ export default function TeacherChatbot() {
         api
           .get("/teacher-chatbot/briefing", { params: { personId: parsed.id } })
           .then((res) => setBriefing(res.data))
-          .catch(() => setBriefing(null));
+          .catch(() => setBriefing(null))
+          .finally(() => setBriefingLoading(false));
+      } else {
+        setBriefingLoading(false);
       }
+    } else {
+      setBriefingLoading(false);
     }
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -628,19 +634,33 @@ export default function TeacherChatbot() {
       />
 
       <div className="tchat-shell">
+        <div className="tchat-shell-header">
+          <div className="tchat-shell-header-left">
+            <span className="tchat-shell-dot" />
+            Sahahly Teacher Assistant
+          </div>
+          <span className="tchat-shell-badge">AI Agent</span>
+        </div>
         <div className="tchat-scroll" ref={scrollRef}>
           {messages.length === 0 ? (
             <div className="tchat-empty">
-              <div className="tchat-empty-icon">
-                <FiCpu size={26} />
+              <div className="tchat-empty-header">
+                <div className="tchat-empty-icon">
+                  <FiCpu size={18} />
+                </div>
+                <h3>What would you like to know or do?</h3>
               </div>
-              <h3>What would you like to know or do?</h3>
               <p>
                 Ask about your classes, or tell me to send a report, export grades,
                 or create an assignment. I&apos;ll show a preview before anything is sent.
-                Click the <FiMic size={12} /> mic to speak a command instead of typing.
               </p>
-              {briefing?.lines?.length ? (
+              {briefingLoading ? (
+                <div className="tchat-briefing-card tchat-briefing-card--skeleton">
+                  <div className="tchat-skeleton-line tchat-skeleton-line--title" />
+                  <div className="tchat-skeleton-line" />
+                  <div className="tchat-skeleton-line" />
+                </div>
+              ) : briefing?.lines?.length ? (
                 <div className="tchat-briefing-card">
                   <div className="tchat-briefing-card-title">
                     {briefing.greeting || "Today's briefing"}
@@ -882,45 +902,48 @@ export default function TeacherChatbot() {
             send();
           }}
         >
-          <button
-            type="button"
-            className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
-            onClick={voice.toggle}
-            disabled={loading || executing || voice.transcribing}
-            aria-label={voice.recording ? "Stop recording" : "Speak a command"}
-            title={voice.recording ? "Stop recording" : "Speak a command"}
-          >
-            {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
-          </button>
-          <textarea
-            ref={inputRef}
-            className="tchat-input"
-            placeholder={
-              voice.recording
-                ? "Listening… click the mic to stop"
-                : voice.transcribing
-                ? "Transcribing your voice command…"
-                : 'Ask or instruct — e.g. "Send Sara\'s report for Quiz 2 in Grade 10"'
-            }
-            value={input}
-            rows={1}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
+          <div className="tchat-inputbar-row">
+            <button
+              type="button"
+              className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
+              onClick={voice.toggle}
+              disabled={loading || executing || voice.transcribing}
+              aria-label={voice.recording ? "Stop recording" : "Speak a command"}
+              title={voice.recording ? "Stop recording" : "Speak a command"}
+            >
+              {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
+            </button>
+            <textarea
+              ref={inputRef}
+              className="tchat-input"
+              placeholder={
+                voice.recording
+                  ? "Listening… click the mic to stop"
+                  : voice.transcribing
+                  ? "Transcribing your voice command…"
+                  : 'Ask or instruct — e.g. "Send Sara\'s report for Quiz 2 in Grade 10"'
               }
-            }}
-            disabled={loading || executing || voice.recording || voice.transcribing}
-          />
-          <button
-            type="submit"
-            className="tchat-send"
-            disabled={loading || executing || !input.trim()}
-            aria-label="Send message"
-          >
-            <FiSend size={16} />
-          </button>
+              value={input}
+              rows={1}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              disabled={loading || executing || voice.recording || voice.transcribing}
+            />
+            <button
+              type="submit"
+              className="tchat-send"
+              disabled={loading || executing || !input.trim()}
+              aria-label="Send message"
+            >
+              <FiSend size={16} />
+            </button>
+          </div>
+          <div className="tchat-hint">Enter to send · Shift+Enter for a new line · 🎤 to speak a command</div>
         </form>
       </div>
     </div>

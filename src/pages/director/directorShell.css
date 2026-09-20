@@ -47,6 +47,13 @@
   overflow: hidden;
 }
 
+/* AI Agent — matches the manager/teacher chat page exactly: it ships its own
+   padding (see TeacherChatbot.css), so drop director-page-inner's own inset
+   here instead of stacking a second layer of padding around it. */
+.director-page-inner:has(> .tchat-page) {
+  padding: 0;
+}
+
 @media (max-width: 768px) {
   .director-page-inner {
     padding: 16px 14px 32px;
