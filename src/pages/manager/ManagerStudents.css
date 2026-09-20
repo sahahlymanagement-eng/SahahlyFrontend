@@ -697,6 +697,11 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
 }
 /* ─── Tablet + phone: card-mode adjustments (≤1024px, matches ui-polish) ─── */
 @media (max-width: 1024px) {
+  .ms-table.sah-table--cards {
+    min-width: 0;
+    width: 100%;
+  }
+
   /* .ms-row--editing tints the <td>s with !important, which paints over the
      card. Move the editing state onto the card and clear the cell tint. */
   .ms-table.sah-table--cards tbody tr.ms-row--editing {

@@ -14,6 +14,13 @@
 export function isBackfilledStub(q) {
   if (!q) return false;
 
+  // Some marking routes return every mark-scheme row directly rather than
+  // injecting a `_backfilled` placeholder.  `questionPresent: false` (and its
+  // legacy `notOnScript` equivalent) has the same meaning: this question was
+  // not seen anywhere in the submitted scan.  Treat it as report-only so its
+  // neutral page-1 fallback never becomes a pile of unrelated annotations.
+  if (q.questionPresent === false || q.notOnScript === true) return true;
+
   // Authoritative — injected by mark-scheme backfill.
   if (q._backfilled === true) return true;
   if (q._incompleteMarking === true) return true;

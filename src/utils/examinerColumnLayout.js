@@ -58,6 +58,8 @@ function estimatedListLines(arr) {
   return arr.reduce((sum, text) => sum + estimatedTextLines(text), 0);
 }
 
+import { annotationMarkPointLabel } from "./annotationMarkPointLabel";
+
 /** Same field priority as annotatePdf.js's markPointDetail(). */
 function markPointDetailText(p) {
   return String(p?.evidence || p?.description || p?.criterion || p?.label || p?.text || "").trim();
@@ -113,8 +115,16 @@ export function estimateNoteBoxHeightPercent(q, pageHeight = 842) {
       if (!detail) {
         detail = p?.awarded === true ? markedKeywords[markIdx++] || "" : missingKeywords[missIdx++] || "not met";
       }
-      const code = String(p?.code || "").trim();
-      const text = [code, detail].filter(Boolean).join(": ");
+      const code = annotationMarkPointLabel(p);
+      if (
+        !detail ||
+        detail === code ||
+        detail === String(p?.code || "").trim() ||
+        /^[A-Za-z0-9._()-]+-mp\d+$/i.test(detail)
+      ) {
+        detail = "";
+      }
+      const text = detail ? `${code}: ${detail}` : code;
       return sum + estimatedTextLines(text);
     }, 0);
   } else if (markedKeywords.length || missingKeywords.length) {

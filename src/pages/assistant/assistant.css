@@ -965,6 +965,22 @@
   }
 }
 
+@media (max-width: 640px) {
+  .ast-page {
+    padding: 14px 12px 28px;
+  }
+
+  .ast-page-title,
+  .ast-hero h1 {
+    font-size: 1.45rem;
+  }
+
+  .ast-card,
+  .ast-panel {
+    padding: 14px;
+  }
+}
+
 /* ─── Off-canvas drawer navigation (tablets + phones, ≤1024px) ─── */
 @media (max-width: 1024px) {
   /* Stack the mobile top bar above the content; the sidebar + backdrop are

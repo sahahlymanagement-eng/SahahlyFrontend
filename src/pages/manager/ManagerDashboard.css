@@ -919,7 +919,7 @@
 }
 
 @media (max-width: 768px) {
-  .md-table       { min-width: 900px; }
+  .md-table:not(.sah-table--cards) { min-width: 900px; }
 }
 
 /* ─── Tablet + phone: card-mode adjustments (≤1024px, matches ui-polish) ─── */

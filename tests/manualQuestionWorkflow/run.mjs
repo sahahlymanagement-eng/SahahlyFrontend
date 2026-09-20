@@ -57,6 +57,8 @@ const bundle = path.join(here, "_bundle.generated.mjs");
 fs.writeFileSync(entry, [
   `export { createManualQuestion, sanitizeQuestionForStudentPdf } from ${JSON.stringify(path.join(root, "src/utils/markingFormData.js"))};`,
   `export { annotatePdf } from ${JSON.stringify(path.join(root, "src/utils/annotatePdf.js"))};`,
+  `export { isPlaceableScriptQuestion } from ${JSON.stringify(path.join(root, "src/utils/blankQuestionFeedback.js"))};`,
+  `export { isBackfilledStub } from ${JSON.stringify(path.join(root, "src/utils/backfilledStub.js"))};`,
   `export { PDFDocument, StandardFonts } from "pdf-lib";`,
 ].join("\n"));
 
@@ -84,9 +86,32 @@ const {
   createManualQuestion,
   sanitizeQuestionForStudentPdf,
   annotatePdf,
+  isPlaceableScriptQuestion,
+  isBackfilledStub,
   PDFDocument,
   StandardFonts,
 } = await import("file://" + bundle.replace(/\\/g, "/"));
+
+test("unscanned questions are report-only, while scanned blank answers remain placeable", () => {
+  const unscanned = {
+    questionNumber: "9",
+    marksAwarded: 0,
+    maxMarks: 3,
+    pageNumber: 1,
+    questionPresent: false,
+    checklist: { answerIsBlank: true },
+  };
+  const scannedBlank = {
+    ...unscanned,
+    questionNumber: "10",
+    questionPresent: true,
+    pageNumber: 2,
+  };
+
+  assert.strictEqual(isBackfilledStub(unscanned), true);
+  assert.strictEqual(isPlaceableScriptQuestion(unscanned, { isBackfilledStub }), false);
+  assert.strictEqual(isPlaceableScriptQuestion(scannedBlank, { isBackfilledStub }), true);
+});
 
 /** What the Add-question form hands to createManualQuestion. */
 const typedByTeacher = {

@@ -35,6 +35,7 @@ import {
   examinerColumnWidthPt,
   noteBoxHeightPt,
 } from "./examinerColumnLayout";
+import { annotationMarkPointLabel } from "./annotationMarkPointLabel";
 
 let sahahlyLogoBytesPromise = null;
 
@@ -135,9 +136,18 @@ function markPointSummaries(q) {
   const blank = isBlankQuestion(q);
   let rows = enriched
     .map((p) => {
-      const code = String(p.code || "").trim();
-      const detail = String(p._detail || "").trim();
-      const text = [code, detail].filter(Boolean).join(": ");
+      const code = annotationMarkPointLabel(p);
+      let detail = String(p._detail || "").trim();
+      // markedKeywords often hold award ids (7b-mp1) — never print those as prose.
+      if (
+        !detail ||
+        detail === code ||
+        detail === String(p.code || "").trim() ||
+        /^[A-Za-z0-9._()-]+-mp\d+$/i.test(detail)
+      ) {
+        detail = "";
+      }
+      const text = detail ? `${code}: ${detail}` : code;
       return {
         awarded: p.awarded === true,
         text,

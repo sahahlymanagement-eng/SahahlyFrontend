@@ -26,7 +26,14 @@
 .dpi-workspace .dpi-modal-header { flex:0 0 auto; margin-bottom:10px; }
 .dpi-workspace > .dpi-actions { flex-shrink:0; padding-bottom:12px; }
 .dpi-workspace iframe { flex:1; width:100%; min-height:0; border:0; background:white; border-radius:8px; }
-@media(max-width:700px) { .dpi-overlay{padding:4px}.dpi-workspace{padding:10px;width:100vw;height:98vh}.dpi-actions>button:last-child{margin-left:0} }
+@media(max-width:700px) {
+  .dpi-overlay{padding:4px}
+  /* 100% not 100vw — 100vw includes the scrollbar gutter and can force page-level sideways scroll. */
+  .dpi-workspace{padding:10px;width:100%;max-width:100%;height:98vh;height:98dvh;box-sizing:border-box}
+  .dpi-actions>button:last-child{margin-left:0}
+  .dpi-model{width:100%}
+  .dpi-model select{width:100%;min-width:0}
+}
 
 .dpi-dialog .exam-setup-fields { border:0; padding:0; margin:0; min-width:0; }
 .dpi-dialog .exam-setup-fields .muted { color:var(--text-secondary,#657084); font-weight:normal; }
@@ -54,4 +61,52 @@
 .dpi-dialog .expected-q-remove { width:28px; height:28px; line-height:1; padding:0; font-size:18px; }
 .dpi-dialog .expected-q-add { padding:6px 10px; font-weight:600; }
 .dpi-dialog .expected-q-table-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.dpi-import-dialog { width:min(720px,96vw); }
+.dpi-import-field { display:block; margin:14px 0; font-size:14px; font-weight:600; }
+.dpi-import-field select,
+.dpi-import-field input {
+  display:block;
+  box-sizing:border-box;
+  width:100%;
+  margin-top:8px;
+  padding:9px 10px;
+  border:1px solid var(--border,#ccd1db);
+  border-radius:8px;
+  background:var(--surface,#fff);
+  color:inherit;
+  font:inherit;
+  font-weight:400;
+}
+.dpi-import-list {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height:min(42vh,360px);
+  overflow:auto;
+  margin:12px 0 16px;
+  padding:4px;
+  border:1px solid var(--border,#e4e7ee);
+  border-radius:10px;
+  background:var(--surface-2,#f5f6f9);
+}
+.dpi-import-option {
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  margin:0;
+  padding:10px 12px;
+  border:1px solid transparent;
+  border-radius:8px;
+  background:var(--surface,#fff);
+  cursor:pointer;
+  font-weight:400;
+}
+.dpi-import-option--on {
+  border-color:color-mix(in srgb, var(--primary,#1e4d7b) 45%, var(--border,#ccd1db));
+  background:color-mix(in srgb, var(--primary,#1e4d7b) 8%, var(--surface,#fff));
+}
+.dpi-import-option input { margin-top:3px; flex:0 0 auto; }
+.dpi-import-option span { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.dpi-import-option strong { font-size:13.5px; line-height:1.35; }
+.dpi-import-option em { font-style:normal; font-size:12px; color:var(--text-secondary,#657084); }
 @media(max-width:700px) { .dpi-dialog .exam-setup-fields .drops,.dpi-dialog .exam-setup-fields .expected-labels,.dpi-dialog .exam-setup-fields .row-4 { grid-template-columns:1fr; } }
