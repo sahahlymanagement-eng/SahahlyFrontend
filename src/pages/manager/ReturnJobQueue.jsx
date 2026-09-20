@@ -111,8 +111,9 @@ function ItemRow({ item, now }) {
         {item.status === "queued" && <span className="ma-muted">Queued {relativeTimeText(item.createdAt, now)}</span>}
         {item.status === "running" && <span className="ma-muted">Started {relativeTimeText(item.startedAt || item.createdAt, now)}</span>}
         {(item.status === "done" || item.status === "failed") && (
-          <span className="ma-muted" title={finishedDuration ? `Took ${finishedDuration} to process` : undefined}>
+          <span className="ma-muted">
             {item.status === "done" ? "Returned" : "Failed"} {relativeTimeText(item.finishedAt, now)}
+            {finishedDuration && ` · took ${finishedDuration}`}
           </span>
         )}
         {item.quotaExhausted && (
@@ -139,11 +140,57 @@ function ItemRow({ item, now }) {
  * re-attempting a futile return to regenerate a failed item in history.
  */
 function BlockedAssignmentsBanner({ assignments, canUnblock, onUnblock, now }) {
+  const [collapsed, setCollapsed] = useState(true);
   if (!assignments.length) return null;
+
+  const headerText = `${assignments.length} classroom${assignments.length === 1 ? "" : "s"} blocked — not created by Sahahly`;
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={() => setCollapsed(false)}
+        className="ma-card"
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          padding: "10px 16px",
+          borderLeft: "4px solid var(--danger)",
+          color: "var(--danger)",
+          fontWeight: 700,
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <FiLock /> {headerText}
+        </span>
+        <span className="ma-muted" style={{ fontWeight: 400, fontSize: 12 }}>Click to show</span>
+      </button>
+    );
+  }
+
   return (
     <div className="ma-card" style={{ padding: 16, borderLeft: "4px solid var(--danger)", display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--danger)" }}>
-        <FiLock /> {assignments.length} classroom{assignments.length === 1 ? "" : "s"} blocked — not created by Sahahly
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--danger)" }}>
+          <FiLock /> {headerText}
+        </div>
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Collapse — it'll come back next time you open this tab"
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            display: "flex",
+            color: "var(--muted)",
+            padding: 4,
+          }}
+        >
+          <FiX />
+        </button>
       </div>
       <div className="ma-muted" style={{ fontSize: 13 }}>
         Google refuses to attach marked PDFs (or return grades) for these until the assignment is recreated through
@@ -172,6 +219,23 @@ function BlockedAssignmentsBanner({ assignments, canUnblock, onUnblock, now }) {
 }
 
 /** Everything queued/running/done/failed for one assignment, as one collapsible block. */
+/** Wall-clock span of the whole run: earliest item queued/started to latest finished (or "so far" while still active). */
+function groupDurationText(group, now) {
+  const starts = group.items.map((i) => i.startedAt || i.createdAt).filter(Boolean).map((d) => new Date(d).getTime());
+  if (!starts.length) return null;
+  const start = Math.min(...starts);
+
+  const stillActive = group.counts.running + group.counts.queued > 0;
+  if (stillActive) {
+    return { label: "Running for", value: durationText(start, now) };
+  }
+
+  const finishes = group.items.map((i) => i.finishedAt).filter(Boolean).map((d) => new Date(d).getTime());
+  if (!finishes.length) return null;
+  const end = Math.max(...finishes);
+  return { label: "Took", value: durationText(start, end) };
+}
+
 function AssignmentGroup({ group, now, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen);
   const total = group.items.length;
@@ -180,6 +244,7 @@ function AssignmentGroup({ group, now, defaultOpen }) {
   const activeCount = group.counts.running + group.counts.queued;
   const settledCount = doneCount + failedCount;
   const percent = total > 0 ? Math.round((settledCount / total) * 100) : 0;
+  const duration = groupDurationText(group, now);
 
   return (
     <div className="ma-card" style={{ padding: 0, overflow: "hidden" }}>
@@ -202,7 +267,9 @@ function AssignmentGroup({ group, now, defaultOpen }) {
           {open ? <FiChevronDown /> : <FiChevronRight />}
           <div>
             <strong>{group.assignmentTitle}</strong>
-            <div className="ma-muted">{group.classroomName}</div>
+            <div className="ma-muted">
+              {group.classroomName} · {total} student{total === 1 ? "" : "s"}
+            </div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -214,6 +281,11 @@ function AssignmentGroup({ group, now, defaultOpen }) {
           {failedCount > 0 && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--danger)" }}>
               <FiX /> {failedCount} failed
+            </span>
+          )}
+          {duration && (
+            <span className="ma-muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <FiClock /> {duration.label} {duration.value}
             </span>
           )}
           <span className="ma-muted">{doneCount}/{total} returned</span>
@@ -230,7 +302,10 @@ function AssignmentGroup({ group, now, defaultOpen }) {
         </div>
       </button>
       {open && (
-        <div>
+        // Bounded height with its own scrollbar — a run of 20-30 students must
+        // not read as "only the first one shows" just because the rest are
+        // below the fold of the page's own scroll region.
+        <div style={{ maxHeight: 420, overflowY: "auto" }}>
           {group.items.map((item) => (
             <ItemRow key={item._id} item={item} now={now} />
           ))}
