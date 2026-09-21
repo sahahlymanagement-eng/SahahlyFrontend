@@ -30,15 +30,19 @@ function relativeTimeText(value, now) {
   return new Date(value).toLocaleString();
 }
 
-function durationText(from, to) {
-  if (!from || !to) return null;
-  const seconds = Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 1000));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = seconds % 60;
+function formatSeconds(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const remainingSeconds = s % 60;
   if (hours) return `${hours}h ${minutes}m`;
   if (minutes) return `${minutes}m ${remainingSeconds}s`;
   return `${remainingSeconds}s`;
+}
+
+function durationText(from, to) {
+  if (!from || !to) return null;
+  return formatSeconds((new Date(to).getTime() - new Date(from).getTime()) / 1000);
 }
 
 const STATUS_CONFIG = {
@@ -208,21 +212,26 @@ function BlockedAssignmentsBanner({ assignments, canUnblock, onUnblock, now }) {
 }
 
 /** Everything queued/running/done/failed for one assignment, as one collapsible block. */
-/** Wall-clock span of the whole run: earliest item queued/started to latest finished (or "so far" while still active). */
+/**
+ * While still running: wall-clock span so far (earliest item queued/started to now).
+ * Once settled: sum of each item's own processing time (finishedAt - startedAt), not
+ * the wall-clock span of the group — items return one at a time, so the span between
+ * the first and last return is mostly idle time between submissions, not work done.
+ */
 function groupDurationText(group, now) {
-  const starts = group.items.map((i) => i.startedAt || i.createdAt).filter(Boolean).map((d) => new Date(d).getTime());
-  if (!starts.length) return null;
-  const start = Math.min(...starts);
-
   const stillActive = group.counts.running + group.counts.queued > 0;
   if (stillActive) {
-    return { label: "Running for", value: durationText(start, now) };
+    const starts = group.items.map((i) => i.startedAt || i.createdAt).filter(Boolean).map((d) => new Date(d).getTime());
+    if (!starts.length) return null;
+    return { label: "Running for", value: durationText(Math.min(...starts), now) };
   }
 
-  const finishes = group.items.map((i) => i.finishedAt).filter(Boolean).map((d) => new Date(d).getTime());
-  if (!finishes.length) return null;
-  const end = Math.max(...finishes);
-  return { label: "Took", value: durationText(start, end) };
+  const totalSeconds = group.items.reduce((sum, i) => {
+    if (!i.startedAt || !i.finishedAt) return sum;
+    return sum + Math.max(0, (new Date(i.finishedAt).getTime() - new Date(i.startedAt).getTime()) / 1000);
+  }, 0);
+  if (totalSeconds <= 0) return null;
+  return { label: "Took", value: formatSeconds(totalSeconds) };
 }
 
 function AssignmentGroup({ group, now, defaultOpen }) {
