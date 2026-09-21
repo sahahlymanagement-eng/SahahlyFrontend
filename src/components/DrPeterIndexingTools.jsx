@@ -6,7 +6,7 @@ import api from '../api/api';
 import { assertPdfBlob, getApiErrorMessage } from '../utils/markingFormData';
 import { sahahlyModelLabel } from '../utils/markingCost';
 import { isPublished } from '../utils/gradingStatus';
-import { usePageCountCheck } from '../hooks/usePageCountCheck';
+import { applyPageCountDecision, usePageCountCheck } from '../hooks/usePageCountCheck';
 import PageCountCheckModal from './PageCountCheckModal';
 import './DrPeterIndexingTools.css';
 import { getIndexingUpload, subscribeIndexingUploads, startIndexingUpload } from '../utils/indexingUploads';
@@ -49,7 +49,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const classroom = provider === 'classroom';
   const root = `/${provider}-indexing`;
   const base = `${root}/api`;
-  const { pageCheckModal, resolvePageCheck } = usePageCountCheck();
+  const { pageCheckModal, confirmPageCounts, confirmGradingPageCounts, resolvePageCheck } = usePageCountCheck();
   const [pack, setPack] = useState(null);
   const [runs, setRuns] = useState([]);
   const [error, setError] = useState('');
@@ -281,6 +281,32 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
             : 'No selected submissions have an attached PDF and are still eligible for marking.')
           : 'No submissions left to mark.');
       }
+
+      // Index marking sends a different request from normal batch marking, so
+      // run the same advisory guard here before the indexed run is queued and
+      // any AI tokens are used. This applies to both the Dr Peter and Mariam
+      // Gabalawy submission viewers because they share these tools.
+      const pageDecision = classroom
+        ? await confirmPageCounts({ assignmentId, students })
+        : await confirmGradingPageCounts({
+          provider,
+          assignmentId,
+          submissionIds: students.map((student) => student.submissionId),
+        });
+      const checkedStudents = applyPageCountDecision(students, pageDecision);
+      if (!checkedStudents) {
+        if (pageDecision?.proceed) {
+          toast.info('All selected submissions were skipped because of unexpected page counts');
+        }
+        return null;
+      }
+      const pageDropped = students.length - checkedStudents.length;
+      if (pageDropped > 0) {
+        toast.info(
+          `Skipping ${pageDropped} submission${pageDropped === 1 ? '' : 's'} with unexpected page count`
+        );
+      }
+      students = checkedStudents;
 
       report(`Sending ${students.length} student selections to the server…`);
       const {data}=await api.post(`${base}/runs/server-submissions`, {
