@@ -13,7 +13,6 @@
 /** True when this row was not detected on the script by the marking model. */
 export function isBackfilledStub(q) {
   if (!q) return false;
-  const anchoredBlank = q._backfilled === true && q._blankOnIndexedPage === true && q._pageIsReference === true;
 
   // Some marking routes return every mark-scheme row directly rather than
   // injecting a `_backfilled` placeholder. `questionPresent: false` (and its
@@ -31,7 +30,6 @@ export function isBackfilledStub(q) {
   }
 
   // Authoritative — injected by mark-scheme backfill.
-  if (anchoredBlank && q._incompleteMarking !== true && q._apiGap !== true) return false;
   if (q._backfilled === true) return true;
   if (q._incompleteMarking === true) return true;
   if (q._apiGap === true) return true;
