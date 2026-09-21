@@ -164,16 +164,18 @@ async function resolveStudentPdfFile({
  * the ones subject to Classroom's tight per-user quota, run later in the
  * background (cron/returnJobWorkerCron.js on the backend), independent of
  * this tab. That's what makes Return All survive a refresh/tab-close now.
- * Drive's own quota is far more generous, but staging is still real network
- * I/O per paper, so a light adaptive pace remains: start fast, back off on
- * an outright failure, ease back down after a run of clean stages.
+ * Drive's own quota is far more generous, so a clean run doesn't need to be
+ * paced at all — no delay between stages while things are working. The pace
+ * only exists to back off after an outright failure (a sign Drive/the
+ * account is having trouble), easing back down toward no delay after a run
+ * of clean stages.
  */
-function createReturnPacer({ minDelayMs = 300, maxDelayMs = 5000, easeAfterCleanCount = 3 } = {}) {
+function createReturnPacer({ minDelayMs = 0, maxDelayMs = 5000, easeAfterCleanCount = 3 } = {}) {
   let delayMs = minDelayMs;
   let cleanStreak = 0;
 
   return {
-    wait: () => new Promise((resolve) => setTimeout(resolve, delayMs)),
+    wait: () => (delayMs > 0 ? new Promise((resolve) => setTimeout(resolve, delayMs)) : Promise.resolve()),
     recordOutcome({ failed = false } = {}) {
       if (failed) {
         cleanStreak = 0;
@@ -183,7 +185,7 @@ function createReturnPacer({ minDelayMs = 300, maxDelayMs = 5000, easeAfterClean
       cleanStreak += 1;
       if (cleanStreak >= easeAfterCleanCount) {
         cleanStreak = 0;
-        delayMs = Math.max(minDelayMs, Math.round(delayMs * 0.6));
+        delayMs = delayMs <= minDelayMs ? minDelayMs : Math.max(minDelayMs, Math.round(delayMs * 0.5));
       }
     },
   };
@@ -205,6 +207,12 @@ export async function runReturnAllQueue({
   getTeacherAnnotations,
   appendClassroomGradeToFormData,
   resolveTotalMarksFromResult,
+  // ({ done, total, current }) per item — `current` is a comma-joined label
+  // of whatever is staging right now. Lets the caller show live "N of M
+  // staged" progress, most importantly right where the leave-tab warning
+  // (useBeforeUnloadGuard) fires — the browser's own dialog can't carry
+  // custom content, so the progress has to already be on-screen.
+  onProgress,
 }) {
   const pacer = createReturnPacer();
   const computeReturnMarks = (result, editingQs) => ({
@@ -220,6 +228,16 @@ export async function runReturnAllQueue({
 
   const failures = [];
   let queuedCount = 0;
+  let doneCount = 0;
+  const totalCount = bulkQueue.length + batchQueue.length;
+  const inFlight = new Map();
+  const reportProgress = () => {
+    onProgress?.({
+      done: doneCount,
+      total: totalCount,
+      current: [...inFlight.values()].join(", ") || null,
+    });
+  };
 
   // returnOne reports its own outcome rather than pushing to failures/queued
   // directly — with several workers in flight at once (see CONCURRENCY below),
@@ -364,8 +382,11 @@ export async function runReturnAllQueue({
   // student's. A few workers pulling from one shared queue lets that work
   // genuinely overlap. The pacer above is shared across every worker (a
   // plain closure — safe with no locking, since JS never runs two of these
-  // workers' synchronous steps at once).
-  const CONCURRENCY = 3;
+  // workers' synchronous steps at once). Matches the finish-side cron's own
+  // concurrency (cron/returnJobWorkerCron.js) — that side already proved 5
+  // concurrent Drive/Classroom calls per account is safe, and staging only
+  // touches Drive (the generous-quota half), so it's not more at-risk.
+  const CONCURRENCY = 5;
   const workItems = [
     ...bulkQueue.map(({ submissionId, storedSubmissionId, student, bulk }) => ({
       submissionId,
@@ -395,7 +416,16 @@ export async function runReturnAllQueue({
       const item = nextItem();
       if (!item) return;
 
+      const itemLabel = item.student?.name || item.submissionId || "Student";
+      inFlight.set(item.submissionId, itemLabel);
+      reportProgress();
+
       const result = await returnOne(item);
+
+      inFlight.delete(item.submissionId);
+      doneCount += 1;
+      reportProgress();
+
       if (result.ok) {
         queuedCount += 1;
         queued.push(result);

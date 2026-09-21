@@ -99,6 +99,8 @@ import {
   runGradingPublishAll,
   formatPublishAllMessage,
 } from "../../utils/gradingPublishAll";
+import { useBeforeUnloadGuard } from "../../utils/useBeforeUnloadGuard";
+import StagingProgressBanner from "../../components/StagingProgressBanner";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
@@ -244,6 +246,10 @@ export default function ManagerLoginCss() {
   // Publishing is the one action everybody with this tab can take, marker or
   // reviewer, so this is deliberately outside the canMark gate.
   const [publishAll, setPublishAll] = useState(null); // { done, total, current, loading }
+  // LoginCSS's Publish All is synchronous (no background queue) — closing the
+  // tab mid-run drops every submission not yet actually published, with no
+  // toast to explain the short count. Warn before that happens.
+  useBeforeUnloadGuard(Boolean(publishAll), "Still publishing submissions — leaving now will stop before they're all published.");
   const publishStopRef = useRef(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
   const [editorSubmissionId, setEditorSubmissionId] = useState(null);
@@ -2500,6 +2506,13 @@ export default function ManagerLoginCss() {
                     </span>
                   </div>
                 )}
+                <StagingProgressBanner
+                  active={Boolean(publishAll) && !publishAll?.loading}
+                  done={publishAll?.done}
+                  total={publishAll?.total}
+                  current={publishAll?.current}
+                  label="Published"
+                />
 
                 {selectedAssignment.id != null && (
                   <GradingAssignmentSettingsBar

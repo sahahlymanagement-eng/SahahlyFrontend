@@ -16,6 +16,7 @@ import api from "../../api/api";
 import "./ManagerAssignments.css";
 
 const SPIN_STYLE = { animation: "ma-spin 0.9s linear infinite" };
+const HISTORY_PAGE_SIZE = 100;
 
 /** "2m ago" for anything recent, falling back to a plain date once it's old enough that "ago" stops being useful. */
 function relativeTimeText(value, now) {
@@ -377,22 +378,58 @@ export default function ReturnJobQueue() {
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const latestLoadRef = useRef(0);
   const activeLoadRef = useRef(null);
+  // Accumulates history across pages so "Load older" results survive the
+  // 10s live poll (which only ever re-fetches page 1) instead of being wiped
+  // by it — keyed by _id so the poll's fresh copies of already-loaded rows
+  // just overwrite in place rather than duplicating.
+  const historyByIdRef = useRef(new Map());
+  // Ref mirrors the state below so `load` (a stable callback the polling
+  // interval closes over once) always reads the *current* frontier instead
+  // of whatever it was when the interval was set up.
+  const historyFrontierRef = useRef({ page: 1, hasMore: false, days: 7, total: 0 });
+  const [historyFrontier, setHistoryFrontierState] = useState({ page: 1, hasMore: false, days: 7, total: 0 });
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
 
-  const load = useCallback(async (quiet = false) => {
+  const setHistoryFrontier = useCallback((next) => {
+    historyFrontierRef.current = next;
+    setHistoryFrontierState(next);
+  }, []);
+
+  const load = useCallback(async (quiet = false, { historyPage = 1 } = {}) => {
     if (activeLoadRef.current) return;
     const controller = new AbortController();
     activeLoadRef.current = controller;
     const loadId = ++latestLoadRef.current;
     if (!quiet) setRefreshing(true);
+    if (historyPage > 1) setLoadingMoreHistory(true);
     try {
       const response = await api.get("/return-job-queue", {
         timeout: 30000,
         signal: controller.signal,
-        params: { _ts: Date.now() },
+        params: { _ts: Date.now(), historyPage, historyPageSize: HISTORY_PAGE_SIZE },
         headers: { "Cache-Control": "no-cache" },
       });
       if (loadId !== latestLoadRef.current) return;
-      setData(response.data || { running: [], queued: [], history: [], blockedAssignments: [], canUnblock: false });
+      const payload = response.data || { running: [], queued: [], history: [], blockedAssignments: [], canUnblock: false };
+      for (const item of payload.history || []) {
+        historyByIdRef.current.set(String(item._id), item);
+      }
+      const mergedHistory = [...historyByIdRef.current.values()].sort(
+        (a, b) => new Date(b.finishedAt || 0) - new Date(a.finishedAt || 0)
+      );
+      setData({ ...payload, history: mergedHistory });
+      // Only the page we actually just fetched tells us the true frontier —
+      // a quiet page-1 poll while the user has already paged further ahead
+      // must not roll `hasMore`/`page` back to what page 1 alone reports.
+      const pagination = payload.historyPagination;
+      if (pagination && historyPage >= historyFrontierRef.current.page) {
+        setHistoryFrontier({
+          page: historyPage,
+          hasMore: Boolean(pagination.hasMore),
+          days: pagination.days,
+          total: pagination.total,
+        });
+      }
       setLoadError(null);
       setLastRefreshedAt(new Date());
     } catch (err) {
@@ -408,9 +445,14 @@ export default function ReturnJobQueue() {
         activeLoadRef.current = null;
         setLoading(false);
         setRefreshing(false);
+        setLoadingMoreHistory(false);
       }
     }
-  }, []);
+  }, [setHistoryFrontier]);
+
+  const loadOlderHistory = useCallback(() => {
+    load(false, { historyPage: historyFrontierRef.current.page + 1 });
+  }, [load]);
 
   useEffect(() => {
     const initial = setTimeout(() => load(), 0);
@@ -480,7 +522,8 @@ export default function ReturnJobQueue() {
         <h1 className="ma-topbar-title">Return Job Queue</h1>
         <span className="ma-topbar-sub">
           Every classroom&apos;s &quot;Return All&quot; finishes its Google Classroom work here in the background.
-          Grouped by assignment so you can tell at a glance whether a run is done.
+          Grouped by assignment so you can tell at a glance whether a run is done. History covers the last{" "}
+          {historyFrontier.days} days — click &quot;Load older history&quot; below to page through all of it.
         </span>
         {lastRefreshedAt && <span className="ma-topbar-sub">Last refreshed: {lastRefreshedAt.toLocaleTimeString()}</span>}
       </div><button className="msv-btn-ai" disabled={refreshing} onClick={() => load()}><FiRefreshCw /> {refreshing ? "Refreshing…" : "Refresh"}</button></header>
@@ -556,6 +599,19 @@ export default function ReturnJobQueue() {
               {search || needsAttentionOnly
                 ? "Nothing matches that filter."
                 : "All caught up — nothing is returning right now."}
+            </div>
+          )}
+
+          {(data.history || []).length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "8px 0" }}>
+              <span className="ma-muted" style={{ fontSize: 13 }}>
+                Showing {data.history.length} of {historyFrontier.total} returned/failed in the last {historyFrontier.days} days
+              </span>
+              {historyFrontier.hasMore && (
+                <button className="msv-btn-ai" disabled={loadingMoreHistory} onClick={loadOlderHistory}>
+                  {loadingMoreHistory ? "Loading…" : "Load older history"}
+                </button>
+              )}
             </div>
           )}
         </>}

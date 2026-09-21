@@ -65,7 +65,10 @@ function resolveQueuedMarks(result, questions) {
 // a 100-submission assignment paid every one of those round trips serially.
 // Most of that chain is waiting on the network, not the browser's CPU, so a
 // handful running together overlaps the waiting instead of the rendering.
-const PUBLISH_CONCURRENCY = 3;
+// Matches classroom Return All's staging concurrency (returnAllExecution.js)
+// and the partner-publish cron's own finish-side concurrency — both already
+// proven safe at this level.
+const PUBLISH_CONCURRENCY = 5;
 
 /**
  * Publish every submission in `queue`.

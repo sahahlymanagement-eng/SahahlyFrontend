@@ -104,6 +104,8 @@ import {
   formatQueuePublishAllMessage,
 } from "../../utils/gradingPublishAll";
 import { pollPartnerPublishJobsUntilSettled } from "../../utils/partnerPublishJobsPoll";
+import { useBeforeUnloadGuard } from "../../utils/useBeforeUnloadGuard";
+import StagingProgressBanner from "../../components/StagingProgressBanner";
 import MarkingSelectionBar from "../../components/MarkingSelectionBar";
 import { formatSubmittedAt } from "../../utils/formatSubmittedAt";
 import { useGradingAssignmentSettings } from "../../hooks/useGradingAssignmentSettings";
@@ -418,6 +420,9 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   // Publishing is the one action everybody with this tab can take, marker or
   // reviewer, so this is deliberately outside the canMark gate.
   const [publishAll, setPublishAll] = useState(null); // { done, total, current, loading }
+  // Closing the tab mid-Publish-All only drops the submissions not yet
+  // staged, with no toast to explain the short count — warn before that happens.
+  useBeforeUnloadGuard(Boolean(publishAll), "Still queuing submissions for publish — leaving now will stop before they're all queued.");
   const publishStopRef = useRef(false);
   const [pendingRemovedIndices, setPendingRemovedIndices] = useState(() => new Set());
   const [editorSubmissionId, setEditorSubmissionId] = useState(null);
@@ -3653,6 +3658,13 @@ toast.success("Result cleared — you can mark again");
                     </span>
                   </div>
                 )}
+                <StagingProgressBanner
+                  active={Boolean(publishAll) && !publishAll?.loading}
+                  done={publishAll?.done}
+                  total={publishAll?.total}
+                  current={publishAll?.current}
+                  label="Staged"
+                />
 
                 {/* Expected pages and the paper total are marking setup — and
                     maxGrade changes every grade published from here — so they are

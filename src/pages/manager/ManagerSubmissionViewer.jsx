@@ -104,6 +104,8 @@ import {
 import { canViewMoneyCostsFromStorage, maybeStripMoney } from "../../utils/moneyVisibility";
 import { syncAssignmentFromClassroom, refreshAssignmentGrades, buildPercentOverridesFromStudents } from "../../utils/refreshAssignmentFromClassroom";
 import { fetchAllPaginated } from "../../utils/fetchAllStudents";
+import { useBeforeUnloadGuard } from "../../utils/useBeforeUnloadGuard";
+import StagingProgressBanner from "../../components/StagingProgressBanner";
 import {
   buildFreshReturnAllQueue,
   runReturnAllQueue,
@@ -698,7 +700,13 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [summaryTouched, setSummaryTouched] = useState(false);
   const [downloading,      setDownloading]      = useState(false);
   const [returning,        setReturning]        = useState(false);
+  // { done, total, current } while Return All is staging — drives both the
+  // button's live count and the fixed on-screen banner.
+  const [returnAllProgress, setReturnAllProgress] = useState(null);
   const returningLockRef = useRef(false);
+  // Closing the tab mid-Return-All only drops the papers not yet staged, with
+  // no toast to explain the short count — warn before that happens.
+  useBeforeUnloadGuard(returning, "Still queuing graded papers for return — leaving now will stop before they're all queued.");
   // Set the moment ANY return (single or bulk) discovers this classroom's
   // coursework wasn't created by Sahahly — a permanent, assignment-wide
   // condition. Once known, Return All refuses to even start rather than
@@ -3871,6 +3879,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     const assignmentId = selectedAssignment._id;
     returningLockRef.current = true;
     setReturning(true);
+    setReturnAllProgress(null);
 
     try {
       const { queue, savedResults: freshSaved } = await buildFreshReturnAllQueue({
@@ -3931,6 +3940,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
     } finally {
       returningLockRef.current = false;
       setReturning(false);
+      setReturnAllProgress(null);
     }
   };
 
@@ -4069,6 +4079,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       getTeacherAnnotations,
       appendClassroomGradeToFormData,
       resolveTotalMarksFromResult,
+      onProgress: ({ done, total, current }) => setReturnAllProgress({ done, total, current }),
     });
 
     if (queued.length) {
@@ -4364,7 +4375,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                           color: "#fff",
                         }}
                       >
-                        {returning ? "Returning…" : classroomAttachBlocked ? "Return All blocked" : "Return All"}
+                        {returning
+                          ? returnAllProgress?.total
+                            ? `Returning ${returnAllProgress.done}/${returnAllProgress.total}…`
+                            : "Returning…"
+                          : classroomAttachBlocked
+                          ? "Return All blocked"
+                          : "Return All"}
                       </button>
                     )}
                   </div>
@@ -4432,10 +4449,23 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         color: "#fff",
                       }}
                     >
-                      {returning ? "Returning…" : classroomAttachBlocked ? "Return All blocked" : "Return All"}
+                      {returning
+                        ? returnAllProgress?.total
+                          ? `Returning ${returnAllProgress.done}/${returnAllProgress.total}…`
+                          : "Returning…"
+                        : classroomAttachBlocked
+                        ? "Return All blocked"
+                        : "Return All"}
                     </button>
                     )}
-                  
+                  <StagingProgressBanner
+                    active={returning}
+                    done={returnAllProgress?.done}
+                    total={returnAllProgress?.total}
+                    current={returnAllProgress?.current}
+                    label="Staged"
+                  />
+
                   {/* BATCH MARKING */}
                   {msInfo && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
