@@ -1234,16 +1234,9 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
 
   // IGSpaces tags every submission with review_status (2026-09, docs "IG
   // Spaces - Sahahly API - following_ai_rules"): not_reviewed,
-  // not_following_ai_rules, or following_ai_rules. Only the middle one blocks
-  // AI grading — an assistant on IGSpaces' side has actively flagged the
-  // paper, so marking it would burn tokens on something that can't be
-  // published anyway. not_reviewed (not yet looked at) and null/missing
-  // (older rows, or a partner that hasn't sent this field) behave exactly
-  // like following_ai_rules — marking is NOT gated on a review actually
-  // having happened, only on an explicit rejection. This never removes a
-  // submission from the Grading tab or any list — only from what
-  // select-all/select-page/batch/auto-queue will actually send for marking.
-  const isApprovedForAiGrading = (s) => s.review_status !== "not_following_ai_rules";
+  // not_following_ai_rules, or following_ai_rules. This is purely
+  // informational (see reviewStatusBadge) — it no longer gates AI grading,
+  // so a manager can still select and mark a submission IGSpaces flagged.
 
   // "Select all" spans the whole assignment, not the page on screen, so it needs
   // the full roster rather than the ten rows currently loaded.
@@ -1260,13 +1253,9 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
           !s.hasMarkingResult &&
           !isPublished(s)
       );
-      const ids = unmarked.filter(isApprovedForAiGrading).map((s) => s.submissionId);
-      const skipped = unmarked.length - ids.length;
+      const ids = unmarked.map((s) => s.submissionId);
       markingSelection.selectIds(ids);
-      toast.success(
-        `Selected ${ids.length} unmarked submission(s)` +
-          (skipped ? ` (${skipped} skipped — flagged as not following AI rules)` : "")
-      );
+      toast.success(`Selected ${ids.length} unmarked submission(s)`);
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || "Failed to load all submissions");
     } finally {
@@ -1316,23 +1305,17 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
       return null;
     }
 
-    const unmarked = pool.filter(
+    const eligible = pool.filter(
       (s) =>
         s.submissionId &&
         !isPublished(s) &&
         !s.hasDraft &&
         !results[s.submissionId]?.result
     );
-    // Skipped, not blocked: a submission IGSpaces flagged not_following_ai_rules
-    // just never joins this batch/bulk/auto-queue run — see isApprovedForAiGrading.
-    const eligible = unmarked.filter(isApprovedForAiGrading);
-    const skippedForReview = unmarked.length - eligible.length;
 
     if (!eligible.length) {
       toast.warn(
-        skippedForReview
-          ? "Nothing to mark — every candidate is flagged as not following AI rules"
-          : selectedIds.size
+        selectedIds.size
           ? "Selected submissions are already marked"
           : "No submissions left to mark in this assignment"
       );
@@ -1340,12 +1323,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     }
 
     if (selectedIds.size && eligible.length < pool.length) {
-      const reasons = [];
-      if (pool.length - unmarked.length) reasons.push("others already marked");
-      if (skippedForReview) reasons.push(`${skippedForReview} flagged as not following AI rules`);
-      toast.info(`${eligible.length} of ${pool.length} selected will be marked (${reasons.join("; ")})`);
-    } else if (skippedForReview) {
-      toast.info(`${eligible.length} will be marked (${skippedForReview} skipped — flagged as not following AI rules)`);
+      toast.info(`${eligible.length} of ${pool.length} selected will be marked (others already marked)`);
     }
 
     return eligible;
@@ -1569,10 +1547,6 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
 
   // ── Single mark (normal / claude / priority) ──
   const runMarkSubmission = async (student, guidanceText, mode = "normal", provider = "gemini") => {
-    if (!isApprovedForAiGrading(student)) {
-      toast.warn(`${student.name || "This submission"} is flagged as not following AI rules — cannot be AI-graded`);
-      return;
-    }
     const submissionId = student.submissionId;
     setMarkingStudentId(submissionId);
     setSingleProgress((prev) => ({ ...prev, [submissionId]: { status: "marking" } }));
@@ -2398,9 +2372,7 @@ toast.success("Result cleared — you can mark again");
   };
 
   // IGSpaces' review_status (2026-09, docs "IG Spaces - Sahahly API -
-  // following_ai_rules") — see isApprovedForAiGrading, which is what actually
-  // gates marking. Only "not_following_ai_rules" blocks marking; this badge
-  // is otherwise purely informational (not_reviewed/null mark normally).
+  // following_ai_rules") — purely informational; it no longer gates marking.
   const reviewStatusBadge = (s) => {
     switch (s.review_status) {
       case "following_ai_rules":
@@ -2410,10 +2382,7 @@ toast.success("Result cleared — you can mark again");
       case "not_reviewed":
         return <span className="ma-badge ma-badge--gray" title="Not yet reviewed by IGSpaces — marking is still allowed">Not reviewed</span>;
       default:
-        // Older row, or a partner that hasn't sent review_status yet — shown
-        // the same as "Not reviewed" since we simply don't know; marking is
-        // still allowed (isApprovedForAiGrading only blocks an explicit
-        // not_following_ai_rules).
+        // Older row, or a partner that hasn't sent review_status yet.
         return <span className="ma-badge ma-badge--gray" title="No review status from the partner yet">Not reviewed</span>;
     }
   };
@@ -3000,8 +2969,7 @@ toast.success("Result cleared — you can mark again");
         !results[s.submissionId]?.result &&
         !s.hasDraft &&
         !s.hasMarkingResult &&
-        !isPublished(s) &&
-        isApprovedForAiGrading(s)
+        !isPublished(s)
     )
     .map((s) => s.submissionId);
   const pageAllMarkingSelected =
@@ -3960,13 +3928,9 @@ toast.success("Result cleared — you can mark again");
                                           className={`msv-action-btn msv-action-btn--ai ${
                                             hasError ? "msv-action-btn--error" : ""
                                           }`}
-                                          title={
-                                            isApprovedForAiGrading(s)
-                                              ? "Mark with AI"
-                                              : "Flagged by IGSpaces as not following AI rules — cannot be AI-graded"
-                                          }
+                                          title="Mark with AI"
                                           onClick={() => openGuidanceModal(s)}
-                                          disabled={isMarking || !isApprovedForAiGrading(s)}
+                                          disabled={isMarking}
                                         >
                                           {isMarking ? (
                                             <span className="pm-spinner" />
@@ -3981,13 +3945,9 @@ toast.success("Result cleared — you can mark again");
 
                                         <button
                                           className="msv-action-btn msv-action-btn--ai"
-                                          title={
-                                            isApprovedForAiGrading(s)
-                                              ? "Mark on Sahahly priority tier (fastest)"
-                                              : "Flagged by IGSpaces as not following AI rules — cannot be AI-graded"
-                                          }
+                                          title="Mark on Sahahly priority tier (fastest)"
                                           onClick={() => openGuidanceModal(s, { priority: true })}
-                                          disabled={isMarking || !isApprovedForAiGrading(s)}
+                                          disabled={isMarking}
                                           style={{ background: "var(--warning)", borderColor: "var(--warning)", color: "#fff" }}
                                         >
                                           <FiSend size={12} /> Priority
