@@ -18,7 +18,7 @@ export default function MarkingGuidance({ exam, onSaved }) {
   return <section className="panel">
     <h2>Extra marking guidance</h2>
     <p className="muted small">Add instructions for the AI to use alongside this index and the student papers. Save before starting marking. Changes apply to new runs; existing runs keep their saved guidance.</p>
-    <textarea aria-label="Extra marking guidance" rows={4} maxLength={10000} value={value} disabled={saving}
+    <textarea aria-label="Extra marking guidance" rows={4} value={value} disabled={saving}
       style={{ width: '100%', boxSizing: 'border-box', margin: '12px 0' }}
       placeholder="For example: Accept equivalent scientific wording. Explain missing answers clearly."
       onChange={e => { setDraft(e.target.value); setMessage(''); }} />
