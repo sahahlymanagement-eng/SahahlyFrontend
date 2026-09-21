@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import api from "../../api/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import { TeacherPageHeader } from "../teacher/TeacherUI";
 import {
@@ -7,7 +6,6 @@ import {
   FiPlus,
   FiCpu,
   FiUser,
-  FiZap,
   FiMic,
   FiSquare,
   FiCopy,
@@ -17,6 +15,17 @@ import {
   FiX,
   FiAlertTriangle,
   FiCheckCircle,
+  FiFileText,
+  FiTrendingUp,
+  FiUserPlus,
+  FiPaperclip,
+  FiChevronDown,
+  FiChevronRight,
+  FiChevronLeft,
+  FiClock,
+  FiLayers,
+  FiShield,
+  FiTrash2,
 } from "react-icons/fi";
 import { streamAgentTurn, revealText } from "../../utils/agentStream";
 import { useVoiceCommand } from "../../utils/useVoiceCommand";
@@ -28,6 +37,7 @@ import {
   createCoursework,
   downloadGradesExcel,
   loadAutomationStatus,
+  loadClassrooms,
   previewAssignmentReport,
   pushClassroomGrades,
   removeAssistant,
@@ -63,19 +73,99 @@ import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
 import "../teacher/TeacherChatbot.css";
 
-const SUGGESTIONS = [
-  "Give me today's briefing",
-  "Which students need help in Grade 10A?",
-  "Mark with indexing Instant for Quiz 2 in Grade 10 — I'll pick students",
-  "Send assignment reports for Quiz 2 in Grade 10 to parents",
-  "List students who submitted late and we haven't corrected, with their classes",
-  "Show manager workload across the organization",
-  "Who are the top and bottom performing assistants?",
-  "Batch-mark the last homework in Chemistry",
-  "Priority-mark Omar's Physics test right now",
+const CAPABILITY_CARDS = [
+  {
+    key: "batch_marking",
+    icon: <FiLayers size={16} />,
+    tone: "primary",
+    label: "Batch mark assignment",
+    example: "Batch-mark the last homework in Chemistry",
+  },
+  {
+    key: "parent_reports",
+    icon: <FiFileText size={16} />,
+    tone: "success",
+    label: "Parent reports",
+    example: "Send Quiz 2 reports for Grade 10 to parents",
+  },
+  {
+    key: "students_needing_help",
+    icon: <FiTrendingUp size={16} />,
+    tone: "warn",
+    label: "Students needing help",
+    example: "Which students need help in Grade 10A?",
+  },
+  {
+    key: "people_managers",
+    icon: <FiUserPlus size={16} />,
+    tone: "accent",
+    label: "People & managers",
+    example: "Assign a classroom manager for Grade 11",
+  },
 ];
 
+const MAX_TEXTAREA_HEIGHT = 200;
 const STORAGE_KEY = "sahahly-director-ai-agent";
+const HISTORY_KEY = "sahahly-director-ai-agent-history";
+const MAX_HISTORY_SESSIONS = 20;
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+];
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function sessionTitleFromMessages(messages) {
+  const firstUser = messages.find((m) => m.role === "user" && m.content?.trim());
+  if (!firstUser) return "New conversation";
+  const text = firstUser.content.trim();
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+}
+
+function loadHistorySessions() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistorySessions(sessions) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(sessions.slice(0, MAX_HISTORY_SESSIONS)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function relativeTime(iso) {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffMin = Math.round((Date.now() - then) / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+const DEFAULT_SCOPE = { label: "All classes", teacherName: null, className: null };
+
+function scopeLabel(teacherName, className) {
+  if (className) return teacherName ? `${teacherName} — ${className}` : className;
+  if (teacherName) return `${teacherName} — All classes`;
+  return "All classes";
+}
 
 function renderMarkdown(text) {
   const escaped = String(text || "")
@@ -257,8 +347,6 @@ export default function DirectorChatbot() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [lastMatched, setLastMatched] = useState(null);
-  const [briefing, setBriefing] = useState(null);
-  const [briefingLoading, setBriefingLoading] = useState(true);
   const [actionProposal, setActionProposal] = useState(null);
   const [editPreview, setEditPreview] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
@@ -267,28 +355,39 @@ export default function DirectorChatbot() {
   const [editingIndex, setEditingIndex] = useState(null);
   const [editValue, setEditValue] = useState("");
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySessions, setHistorySessions] = useState(() => loadHistorySessions());
+  const [scope, setScope] = useState(DEFAULT_SCOPE);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [expandedTeacherId, setExpandedTeacherId] = useState(null);
+  const [classroomOptions, setClassroomOptions] = useState([]);
+  const [classroomsLoading, setClassroomsLoading] = useState(false);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [attachment, setAttachment] = useState(null);
+  const [attachError, setAttachError] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const revealStopRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const voice = useVoiceCommand(transcribeVoiceCommand, (text) => send(text));
+
+  const autoGrow = useCallback((el) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
+  }, []);
+
+  useEffect(() => {
+    autoGrow(inputRef.current);
+  }, [input, autoGrow]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (stored) {
       const parsed = JSON.parse(stored);
       setUser(parsed);
-      if (parsed?.id) {
-        api
-          .get("/director-chatbot/briefing", { params: { personId: parsed.id } })
-          .then((res) => setBriefing(res.data))
-          .catch(() => setBriefing(null))
-          .finally(() => setBriefingLoading(false));
-      } else {
-        setBriefingLoading(false);
-      }
-    } else {
-      setBriefingLoading(false);
     }
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -317,6 +416,96 @@ export default function DirectorChatbot() {
     setActionProposal(null);
     setEditPreview(null);
     setSelectedKeys(new Set());
+    setPreviewModalOpen(false);
+  };
+
+  const openScopePicker = () => {
+    setScopeOpen((prev) => !prev);
+    if (scopeOpen || classroomOptions.length || classroomsLoading || !user?.id) return;
+    setClassroomsLoading(true);
+    loadClassrooms(user.id)
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.classrooms || [];
+        setClassroomOptions(list);
+      })
+      .catch(() => setClassroomOptions([]))
+      .finally(() => setClassroomsLoading(false));
+  };
+
+  const closeScopeMenu = () => {
+    setScopeOpen(false);
+    setExpandedTeacherId(null);
+  };
+
+  const selectScope = (teacherName, className) => {
+    setScope({
+      label: scopeLabel(teacherName, className),
+      teacherName: teacherName || null,
+      className: className || null,
+    });
+    closeScopeMenu();
+  };
+
+  const teacherGroups = useMemo(() => {
+    const map = new Map();
+    for (const c of classroomOptions) {
+      const key = c.teacherId || `__unassigned`;
+      if (!map.has(key)) {
+        map.set(key, { key, teacherName: c.teacherName || "Unassigned", classrooms: [] });
+      }
+      map.get(key).classrooms.push(c);
+    }
+    return Array.from(map.values()).sort((a, b) => a.teacherName.localeCompare(b.teacherName));
+  }, [classroomOptions]);
+
+  const expandedTeacher = teacherGroups.find((g) => g.key === expandedTeacherId) || null;
+
+  const applyScope = useCallback(
+    (text) => {
+      if (!scope.teacherName && !scope.className) return text;
+      if (/^\[[^\]]+]\s/.test(text)) return text;
+      return `[${scope.label}] ${text}`;
+    },
+    [scope]
+  );
+
+  const fillComposer = (example) => {
+    setInput(example);
+    inputRef.current?.focus();
+  };
+
+  const openFilePicker = () => {
+    if (loading || executing) return;
+    setAttachError(null);
+    fileInputRef.current?.click();
+  };
+
+  const clearAttachment = () => {
+    setAttachment(null);
+    setAttachError(null);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      setAttachError("Only images (PNG/JPEG/WEBP/GIF) and PDFs can be attached.");
+      return;
+    }
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      setAttachError(`That file is ${formatBytes(file.size)} — the limit is 10 MB.`);
+      return;
+    }
+    setAttachError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.slice(result.indexOf(",") + 1);
+      setAttachment({ name: file.name, mimeType: file.type, size: file.size, base64 });
+    };
+    reader.onerror = () => setAttachError("Couldn't read that file — please try again.");
+    reader.readAsDataURL(file);
   };
 
   const toggleSelectedKey = (key) => {
@@ -424,7 +613,7 @@ export default function DirectorChatbot() {
   }, [actionProposal, loadPreviewsForProposal]);
 
   const runTurn = useCallback(
-    async (nextMessages) => {
+    async (nextMessages, attachmentPayload) => {
       if (!user?.id) return;
       clearActionState();
       setLoading(true);
@@ -445,6 +634,7 @@ export default function DirectorChatbot() {
         {
           personId: user.id,
           messages: nextMessages.map(({ role, content: c }) => ({ role, content: c })),
+          ...(attachmentPayload ? { attachment: attachmentPayload } : {}),
         },
         {
           onProgress: (evt) => setProgressLabel(evt.label || "Working…"),
@@ -489,14 +679,25 @@ export default function DirectorChatbot() {
 
   const send = useCallback(
     (text) => {
-      const content = String(text ?? input).trim();
-      if (!content || loading || !user?.id) return;
-      const nextMessages = [...messages, { role: "user", content }];
+      const raw = String(text ?? input).trim();
+      if ((!raw && !attachment) || loading || !user?.id) return;
+      const content = raw ? applyScope(raw) : "";
+      const attachmentMeta = attachment
+        ? { name: attachment.name, mimeType: attachment.mimeType, size: attachment.size }
+        : null;
+      const attachmentPayload = attachment
+        ? { mimeType: attachment.mimeType, dataBase64: attachment.base64, name: attachment.name }
+        : null;
+      const nextMessages = [
+        ...messages,
+        { role: "user", content, ...(attachmentMeta ? { attachment: attachmentMeta } : {}) },
+      ];
       setMessages(nextMessages);
       setInput("");
-      runTurn(nextMessages);
+      setAttachment(null);
+      runTurn(nextMessages, attachmentPayload);
     },
-    [input, loading, messages, user?.id, runTurn]
+    [input, loading, messages, user?.id, runTurn, applyScope, attachment]
   );
 
   const retryLast = useCallback(() => {
@@ -975,17 +1176,64 @@ export default function DirectorChatbot() {
     ]);
   };
 
+  const archiveCurrentSession = () => {
+    if (!messages.length) return;
+    const session = {
+      id: activeSessionId || `s_${Date.now()}`,
+      title: sessionTitleFromMessages(messages),
+      messages,
+      updatedAt: new Date().toISOString(),
+    };
+    setHistorySessions((prev) => {
+      const next = [session, ...prev.filter((s) => s.id !== session.id)];
+      saveHistorySessions(next);
+      return next;
+    });
+  };
+
   const newChat = () => {
     revealStopRef.current?.();
+    archiveCurrentSession();
     setMessages([]);
+    setActiveSessionId(null);
     setLastMatched(null);
     setEditingIndex(null);
     clearActionState();
     sessionStorage.removeItem(STORAGE_KEY);
+    setHistoryOpen(false);
     inputRef.current?.focus();
   };
 
+  const restoreSession = (session) => {
+    revealStopRef.current?.();
+    clearActionState();
+    setMessages(session.messages);
+    setActiveSessionId(session.id);
+    setLastMatched(null);
+    setEditingIndex(null);
+    setHistoryOpen(false);
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session.messages.slice(-40)));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const deleteSession = (id, e) => {
+    e.stopPropagation();
+    setHistorySessions((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      saveHistorySessions(next);
+      return next;
+    });
+  };
+
   useEffect(() => () => revealStopRef.current?.(), []);
+
+  const conversationTitle = useMemo(
+    () => (messages.length > 0 ? sessionTitleFromMessages(messages) : null),
+    [messages]
+  );
 
   const matchedChips = [
     ...(lastMatched?.classrooms || []).map((n) => ({ type: "class", name: n })),
@@ -1015,18 +1263,257 @@ export default function DirectorChatbot() {
     editPreview?.loading ||
     (showStudentPicker && selectedCount === 0);
 
+  const renderComposer = (variant) => (
+    <div className={`dchat-composer dchat-composer--${variant}`}>
+      {voice.micError && <div className="tchat-mic-error">{voice.micError}</div>}
+      <form
+        className="tchat-inputbar dchat-inputbar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send();
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_ATTACHMENT_TYPES.join(",")}
+          onChange={handleFileChange}
+          style={{ display: "none" }}
+        />
+        {attachment && (
+          <div className="dchat-attachment-chip">
+            <FiPaperclip size={12} />
+            <span className="dchat-attachment-name">{attachment.name}</span>
+            <span className="dchat-attachment-size">{formatBytes(attachment.size)}</span>
+            <button
+              type="button"
+              className="dchat-attachment-remove"
+              onClick={clearAttachment}
+              aria-label="Remove attachment"
+              title="Remove attachment"
+            >
+              <FiX size={12} />
+            </button>
+          </div>
+        )}
+        {attachError && <div className="dchat-attachment-error">{attachError}</div>}
+        <textarea
+          ref={inputRef}
+          className="tchat-input dchat-textarea"
+          placeholder={
+            voice.recording
+              ? "Listening… click the mic to stop"
+              : voice.transcribing
+              ? "Transcribing your voice command…"
+              : 'Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
+          }
+          value={input}
+          rows={variant === "hero" ? 2 : 1}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          disabled={loading || executing || voice.recording || voice.transcribing}
+          aria-label="Message the AI Agent"
+        />
+        <div className="dchat-composer-toolbar">
+          <div className="dchat-composer-toolbar-left">
+            <button
+              type="button"
+              className={`dchat-icon-btn ${attachment ? "dchat-icon-btn--active" : ""}`}
+              onClick={openFilePicker}
+              disabled={loading || executing}
+              title="Attach an image or PDF"
+              aria-label="Attach a file"
+            >
+              <FiPaperclip size={15} />
+            </button>
+            <div className="dchat-scope-wrap">
+              <button
+                type="button"
+                className="dchat-scope-btn"
+                onClick={openScopePicker}
+                aria-haspopup="listbox"
+                aria-expanded={scopeOpen}
+              >
+                <FiLayers size={13} />
+                {scope.label}
+                <FiChevronDown size={13} />
+              </button>
+              {scopeOpen && (
+                <>
+                  <div className="dchat-panel-backdrop" onClick={closeScopeMenu} />
+                  <div className="dchat-scope-menu" role="listbox">
+                    {expandedTeacher ? (
+                      <>
+                        <button
+                          type="button"
+                          className="dchat-scope-back"
+                          onClick={() => setExpandedTeacherId(null)}
+                        >
+                          <FiChevronLeft size={13} /> Back
+                        </button>
+                        <div className="dchat-scope-menu-title">{expandedTeacher.teacherName}</div>
+                        <button
+                          type="button"
+                          className={`dchat-scope-option ${
+                            scope.teacherName === expandedTeacher.teacherName && !scope.className
+                              ? "dchat-scope-option--active"
+                              : ""
+                          }`}
+                          onClick={() => selectScope(expandedTeacher.teacherName, null)}
+                        >
+                          All classes
+                        </button>
+                        {expandedTeacher.classrooms.map((c) => (
+                          <button
+                            key={c._id}
+                            type="button"
+                            className={`dchat-scope-option ${
+                              scope.teacherName === expandedTeacher.teacherName &&
+                              scope.className === c.name
+                                ? "dchat-scope-option--active"
+                                : ""
+                            }`}
+                            onClick={() => selectScope(expandedTeacher.teacherName, c.name)}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={`dchat-scope-option ${
+                            !scope.teacherName && !scope.className
+                              ? "dchat-scope-option--active"
+                              : ""
+                          }`}
+                          onClick={() => selectScope(null, null)}
+                        >
+                          All classes
+                        </button>
+                        {classroomsLoading ? (
+                          <div className="dchat-scope-loading">Loading teachers…</div>
+                        ) : teacherGroups.length === 0 ? (
+                          <div className="dchat-scope-loading">No classrooms found</div>
+                        ) : (
+                          teacherGroups.map((g) => (
+                            <button
+                              key={g.key}
+                              type="button"
+                              className="dchat-scope-option dchat-scope-option--drill"
+                              onClick={() => setExpandedTeacherId(g.key)}
+                            >
+                              <span>{g.teacherName}</span>
+                              <FiChevronRight size={13} />
+                            </button>
+                          ))
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="dchat-composer-toolbar-right">
+            <button
+              type="button"
+              className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
+              onClick={voice.toggle}
+              disabled={loading || executing || voice.transcribing}
+              aria-label={voice.recording ? "Stop recording" : "Speak a command"}
+              title={voice.recording ? "Stop recording" : "Speak a command"}
+            >
+              {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
+            </button>
+            <button
+              type="submit"
+              className="tchat-send"
+              disabled={loading || executing || (!input.trim() && !attachment)}
+              aria-label="Send message"
+            >
+              <FiSend size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="tchat-hint">
+          Enter to send · Shift+Enter for a new line · 🎤 to speak a command
+        </div>
+      </form>
+    </div>
+  );
+
   return (
     <div className="tch-page tch-page--wide tchat-page">
       <TeacherPageHeader
-        eyebrow="AI Assistant"
-        title="AI Agent"
-        subtitle="Ask questions or instruct me to do anything in your director account — indexing marking, parent reports, people, and managers."
+        eyebrow={conversationTitle ? "AI Agent" : "AI Assistant"}
+        title={conversationTitle || "AI Agent"}
+        subtitle={
+          conversationTitle
+            ? undefined
+            : "Ask questions or instruct me to do anything in your director account — indexing marking, parent reports, people, and managers."
+        }
+        breadcrumbs={conversationTitle ? [{ label: "AI Agent", to: "/director/ai-agent" }] : []}
         actions={
-          messages.length > 0 ? (
+          <div className="dchat-header-actions">
+            <div className="dchat-history-wrap">
+              <button
+                type="button"
+                className="tch-btn tch-btn--ghost"
+                onClick={() => setHistoryOpen((v) => !v)}
+                aria-haspopup="true"
+                aria-expanded={historyOpen}
+              >
+                <FiClock size={15} /> History
+              </button>
+              {historyOpen && (
+                <>
+                  <div className="dchat-panel-backdrop" onClick={() => setHistoryOpen(false)} />
+                  <div className="dchat-history-panel">
+                    <div className="dchat-history-panel-title">Past conversations</div>
+                    {historySessions.length === 0 ? (
+                      <p className="dchat-history-empty">No past conversations yet.</p>
+                    ) : (
+                      <ul className="dchat-history-list">
+                        {historySessions.map((s) => (
+                          <li key={s.id} className="dchat-history-list-item">
+                            <button
+                              type="button"
+                              className="dchat-history-item"
+                              onClick={() => restoreSession(s)}
+                            >
+                              <span className="dchat-history-item-title">{s.title}</span>
+                              <span className="dchat-history-item-time">
+                                {relativeTime(s.updatedAt)}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="dchat-history-delete"
+                              onClick={(e) => deleteSession(s.id, e)}
+                              aria-label="Delete conversation"
+                              title="Delete conversation"
+                            >
+                              <FiTrash2 size={13} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <button type="button" className="tch-btn tch-btn--ghost" onClick={newChat}>
               <FiPlus size={15} /> New chat
             </button>
-          ) : null
+          </div>
         }
       />
 
@@ -1038,59 +1525,48 @@ export default function DirectorChatbot() {
           </div>
           <span className="tchat-shell-badge">AI Agent</span>
         </div>
-        <div className="tchat-scroll" ref={scrollRef}>
+        <div
+          className={`tchat-scroll ${messages.length === 0 ? "tchat-scroll--start" : ""}`}
+          ref={scrollRef}
+        >
           {messages.length === 0 ? (
             <div className="tchat-empty">
               <div className="tchat-empty-header">
                 <div className="tchat-empty-icon">
                   <FiCpu size={18} />
                 </div>
-                <h3>What would you like to know or do?</h3>
+                <h3>What should we get done today?</h3>
               </div>
               <p>
-                Natural language works for everything — assign assistants, send reports,
-                run automation, push grades, and more. I always show a confirm step before
-                executing.
+                Ask about your students or give an instruction — marking, parent reports,
+                people and more. You'll see a plan before anything is sent or changed.
               </p>
-              {briefingLoading ? (
-                <div className="tchat-briefing-card tchat-briefing-card--skeleton">
-                  <div className="tchat-skeleton-line tchat-skeleton-line--title" />
-                  <div className="tchat-skeleton-line" />
-                  <div className="tchat-skeleton-line" />
-                </div>
-              ) : briefing?.lines?.length ? (
-                <div className="tchat-briefing-card">
-                  <div className="tchat-briefing-card-title">
-                    {briefing.greeting || "Today's briefing"}
-                  </div>
-                  <ul>
-                    {briefing.lines.slice(0, 5).map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
+              {renderComposer("hero")}
+
+              <div className="dchat-section-label">Try asking</div>
+              <div className="dchat-capability-grid">
+                {CAPABILITY_CARDS.map((c) => (
                   <button
+                    key={c.key}
                     type="button"
-                    className="tchat-suggestion"
-                    onClick={() => send("Give me today's briefing")}
+                    className="dchat-capability-card"
+                    onClick={() => fillComposer(c.example)}
                   >
-                    <FiZap size={13} />
-                    Explain this briefing
-                  </button>
-                </div>
-              ) : null}
-              <div className="tchat-suggestions">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="tchat-suggestion"
-                    onClick={() => send(s)}
-                  >
-                    <FiZap size={13} />
-                    {s}
+                    <span className={`dchat-capability-icon dchat-capability-icon--${c.tone}`}>
+                      {c.icon}
+                    </span>
+                    <span className="dchat-capability-text">
+                      <span className="dchat-capability-label">{c.label}</span>
+                      <span className="dchat-capability-example">“{c.example}”</span>
+                    </span>
                   </button>
                 ))}
               </div>
+
+              <p className="dchat-trust-line">
+                <FiShield size={12} /> The agent always shows a plan and asks before sending
+                messages or changing accounts.
+              </p>
             </div>
           ) : (
             <div className="tchat-messages">
@@ -1151,6 +1627,12 @@ export default function DirectorChatbot() {
                             m.role === "user" ? "tchat-bubble--user" : ""
                           } ${m.isError ? "tchat-bubble--error" : ""}`}
                         >
+                          {m.attachment && (
+                            <div className="dchat-bubble-attachment">
+                              <FiPaperclip size={12} />
+                              {m.attachment.name}
+                            </div>
+                          )}
                           {m.role === "assistant" ? (
                             <div
                               className="tchat-md"
@@ -1249,56 +1731,97 @@ export default function DirectorChatbot() {
                         <span className="tchat-action-card-hint">
                           {selectedCount} of {editPreview.items.length} selected
                         </span>
-                        <div className="tchat-select-bar-actions">
+                        {editPreview.items.length > 3 ? (
                           <button
                             type="button"
                             className="tchat-link-btn"
-                            onClick={selectAllPreviewKeys}
-                            disabled={executing}
+                            onClick={() => setPreviewModalOpen(true)}
                           >
-                            Select all
+                            Review full list
                           </button>
+                        ) : (
+                          <div className="tchat-select-bar-actions">
+                            <button
+                              type="button"
+                              className="tchat-link-btn"
+                              onClick={selectAllPreviewKeys}
+                              disabled={executing}
+                            >
+                              Select all
+                            </button>
+                            <button
+                              type="button"
+                              className="tchat-link-btn"
+                              onClick={clearAllPreviewKeys}
+                              disabled={executing}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {editPreview.items.length > 3 ? (
+                        <div className="dchat-preview-compact">
+                          {editPreview.items.slice(0, 3).map((item) => (
+                            <div key={item.key} className="dchat-preview-row">
+                              <span className="dchat-preview-avatar">
+                                {(item.name || "?").slice(0, 1).toUpperCase()}
+                              </span>
+                              <span className="dchat-preview-row-name">{item.name}</span>
+                              {item.error ? (
+                                <span className="dchat-issue-tag">No number</span>
+                              ) : (
+                                <span className="dchat-preview-row-status">
+                                  {item.kind === "report" ? "WhatsApp" : "Selected"}
+                                </span>
+                              )}
+                            </div>
+                          ))}
                           <button
                             type="button"
-                            className="tchat-link-btn"
-                            onClick={clearAllPreviewKeys}
-                            disabled={executing}
+                            className="dchat-preview-more"
+                            onClick={() => setPreviewModalOpen(true)}
                           >
-                            Clear
+                            + {editPreview.items.length - 3} more
                           </button>
                         </div>
-                      </div>
-                      <div className="tchat-preview-list">
-                        {editPreview.items.map((item) => (
-                          <div key={item.key} className="tchat-preview-item">
-                            <label className="tchat-student-check">
-                              <input
-                                type="checkbox"
-                                checked={selectedKeys.has(item.key)}
-                                onChange={() => toggleSelectedKey(item.key)}
-                                disabled={executing}
-                              />
-                              <span className="tchat-preview-name">{item.name}</span>
-                            </label>
-                            {showPreviewEditor && (
-                              <textarea
-                                className="tchat-preview-textarea"
-                                value={item.message}
-                                rows={Math.min(
-                                  12,
-                                  Math.max(
-                                    4,
-                                    String(item.message || "").split("\n").length + 1
-                                  )
+                      ) : (
+                        <div className="tchat-preview-list">
+                          {editPreview.items.map((item) => (
+                            <div key={item.key} className="tchat-preview-item">
+                              <label className="tchat-student-check">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedKeys.has(item.key)}
+                                  onChange={() => toggleSelectedKey(item.key)}
+                                  disabled={executing}
+                                />
+                                <span className="tchat-preview-name">{item.name}</span>
+                                {item.error && (
+                                  <span className="dchat-issue-tag">No number</span>
                                 )}
-                                onChange={(e) =>
-                                  updatePreviewMessage(item.key, e.target.value)
-                                }
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                              </label>
+                              {showPreviewEditor && (
+                                <textarea
+                                  className="tchat-preview-textarea"
+                                  value={item.message}
+                                  rows={Math.min(
+                                    12,
+                                    Math.max(
+                                      4,
+                                      String(item.message || "").split("\n").length + 1
+                                    )
+                                  )}
+                                  onChange={(e) =>
+                                    updatePreviewMessage(item.key, e.target.value)
+                                  }
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                   {!showStudentPicker && (
@@ -1326,61 +1849,91 @@ export default function DirectorChatbot() {
                   </div>
                 </div>
               )}
+
+              {previewModalOpen && editPreview?.items?.length > 0 && (
+                <div
+                  className="dchat-modal-overlay"
+                  onClick={() => setPreviewModalOpen(false)}
+                >
+                  <div className="dchat-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="dchat-modal-header">
+                      <h4>Review recipients</h4>
+                      <button
+                        type="button"
+                        className="dchat-modal-close"
+                        onClick={() => setPreviewModalOpen(false)}
+                        aria-label="Close"
+                      >
+                        <FiX size={16} />
+                      </button>
+                    </div>
+                    <div className="tchat-select-bar">
+                      <span className="tchat-action-card-hint">
+                        {selectedCount} of {editPreview.items.length} selected
+                      </span>
+                      <div className="tchat-select-bar-actions">
+                        <button
+                          type="button"
+                          className="tchat-link-btn"
+                          onClick={selectAllPreviewKeys}
+                          disabled={executing}
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          className="tchat-link-btn"
+                          onClick={clearAllPreviewKeys}
+                          disabled={executing}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="tchat-preview-list dchat-modal-list">
+                      {editPreview.items.map((item) => (
+                        <div key={item.key} className="tchat-preview-item">
+                          <label className="tchat-student-check">
+                            <input
+                              type="checkbox"
+                              checked={selectedKeys.has(item.key)}
+                              onChange={() => toggleSelectedKey(item.key)}
+                              disabled={executing}
+                            />
+                            <span className="tchat-preview-name">{item.name}</span>
+                            {item.error && <span className="dchat-issue-tag">No number</span>}
+                          </label>
+                          {showPreviewEditor && (
+                            <textarea
+                              className="tchat-preview-textarea"
+                              value={item.message}
+                              rows={Math.min(
+                                12,
+                                Math.max(4, String(item.message || "").split("\n").length + 1)
+                              )}
+                              onChange={(e) => updatePreviewMessage(item.key, e.target.value)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="dchat-modal-footer">
+                      <button
+                        type="button"
+                        className="tch-btn tch-btn--primary tch-btn--sm"
+                        onClick={() => setPreviewModalOpen(false)}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {voice.micError && <div className="tchat-mic-error">{voice.micError}</div>}
-        <form
-          className="tchat-inputbar"
-          onSubmit={(e) => {
-            e.preventDefault();
-            send();
-          }}
-        >
-          <div className="tchat-inputbar-row">
-            <button
-              type="button"
-              className={`tchat-mic ${voice.recording ? "tchat-mic--recording" : ""}`}
-              onClick={voice.toggle}
-              disabled={loading || executing || voice.transcribing}
-              aria-label={voice.recording ? "Stop recording" : "Speak a command"}
-              title={voice.recording ? "Stop recording" : "Speak a command"}
-            >
-              {voice.recording ? <FiSquare size={15} /> : <FiMic size={16} />}
-            </button>
-            <textarea
-              ref={inputRef}
-              className="tchat-input"
-              placeholder={
-                voice.recording
-                  ? "Listening… click the mic to stop"
-                  : voice.transcribing
-                  ? "Transcribing your voice command…"
-                  : 'Ask or instruct — e.g. "Assign Sara to mark Quiz 2 in Grade 10"'
-              }
-              value={input}
-              rows={1}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-              disabled={loading || executing || voice.recording || voice.transcribing}
-            />
-            <button
-              type="submit"
-              className="tchat-send"
-              disabled={loading || executing || !input.trim()}
-              aria-label="Send message"
-            >
-              <FiSend size={16} />
-            </button>
-          </div>
-          <div className="tchat-hint">Enter to send · Shift+Enter for a new line · 🎤 to speak a command</div>
-        </form>
+        {messages.length > 0 && renderComposer("docked")}
       </div>
     </div>
   );

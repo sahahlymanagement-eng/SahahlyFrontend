@@ -43,7 +43,10 @@ function buildNavSections(counts) {
   return [
     {
       label: "Overview",
-      items: [{ icon: <FiHome />, label: "Dashboard", path: "/director/dashboard" }],
+      items: [
+        { icon: <FiHome />, label: "Dashboard", path: "/director/dashboard" },
+        { icon: <FiCpu />, label: "AI Agent", path: "/director/ai-agent" },
+      ],
     },
     {
       label: "People & teams",
@@ -94,7 +97,6 @@ function buildNavSections(counts) {
         { icon: <FiMessageSquare />, label: "Report Feedback", path: "/director/feedback" },
         { icon: <FiSend />, label: "WhatsApp Scheduler", path: "/director/whatsapp-scheduler" },
         { icon: <FiRadio />, label: "WhatsApp Broadcast", path: "/director/whatsapp-broadcast" },
-        { icon: <FiCpu />, label: "AI Agent", path: "/director/ai-agent" },
         { icon: <FiMessageCircle />, label: "Chatbot", path: "/director/chatbot" },
       ],
     },

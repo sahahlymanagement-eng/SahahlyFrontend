@@ -35,6 +35,7 @@ const ASSIGN_ASSISTANTS_NAV_PATHS = {
 
 const NAV_ITEMS = [
   { icon: <FiHome />,      label: "Dashboard",          path: "/manager/dashboard"      },
+  { icon: <FiCpu />,       label: "AI Agent",           path: "/manager/ai-agent"           },
   { icon: <FiUser />,      label: "Assign Assistants",  path: "/manager/assign-assistants" },
   { icon: <FiUsers />,     label: "Students Data",      path: "/manager/students"       },
   { icon: <FiClipboard />, label: "Reports",            path: "/manager/assignments"    },
@@ -47,7 +48,6 @@ const NAV_ITEMS = [
   { icon: <FiMessageSquare />, label: "Report Feedback", path: "/manager/feedback"   },
   { icon: <FiSend />,      label: "WhatsApp Scheduler", path: "/manager/whatsapp-scheduler" },
   { icon: <FiRadio />,     label: "WhatsApp Broadcast", path: "/manager/whatsapp-broadcast" },
-  { icon: <FiCpu />,       label: "AI Agent",           path: "/manager/ai-agent"           },
   { icon: <FiMessageCircle />, label: "Chatbot",        path: "/manager/chatbot"            },
   { icon: <FiFileText />,  label: "Sahahly AI Marking",  path: "/manager/marking"        },
   { icon: <FiFileText />,  label: "Claude AI Marking",  path: "/manager/markingclaude"  },
