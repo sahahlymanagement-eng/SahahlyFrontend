@@ -126,6 +126,22 @@ test("REGRESSION: unanswered rows never use page 1 as an annotation fallback", (
   assert.strictEqual(isPlaceableScriptQuestion(blankOnFirstPage, { isBackfilledStub }), false);
 });
 
+test("REGRESSION: an indexed scanned blank is annotated, including on page 1", () => {
+  const anchoredBlank = {
+    questionNumber: "1(b)",
+    marksAwarded: 0,
+    maxMarks: 2,
+    pageNumber: 1,
+    _backfilled: true,
+    _blankOnIndexedPage: true,
+    _pageIsReference: true,
+    checklist: { answerIsBlank: true, notMarked: false },
+  };
+
+  assert.strictEqual(isBackfilledStub(anchoredBlank), false);
+  assert.strictEqual(isPlaceableScriptQuestion(anchoredBlank, { isBackfilledStub }), true);
+});
+
 test("REGRESSION: a scored row is not hidden by a contradictory not-present flag", () => {
   const assessed = {
     questionNumber: "4(a)",

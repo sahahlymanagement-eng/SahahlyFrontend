@@ -78,6 +78,10 @@ export function overlayQuestionLabel(q) {
 
 export function isBlankQuestion(q) {
   if (!q) return false;
+  // The reviewed index supplied a real page anchor for this omitted row. It
+  // represents a scanned-but-empty question, so show the zero-mark feedback
+  // on that page even though the original automated pass did not return it.
+  if (q._blankOnIndexedPage === true && q._pageIsReference === true) return true;
   // Staff-added rows are intentional — only blank when the teacher ticks it.
   if (q._manual === true || q._stubEdited === true) {
     return q.checklist?.answerIsBlank === true;
@@ -242,8 +246,10 @@ export function isReportOnlyBlankQuestion(q, { isBackfilledStub } = {}) {
 export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
   if (!q) return false;
   const hasAwardedMarks = Number(q.marksAwarded) > 0;
+  const isAnchoredBackfilledBlank =
+    q._backfilled === true && q._blankOnIndexedPage === true && q._pageIsReference === true;
   const isStub =
-    q._backfilled === true ||
+    (q._backfilled === true && !isAnchoredBackfilledBlank) ||
     // A non-zero score contradicts a "not present" flag. Keep that assessed
     // row placeable so its score and examiner feedback are not silently
     // removed from the annotated PDF. Genuine unassessed zero rows remain
@@ -257,7 +263,7 @@ export function isPlaceableScriptQuestion(q, { isBackfilledStub } = {}) {
   // fallback into a stack of red 0-mark badges on the first student page.
   // The unanswered item remains in the report; a genuine blank with a known
   // later-page location can still be annotated beside its question.
-  if (isBlankQuestion(q) && Number(q.pageNumber) === 1) return false;
+  if (isBlankQuestion(q) && Number(q.pageNumber) === 1 && !isAnchoredBackfilledBlank) return false;
   if (isBlankQuestion(q) && !pageOk) return false;
   return true;
 }
