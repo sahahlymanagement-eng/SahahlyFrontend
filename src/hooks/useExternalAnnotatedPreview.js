@@ -16,7 +16,11 @@ import {
 import { cloneCriteriaGrade } from "../utils/markingQuestionEdits";
 import { annotationsHavePendingEdits } from "../utils/teacherAnnotations";
 import { questionMarksSignature } from "../utils/buildEditorPreviewBaseline";
-import { rememberLocalPdfPreview, forgetLocalPdfPreview } from "../utils/localPdfPreviewStore";
+import {
+  rememberLocalPdfPreview,
+  forgetLocalPdfPreview,
+  hasPdfHeader,
+} from "../utils/localPdfPreviewStore";
 
 function getSubmissionId(modal) {
   return modal?.submissionId || modal?.student?.submissionId || null;
@@ -29,6 +33,111 @@ function formatDownloadProgress({ loaded, total }) {
   const mb = (n) => (n / (1024 * 1024)).toFixed(1);
   if (total > 0) return `${mb(loaded)} MB / ${mb(total)} MB`;
   return `${mb(loaded)} MB`;
+}
+
+// Finished annotated-preview bytes, keyed by partner+submission+marking-state
+// signature — same idea as useAnnotatedResultPreview.js's classroom cache.
+// This is what makes prefetchPreview (below) pay off: a paper warmed while
+// the previous one was still open is a straight hit here instead of a fresh
+// download + pdf-lib build when the teacher actually opens it.
+const completedPreviewCache = new Map();
+const MAX_CACHED_PREVIEWS = 6;
+const MAX_CACHED_PREVIEW_BYTES = 80 * 1024 * 1024;
+
+function previewSnapshotSignature(snapshot, markingMode, lockPlacement) {
+  return JSON.stringify({
+    markingMode,
+    lockPlacement: Boolean(lockPlacement),
+    questions: snapshot.questions,
+    maxTotal: snapshot.maxTotal,
+    summary: snapshot.summary,
+    outOfScopeNotes: snapshot.outOfScopeNotes,
+    teacherAnnotations: snapshot.teacherAnnotations,
+    criteriaGrade: snapshot.criteriaGrade,
+    finalObtainedMarks: snapshot.finalObtainedMarks,
+    finalMaximumMarks: snapshot.finalMaximumMarks,
+  });
+}
+
+function readCompletedPreview(cacheKey, signature) {
+  const cached = completedPreviewCache.get(cacheKey);
+  if (
+    !cached ||
+    cached.signature !== signature ||
+    !cached.bytes?.byteLength ||
+    !hasPdfHeader(cached.bytes)
+  ) {
+    if (cached) completedPreviewCache.delete(cacheKey);
+    return null;
+  }
+  // Refresh insertion order so eviction behaves like a small LRU cache.
+  completedPreviewCache.delete(cacheKey);
+  completedPreviewCache.set(cacheKey, cached);
+  return cached;
+}
+
+function rememberCompletedPreview(cacheKey, signature, bytes) {
+  if (!bytes?.byteLength) return;
+  completedPreviewCache.delete(cacheKey);
+  completedPreviewCache.set(cacheKey, {
+    signature,
+    bytes,
+    reportPageCount: Number(bytes.reportPageCount) || 0,
+  });
+
+  const cachedBytes = () =>
+    Array.from(completedPreviewCache.values()).reduce(
+      (total, entry) => total + (entry.bytes?.byteLength || 0),
+      0
+    );
+  while (
+    completedPreviewCache.size > MAX_CACHED_PREVIEWS ||
+    cachedBytes() > MAX_CACHED_PREVIEW_BYTES
+  ) {
+    const oldestKey = completedPreviewCache.keys().next().value;
+    if (oldestKey == null) break;
+    completedPreviewCache.delete(oldestKey);
+  }
+}
+
+// Module-level so concurrent prefetches for the same submission (e.g. the
+// effect re-firing on an unrelated re-render) share one in-flight build
+// instead of spinning up a second pdf-lib worker for identical work.
+const prefetchInFlight = new Map(); // cacheKey -> Promise<void>
+
+/**
+ * Baseline (no-pending-edits) snapshot for a submission that has NOT been
+ * opened in the modal yet — used only for prefetching. See
+ * useAnnotatedResultPreview.js's buildBaselineSnapshot for why this
+ * deliberately does not read any editingXxx refs.
+ */
+function buildBaselineSnapshot({ assignmentMaxPoints, resolvePdfSummary, submissionId, result }) {
+  const questions = (result?.questions || []).map((q) => ({ ...q }));
+  const maxTotal = Math.max(
+    1,
+    Number(assignmentMaxPoints) ||
+      resolveDisplayMaxTotal({ result, editingMaxTotal: null }) ||
+      1
+  );
+  const summary = resolvePdfSummary(submissionId, result);
+  const outOfScopeNotes = (result?.outOfScopeNotes || []).map((n) => ({ ...n }));
+  const teacherAnnotations = getTeacherAnnotations(result).map((a) => ({ ...a }));
+  const criteriaGrade = cloneCriteriaGrade(result?.criteriaGrade);
+  const finalObtainedMarks = questions.reduce(
+    (s, q) => s + (Number(q.marksAwarded) || 0),
+    0
+  );
+  return {
+    submissionId,
+    questions,
+    maxTotal,
+    summary,
+    outOfScopeNotes,
+    teacherAnnotations,
+    criteriaGrade,
+    finalObtainedMarks,
+    finalMaximumMarks: maxTotal,
+  };
 }
 
 function withTimeout(promise, ms, label) {
@@ -78,6 +187,10 @@ export function useExternalAnnotatedPreview({
   // the partner-owned report logo drawn on the summary page, same slot the
   // classroom preview fills from the assignment's teacher.
   partnerSlug = null,
+  // Configured max points for the assignment — only used to build a baseline
+  // snapshot for a submission that isn't open yet (prefetchPreview below);
+  // the open-modal path resolves its own max from effectiveMaxTotal/editor.
+  assignmentMaxPoints = null,
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -89,6 +202,7 @@ export function useExternalAnnotatedPreview({
   const previewRequestRef = useRef(0);
   const previewBuildRef = useRef(null);
   const previewUrlRef = useRef(null);
+  const previewSignatureRef = useRef(null);
   const retiredPreviewUrlsRef = useRef(new Set());
   const resolvePdfSummaryRef = useRef(resolvePdfSummary);
   resolvePdfSummaryRef.current = resolvePdfSummary;
@@ -118,6 +232,8 @@ export function useExternalAnnotatedPreview({
   getEditorBaselineRef.current = getEditorBaseline;
   const partnerSlugRef = useRef(partnerSlug);
   partnerSlugRef.current = partnerSlug;
+  const assignmentMaxPointsRef = useRef(assignmentMaxPoints);
+  assignmentMaxPointsRef.current = assignmentMaxPoints;
 
   const pendingRemovedRef = useRef(pendingRemovedIndices);
   pendingRemovedRef.current = pendingRemovedIndices;
@@ -139,6 +255,7 @@ export function useExternalAnnotatedPreview({
       URL.revokeObjectURL(url);
     }
     retiredPreviewUrlsRef.current.clear();
+    previewSignatureRef.current = null;
     setAnnotatedPreviewUrl(null);
   }, []);
 
@@ -196,7 +313,7 @@ export function useExternalAnnotatedPreview({
     };
   }, []);
 
-  const generatePreview = useCallback(async (snapshot, { lockPlacement = false } = {}) => {
+  const generatePreview = useCallback(async (snapshot, { lockPlacement = false, force = false } = {}) => {
     if (!snapshot?.submissionId) return;
     const requestId = ++previewRequestRef.current;
     previewBuildRef.current?.abort();
@@ -207,6 +324,35 @@ export function useExternalAnnotatedPreview({
     setDownloadProgressLabel(null);
 
     try {
+      const markingModeForCache = resultModalRef.current?.result?.markingMode || "normal";
+      const cacheKey = `${partnerSlugRef.current || ""}:${snapshot.submissionId}:${markingModeForCache}:${Boolean(lockPlacement)}`;
+      const signature = previewSnapshotSignature(snapshot, markingModeForCache, lockPlacement);
+
+      // Same paper, same marking state already on screen — nothing to redo.
+      if (!force && previewUrlRef.current && previewSignatureRef.current === signature) {
+        setPreviewLoading(false);
+        return;
+      }
+
+      // A background prefetch (see prefetchPreview below) may already have
+      // built this exact preview while a different paper was open — skip the
+      // download + pdf-lib build entirely and reuse those finished bytes.
+      const cached = !force ? readCompletedPreview(cacheKey, signature) : null;
+      if (cached) {
+        if (requestId !== previewRequestRef.current) return;
+        if (getSubmissionId(resultModalRef.current) !== snapshot.submissionId) return;
+        const previousUrl = previewUrlRef.current;
+        const url = URL.createObjectURL(new Blob([cached.bytes], { type: "application/pdf" }));
+        rememberLocalPdfPreview(url, cached.bytes);
+        previewUrlRef.current = url;
+        previewSignatureRef.current = signature;
+        setAnnotatedPreviewUrl(url);
+        setReportPageCount(cached.reportPageCount);
+        if (previousUrl && previousUrl !== url) retiredPreviewUrlsRef.current.add(previousUrl);
+        setPreviewLoading(false);
+        return;
+      }
+
       if (!getStudentFileRef.current) {
         throw new Error("Student PDF unavailable for preview");
       }
@@ -235,7 +381,6 @@ export function useExternalAnnotatedPreview({
       ]);
       if (requestId !== previewRequestRef.current) return;
 
-      const markingMode = resultModalRef.current?.result?.markingMode || "normal";
       const pdfBytes = await withTimeout(
         buildPreviewPdf({
           studentFile,
@@ -245,7 +390,7 @@ export function useExternalAnnotatedPreview({
           outOfScopeNotes: snapshot.outOfScopeNotes,
           teacherAnnotations: snapshot.teacherAnnotations,
           criteriaGrade: snapshot.criteriaGrade,
-          markingMode,
+          markingMode: markingModeForCache,
           finalObtainedMarks: snapshot.finalObtainedMarks,
           finalMaximumMarks: snapshot.finalMaximumMarks ?? snapshot.maxTotal,
           skipCompress: true,
@@ -263,7 +408,9 @@ export function useExternalAnnotatedPreview({
       const previousUrl = previewUrlRef.current;
       const url = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
       rememberLocalPdfPreview(url, pdfBytes);
+      rememberCompletedPreview(cacheKey, signature, pdfBytes);
       previewUrlRef.current = url;
+      previewSignatureRef.current = signature;
       setAnnotatedPreviewUrl(url);
       setReportPageCount(Number(pdfBytes?.reportPageCount) || 0);
       if (previousUrl && previousUrl !== url) {
@@ -533,7 +680,7 @@ export function useExternalAnnotatedPreview({
         if (!stillThisPaper()) return { ...finalResult, switchedAway: true };
         setConfirmedSnapshot(snapshot);
         if (!skipPreview) {
-          await generatePreview(snapshot, { lockPlacement: true });
+          await generatePreview(snapshot, { lockPlacement: true, force: true });
         }
         return finalResult;
       } finally {
@@ -578,7 +725,7 @@ export function useExternalAnnotatedPreview({
     const snapshot = confirmedSnapshot || buildSnapshotFromModal(modal);
     if (!snapshot) return;
     if (!confirmedSnapshot) setConfirmedSnapshot(snapshot);
-    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot) });
+    generatePreview(snapshot, { lockPlacement: Boolean(confirmedSnapshot), force: true });
   }, [confirmedSnapshot, buildSnapshotFromModal, generatePreview]);
 
   const refreshPreviewFromQuestions = useCallback(
@@ -619,6 +766,72 @@ export function useExternalAnnotatedPreview({
     ]
   );
 
+  /**
+   * Warm the shared PDF + preview caches for a submission that is NOT open in
+   * this modal — call it for "the next row in the list" while the current
+   * one is still being reviewed/edited, so opening it later hits
+   * completedPreviewCache instead of paying a fresh R2 download + pdf-lib
+   * build. Mirrors useAnnotatedResultPreview.js's prefetchPreview. Never
+   * touches this hook's displayed state and never throws — worst case is a
+   * normal-speed open, exactly like before this existed.
+   */
+  const prefetchPreview = useCallback(
+    async ({ submissionId, result } = {}) => {
+      if (!submissionId || !result || !getStudentFileRef.current) return;
+      try {
+        const markingMode = result?.markingMode || "normal";
+        const snapshot = buildBaselineSnapshot({
+          assignmentMaxPoints: assignmentMaxPointsRef.current,
+          resolvePdfSummary: resolvePdfSummaryRef.current,
+          submissionId,
+          result,
+        });
+        const cacheKey = `${partnerSlugRef.current || ""}:${submissionId}:${markingMode}:false`;
+        const signature = previewSnapshotSignature(snapshot, markingMode, false);
+
+        if (readCompletedPreview(cacheKey, signature)) return; // already warm
+        const existing = prefetchInFlight.get(cacheKey);
+        if (existing) return existing;
+
+        const task = (async () => {
+          const studentFile = await getStudentFileRef.current(submissionId);
+          if (!studentFile) return;
+          const teacherLogoBytes = await loadPartnerLogoBytes(api, partnerSlugRef.current).catch(
+            () => null
+          );
+          const pdfBytes = await buildPreviewPdf({
+            studentFile,
+            questions: snapshot.questions,
+            maxTotalMarks: snapshot.maxTotal,
+            summary: snapshot.summary,
+            outOfScopeNotes: snapshot.outOfScopeNotes,
+            teacherAnnotations: snapshot.teacherAnnotations,
+            criteriaGrade: snapshot.criteriaGrade,
+            markingMode,
+            finalObtainedMarks: snapshot.finalObtainedMarks,
+            finalMaximumMarks: snapshot.finalMaximumMarks,
+            skipCompress: true,
+            lockPlacement: false,
+            teacherLogoBytes,
+          });
+          if (hasPdfHeader(pdfBytes)) {
+            rememberCompletedPreview(cacheKey, signature, pdfBytes);
+          }
+        })();
+
+        prefetchInFlight.set(cacheKey, task);
+        try {
+          await task;
+        } finally {
+          prefetchInFlight.delete(cacheKey);
+        }
+      } catch (err) {
+        console.warn("[preview-prefetch]", err?.message || err);
+      }
+    },
+    []
+  );
+
   return {
     annotatedPreviewUrl,
     previewLoading,
@@ -635,5 +848,6 @@ export function useExternalAnnotatedPreview({
     handlePreviewDocumentLoaded,
     reportPageCount,
     refreshPreviewFromQuestions,
+    prefetchPreview,
   };
 }

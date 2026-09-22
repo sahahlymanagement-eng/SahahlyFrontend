@@ -71,7 +71,7 @@ import AddMarkingQuestionBar, {
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import { confirmBatchMarkScheme } from "../../utils/confirmBatchMarkScheme";
 import { enrichMarkingQuestions } from "../../utils/blankQuestionFeedback";
-import { PUBLISHED, isPublished, isPublishedStatus } from "../../utils/gradingStatus";
+import { isPublished, isPublishedStatus } from "../../utils/gradingStatus";
 import { useExternalAnnotatedPreview } from "../../hooks/useExternalAnnotatedPreview";
 import {
   patchBatchJob,
@@ -555,12 +555,13 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
 
   // Local maxGrade → MS inventory when partner grade is wrong → partner grade.
   // Classroom is unaffected (uses Google Classroom maxPoints).
+  const assignmentMaxPoints = resolvePartnerAssignmentMax({
+    maxGrade: assignmentSettings.settings.maxGrade,
+    inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
+    partnerGrade: selectedAssignment?.grade,
+  });
   const effectiveMaxTotal = resolveDisplayMaxTotal({
-    assignmentMaxPoints: resolvePartnerAssignmentMax({
-      maxGrade: assignmentSettings.settings.maxGrade,
-      inventoryMaxMarks: assignmentSettings.settings.inventoryMaxMarks,
-      partnerGrade: selectedAssignment?.grade,
-    }),
+    assignmentMaxPoints,
     result: resultModal?.result,
     editingMaxTotal,
   });
@@ -845,6 +846,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     retryPreview,
     handlePreviewDocumentLoaded,
     reportPageCount,
+    prefetchPreview,
   } = useExternalAnnotatedPreview({
     resultModal,
     editingQuestions,
@@ -865,7 +867,57 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
         : null,
     getEditorBaseline,
     partnerSlug: slug,
+    assignmentMaxPoints,
   });
+
+  // Warm the next row's PDF + preview caches while this one is still open for
+  // review, so moving on to it is a cache hit instead of a fresh R2 fetch +
+  // pdf-lib build — same idea as ManagerSubmissionViewer.jsx's classroom
+  // prefetch. Same-page neighbor only, same as classroom's own comment: the
+  // next page's rows aren't loaded client-side until that page is fetched.
+  // Unlike classroom, a provider row's full result usually isn't in memory
+  // yet (the list is intentionally light — see openSavedResult's own
+  // comment), so this fetches the next row's draft first when needed.
+  useEffect(() => {
+    const openId = resultModalSubmissionId;
+    if (!openId) return;
+    const idx = submissions.findIndex((s) => s.submissionId === openId);
+    if (idx === -1) return;
+    const next = submissions[idx + 1];
+    if (!next?.submissionId) return;
+
+    let cancelled = false;
+    (async () => {
+      let nextResult = results[next.submissionId]?.result || null;
+      if (!nextResult) {
+        if (!next.hasDraft && !next.hasMarkingResult && !isPublished(next)) return;
+        try {
+          const { data } = await api.get(`${BASE}/submissions/${next.submissionId}/draft`);
+          nextResult = data?.draftResult || null;
+          if (nextResult && !cancelled) {
+            setResults((prev) =>
+              prev[next.submissionId]
+                ? prev
+                : {
+                    ...prev,
+                    [next.submissionId]: {
+                      result: nextResult,
+                      originalAiResult: data.draftOriginalAiResult || nextResult,
+                      studentFile: undefined,
+                    },
+                  }
+            );
+          }
+        } catch {
+          return; // best-effort — the real open still works normally
+        }
+      }
+      if (cancelled || !nextResult) return;
+      prefetchPreview({ submissionId: next.submissionId, result: nextResult });
+    })();
+
+    return () => { cancelled = true; };
+  }, [resultModalSubmissionId, submissions, results, prefetchPreview, BASE]);
 
   const handleAnnotationPlacementChange = useCallback((change) => {
     setEditingQuestions((prev) => applyPlacementChange(prev, change));
@@ -2216,24 +2268,35 @@ toast.success("Result cleared — you can mark again");
       fd.append("grade", totalMarks);
       if (summary) fd.append("comments", summary);
       if (resultModal.student?.submittedAt) fd.append("submissionDate", resultModal.student.submittedAt);
+      if (resultModal.student?.name) fd.append("studentName", resultModal.student.name);
 
-      await api.post(`${BASE}/upload`, fd, {
+      // Staged, same as Publish All: this only uploads the PDF to R2 and
+      // enqueues a background job (cron/partnerPublishJobWorkerCron.js) that
+      // calls the partner's postMark API — it does NOT wait for that call.
+      // The old synchronous /upload here could sit past the browser's own
+      // timeout whenever R2 or the partner's API was slow, turning a slow
+      // publish into a failed one even though the upload itself was fine.
+      // Not calling deleteDraft here on purpose — the background job reads
+      // draftResult fresh when it actually runs and clears it itself once
+      // published; clearing it now would race the job and lose the result.
+      const { data: stageResult } = await api.post(`${BASE}/upload/stage`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120000,
+        timeout: 60000,
       });
 
-      toast.success(`Grade & feedback uploaded to ${label}`);
-      // Published — free the draft (the annotated PDF now lives with the partner).
-      deleteDraft(submissionId);
-      setSubmissions((prev) =>
-        prev.map((s) =>
-          s.submissionId === submissionId
-            ? { ...s, localStatus: PUBLISHED, localGrade: totalMarks, hasFeedbackPdf: true }
-            : s
-        )
+      toast.success(
+        stageResult?.queued
+          ? `Queued for publish to ${label} — will confirm shortly`
+          : `Already queued for publish to ${label}`
       );
       setResultModal(null);
-      loadAll();
+
+      // Not awaited — the background worker finishes the publish regardless
+      // of whether this tab is still open; this just refreshes the row once
+      // it does, same as Publish All's own tail.
+      pollPartnerPublishJobsUntilSettled({
+        params: { provider: slug, kind: "marking_publish", assignmentId: selectedAssignment?.id },
+      }).then(() => loadAll());
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || `Failed to upload to ${label}`);
     } finally {
