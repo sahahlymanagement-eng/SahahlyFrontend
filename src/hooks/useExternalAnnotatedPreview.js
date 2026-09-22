@@ -24,6 +24,13 @@ function getSubmissionId(modal) {
 
 const PREVIEW_TIMEOUT_MS = 300_000;
 
+/** "2.1 MB / 10.4 MB" (or just "2.1 MB" while the total isn't known yet). */
+function formatDownloadProgress({ loaded, total }) {
+  const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+  if (total > 0) return `${mb(loaded)} MB / ${mb(total)} MB`;
+  return `${mb(loaded)} MB`;
+}
+
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
@@ -74,6 +81,7 @@ export function useExternalAnnotatedPreview({
 }) {
   const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [downloadProgressLabel, setDownloadProgressLabel] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [confirmingEdits, setConfirmingEdits] = useState(false);
   const [confirmedSnapshot, setConfirmedSnapshot] = useState(null);
@@ -196,6 +204,7 @@ export function useExternalAnnotatedPreview({
     previewBuildRef.current = buildController;
     setPreviewLoading(true);
     setPreviewError(null);
+    setDownloadProgressLabel(null);
 
     try {
       if (!getStudentFileRef.current) {
@@ -203,11 +212,20 @@ export function useExternalAnnotatedPreview({
       }
       const logoPromise = loadPartnerLogoBytes(api, partnerSlugRef.current).catch(() => null);
       const studentFile = await withTimeout(
-        Promise.resolve(snapshot.studentFile || getStudentFileRef.current(snapshot.submissionId)),
+        Promise.resolve(
+          snapshot.studentFile ||
+            getStudentFileRef.current(snapshot.submissionId, (progress) => {
+              if (requestId !== previewRequestRef.current) return;
+              setDownloadProgressLabel(formatDownloadProgress(progress));
+            })
+        ),
         120_000,
         "Loading student PDF"
       );
       if (requestId !== previewRequestRef.current) return;
+      // Download finished (or was already cached) — anything shown from here
+      // is the annotation-build step, not a download.
+      setDownloadProgressLabel(null);
       if (!studentFile) throw new Error("Student PDF unavailable for preview");
 
       // Never block the preview forever on a hung logo request.
@@ -260,6 +278,7 @@ export function useExternalAnnotatedPreview({
     } finally {
       if (requestId === previewRequestRef.current) {
         setPreviewLoading(false);
+        setDownloadProgressLabel(null);
       }
     }
   }, []);
@@ -275,6 +294,7 @@ export function useExternalAnnotatedPreview({
       setConfirmedSnapshot(null);
       setPreviewError(null);
       setPreviewLoading(false);
+      setDownloadProgressLabel(null);
       setConfirmingEdits(false);
       setReportPageCount(0);
       return;
@@ -602,6 +622,7 @@ export function useExternalAnnotatedPreview({
   return {
     annotatedPreviewUrl,
     previewLoading,
+    downloadProgressLabel,
     previewError,
     confirmingEdits,
     hasPendingEdits,
