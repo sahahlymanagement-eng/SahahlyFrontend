@@ -40,6 +40,7 @@ const NAV_ITEMS = [
   { icon: <FiClipboard />, label: "Reports",            path: "/manager/assignments"    },
   { icon: <FiEye />,       label: "Submission Viewer",  path: "/manager/submissions"    },
   { icon: <FiLayers />,    label: "Automatic Batch Queue", path: "/manager/automatic-batch-queue" },
+  { icon: <FiLayers />,    label: "Indexing Queue",     path: "/manager/drpeter-indexing-queue" },
   { icon: <FiClock />,     label: "Return Job Queue",   path: "/manager/return-job-queue" },
   { icon: <FiUploadCloud />, label: "Partner Publish Queue", path: "/manager/partner-publish-jobs" },
   { icon: <FiCpu />,       label: "Automation",         path: "/manager/automation"     },

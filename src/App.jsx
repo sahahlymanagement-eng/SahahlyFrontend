@@ -74,6 +74,7 @@ import DirectorChatbot from "./pages/director/DirectorChatbot";
 import DirectorActionsChatbot from "./pages/director/DirectorActionsChatbot";
 import ManagerSubmissionViewer from "./pages/manager/ManagerSubmissionViewer";
 import AutomaticBatchQueue from "./pages/manager/AutomaticBatchQueue";
+import DrPeterIndexingQueue from "./pages/manager/DrPeterIndexingQueue";
 import ReturnJobQueue from "./pages/manager/ReturnJobQueue";
 import PartnerPublishJobQueue from "./pages/manager/PartnerPublishJobQueue";
 import ManagerWhatsAppScheduler from "./pages/manager/ManagerWhatsAppScheduler";
@@ -303,6 +304,7 @@ function App() {
           <Route path="students" element={<ManagerStudents />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="manager" />} />
           <Route path="automatic-batch-queue" element={<AutomaticBatchQueue />} />
+          <Route path="drpeter-indexing-queue" element={<DrPeterIndexingQueue />} />
           <Route path="return-job-queue" element={<ReturnJobQueue />} />
           <Route path="partner-publish-jobs" element={<PartnerPublishJobQueue />} />
           <Route path="automation" element={<ManagerAutomation scope="manager" />} />
@@ -402,6 +404,7 @@ function App() {
           <Route path="courses" element={<CoursesList />} />
           <Route path="submissions" element={<ManagerSubmissionViewer scope="director" />} />
           <Route path="automatic-batch-queue" element={<AutomaticBatchQueue />} />
+          <Route path="drpeter-indexing-queue" element={<DrPeterIndexingQueue />} />
           <Route path="return-job-queue" element={<ReturnJobQueue />} />
           <Route path="partner-publish-jobs" element={<PartnerPublishJobQueue />} />
           <Route path="mariamgabalawy" element={<ManagerMariamGabalawy />} />

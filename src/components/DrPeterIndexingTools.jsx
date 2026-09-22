@@ -280,7 +280,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     finally{if(alive.current)setBusy('');}
   }
 
-  async function mark(mode) {
+  async function mark(mode, { queue = false } = {}) {
     const selected = new Set([...selectedIds].map(String));
     if (!selected.size || !pack || !['ready', 'needs_review'].includes(pack.status) || !indexingModels.length) return;
     setError('');
@@ -351,6 +351,19 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       }
       students = checkedStudents;
 
+      if (queue) {
+        report(`Adding ${students.length} student selections to the indexing queue…`);
+        const {data} = await api.post('/drpeter-indexing-queue', {
+          mode, provider, examId: pack.id, examTitle: pack.title,
+          partnerAssignmentId: assignmentId, assignmentName: assignment.name || assignment.title,
+          gradeModel: indexingModel,
+          submissionIds: students.map(s => String(s.submissionId)),
+          studentNames: students.map(s => s.name || `Submission ${s.submissionId}`),
+          students,
+        }, { timeout: 60000 });
+        return data;
+      }
+
       report(`Sending ${students.length} student selections to the server…`);
       const {data}=await api.post(`${base}/runs/server-submissions`, {
         examId: pack.id, partnerAssignmentId: assignmentId, mode, gradeModel: indexingModel,
@@ -361,6 +374,12 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       return data;
     });
     if(data && alive.current) {
+      if (queue) {
+        toast.success(data.ahead > 0
+          ? `Queued — ${data.ahead} ${data.ahead === 1 ? 'job' : 'jobs'} of this mode ahead of it`
+          : 'Queued — starting shortly');
+        return;
+      }
       setRuns(previous=>[data,...previous.filter(run=>run.id!==data.id)]);
       setView({title:`Indexing marking — ${mode}`,hash:`#/runs/${data.id}`});
     }
@@ -405,6 +424,8 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Instant)</button>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Batch)</button>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('flex')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length} title="Half-price marking with variable waiting time">Mark with indexing (Flex)</button>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('instant', {queue: true})} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length} title="Add to the Indexing Queue instead of starting immediately">Queue with indexing (Instant)</button>
+        <button type="button" className="msv-btn-ai" onClick={()=>mark('batch', {queue: true})} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length} title="Add to the Indexing Queue instead of starting immediately">Queue with indexing (Batch)</button>
         <span>{selectedIds.size} selected · {sahahlyModelLabel(indexingModel)}{!['ready', 'needs_review'].includes(pack?.status)?' — index this assignment first':''}</span>
       </>}
     </div>
