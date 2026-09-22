@@ -425,13 +425,19 @@ export default function ManagerLoginCss() {
   }, []);
 
   const studentFetchesRef = useRef(new Map());
-  const getStudentFile = useCallback(async (submissionId) => {
+  // `onProgress` (optional) — {loaded,total} as the student PDF downloads,
+  // used by the results-modal preview (useExternalAnnotatedPreview) to show
+  // "Downloading PDF x MB / y MB" instead of a bare spinner.
+  const getStudentFile = useCallback(async (submissionId, onProgress) => {
     if (pdfCacheRef.current[submissionId]?.studentFile) return pdfCacheRef.current[submissionId].studentFile;
     if (studentFetchesRef.current.has(submissionId)) return studentFetchesRef.current.get(submissionId);
     // Never fall through to fetchPdfs — Promise.all waits on mark scheme too.
     const request = withPdfFetchRetry(async () => {
       const { data } = await api.get(`/external-grading/submissions/${submissionId}/pdfs/submission`, {
         responseType: "blob", timeout: 90_000,
+        onDownloadProgress: onProgress
+          ? (evt) => onProgress({ loaded: evt.loaded, total: evt.total || 0 })
+          : undefined,
       });
       await assertPdfBlob(data, "Student submission");
       const studentFile = new File([data], `submission_${submissionId}.pdf`, { type: "application/pdf" });
@@ -566,6 +572,7 @@ export default function ManagerLoginCss() {
   const {
     annotatedPreviewUrl,
     previewLoading,
+    downloadProgressLabel,
     previewError,
     confirmingEdits,
     hasPendingEdits,
@@ -3611,7 +3618,9 @@ export default function ManagerLoginCss() {
                 )}
 
                 {previewLoading ? (
-                  <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                    {downloadProgressLabel ? `Downloading PDF ${downloadProgressLabel}…` : "Generating preview…"}
+                  </div>
                 ) : previewError ? (
                   <div
                     className="pdf-preview-status pdf-preview-status--error"

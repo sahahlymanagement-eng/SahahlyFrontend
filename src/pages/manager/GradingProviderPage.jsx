@@ -7,6 +7,7 @@ import { annotatePdf } from "../../utils/annotatePdf";
 import { loadPartnerLogoBytes } from "../../utils/partnerReportLogo";
 import { downloadBlob } from "../../utils/downloadBlob";
 import { withPdfFetchRetry } from "../../utils/studentPdfCache";
+import { urlToFile } from "../../utils/presignedPdf";
 import {
   FiDownload, FiEye, FiCpu, FiX, FiSend, FiCheck, FiRefreshCw, FiLayers, FiCalendar, FiArrowLeft,
   FiEdit3, FiDownloadCloud, FiRotateCcw, FiRotateCw, FiUsers,
@@ -561,6 +562,29 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     return { studentFile, msFile };
   };
 
+  // Fast path shared by fetchPdfs/getStudentFile/fetchMarkSchemeForPreview
+  // below: if this PDF is already mirrored into our own R2 bucket
+  // (src/services/partnerPdfMirrorService.js on the backend), fetch it
+  // directly from R2 instead of relaying through the backend proxy. Returns
+  // null (never throws) on anything short of success — not mirrored yet, the
+  // bucket's CORS isn't configured for this origin, an expired URL, a
+  // network error — so callers always have the existing proxy fetch to fall
+  // back to.
+  const tryDirectPdf = useCallback(async (submissionId, kind, filename, onProgress) => {
+    try {
+      const { data } = await api.get(`${BASE}/submissions/${submissionId}/pdf-url`, {
+        params: { kind },
+        timeout: 15_000,
+      });
+      if (data?.mode === 'direct' && data.url) {
+        return await urlToFile(data.url, filename, { onProgress });
+      }
+    } catch {
+      // fall through to the proxy fetch
+    }
+    return null;
+  }, [BASE]);
+
   const fetchPdfs = useCallback(async (submissionId) => {
     if (Object.hasOwn(pdfCacheRef.current[submissionId] || {}, "msFile")) return pdfCacheRef.current[submissionId];
 
@@ -569,6 +593,8 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
       // does; retry transient blips instead of falling straight to the
       // pre-signed-URL fallback (which itself calls the same flaky endpoint).
       withPdfFetchRetry(async () => {
+        const direct = await tryDirectPdf(submissionId, kind, filename);
+        if (direct) return direct;
         const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs/${kind}`, {
           responseType: "blob",
           timeout: 120000,
@@ -605,41 +631,61 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     if (entry.msFile) await assertPdfBlob(entry.msFile, "Mark scheme");
     pdfCacheRef.current[submissionId] = entry;
     return entry;
-  }, [BASE]);
+  }, [BASE, tryDirectPdf]);
 
   const studentFetchesRef = useRef(new Map());
-  const getStudentFile = useCallback(async (submissionId) => {
+  // `onProgress` (optional) — {loaded,total} as the student PDF downloads,
+  // used by the results-modal preview (useExternalAnnotatedPreview) to show
+  // "Downloading PDF x MB / y MB" instead of a bare spinner. Only meaningful
+  // on an actual fetch — a cache hit or an already-in-flight fetch returns
+  // instantly/silently, same as before.
+  const getStudentFile = useCallback(async (submissionId, onProgress) => {
     if (pdfCacheRef.current[submissionId]?.studentFile) return pdfCacheRef.current[submissionId].studentFile;
     const key = `${BASE}:${submissionId}`;
     if (studentFetchesRef.current.has(key)) return studentFetchesRef.current.get(key);
     // The annotated script needs only the student's PDF. Never fall through to
     // fetchPdfs (which also waits on the mark scheme) — that can leave
     // "Generating preview…" spinning for many minutes.
-    const request = withPdfFetchRetry(async () => {
-      const {data} = await api.get(`${BASE}/submissions/${submissionId}/pdfs/submission`, {
-        responseType: 'blob', timeout: 90_000,
+    const request = (async () => {
+      const direct = await tryDirectPdf(submissionId, 'submission', `submission_${submissionId}.pdf`, onProgress);
+      if (direct) {
+        pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], studentFile: direct };
+        return direct;
+      }
+      return withPdfFetchRetry(async () => {
+        const {data} = await api.get(`${BASE}/submissions/${submissionId}/pdfs/submission`, {
+          responseType: 'blob', timeout: 90_000,
+          onDownloadProgress: onProgress
+            ? (evt) => onProgress({ loaded: evt.loaded, total: evt.total || 0 })
+            : undefined,
+        });
+        await assertPdfBlob(data, 'Student submission');
+        const studentFile = new File([data], `submission_${submissionId}.pdf`, {type:'application/pdf'});
+        pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], studentFile };
+        return studentFile;
+      }, { attempts: 3 }).catch(async () => {
+        const entry = await fetchPdfsViaSubmission(submissionId);
+        pdfCacheRef.current[submissionId] = {
+          ...pdfCacheRef.current[submissionId],
+          studentFile: entry.studentFile,
+          ...(entry.msFile ? { msFile: entry.msFile } : {}),
+        };
+        return entry.studentFile;
       });
-      await assertPdfBlob(data, 'Student submission');
-      const studentFile = new File([data], `submission_${submissionId}.pdf`, {type:'application/pdf'});
-      pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], studentFile };
-      return studentFile;
-    }, { attempts: 3 }).catch(async () => {
-      const entry = await fetchPdfsViaSubmission(submissionId);
-      pdfCacheRef.current[submissionId] = {
-        ...pdfCacheRef.current[submissionId],
-        studentFile: entry.studentFile,
-        ...(entry.msFile ? { msFile: entry.msFile } : {}),
-      };
-      return entry.studentFile;
-    }).finally(() => studentFetchesRef.current.delete(key));
+    })().finally(() => studentFetchesRef.current.delete(key));
     studentFetchesRef.current.set(key, request);
     return request;
-  }, [BASE]);
+  }, [BASE, tryDirectPdf]);
 
   // Modal right pane only — short ladder so a hung MS does not read as forever.
   const fetchMarkSchemeForPreview = useCallback(async (submissionId) => {
     const cached = pdfCacheRef.current[submissionId]?.msFile;
     if (cached) return cached;
+    const direct = await tryDirectPdf(submissionId, 'markScheme', `markscheme_${submissionId}.pdf`);
+    if (direct) {
+      pdfCacheRef.current[submissionId] = { ...pdfCacheRef.current[submissionId], msFile: direct };
+      return direct;
+    }
     try {
       const msFile = await withPdfFetchRetry(async () => {
         const res = await api.get(`${BASE}/submissions/${submissionId}/pdfs/markScheme`, {
@@ -668,7 +714,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
       }
       throw err;
     }
-  }, [BASE]);
+  }, [BASE, tryDirectPdf]);
 
   // Read-only mark scheme preview (right column of the results modal).
   // Mark scheme is per-submission here; source it from the cached msFile.
@@ -756,6 +802,7 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   const {
     annotatedPreviewUrl,
     previewLoading,
+    downloadProgressLabel,
     previewError,
     confirmingEdits,
     hasPendingEdits,
@@ -4942,7 +4989,9 @@ toast.success("Result cleared — you can mark again");
                 )}
 
                 {previewLoading ? (
-                  <div style={{ color: "var(--muted)", fontSize: 13 }}>Generating preview…</div>
+                  <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                    {downloadProgressLabel ? `Downloading PDF ${downloadProgressLabel}…` : "Generating preview…"}
+                  </div>
                 ) : previewError ? (
                   <div
                     className="pdf-preview-status pdf-preview-status--error"
