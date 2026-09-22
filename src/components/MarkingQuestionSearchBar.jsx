@@ -43,6 +43,7 @@ export default function MarkingQuestionSearchBar({
 
   return (
     <div
+      className="msv-question-search"
       style={{
         position: "sticky",
         top: 0,
@@ -79,6 +80,7 @@ export default function MarkingQuestionSearchBar({
         />
         <input
           type="search"
+          aria-label="Find question"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
@@ -99,6 +101,7 @@ export default function MarkingQuestionSearchBar({
           <button
             type="button"
             title="Clear search"
+            aria-label="Clear question search"
             onClick={() => onChange("")}
             style={{
               position: "absolute",

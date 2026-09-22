@@ -9,6 +9,7 @@ import { isPublished } from '../utils/gradingStatus';
 import { applyPageCountDecision, usePageCountCheck } from '../hooks/usePageCountCheck';
 import PageCountCheckModal from './PageCountCheckModal';
 import './DrPeterIndexingTools.css';
+import useMobileLayout from '../../drpeter-indexing/src/useMobileLayout.js';
 import { getIndexingUpload, subscribeIndexingUploads, startIndexingUpload } from '../utils/indexingUploads';
 
 /** Already has a draft, published result, or saved marking — never re-index-mark. */
@@ -46,6 +47,9 @@ function readIndexingModel(fallback) {
 
 const stateLabel = state => ({ ready: 'Completed', needs_review: 'Ready', queued: 'Queued', processing: 'Processing', error: 'Failed', partial: 'Partly completed', cancelled: 'Cancelled' }[state] || state);
 export default function DrPeterIndexingTools({ assignment, selectedIds, canMark, gradeModel, loadRoster, onResultsReady, provider = 'drpeter' }) {
+  const mobile = useMobileLayout();
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+  const toolsRef = useRef(null);
   const classroom = provider === 'classroom';
   const root = `/${provider}-indexing`;
   const base = `${root}/api`;
@@ -67,6 +71,45 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const ms = indexForm.markScheme;
   const [sourceMessage, setSourceMessage] = useState('');
   const [view, setView] = useState(null);
+  useEffect(() => {
+    if (!mobile || (!setup && !importOpen && !view)) return undefined;
+    const root = toolsRef.current;
+    const overlays = root?.querySelectorAll('.dpi-overlay');
+    const dialog = overlays?.[overlays.length - 1];
+    if (!dialog) return undefined;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const updateViewport = () => {
+      root.style.setProperty('--dpi-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+      root.style.setProperty('--dpi-viewport-top', `${window.visualViewport?.offsetTop || 0}px`);
+    };
+    updateViewport();
+    window.visualViewport?.addEventListener('resize', updateViewport);
+    window.visualViewport?.addEventListener('scroll', updateViewport);
+    dialog.querySelector('.dpi-close')?.focus({ preventScroll: true });
+    const handleKey = event => {
+      if (event.key === 'Escape') {
+        const close = dialog.querySelector('.dpi-close:not(:disabled)');
+        if (close) { event.preventDefault(); close.click(); }
+      }
+      if (event.key !== 'Tab') return;
+      const controls = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], iframe, summary, [tabindex="0"]')].filter(node => node.getClientRects().length);
+      const first = controls[0]; const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    dialog.addEventListener('keydown', handleKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.visualViewport?.removeEventListener('resize', updateViewport);
+      window.visualViewport?.removeEventListener('scroll', updateViewport);
+      dialog.removeEventListener('keydown', handleKey);
+      root.style.removeProperty('--dpi-viewport-height');
+      root.style.removeProperty('--dpi-viewport-top');
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, [mobile, setup, importOpen, view]);
   const [indexingModel, setIndexingModel] = useState(() => readIndexingModel(gradeModel));
   const [indexingModels, setIndexingModels] = useState([]);
   useEffect(() => {
@@ -323,7 +366,9 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     }
   }
 
-  return <section className="dpi-tools" aria-label="Assignment indexing">
+  const mobileExpandedNow = mobileExpanded || selectedIds.size > 0 || !!busy || runs.some(run => ['queued', 'processing'].includes(run.status));
+  return <section className={`dpi-tools ${mobileExpandedNow ? 'dpi-mobile-expanded' : ''}`} aria-label="Assignment indexing" ref={toolsRef}>
+    {mobile && <button type="button" className="dpi-mobile-toggle" aria-expanded={mobileExpandedNow} onClick={() => setMobileExpanded(open => !open)}><span><strong>Assignment indexing</strong><small>{loading ? 'Checking index…' : pack ? `${stateLabel(pack.status)} · ${pack.questionCount} questions · ${pack.totalMarks ?? '?'} marks` : 'Set up the question paper & mark scheme'}<br />Index, import & review runs</small></span><span aria-hidden="true">{mobileExpandedNow ? '−' : '+'}</span></button>}
     <div className="dpi-actions">
       <button type="button" className="msv-btn-ai" onClick={openIndex} disabled={loading || !!busy || (!canMark && !pack)}>Index assignment</button>
       {canMark && (

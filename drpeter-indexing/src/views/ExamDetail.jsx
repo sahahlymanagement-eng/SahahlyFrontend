@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
+import useMobileLayout from "../useMobileLayout.js";
 import {
   AnimatedNumber,
   Bar,
@@ -124,6 +125,7 @@ function indexAsText(exam) {
 }
 
 export default function ExamDetail({ examId, embedded = false }) {
+  const mobile = useMobileLayout();
   const toast = useToast();
   const [exam, setExam] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -528,7 +530,7 @@ export default function ExamDetail({ examId, embedded = false }) {
       </div>
 
       {totalQ > 0 && (
-        <section className="panel">
+        <section className="panel" id="indexed-questions">
           <div className="panel-head">
             <div>
               <h2>Indexed questions</h2>
@@ -541,6 +543,8 @@ export default function ExamDetail({ examId, embedded = false }) {
             <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 200 }}>
               {!editing && (
                 <input
+                  type={mobile ? 'search' : undefined}
+                  aria-label="Filter indexed questions by label or stem"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Filter by label or stem…"
@@ -567,6 +571,7 @@ export default function ExamDetail({ examId, embedded = false }) {
                     <button
                       type="button"
                       className="q-toggle"
+                      aria-expanded={open}
                       onClick={() => setOpenId(open ? null : q.id)}
                     >
                       <span className="q-id">{q.label || "—"}</span>
@@ -819,6 +824,13 @@ export default function ExamDetail({ examId, embedded = false }) {
           disabled={working || saving}
         />
       )}
+      {mobile && pack && <nav className="mobile-index-dock" aria-label="Index quick actions">
+        <button type="button" className="ghost" disabled={!totalQ} onClick={() => document.getElementById('indexed-questions')?.scrollIntoView({ block: 'start', behavior: 'smooth' })}><Icon name="stack" /><span>Questions</span></button>
+        <button type="button" onClick={editing ? save : startEdit} disabled={saving || working}>
+          <Icon name={editing ? 'save' : 'pencil'} /><span>{saving ? 'Saving…' : editing ? 'Save index' : 'Edit index'}</span>
+        </button>
+        <button type="button" className="ghost" onClick={() => { const chat = document.getElementById('index-correction-chat'); const toggle = chat?.querySelector('button'); if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click(); chat?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}><Icon name="pencil" /><span>Index chat</span></button>
+      </nav>}
     </div>
   );
 }

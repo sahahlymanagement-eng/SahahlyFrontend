@@ -42,6 +42,8 @@ export default function SubmissionGradeInput({
     <div className="ma-grade-wrap">
       <input
         type="number"
+        inputMode="decimal"
+        aria-label={`Grade for ${student?.name || "student"}`}
         min={0}
         max={max}
         step={1}

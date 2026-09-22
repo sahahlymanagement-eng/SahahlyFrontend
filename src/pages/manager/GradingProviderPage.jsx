@@ -82,6 +82,9 @@ import {
   getBatchJob,
 } from "../../utils/assignmentBatchJobStore";
 import "./ManagerSubmissionViewer.css";
+import MobileReviewNavigation from "../../components/MobileReviewNavigation";
+import MobileDocumentViewer from "../../components/MobileDocumentViewer";
+import usePhoneLayout from "../../hooks/usePhoneLayout";
 import { useAssignmentMarkingPrompt } from "../../hooks/useAssignmentMarkingPrompt";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 import {
@@ -230,6 +233,35 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
   );
 
   // ── submissions list ──
+  const isPhone = usePhoneLayout();
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [mobileDocument, setMobileDocument] = useState(null);
+  const mobileDocumentRequest = useRef(0);
+  useEffect(() => () => {
+    if (mobileDocument?.url) URL.revokeObjectURL(mobileDocument.url);
+  }, [mobileDocument?.url]);
+  const closeMobileDocument = () => {
+    mobileDocumentRequest.current += 1;
+    setMobileDocument(null);
+  };
+  const showMobileDocument = async (title, loadFile, filename) => {
+    const request = ++mobileDocumentRequest.current;
+    const retry = () => showMobileDocument(title, loadFile, filename);
+    setMobileDocument({ title, loading: true, retry });
+    try {
+      const file = await loadFile();
+      if (!file) throw new Error("No PDF is available for this submission.");
+      if (request !== mobileDocumentRequest.current) return;
+      setMobileDocument({ title, url: URL.createObjectURL(file), retry,
+        download: () => downloadBlob(file, filename) });
+    } catch (error) {
+      const message = (await getApiErrorMessage(error)) || "Could not load this PDF. Please try again.";
+      if (request === mobileDocumentRequest.current) {
+        setMobileDocument({ title, error: message, retry });
+      }
+    }
+  };
+
   const [submissions, setSubmissions] = useState([]);
   const [page, setPage] = useState(1);
   // Lets loadAll refresh the page currently on screen without depending on it.
@@ -2317,6 +2349,11 @@ toast.success("Result cleared — you can mark again");
 
   const viewFile = async (student, which) => {
     const label = which === "ms" ? "mark scheme" : "submission";
+    if (isPhone) {
+      return showMobileDocument(`${student.name || "Student"} · ${label}`,
+        async () => pickFile(await fetchPdfs(student.submissionId), which),
+        `${student.name || "submission"}${which === "ms" ? "_markscheme" : ""}.pdf`);
+    }
     try {
       const entry = await fetchPdfs(student.submissionId);
       const file = pickFile(entry, which);
@@ -2344,6 +2381,16 @@ toast.success("Result cleared — you can mark again");
   // Fetch through Sahahly as a binary stream, avoiding both R2 CORS and base64's
   // extra memory/transfer overhead.
   const viewFeedback = async (student) => {
+    if (isPhone) {
+      return showMobileDocument(`${student.name || "Student"} · published PDF`, async () => {
+        const res = await api.get(`${BASE}/submissions/${student.submissionId}/feedback/file`, {
+          responseType: "blob", timeout: 120000,
+        });
+        const file = new File([res.data], `feedback_${student.submissionId}.pdf`, { type: "application/pdf" });
+        await assertPdfBlob(file, "Feedback");
+        return file;
+      }, `feedback_${student.submissionId}.pdf`);
+    }
     try {
       const res = await api.get(`${BASE}/submissions/${student.submissionId}/feedback/file`, {
         responseType: "blob",
@@ -3030,7 +3077,7 @@ toast.success("Result cleared — you can mark again");
   const color = getScoreColor(total, effectiveMaxTotal);
 
   return (
-    <div className="ma-root">
+    <div className="ma-root msv-mobile-scope">
 
       <main className="ma-main">
         <header className="ma-topbar">
@@ -3140,7 +3187,7 @@ toast.success("Result cleared — you can mark again");
                   <p className="ma-section-label msv-section-header-expanded">▼ Select School</p>
                   <input
                     className="ma-search-input"
-                    placeholder="Search schools..."
+                    aria-label="Search schools" enterKeyHint="search" placeholder="Search schools..."
                     value={classSearch}
                     onChange={(e) => setClassSearch(e.target.value)}
                   />
@@ -3156,7 +3203,7 @@ toast.success("Result cleared — you can mark again");
                         <div
                           key={c.schoolKey ?? "__none__"}
                           className="ma-classroom-card"
-                          onClick={() => selectClass(c)}
+                          role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectClass(c); } }} onClick={() => selectClass(c)}
                         >
                           <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                           <div className="ma-classroom-info">
@@ -3200,7 +3247,7 @@ toast.success("Result cleared — you can mark again");
                   <p className="ma-section-label msv-section-header-expanded">▼ Select Group</p>
                   <input
                     className="ma-search-input"
-                    placeholder="Search groups..."
+                    aria-label="Search groups" enterKeyHint="search" placeholder="Search groups..."
                     value={groupSearch}
                     onChange={(e) => setGroupSearch(e.target.value)}
                   />
@@ -3214,7 +3261,7 @@ toast.success("Result cleared — you can mark again");
                         <div
                           key={g.key}
                           className="ma-classroom-card"
-                          onClick={() => selectSchoolGroup(g)}
+                          role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectSchoolGroup(g); } }} onClick={() => selectSchoolGroup(g)}
                         >
                           <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                           <div className="ma-classroom-info">
@@ -3264,7 +3311,7 @@ toast.success("Result cleared — you can mark again");
                   <p className="ma-section-label msv-section-header-expanded">▼ Select Group</p>
                   <input
                     className="ma-search-input"
-                    placeholder="Search groups..."
+                    aria-label="Search groups" enterKeyHint="search" placeholder="Search groups..."
                     value={groupSearch}
                     onChange={(e) => setGroupSearch(e.target.value)}
                   />
@@ -3280,7 +3327,7 @@ toast.success("Result cleared — you can mark again");
                         <div
                           key={g.key}
                           className="ma-classroom-card"
-                          onClick={() => selectTopGroup(g)}
+                          role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectTopGroup(g); } }} onClick={() => selectTopGroup(g)}
                         >
                           <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                           <div className="ma-classroom-info">
@@ -3342,7 +3389,7 @@ toast.success("Result cleared — you can mark again");
                   </p>
                   <input
                     className="ma-search-input"
-                    placeholder="Search assignments..."
+                    aria-label="Search assignments" enterKeyHint="search" placeholder="Search assignments..."
                     value={assignmentSearch}
                     onChange={(e) => { setAssignmentSearch(e.target.value); setAssignmentPage(1); }}
                   />
@@ -3362,7 +3409,7 @@ toast.success("Result cleared — you can mark again");
                         <div
                           key={a.key}
                           className="ma-assignment-card"
-                          onClick={() => selectAssignment(a)}
+                          role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAssignment(a); } }} onClick={() => selectAssignment(a)}
                         >
                           <div className="ma-assignment-icon"><FiLayers size={14} /></div>
                           <div className="ma-assignment-info">
@@ -3468,11 +3515,16 @@ toast.success("Result cleared — you can mark again");
                       {loadingList ? "Counting PDFs…" : `Corrected ${correctedCount} / ${listMeta.total} PDFs`}
                     </span>
                   </div>
-                  <div className="msv-panel-controls" style={{ flexWrap: "wrap", gap: 8 }}>
+                  <div className={`msv-panel-controls msv-provider-controls ${mobileToolsOpen || bulkMarking || priorityBulkRunning || publishAll || ["uploading", "submitting", "processing"].includes(batchJob?.phase) ? "msv-mobile-tools-open" : ""}`} style={{ flexWrap: "wrap", gap: 8 }}>
+                    {isPhone && <button type="button" className="msv-mobile-tools-toggle" aria-expanded={mobileToolsOpen || bulkMarking || priorityBulkRunning || publishAll || ["uploading", "submitting", "processing"].includes(batchJob?.phase)}
+                      onClick={() => setMobileToolsOpen((open) => !open)}>
+                      <span><strong>Filters & submission actions</strong><small>Review status, models, marking & publishing</small></span>
+                      <span aria-hidden="true">{mobileToolsOpen ? "−" : "+"}</span>
+                    </button>}
                     <input
                       className="msv-student-search"
                       type="text"
-                      placeholder="Search by name or ID…"
+                      aria-label="Search by name or ID" enterKeyHint="search" placeholder="Search by name or ID…"
                       title="Searches every submission in this assignment, by student name or submission id"
                       value={search}
                       onChange={(e) => onSearchChange(e.target.value)}
@@ -3803,6 +3855,7 @@ toast.success("Result cleared — you can mark again");
                                       type="button"
                                       className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
                                       onClick={() => markingSelection.toggle(s.submissionId)}
+                                      aria-pressed={markingSelection.isSelected(s.submissionId)}
                                       aria-label={`Select ${s.name || "submission"}`}
                                     >
                                       {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
@@ -3842,6 +3895,7 @@ toast.success("Result cleared — you can mark again");
                                           ⚠️{" "}
                                           <span className="msv-review-warn-full">Review Submission</span>
                                           <span className="msv-review-warn-short">Review</span>
+                                          <span className="msv-mobile-warning-detail">{title}</span>
                                         </span>
                                       );
                                     })()}
@@ -3872,17 +3926,17 @@ toast.success("Result cleared — you can mark again");
                                   <div className="msv-actions">
                                     <button
                                       className="msv-action-btn"
-                                      title="View submission"
+                                      title="View submission" aria-label={`View submission for ${s.name || "student"}`}
                                       onClick={() => viewFile(s, "student")}
                                     >
-                                      <FiEye size={13} />
+                                      <FiEye size={13} /><span className="msv-mobile-action-label">View paper</span>
                                     </button>
                                     <button
                                       className="msv-action-btn"
-                                      title="Download submission"
+                                      title="Download submission" aria-label={`Download submission for ${s.name || "student"}`}
                                       onClick={() => downloadFile(s, "student")}
                                     >
-                                      <FiDownload size={13} />
+                                      <FiDownload size={13} /><span className="msv-mobile-action-label">Download</span>
                                     </button>
                                     <button
                                       className="msv-action-btn"
@@ -4009,6 +4063,11 @@ toast.success("Result cleared — you can mark again");
           </div>
         </div>
       </main>
+      {mobileDocument && (
+        <MobileDocumentViewer title={mobileDocument.title} url={mobileDocument.url}
+          loading={mobileDocument.loading} error={mobileDocument.error}
+          onClose={closeMobileDocument} onRetry={mobileDocument.retry} onDownload={mobileDocument.download} />
+      )}
 
       {/* ── ERROR VIEWER ── */}
       {errorViewer.open && (
@@ -4024,7 +4083,7 @@ toast.success("Result cleared — you can mark again");
             <div className="msv-modal-header">
               <div style={{ fontSize: 15, fontWeight: 700 }}>❌ {errorViewer.title}</div>
               <button
-                className="msv-icon-btn"
+                className="msv-icon-btn" aria-label="Close dialog"
                 onClick={() => setErrorViewer({ open: false, title: "", message: null })}
               >
                 <FiX />
@@ -4064,7 +4123,7 @@ toast.success("Result cleared — you can mark again");
           >
             <div className="msv-modal-header">
               <div style={{ fontSize: 15, fontWeight: 700 }}>Assign Assistant to Class</div>
-              <button className="msv-icon-btn" onClick={() => setAssignAssistantModal(null)}>
+              <button className="msv-icon-btn" aria-label="Close dialog" onClick={() => setAssignAssistantModal(null)}>
                 <FiX size={16} />
               </button>
             </div>
@@ -4160,7 +4219,7 @@ toast.success("Result cleared — you can mark again");
                   ? `🚀 Mark (Priority) — ${guidanceModal.student?.name}`
                   : `🤖 Mark — ${guidanceModal.student?.name}`}
               </div>
-              <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}>
+              <button className="msv-icon-btn" aria-label="Close dialog" onClick={() => setGuidanceModal(null)}>
                 <FiX size={16} />
               </button>
             </div>
@@ -4509,7 +4568,7 @@ toast.success("Result cleared — you can mark again");
       {/* ── RESULTS MODAL ── */}
       {resultModal && (
         <div className="msv-overlay" onClick={() => setResultModal(null)}>
-          <div className="msv-results-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="msv-results-modal msv-review-workspace" onClick={(e) => e.stopPropagation()}>
             <div className="msv-modal-header">
               <div>
                 <div
@@ -4556,7 +4615,7 @@ toast.success("Result cleared — you can mark again");
                           )
                         )
                       }
-                      title="Edit final obtained marks (overrides question sum)"
+                      title="Edit final obtained marks (overrides question sum)" aria-label="Final obtained marks" inputMode="decimal"
                       style={{
                         width: 56,
                         padding: "3px 8px",
@@ -4575,6 +4634,7 @@ toast.success("Result cleared — you can mark again");
                     <input
                       type="number"
                       min={1}
+                      aria-label="Maximum marks" inputMode="decimal"
                       readOnly={!canEdit}
                       value={editingMaxTotal !== null ? editingMaxTotal : effectiveMaxTotal}
                       onChange={(e) => setEditingMaxTotal(Math.max(1, Number(e.target.value)))}
@@ -4660,7 +4720,7 @@ toast.success("Result cleared — you can mark again");
                   </div>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="msv-review-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 {/* Everything that changes the result — annotate, undo/redo,
                     confirm — belongs to an editor. A reviewer keeps Download
                     PDF and Upload. */}
@@ -4669,7 +4729,8 @@ toast.success("Result cleared — you can mark again");
                 <button
                   type="button"
                   className="msv-btn-ai"
-                  onClick={() => setAnnotationsPanelOpen((open) => !open)}
+                  data-mobile-open-paper
+                    onClick={() => setAnnotationsPanelOpen((open) => !open)}
                   style={{
                     fontSize: 12,
                     background: annotationsPanelOpen
@@ -4687,7 +4748,7 @@ toast.success("Result cleared — you can mark again");
                   className="msv-btn-ai"
                   onClick={editHistory.undo}
                   disabled={!editHistory.canUndo || confirmingEdits}
-                  title="Undo last edit"
+                  title="Undo last edit" aria-label="Undo last edit"
                 >
                   <FiRotateCcw size={13} />
                 </button>
@@ -4695,7 +4756,7 @@ toast.success("Result cleared — you can mark again");
                   className="msv-btn-ai"
                   onClick={editHistory.redo}
                   disabled={!editHistory.canRedo || confirmingEdits}
-                  title="Redo edit"
+                  title="Redo edit" aria-label="Redo edit"
                 >
                   <FiRotateCw size={13} />
                 </button>
@@ -4730,11 +4791,21 @@ toast.success("Result cleared — you can mark again");
                   <FiSend size={13} />
                   {returning ? "Uploading…" : `Upload to ${label}`}
                 </button>
-                <button className="msv-icon-btn" onClick={() => setResultModal(null)}>
+                <button className="msv-icon-btn" aria-label="Close dialog" onClick={() => setResultModal(null)}>
                   <FiX size={16} />
                 </button>
               </div>
             </div>
+
+            <MobileReviewNavigation
+              onSave={canEdit ? handleConfirmEdits : undefined}
+              saving={confirmingEdits}
+              saveDisabled={confirmingEdits || previewLoading}
+              hasChanges={hasPendingEdits}
+              onClose={() => setResultModal(null)}
+              hasReview={canEdit}
+              hasScheme={canEdit}
+            />
 
             <div
               className="msv-modal-body msv-results-body"
@@ -4745,7 +4816,7 @@ toast.success("Result cleared — you can mark again");
                   chat), so a review-only reviewer simply does not get it and the
                   annotated PDF beside it takes the full width. */}
               {canEdit && (
-              <div style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
+              <div className="msv-review-pane" style={{ flex: "1 1 0", minWidth: 0, overflowY: "auto", height: "100%", paddingRight: 8 }}>
                 {resultModal.result.fileWarning && (
                   <div
                     style={{
@@ -4927,7 +4998,7 @@ toast.success("Result cleared — you can mark again");
               )}
 
               {/* MIDDLE: annotated preview */}
-              <div
+              <div className="msv-paper-pane"
                 style={{
                   flex: "1 1 0",
                   minWidth: 0,
@@ -5020,6 +5091,7 @@ toast.success("Result cleared — you can mark again");
                       onDocumentLoaded={handlePreviewDocumentLoaded}
                       pdfSessionKey={resultModalSubmissionId}
                       placementQuestions={canEdit ? placementQuestions : null}
+                      mobileEditing={canEdit}
                       reportPageCount={reportPageCount}
                       onPlacementChange={canEdit ? handleAnnotationPlacementChange : null}
                       onQuestionRemove={canEdit ? handleQuestionRemove : null}
@@ -5036,7 +5108,7 @@ toast.success("Result cleared — you can mark again");
                   with the editor. A reviewer who wants it still has "View mark
                   scheme" on the submission row. */}
               {canEdit && (
-              <div
+              <div className="msv-scheme-pane"
                 style={{
                   flex: "1 1 0",
                   minWidth: 0,

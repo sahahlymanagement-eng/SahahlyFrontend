@@ -170,7 +170,7 @@ export default function IndexChat({ examId, questions, unmatchedCount, onApplyPa
       : "Ask about pairing, marks, or attach a mark-scheme photo to tweak the index.";
 
   return (
-    <div className={`index-chat ${open ? "open" : ""}`}>
+    <div id="index-correction-chat" className={`index-chat ${open ? "open" : ""}`}>
       <button
         type="button"
         className="index-chat-toggle"
@@ -236,7 +236,7 @@ export default function IndexChat({ examId, questions, unmatchedCount, onApplyPa
                 <li key={`${file.name}_${i}`}>
                   <Icon name="image" size={13} />
                   <span>{file.name}</span>
-                  <button type="button" className="ghost icon-only" onClick={() => removeFile(i)}>
+                  <button type="button" className="ghost icon-only" aria-label={`Remove attachment ${file.name}`} onClick={() => removeFile(i)}>
                     <Icon name="x" size={12} />
                   </button>
                 </li>
@@ -260,12 +260,14 @@ export default function IndexChat({ examId, questions, unmatchedCount, onApplyPa
               type="button"
               className="ghost icon-only"
               title="Attach mark-scheme photo"
+              aria-label="Attach mark-scheme photo or PDF"
               disabled={busy || disabled || files.length >= 4}
               onClick={() => fileRef.current?.click()}
             >
               <Icon name="image" size={16} />
             </button>
             <input
+              aria-label="Message about the index"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Describe the miss, or attach an MS photo…"
@@ -281,6 +283,7 @@ export default function IndexChat({ examId, questions, unmatchedCount, onApplyPa
               type="submit"
               disabled={busy || disabled || (!input.trim() && !files.length)}
               title="Send"
+              aria-label="Send message"
             >
               {busy ? <span className="spinner tiny" /> : <Icon name="send" size={15} />}
             </button>

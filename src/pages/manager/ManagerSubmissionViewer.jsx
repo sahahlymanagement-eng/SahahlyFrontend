@@ -172,6 +172,9 @@ import { fetchStudentPdf, invalidateStudentPdf } from "../../utils/studentPdfCac
 import { fetchMarkSchemeFile, invalidateMarkSchemeFile } from "../../utils/presignedPdf";
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 import "./ManagerSubmissionViewer.css";
+import MobileReviewNavigation from "../../components/MobileReviewNavigation";
+import MobileDocumentViewer from "../../components/MobileDocumentViewer";
+import usePhoneLayout from "../../hooks/usePhoneLayout";
 
 function geminiDropdownLabel(model) {
   return sahahlyModelLabel(model);
@@ -186,6 +189,35 @@ export default function ManagerSubmissionViewer({ scope = "manager" }) {
   const [searchParams] = useSearchParams();
   const deepLinkHandledRef = useRef(null);
   const msInputRef = useRef();
+  const isPhone = usePhoneLayout();
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [mobileDocument, setMobileDocument] = useState(null);
+  const mobileDocumentRequest = useRef(0);
+  useEffect(() => () => {
+    if (mobileDocument?.url) URL.revokeObjectURL(mobileDocument.url);
+  }, [mobileDocument?.url]);
+  const closeMobileDocument = () => {
+    mobileDocumentRequest.current += 1;
+    setMobileDocument(null);
+  };
+  const showMobileDocument = async (title, loadFile, filename) => {
+    const request = ++mobileDocumentRequest.current;
+    const retry = () => showMobileDocument(title, loadFile, filename);
+    setMobileDocument({ title, loading: true, retry });
+    try {
+      const file = await loadFile();
+      if (!file) throw new Error("No PDF is available for this submission.");
+      if (request !== mobileDocumentRequest.current) return;
+      setMobileDocument({ title, url: URL.createObjectURL(file), retry,
+        download: () => downloadBlob(file, filename) });
+    } catch (error) {
+      const message = (await getApiErrorMessage(error)) || "Could not load this PDF. Please try again.";
+      if (request === mobileDocumentRequest.current) {
+        setMobileDocument({ title, error: message, retry });
+      }
+    }
+  };
+
 
   const [user,               setUser]               = useState(() => getStoredUser());
   const [selectedClassroom,  setSelectedClassroom]  = usePersistedState(`subviewer:${scope}:classroom`, null);
@@ -3954,6 +3986,13 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
   const openPdf = async (student) => {
     const googleUserId = studentGoogleUserId(student);
+    if (isPhone) {
+      return showMobileDocument(student.name || "Submission", () => fetchStudentPdf(api, {
+        assignmentId: selectedAssignment._id,
+        submissionId: student.submissionId,
+        googleUserId: googleUserId || undefined,
+      }), `${student.name || "submission"}.pdf`);
+    }
     try {
       const file = await fetchStudentPdf(api, {
         assignmentId: selectedAssignment._id,
@@ -4000,6 +4039,9 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   };
   
   const openMarkScheme = (msInfo) => {
+    if (isPhone && selectedAssignment?._id) {
+      return showMobileDocument("Mark scheme", () => fetchMarkSchemeFile(api, selectedAssignment._id), "mark-scheme.pdf");
+    }
     if (!msInfo?.webLink) return;
 
     window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
@@ -4204,7 +4246,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
   const color = getScoreColor(total, max);
 
   return (
-    <div className="ma-root">
+    <div className="ma-root msv-mobile-scope">
 
       <main className="ma-main">
         <header className="ma-topbar">
@@ -4253,7 +4295,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             {!selectedClassroom ? (
               <div className="ma-column">
                 <p className="ma-section-label msv-section-header-expanded">▼ Select Classroom</p>
-                <input className="ma-search-input" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
+                <input className="ma-search-input" aria-label="Search classrooms" enterKeyHint="search" placeholder="Search classrooms..." value={classroomSearch} onChange={e => setClassroomSearch(e.target.value)} />
                 {!isTeacherScope && (isDirectorScope || teacherOptions.length > 0) && (
                   <ReportTeacherFilterSelect
                     show
@@ -4269,7 +4311,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     <p className="ma-empty-msg">No classrooms found</p>
                   ) : null}
                   {classrooms.map(c => (
-                    <div key={c._id} className={`ma-classroom-card ${selectedClassroom?._id === c._id ? "ma-classroom-card--active" : ""}`} onClick={() => selectClassroom(c)}>
+                    <div key={c._id} className={`ma-classroom-card ${selectedClassroom?._id === c._id ? "ma-classroom-card--active" : ""}`} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectClassroom(c); } }} onClick={() => selectClassroom(c)}>
                       <div className="ma-classroom-icon"><FiUsers size={15} /></div>
                       <div className="ma-classroom-info">
                         <span className="ma-classroom-name">{c.name}</span>
@@ -4308,12 +4350,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               !selectedAssignment ? (
                 <div className="ma-column">
                   <p className="ma-section-label msv-section-header-expanded">▼ Select Assignment</p>
-                  <input className="ma-search-input" placeholder="Search assignments..." value={assignmentSearch} onChange={e => setAssignmentSearch(e.target.value)} />
+                  <input className="ma-search-input" aria-label="Search assignments" enterKeyHint="search" placeholder="Search assignments..." value={assignmentSearch} onChange={e => setAssignmentSearch(e.target.value)} />
                   <div className="ma-scroll-list">
                     {loadingAssignments ? (
                       <p className="ma-loading-msg">Loading...</p>
                     ) : filteredAssignments.map(a => (
-                      <div key={a._id} className={`ma-assignment-card ${selectedAssignment?._id === a._id ? "ma-assignment-card--active" : ""}`} onClick={() => selectAssignment(a)}>
+                      <div key={a._id} className={`ma-assignment-card ${selectedAssignment?._id === a._id ? "ma-assignment-card--active" : ""}`} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectAssignment(a); } }} onClick={() => selectAssignment(a)}>
                         <div className="ma-assignment-icon"><FiClipboard size={14} /></div>
                         <div className="ma-assignment-info">
                           <span className="ma-assignment-title">{a.title}</span>
@@ -4348,7 +4390,14 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
             {/* ── STUDENTS / SUBMISSIONS ── */}
             {selectedAssignment && (
             <div className="ma-right-panel msv-right-panel-full">
-                <div className="ma-panel">
+                <div className={`ma-panel ${mobileToolsOpen || bulkMarking || returning || priorityBulkRunning || ["uploading", "submitting", "processing"].includes(batchJob?.phase) ? "msv-mobile-tools-open" : ""}`}>
+                  {showMarkingTools && isPhone && (
+                    <button type="button" className="msv-mobile-tools-toggle" aria-expanded={mobileToolsOpen || bulkMarking || returning || priorityBulkRunning || ["uploading", "submitting", "processing"].includes(batchJob?.phase)}
+                      aria-controls="msv-assignment-tools" onClick={() => setMobileToolsOpen((open) => !open)}>
+                      <span><strong>Marking & assignment tools</strong><small>Mark scheme, batch marking & return papers</small></span>
+                      <span aria-hidden="true">{mobileToolsOpen ? "−" : "+"}</span>
+                    </button>
+                  )}
                   {isTeacherScope ? (
                   <div className="msv-ms-bar">
                     <div className="msv-ms-info">
@@ -4386,7 +4435,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     )}
                   </div>
                   ) : (
-                  <div className="msv-ms-bar">
+                  <div id="msv-assignment-tools" className="msv-ms-bar msv-assignment-tools">
                     <div className="msv-ms-info">
                       <div className="msv-ms-title">📋 Mark Scheme</div>
                       <div className={`msv-ms-status ${msInfo ? "msv-ms-status--ok" : ""}`}>
@@ -4705,7 +4754,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
 
                   {/* Expected Pages */}
                   {showMarkingTools && (
-                  <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <div className="msv-expected-pages" style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>📄 Expected Pages:</span>
                     {!showExpectedPagesEdit ? (
                       <>
@@ -4725,7 +4774,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         <input
                           type="number"
                           min={1}
-                          placeholder="e.g. 8"
+                          placeholder="e.g. 8" aria-label="Expected submission pages" inputMode="numeric"
                           value={expectedPagesInput}
                           onChange={(e) => setExpectedPagesInput(e.target.value)}
                           style={{ width: 80, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-primary)" }}
@@ -4776,7 +4825,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       <input
                         className="msv-student-search"
                         type="text"
-                        placeholder="Search by name…"
+                        aria-label="Search by name" enterKeyHint="search" placeholder="Search by name…"
                         value={studentSearch}
                         onChange={e => setStudentSearch(e.target.value)}
                       />
@@ -4913,6 +4962,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                         type="button"
                                         className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
                                         onClick={() => markingSelection.toggle(s.submissionId)}
+                                      aria-pressed={markingSelection.isSelected(s.submissionId)}
                                         aria-label={`Select ${s.name || "student"} for marking`}
                                       >
                                         {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
@@ -4953,6 +5003,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                             ⚠️{" "}
                                             <span className="msv-review-warn-full">Review Submission</span>
                                             <span className="msv-review-warn-short">Review</span>
+                                          <span className="msv-mobile-warning-detail">{title}</span>
                                           </span>
                                         );
                                       })()}
@@ -4986,7 +5037,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                           type="number"
                                           min={0}
                                           max={100}
-                                          className="ma-percent-input"
+                                          className="ma-percent-input" aria-label={`Grade percentage for ${s.name || "student"}`} inputMode="decimal"
                                           value={
                                             percentOverrides[s.submissionId] ??
                                             computeGradePercent(
@@ -5017,8 +5068,8 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                                   <td>
                                     {s.submissionId ? (
                                       <div className="msv-actions">
-                                        <button className="msv-action-btn" title="View PDF" onClick={() => openPdf(s)}><FiEye size={13} /></button>
-                                        <button className="msv-action-btn" title="Download PDF" onClick={() => downloadPdf(s)}><FiDownload size={13} /></button>
+                                        <button className="msv-action-btn" title="View PDF" aria-label={`View submission for ${s.name || "student"}`} onClick={() => openPdf(s)}><FiEye size={13} /><span className="msv-mobile-action-label">View paper</span></button>
+                                        <button className="msv-action-btn" title="Download PDF" aria-label={`Download submission for ${s.name || "student"}`} onClick={() => downloadPdf(s)}><FiDownload size={13} /><span className="msv-mobile-action-label">Download</span></button>
 
                                         {studentErrors[s.submissionId] && (
                                           <button
@@ -5219,6 +5270,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
           </div>
         </div>
       </main>
+      {mobileDocument && (
+        <MobileDocumentViewer title={mobileDocument.title} url={mobileDocument.url}
+          loading={mobileDocument.loading} error={mobileDocument.error}
+          onClose={closeMobileDocument} onRetry={mobileDocument.retry} onDownload={mobileDocument.download} />
+      )}
 
       {assistantModal && (
         <div className="msv-overlay" onClick={() => !assigningAssistant && setAssistantModal(null)}>
@@ -5234,7 +5290,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {selectedAssignment?.title || selectedAssignment?.name || "Current assignment"}
                 </div>
               </div>
-              <button className="msv-icon-btn" disabled={assigningAssistant} onClick={() => setAssistantModal(null)}>
+              <button className="msv-icon-btn" aria-label="Close dialog" disabled={assigningAssistant} onClick={() => setAssistantModal(null)}>
                 <FiX size={16} />
               </button>
             </div>
@@ -5324,7 +5380,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             </div>
       
                             <button
-                              className="msv-icon-btn"
+                              className="msv-icon-btn" aria-label="Close dialog"
                               onClick={() =>
                                 setErrorViewer({ open: false, title: "", message: null })
                               }
@@ -5406,7 +5462,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                               : "AI will mark against the uploaded mark scheme"}
                           </div>
                         
-                        <button className="msv-icon-btn" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
+                        <button className="msv-icon-btn" aria-label="Close dialog" onClick={() => setGuidanceModal(null)}><FiX size={16} /></button>
                       </div>
 
             <div style={{ padding: "20px 24px" }}>
@@ -5685,7 +5741,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
       {/* ── RESULTS MODAL ── */}
       {resultModal && (
         <div className="msv-overlay" onClick={() => setResultModal(null)}>
-          <div className="msv-results-modal" onClick={e => e.stopPropagation()}>
+          <div className="msv-results-modal msv-review-workspace" onClick={e => e.stopPropagation()}>
             <div className="msv-modal-header">
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -5715,7 +5771,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         )
                       )
                     }
-                    title="Edit final obtained marks (overrides question sum)"
+                    title="Edit final obtained marks (overrides question sum)" aria-label="Final obtained marks" inputMode="decimal"
                     style={{
                       width: 56, padding: "3px 8px", borderRadius: 6,
                       border: `1px solid ${color}`,
@@ -5728,6 +5784,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   <input
                     type="number"
                     min={1}
+                    aria-label="Maximum marks" inputMode="decimal"
                     value={editingMaxTotal !== null ? editingMaxTotal : effectiveMaxTotal}
                     onChange={e => {
                       const newMax = Math.max(1, Number(e.target.value));
@@ -5824,11 +5881,12 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
               )}
               </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="msv-review-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 {showMarkingTools && (
                   <button
                     type="button"
                     className="msv-btn-ai"
+                    data-mobile-open-paper
                     onClick={() => setAnnotationsPanelOpen((open) => !open)}
                     style={{
                       fontSize: 12,
@@ -5850,7 +5908,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       className="msv-btn-ai"
                       onClick={editHistory.undo}
                       disabled={!editHistory.canUndo || confirmingEdits}
-                      title="Undo last edit"
+                      title="Undo last edit" aria-label="Undo last edit"
                     >
                       <FiRotateCcw size={13} />
                     </button>
@@ -5858,7 +5916,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                       className="msv-btn-ai"
                       onClick={editHistory.redo}
                       disabled={!editHistory.canRedo || confirmingEdits}
-                      title="Redo edit"
+                      title="Redo edit" aria-label="Redo edit"
                     >
                       <FiRotateCw size={13} />
                     </button>
@@ -5895,9 +5953,17 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 <button className="msv-btn-ai" onClick={returnToStudent} disabled={returning || hasPendingEdits} title={hasPendingEdits ? "Confirm edits first" : savedResults[resultModalSubmissionId]?.returnedAt ? "Refresh the student's marked PDF and grade" : undefined}>
                   <FiSend size={13} />{returning ? "Returning…" : savedResults[resultModalSubmissionId]?.returnedAt ? "Return again" : "Return to Student"}
                 </button>
-                <button className="msv-icon-btn" onClick={() => setResultModal(null)}><FiX size={16} /></button>
+                <button className="msv-icon-btn" aria-label="Close dialog" onClick={() => setResultModal(null)}><FiX size={16} /></button>
               </div>
             </div>
+
+            <MobileReviewNavigation
+              onSave={handleConfirmEdits}
+              saving={confirmingEdits}
+              saveDisabled={confirmingEdits || previewLoading}
+              hasChanges={hasPendingEdits}
+              onClose={() => setResultModal(null)}
+            />
 
             {/* <div className="msv-modal-body"> */}
             <div
@@ -5910,7 +5976,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         }}
               >
               {/* LEFT CARD (UNCHANGED - your current results UI) */}
-              <div
+              <div className="msv-review-pane"
                 style={{
                   flex: "1 1 0",
                   minWidth: 0,
@@ -6067,7 +6133,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
               </div>
             </div>
                                {/* MIDDLE CARD (Annotated File) */}
-                    <div style={{
+                    <div className="msv-paper-pane" style={{
                       flex: "1 1 0",
                       minWidth: 0,
                       height: "100%",
@@ -6162,6 +6228,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                             onDocumentLoaded={handlePreviewDocumentLoaded}
                             pdfSessionKey={resultModalSubmissionId}
                             placementQuestions={placementQuestions}
+                            mobileEditing
                             reportPageCount={reportPageCount}
                             onPlacementChange={handleAnnotationPlacementChange}
                             onQuestionRemove={handleQuestionRemove}
@@ -6178,7 +6245,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                     </div>
 
                     {/* RIGHT CARD (NEW - Mark Scheme, read-only) */}
-                    <div style={{
+                    <div className="msv-scheme-pane" style={{
                       flex: "1 1 0",
                       minWidth: 0,
                       height: "100%",
@@ -6246,11 +6313,11 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                   {aiReviewModal.flagged.length} question{aiReviewModal.flagged.length !== 1 ? "s" : ""} with grade discrepancies
                 </div>
               </div>
-              <button className="msv-icon-btn" onClick={closeAiReviewModal}><FiX size={16} /></button>
+              <button className="msv-icon-btn" aria-label="Close dialog" onClick={closeAiReviewModal}><FiX size={16} /></button>
             </div>
 
             <div
-              className="msv-modal-body"
+              className="msv-modal-body msv-ai-review-body"
               style={{
                 display: "flex",
                 gap: 20,
@@ -6432,7 +6499,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                 </div>
                 {aiReviewPdfUrl ? (
                   <div style={{ flex: 1, minHeight: 0 }}>
-                    <iframe
+                    {isPhone ? <AnnotatedPdfPreview url={aiReviewPdfUrl} /> : <iframe
                       src={aiReviewPdfUrl}
                       title="Student submission PDF"
                       style={{
@@ -6441,7 +6508,7 @@ const runPriorityBulk = async (guidanceText, mode = "normal") => {
                         border: "none",
                         borderRadius: 8,
                       }}
-                    />
+                    />}
                   </div>
                 ) : (
                   <div style={{ color: "var(--muted)", fontSize: 13 }}>

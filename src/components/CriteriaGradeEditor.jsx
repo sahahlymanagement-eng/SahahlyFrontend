@@ -31,6 +31,7 @@ export default function CriteriaGradeEditor({ criteriaGrade, maxTotal, onChange,
 
   return (
     <div
+      className="msv-criteria-editor"
       style={{
         padding: "16px 20px",
         background: "color-mix(in srgb, var(--accent) 8%, transparent)",
@@ -91,6 +92,7 @@ export default function CriteriaGradeEditor({ criteriaGrade, maxTotal, onChange,
           return (
             <div
               key={i}
+              className="msv-criteria-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: "minmax(120px, 1.4fr) 72px 72px 1fr",

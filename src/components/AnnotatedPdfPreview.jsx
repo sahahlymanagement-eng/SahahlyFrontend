@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { flushSync } from "react-dom";
+import MobilePlacementControls from "./MobilePlacementControls";
+import usePhoneLayout from "../hooks/usePhoneLayout";
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -710,8 +712,11 @@ export default function AnnotatedPdfPreview({
   openExternalLabel = "Open in browser",
   onStructuralError = null,
   onDocumentLoaded = null,
+  mobileEditing = false,
 }) {
   const rootRef = useRef(null);
+  const phone = usePhoneLayout();
+  const [phoneFullscreen, setPhoneFullscreen] = useState(false);
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
   const [scrollRoot, setScrollRoot] = useState(null);
@@ -1436,6 +1441,7 @@ export default function AnnotatedPdfPreview({
       : String(zoomLevel);
 
   const toggleFullscreen = async () => {
+    if (phone) { setPhoneFullscreen(full => !full); return; }
     const el = rootRef.current;
     if (!el) return;
     try {
@@ -1623,6 +1629,7 @@ export default function AnnotatedPdfPreview({
         "pdf-preview-root",
         placementEnabled ? "pdf-preview-root--placeable" : "",
         isFullscreen ? "pdf-preview-root--fullscreen" : "",
+        phone && phoneFullscreen ? "pdf-preview-root--phone-fullscreen" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -1753,14 +1760,32 @@ export default function AnnotatedPdfPreview({
             type="button"
             className="pdf-preview-tool-btn"
             onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            title={isFullscreen || (phone && phoneFullscreen) ? "Exit fullscreen" : "Fullscreen"}
+            aria-label={isFullscreen || (phone && phoneFullscreen) ? "Exit fullscreen" : "Fullscreen"}
           >
-            {isFullscreen ? <FiMinimize2 size={14} /> : <FiMaximize2 size={14} />}
+            {isFullscreen || (phone && phoneFullscreen) ? <FiMinimize2 size={14} /> : <FiMaximize2 size={14} />}
           </button>
         </div>
       </div>
 
+      {mobileEditing && placementEnabled && <MobilePlacementControls
+        questions={effectiveQuestions}
+        pageCount={Math.max(1, numPages - offset)}
+        columnWidth={columnWidthPct}
+        onPlacement={(patch) => {
+          if (patch.examinerColumnWidthPercent != null) {
+            const width = clampExaminerColumnWidthPercent(patch.examinerColumnWidthPercent);
+            setLocalColumnWidthPct(width);
+            onPlacementChange({ examinerColumnWidthPercent: width });
+            return;
+          }
+          const q = effectiveQuestions.find(row => row._placementIndex === patch.placementIndex);
+          if (q) setLocalPlacement(previous => ({ ...previous, [placementKey(q)]: { ...previous[placementKey(q)], ...patch } }));
+          onPlacementChange(patch);
+        }}
+        onRename={onQuestionLabelChange}
+        onRemove={removeEnabled ? handleQuestionRemove : null}
+      />}
       <div
         ref={attachScrollRoot}
         className="pdf-preview-scroll"

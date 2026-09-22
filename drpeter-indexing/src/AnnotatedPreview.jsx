@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 import { Icon, Loading } from "./ui.jsx";
+import useMobileLayout from "./useMobileLayout.js";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -28,7 +29,7 @@ function estimateNoteHeight(question) {
 }
 
 /** One lazily-rasterized PDF page. */
-function PdfPage({ pdf, pageNumber, renderWidth, onSize, children }) {
+function PdfPage({ pdf, pageNumber, renderWidth, onSize, children, displayZoom }) {
   const holderRef = useRef(null);
   const canvasRef = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -91,7 +92,7 @@ function PdfPage({ pdf, pageNumber, renderWidth, onSize, children }) {
   }, [visible, pdf, pageNumber, renderWidth, failed, onSize]);
 
   return (
-    <div className="ap-page" ref={holderRef} data-page={pageNumber}>
+    <div className="ap-page" ref={holderRef} data-page={pageNumber} style={displayZoom ? { width: `${displayZoom * 100}%` } : undefined}>
       <div className="ap-page-inner" style={{ paddingBottom: `${ratio * 100}%` }}>
         <canvas ref={canvasRef} className="ap-canvas" />
         {children}
@@ -117,6 +118,7 @@ export default function AnnotatedPreview({
   columnPercent = 23,
   onPlacementChange,
 }) {
+  const mobile = useMobileLayout();
   const scrollRef = useRef(null);
   const dragRef = useRef(null);
   const [dragKey, setDragKey] = useState(null);
@@ -126,6 +128,7 @@ export default function AnnotatedPreview({
   const [zoom, setZoom] = useState(1);
   const [local, setLocal] = useState({});
   const [localColumn, setLocalColumn] = useState(null);
+  const [selectedQuestion, setSelectedQuestion] = useState('');
   const editable = typeof onPlacementChange === "function";
 
   useEffect(() => {
@@ -186,6 +189,19 @@ export default function AnnotatedPreview({
     }
     return map;
   }, [rows]);
+
+  const activeQuestion = rows.find(q => q.id === selectedQuestion) || rows[0];
+  function updateMobilePlacement(patch) {
+    if (!activeQuestion || !editable) return;
+    setLocal(previous => ({ ...previous, [activeQuestion.id]: { ...previous[activeQuestion.id], ...patch } }));
+    onPlacementChange({ id: activeQuestion.id, ...patch });
+  }
+
+  function revealPage(pageNumber) {
+    const root = scrollRef.current;
+    const page = root?.querySelector(`[data-page="${pageNumber}"]`);
+    if (root && page) root.scrollTo({ top: root.scrollTop + page.getBoundingClientRect().top - root.getBoundingClientRect().top - 8, left: 0, behavior: 'smooth' });
+  }
 
   /** Which student page, and how far down it, is the pointer over? */
   const hitTest = useCallback(
@@ -357,7 +373,7 @@ export default function AnnotatedPreview({
   return (
     <div className="ap">
       <div className="ap-toolbar">
-        {editable ? (
+        {mobile ? <span className="ap-hint">Zoom to read · swipe to explore the page</span> : editable ? (
           <span className="ap-hint">
             <Icon name="drag" size={14} />
             Drag a <b>badge</b> to move it, a <b>note edge</b> to resize, the{" "}
@@ -389,14 +405,21 @@ export default function AnnotatedPreview({
         </button>
       </div>
 
-      <div className="ap-scroll" ref={scrollRef}>
+      {mobile && <label className="ap-page-picker">Jump to page
+        <select aria-label="Jump to PDF page" defaultValue="" onChange={event => revealPage(Number(event.target.value))}>
+          <option value="" disabled>{pdf.numPages} pages</option>
+          {pageNumbers.map(page => <option key={page} value={page}>Page {page}{page > reportPageCount ? ` · Student page ${page - reportPageCount}` : ' · Report'}</option>)}
+        </select>
+      </label>}
+
+      <div className="ap-scroll" ref={scrollRef} tabIndex={mobile ? 0 : undefined} aria-label={mobile ? 'Marked PDF. Use zoom controls, then scroll in any direction.' : undefined}>
         {pageNumbers.map((pageNumber) => {
           const studentPage = pageNumber - reportPageCount;
           const pageRows = studentPage > 0 ? byPage.get(studentPage) || [] : [];
 
           return (
-            <PdfPage key={`${url}-${pageNumber}-${renderWidth}`} pdf={pdf} pageNumber={pageNumber} renderWidth={renderWidth}>
-              {studentPage > 0 && editable && (
+            <PdfPage key={mobile ? `${url}-${pageNumber}` : `${url}-${pageNumber}-${renderWidth}`} pdf={pdf} pageNumber={pageNumber} renderWidth={renderWidth} displayZoom={mobile ? zoom : undefined}>
+              {studentPage > 0 && editable && !mobile && (
                 <div
                   className="ap-column-grip"
                   style={{ right: `${effectiveColumn}%` }}
@@ -412,10 +435,10 @@ export default function AnnotatedPreview({
                   <div key={q.id} className="ap-marker" style={{ top: `${q.yPercent}%` }}>
                     <div
                       className={`ap-badge ${tone} ${dragKey?.startsWith(`move:${q.id}`) ? "active" : ""}`}
-                      onPointerDown={(e) => startDrag(e, "move", q)}
+                      onPointerDown={mobile ? undefined : (e) => startDrag(e, "move", q)}
                       onKeyDown={(e) => nudge(e, q)}
-                      tabIndex={editable ? 0 : -1}
-                      role={editable ? "button" : undefined}
+                      tabIndex={editable && !mobile ? 0 : -1}
+                      role={editable && !mobile ? "button" : undefined}
                       title={`${q.label} — drag to reposition, arrow keys to nudge`}
                     >
                       <b>{q.label}</b>
@@ -431,7 +454,7 @@ export default function AnnotatedPreview({
                         height: `${q.noteHeightPercent}%`,
                       }}
                     >
-                      {editable && (
+                      {editable && !mobile && (
                         <span
                           className="ap-edge top"
                           onPointerDown={(e) => startDrag(e, "height", q, "top")}
@@ -439,7 +462,7 @@ export default function AnnotatedPreview({
                       )}
                       <span className="ap-note-head">{q.label}</span>
                       <span className="ap-note-text">{q.examinerNotes}</span>
-                      {editable && (
+                      {editable && !mobile && (
                         <span
                           className="ap-edge bottom"
                           onPointerDown={(e) => startDrag(e, "height", q, "bottom")}
@@ -453,6 +476,28 @@ export default function AnnotatedPreview({
           );
         })}
       </div>
+      {mobile && editable && <details className="ap-mobile-editor">
+        <summary><Icon name="pencil" />Adjust annotation positions</summary>
+        <p className="muted small">Choose a question and adjust its placement. Save &amp; regenerate applies the changes to the PDF.</p>
+        {activeQuestion && <>
+          <label>Question<select value={activeQuestion.id} onChange={event => { setSelectedQuestion(event.target.value); const row = rows.find(q => q.id === event.target.value); if (row) revealPage(row.page + reportPageCount); }}>
+            {rows.map(row => <option key={row.id} value={row.id}>{row.label} · {row.obtained}/{row.maxMarks} marks</option>)}
+          </select></label>
+          <label>Student page<select value={activeQuestion.page || 1} onChange={event => { const page = Number(event.target.value); updateMobilePlacement({ page }); revealPage(page + reportPageCount); }}>
+            {Array.from({ length: studentPageCount || Math.max(1, pdf.numPages - reportPageCount) }, (_, i) => <option key={i + 1} value={i + 1}>Page {i + 1}</option>)}
+          </select></label>
+          <label>Position down page · {Math.round(activeQuestion.yPercent ?? 30)}%
+            <input type="range" min={MIN_Y} max={MAX_Y} step="0.5" value={activeQuestion.yPercent ?? 30} onChange={event => updateMobilePlacement({ yPercent: Number(event.target.value) })} />
+          </label>
+          <label>Note height · {Math.round(activeQuestion.noteHeightPercent)}%
+            <input type="range" min={MIN_NOTE_H} max={MAX_NOTE_H} step="0.5" value={activeQuestion.noteHeightPercent} onChange={event => updateMobilePlacement({ noteHeightPercent: Number(event.target.value) })} />
+          </label>
+          <p className="ap-mobile-note">{activeQuestion.examinerNotes || 'No examiner note for this question.'}</p>
+        </>}
+        <label>Examiner column width · {Math.round(effectiveColumn)}%
+          <input type="range" min={MIN_COL} max={MAX_COL} step="0.5" value={effectiveColumn} onChange={event => { const columnPercent = Number(event.target.value); setLocalColumn(columnPercent); onPlacementChange({ columnPercent }); }} />
+        </label>
+      </details>}
     </div>
   );
 }

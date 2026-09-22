@@ -69,7 +69,10 @@ export default function App() {
     return <Library />;
   }, [route, embedded]);
 
-  if (embedded) return <ToastHost><div className="page" style={{ padding: 24 }}>{page}</div></ToastHost>;
+  // The parent submission viewer opens this in a phone-sized sheet as well as
+  // on desktop. A class (rather than an inline padding value) lets the embedded
+  // workspace use every safe pixel on small screens without changing desktop.
+  if (embedded) return <ToastHost><div className="page embedded-page">{page}</div></ToastHost>;
 
   const shellClass = ["shell", collapsed ? "collapsed" : "", drawer ? "drawer-open" : ""]
     .filter(Boolean)

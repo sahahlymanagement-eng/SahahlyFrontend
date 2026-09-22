@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
+import useMobileLayout from "../useMobileLayout.js";
 import AnnotatedPreview from "../AnnotatedPreview.jsx";
 import {
   Icon,
@@ -19,6 +20,7 @@ import {
  * never triggers a re-render — that would mean a round trip per pixel.
  */
 export default function PaperDetail({ gradingId }) {
+  const mobile = useMobileLayout();
   const toast = useToast();
   const [grading, setGrading] = useState(null);
   const [placement, setPlacement] = useState(null);
@@ -268,6 +270,10 @@ export default function PaperDetail({ gradingId }) {
           onPlacementChange={onPlacementChange}
         />
       </section>
+      {mobile && <div className="mobile-index-dock mobile-paper-save" role="region" aria-label="Save annotation layout">
+        <span role="status">{saving ? 'Regenerating PDF…' : dirty ? 'Unsaved placement changes' : 'All placements saved'}</span>
+        <button type="button" onClick={save} disabled={!dirty || saving}><Icon name="save" />{saving ? 'Saving…' : 'Save & regenerate'}</button>
+      </div>}
     </div>
   );
 }

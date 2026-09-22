@@ -2122,3 +2122,153 @@
   font-size: 11.5px;
   white-space: nowrap;
 }
+
+/* ─── Phone-first submission review (desktop remains untouched) ─────────── */
+@media (max-width: 640px) {
+  /* Results behave like a focused app screen, not a shrunken desktop dialog. */
+  .msv-overlay { align-items:stretch; padding:0; overflow-y:auto; overscroll-behavior:contain; }
+  .msv-results-modal,.msv-guidance-modal,.msv-annotations-modal {
+    width:100% !important; max-width:none !important; min-height:100dvh;
+    margin:0; border-radius:0; box-shadow:none;
+  }
+  .msv-modal-header,.msv-guidance-header {
+    position:sticky; top:0; z-index:3; gap:10px; padding:10px 12px;
+    background:var(--surface); box-shadow:0 2px 12px color-mix(in srgb,#000 12%,transparent);
+  }
+  .msv-modal-header h2,.msv-guidance-header h2 { font-size:16px; }
+  .msv-icon-btn { width:44px; height:44px; }
+
+  /* Student paper → mark scheme → editable marks is the natural phone flow. */
+  .msv-results-body { padding:12px !important; gap:14px !important; }
+  .msv-results-body > div:nth-child(2),.msv-results-body > div:nth-child(3) {
+    height:min(62dvh,560px) !important; border-radius:12px; overflow:hidden;
+  }
+  .pdf-preview-toolbar { position:sticky; top:0; z-index:2; gap:6px; padding:7px; }
+  .pdf-preview-tool-btn { min-width:42px; min-height:42px; padding:7px; }
+  .pdf-preview-tool-btn--text { font-size:0; }
+  .pdf-preview-tool-btn--text svg { font-size:17px; }
+  .pdf-preview-page-input,.pdf-preview-zoom-select { min-height:40px; font-size:16px; }
+
+  /* Consistent thumb-sized actions throughout the viewer. */
+  .msv-btn-ai,.msv-cancel-btn,.msv-refresh-btn,.msv-mark-select-btn,.msv-action-btn { min-height:44px; }
+  .msv-panel-controls { gap:8px; }
+  .msv-student-search { flex:1 1 180px; width:auto; min-height:44px; font-size:16px; }
+  .msv-refresh-btn { min-width:44px; }
+  .msv-mark-select-bar { padding:10px; gap:8px; border-radius:12px; }
+  .msv-mark-select-btn { flex:1 1 132px; justify-content:center; }
+
+  /* Cards become clear, one-handed student navigation. */
+  .ma-table--cards tr.ma-row { padding:14px 12px; margin-bottom:10px; border-radius:14px; }
+  .ma-table--cards td:has(.msv-actions) .msv-actions { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .ma-table--cards td:has(.msv-actions) .msv-action-btn { min-height:46px; padding:10px 8px; font-size:12px; }
+  .ma-table--cards td::before { min-width:72px; }
+
+  /* Do not trigger browser zoom while an examiner is correcting marks. */
+  .msv-q-card { padding:13px 12px; border-radius:12px; }
+  .msv-q-card input,.msv-q-card textarea,.msv-q-card select { font-size:16px !important; }
+  .msv-q-card button { min-height:38px; }
+  .msv-pending-edits-banner { padding:12px; align-items:flex-start; }
+  .msv-pending-edits-banner__discard { min-height:40px; }
+}
+
+/* Mobile-only controls have no box and no effect on the desktop layout. */
+.msv-mobile-tools-toggle,
+.msv-mobile-action-label,
+.msv-mobile-warning-detail { display: none; }
+
+@media (max-width: 767px) {
+  .msv-mobile-scope { min-width: 0; }
+  .msv-mobile-scope .ma-main,
+  .msv-mobile-scope .ma-content,
+  .msv-mobile-scope .ma-panel,
+  .msv-mobile-scope .ma-column { min-width: 0; max-width: 100%; }
+  .msv-mobile-scope .ma-topbar {
+    padding: 18px 14px 14px;
+    gap: 14px;
+  }
+  .msv-mobile-scope .ma-topbar-left { min-width: 0; width: 100%; }
+  .msv-mobile-scope .ma-topbar-title { font-size: 23px; line-height: 1.2; overflow-wrap: anywhere; }
+  .msv-mobile-scope .ma-topbar-sub { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+  .msv-mobile-scope .ma-topbar-right { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .msv-mobile-scope .ma-topbar-right > button {
+    flex: 1 1 120px; margin: 0 !important; min-width: 0;
+    justify-content: center; white-space: normal;
+  }
+  .msv-mobile-scope .ma-content { padding: 14px 10px max(20px, env(safe-area-inset-bottom)); }
+  .msv-mobile-scope .ma-panel { padding: 14px 10px; border-radius: 16px; }
+  .msv-mobile-scope .msv-collapsible-layout { gap: 10px; }
+  .msv-mobile-scope .msv-right-panel-full { overflow: visible; }
+  .msv-mobile-scope .msv-section-collapsed { padding: 8px 12px; gap: 8px; border-radius: 12px; }
+  .msv-mobile-scope .msv-section-collapsed-text { min-width: 0; white-space: normal; line-height: 1.4; overflow-wrap: anywhere; }
+  .msv-mobile-scope .msv-section-change { min-width: 58px; min-height: 44px; }
+  .msv-mobile-scope .ma-column { padding: 16px 12px; border-radius: 16px; }
+  .msv-mobile-scope .ma-scroll-list { gap: 8px; max-height: none; }
+  .msv-mobile-scope :is(.ma-classroom-card, .ma-assignment-card) { min-height: 70px; padding: 14px 12px; }
+  .msv-mobile-scope :is(.ma-classroom-name, .ma-assignment-title) { white-space: normal; line-height: 1.45; overflow-wrap: anywhere; }
+  .msv-mobile-scope :is(.ma-classroom-info, .ma-assignment-info) { min-width: 0; }
+  .msv-mobile-scope .msv-groupby-toggle { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .msv-mobile-scope .msv-groupby-btn { padding: 8px 5px; white-space: normal; font-size: 12px; }
+
+  .msv-mobile-scope :is(button, [role="button"]) { touch-action: manipulation; }
+  .msv-mobile-scope :is(button, a, input, select, textarea, [role="button"]):focus-visible {
+    outline: 3px solid var(--primary); outline-offset: 3px;
+  }
+  .msv-mobile-scope button { min-height: 44px; }
+  .msv-mobile-scope :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: 16px !important; min-height: 44px; max-width: 100%;
+  }
+  .msv-mobile-scope :is(.ma-search-input, .msv-student-search) { width: 100%; min-width: 0; padding: 12px; border-radius: 10px; }
+  .msv-mobile-scope :is(.msv-btn-ai, .ma-send-btn, .msv-action-btn, .msv-cancel-btn, .msv-refresh-btn) {
+    white-space: normal; line-height: 1.4; max-width: 100%; min-width: 44px; overflow-wrap: anywhere;
+  }
+  .msv-mobile-scope :is(.msv-btn-ai, .ma-send-btn, .msv-action-btn, .msv-cancel-btn, .msv-refresh-btn) > svg { flex-shrink: 0; }
+
+  .msv-mobile-scope .msv-mobile-tools-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    width: 100%; padding: 13px 14px; margin-bottom: 12px; border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text-primary); background: var(--surface-2); text-align: left;
+    font-family: inherit; cursor: pointer;
+  }
+  .msv-mobile-tools-toggle > span:first-child { min-width: 0; }
+  .msv-mobile-tools-toggle strong { display: block; font-size: 13px; line-height: 1.4; }
+  .msv-mobile-tools-toggle small { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 3px; }
+  .msv-mobile-tools-toggle > span:last-child { font-size: 22px; color: var(--primary); flex-shrink: 0; }
+  .msv-mobile-scope .ma-panel:not(.msv-mobile-tools-open) > .msv-assignment-tools { display: none; }
+  .msv-mobile-scope .msv-assignment-tools { padding: 12px; gap: 10px; }
+  .msv-mobile-scope .msv-assignment-tools > div { min-width: 0; }
+  .msv-mobile-scope .msv-assignment-tools button { min-width: 0 !important; }
+  .msv-mobile-scope .msv-assignment-tools > div > span { overflow-wrap: anywhere; min-width: 0; }
+  .msv-mobile-scope .msv-expected-pages { padding: 12px 0 !important; gap: 8px !important; }
+  .msv-mobile-scope .msv-provider-controls { width: 100%; margin-left: 0; }
+  .msv-mobile-scope .msv-provider-controls .msv-student-search { order: -2; flex-basis: 100%; }
+  .msv-mobile-scope .msv-provider-controls .msv-mobile-tools-toggle { order: -1; margin-bottom: 0; }
+  .msv-mobile-scope .msv-provider-controls:not(.msv-mobile-tools-open) > :not(.msv-student-search):not(.msv-mobile-tools-toggle) { display: none !important; }
+  .msv-mobile-scope .msv-provider-controls > :is(select, span, .msv-btn-ai) { width: 100%; min-width: 0 !important; max-width: none !important; justify-content: center; }
+  .msv-mobile-scope .ma-panel-header { gap: 12px; margin-top: 14px; }
+  .msv-mobile-scope .ma-panel-title-wrap { flex-wrap: wrap; gap: 8px; min-width: 0; width: 100%; }
+  .msv-mobile-scope .ma-panel-title { flex: 1 1 calc(100% - 24px); min-width: 0; white-space: normal; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+  .msv-mobile-scope .ma-panel-count { font-size: 11px; white-space: normal; }
+  .msv-mobile-scope .msv-panel-controls { width: 100%; margin-left: 0; gap: 8px; }
+  .msv-mobile-scope .msv-panel-controls .msv-student-search { flex: 1 1 100%; }
+  .msv-mobile-scope .msv-refresh-btn-label { display: inline; }
+  .msv-mobile-scope .msv-panel-controls > .msv-refresh-btn { flex: 1 1 100px; justify-content: center; }
+
+  .msv-mobile-scope .msv-mark-select-bar { margin: 12px 0; padding: 10px; gap: 8px; }
+  .msv-mobile-scope .msv-mark-select-btn { flex: 1 1 110px; min-width: 0; justify-content: center; white-space: normal; }
+  .msv-mobile-scope .ma-table--cards tr.ma-row { grid-template-columns: 44px minmax(0, 1fr); gap: 7px 8px; padding: 14px 12px; border-radius: 16px; margin-bottom: 12px; }
+  .msv-mobile-scope .ma-table--cards tr.ma-row:not(:has(.msv-mark-check)) { grid-template-columns: minmax(0, 1fr); }
+  .msv-mobile-scope .ma-table--cards td:has(.msv-mark-check) { padding: 0; }
+  .msv-mobile-scope .ma-table--cards td:has(.msv-mark-check) .msv-mark-check { width: 44px; height: 44px; min-width: 44px; border-radius: 12px; }
+  .msv-mobile-scope .ma-table--cards td:has(.ma-avatar-cell) { min-height: 44px; padding-top: 2px; }
+  .msv-mobile-scope .ma-table--cards .ma-cell-name { font-size: 15px; font-weight: 700; line-height: 1.4; }
+  .msv-mobile-scope .ma-table--cards td { font-size: 13px; line-height: 1.5; min-width: 0; gap: 10px; }
+  .msv-mobile-scope .ma-table--cards td::before { min-width: 72px; font-size: 11px; }
+  .msv-mobile-scope .ma-table--cards td:has(.msv-actions) { padding-top: 12px; border-top: 1px solid var(--border-soft); margin-top: 4px; }
+  .msv-mobile-scope .ma-table--cards td:has(.msv-actions) .msv-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .msv-mobile-scope .ma-table--cards td:has(.msv-actions) .msv-action-btn { min-height: 46px; padding: 10px 6px; font-size: 12px; }
+  .msv-mobile-scope .msv-mobile-action-label { display: inline; }
+  .msv-mobile-scope .ma-table--cards .msv-review-warn { margin-left: 0 !important; flex-wrap: wrap; font-size: 12px !important; }
+  .msv-mobile-scope .msv-review-warn-short { display: none; }
+  .msv-mobile-scope .msv-mobile-warning-detail { display: inline; flex: 1; min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
+  .msv-mobile-scope :is(.ma-loading-msg, .ma-empty-msg) { padding: 28px 16px; font-size: 14px; line-height: 1.6; }
+}

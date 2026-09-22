@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { api } from "../api.js";
+import useMobileLayout from "../useMobileLayout.js";
 import {
   AnimatedNumber,
   Bar,
@@ -60,6 +61,7 @@ function QuestionBreakdown({ grading }) {
 }
 
 export default function RunDetail({ runId }) {
+  const mobile = useMobileLayout();
   const toast = useToast();
   const [run, setRun] = useState(null);
   const [error, setError] = useState("");
@@ -292,7 +294,48 @@ export default function RunDetail({ runId }) {
           </div>
         </div>
 
-        <div className="table-scroll">
+        {mobile ? <div className="mobile-paper-list">
+          {gradings.map((grading) => {
+            const detail = detailById[grading.id] || {};
+            const canExpand = Boolean(grading.result || grading.hasResult);
+            return <article key={grading.id} className={`mobile-paper-card ${grading.status === 'error' ? 'has-error' : ''}`}>
+              <div className="mobile-paper-heading">
+                <div><h3>{grading.studentName || grading.studentFilename}</h3>
+                  {grading.studentName && <p className="muted small">{grading.studentFilename}</p>}</div>
+                <StatusChip item={grading} />
+              </div>
+              <div className="mobile-paper-score">
+                <span>Score</span>
+                <strong>{grading.status === 'ready' ? `${grading.obtainedMarks}/${grading.maxMarks}` : 'Awaiting result'}</strong>
+                {grading.status === 'ready' && <span>{grading.percent}%</span>}
+              </div>
+              {grading.status === 'ready' && <a className="button" href={`#/papers/${grading.id}`}><Icon name="paper" />View marked paper</a>}
+              {canExpand && <button type="button" className="ghost" onClick={() => togglePaper(grading)} aria-expanded={openId === grading.id}>
+                {openId === grading.id ? 'Hide' : 'Review'} question awards<Icon name={openId === grading.id ? 'chevronUp' : 'chevronDown'} />
+              </button>}
+              {openId === grading.id && <QuestionBreakdown grading={{ ...grading, ...detail, result: grading.result || detail.result }} />}
+              {grading.error && <p className="error" role="alert">{grading.error}</p>}
+              {grading.partnerSubmissionId && grading.status === 'ready' && <p className={grading.viewerSyncError ? 'error' : 'muted small'}>{grading.viewerSyncStatus === 'synced' ? 'Available in student Results' : grading.viewerSyncError || 'Saving to student Results…'}</p>}
+              {grading.usageAccountingError && <p role="status" className="error">Token usage is saved locally and waiting to sync: {grading.usageAccountingError} The server will retry automatically.</p>}
+              <details className="mobile-paper-metrics"><summary>Usage, cost &amp; time</summary><dl>
+                <div><dt>Input tokens</dt><dd>{formatTokens(grading.tokenUsage?.promptTokens)}</dd></div>
+                <div><dt>Output tokens</dt><dd>{formatTokens(grading.cost?.outputTokens)}</dd></div>
+                <div><dt>Total tokens</dt><dd>{formatTokens(grading.tokenUsage?.totalTokens)}</dd></div>
+                <div><dt>Cost</dt><dd>{formatEgp(grading.cost?.egp)}</dd></div>
+                <div><dt>Time</dt><dd>{formatDuration(grading.durationMs)}</dd></div>
+              </dl></details>
+            </article>;
+          })}
+          {!gradings.length && <p className="empty" role="status">Papers will appear here as this run starts.</p>}
+          <details className="mobile-paper-metrics mobile-run-total"><summary>Run totals · {run.readyCount} marked{run.failedCount ? ` · ${run.failedCount} failed` : ''}</summary><dl>
+            <div><dt>Total score</dt><dd>{totalPossible > 0 ? `${totalObtained}/${totalPossible}` : '—'}</dd></div>
+            <div><dt>Input tokens</dt><dd>{formatTokens(run.tokenUsage?.promptTokens)}</dd></div>
+            <div><dt>Output tokens</dt><dd>{formatTokens(cost?.outputTokens)}</dd></div>
+            <div><dt>Total tokens</dt><dd>{formatTokens(run.tokenUsage?.totalTokens)}</dd></div>
+            <div><dt>Cost</dt><dd>{formatEgp(cost?.egp)}</dd></div>
+            <div><dt>Time</dt><dd>{formatDuration(run.durationMs)}</dd></div>
+          </dl></details>
+        </div> : <div className="table-scroll">
           <table className="ledger">
             <thead>
               <tr>
@@ -429,7 +472,7 @@ export default function RunDetail({ runId }) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </div>}
       </section>
     </div>
   );

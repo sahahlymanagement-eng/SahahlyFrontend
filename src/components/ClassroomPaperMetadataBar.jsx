@@ -107,7 +107,7 @@ export default function ClassroomPaperMetadataBar({ assignmentId, assignment, on
   });
 
   return (
-    <div style={rowStyle}>
+    <div className="msv-paper-metadata" style={rowStyle}>
       <span style={{ fontSize: 12, color: "var(--muted)" }}>📑 Paper details:</span>
 
       {!editing ? (

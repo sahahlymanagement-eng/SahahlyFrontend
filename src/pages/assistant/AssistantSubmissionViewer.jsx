@@ -114,6 +114,9 @@ import AddMarkingQuestionBar, {
 } from "../../components/AddMarkingQuestionBar";
 import MarkingPageShiftNotice from "../../components/MarkingPageShiftNotice";
 import AnnotatedPdfPreview from "../../components/AnnotatedPdfPreview";
+import MobileReviewNavigation from "../../components/MobileReviewNavigation";
+import MobileDocumentViewer from "../../components/MobileDocumentViewer";
+import usePhoneLayout from "../../hooks/usePhoneLayout";
 import { getMarkingIntegrityPublishGate } from "../../utils/markingIntegrityPublish";
 import {
   orderQuestionsByInventory,
@@ -182,6 +185,19 @@ import { fetchMarkSchemeFile, invalidateMarkSchemeFile } from "../../utils/presi
 import { buildEditorPreviewBaseline } from "../../utils/buildEditorPreviewBaseline";
 
 export default function AssignmentSubmissionViewer() {
+  const phone = usePhoneLayout();
+  const [mobileDocument, setMobileDocument] = useState(null);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const mobileDocumentRequest = useRef(0);
+  const mobileDocumentUrl = mobileDocument?.url;
+  useEffect(() => () => {
+    if (mobileDocumentUrl) URL.revokeObjectURL(mobileDocumentUrl);
+  }, [mobileDocumentUrl]);
+  useEffect(() => () => { mobileDocumentRequest.current += 1; }, []);
+  const closeMobileDocument = () => {
+    mobileDocumentRequest.current += 1;
+    setMobileDocument(null);
+  };
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const assignmentPrompt = useAssignmentMarkingPrompt(assignmentId);
@@ -1325,6 +1341,8 @@ const deleteCorrection = async (student) => {
   };
 
   const openPdf = async (student) => {
+    const request = ++mobileDocumentRequest.current;
+    if (phone) setMobileDocument({ title: student.name || "Submission", loading: true, student });
     try {
       const file = await fetchStudentPdf(api, {
         assignmentId,
@@ -1332,8 +1350,14 @@ const deleteCorrection = async (student) => {
         googleUserId: studentGoogleUserId(student),
       });
       const url = URL.createObjectURL(file);
+      if (phone) {
+        if (request !== mobileDocumentRequest.current) { URL.revokeObjectURL(url); return; }
+        setMobileDocument({ title: student.name || "Submission", url, student });
+        return;
+      }
       window.open(url);
     } catch {
+      if (phone && request === mobileDocumentRequest.current) setMobileDocument({ title: student.name || "Submission", error: "Could not load this submission. Try again.", student });
       toast.error("Failed to open PDF");
     }
   };
@@ -3013,7 +3037,20 @@ const deleteCorrection = async (student) => {
     );
   };
   
-  const openMarkScheme = (msInfo) => {
+  const openMarkScheme = async (msInfo) => {
+    if (phone) {
+      const request = ++mobileDocumentRequest.current;
+      setMobileDocument({ title: "Mark scheme", loading: true, markScheme: true });
+      try {
+        const file = await fetchMarkSchemeFile(api, assignmentId);
+        const url = URL.createObjectURL(file);
+        if (request !== mobileDocumentRequest.current) { URL.revokeObjectURL(url); return; }
+        setMobileDocument({ title: "Mark scheme", url, markScheme: true });
+      } catch {
+        if (request === mobileDocumentRequest.current) setMobileDocument({ title: "Mark scheme", error: "Could not load the mark scheme. Try again.", markScheme: true });
+      }
+      return;
+    }
     if (!msInfo?.webLink) return;
 
     window.open(msInfo.webLink, "_blank", "noopener,noreferrer");
@@ -3151,7 +3188,8 @@ const max   = effectiveMaxTotal;
 const color = getScoreColor(total, max);
 
 return (
-    <div className="ma-root">
+    <div className="ma-root msv-mobile-scope">
+      {mobileDocument && <MobileDocumentViewer {...mobileDocument} onClose={closeMobileDocument} onRetry={() => mobileDocument.markScheme ? openMarkScheme(msInfo) : openPdf(mobileDocument.student)} onDownload={mobileDocument.student ? () => downloadPdf(mobileDocument.student) : undefined} />}
       <main className="ma-main">
 
         <header className="ma-topbar">
@@ -3183,7 +3221,8 @@ return (
   </div>
 </header>
 
-<div className="ma-content">
+<div className={`ma-content msv-assistant-content ${mobileToolsOpen || bulkMarking || returning || ["uploading", "submitting", "processing"].includes(batchJob?.phase) ? "msv-mobile-tools-open" : ""}`}>
+{phone && <button type="button" className="msv-mobile-tools-toggle" aria-expanded={mobileToolsOpen || bulkMarking || returning || ["uploading", "submitting", "processing"].includes(batchJob?.phase)} onClick={() => setMobileToolsOpen(open => !open)}><span><strong>Marking & assignment tools</strong><small>Mark scheme, AI marking, return papers & setup</small></span><span aria-hidden="true">{mobileToolsOpen ? "−" : "+"}</span></button>}
 {/* MARK SCHEME BAR */}
 <div className="msv-ms-bar">
   <div className="msv-ms-info">
@@ -3266,7 +3305,7 @@ return (
 
               {/* BATCH MARKING */}
               {msInfo && (
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
+                <div className="msv-assistant-batch" style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 10 }}>
                   <span
                     className="msv-gemini-select"
                     title="Pages per request follow the selected model (2.5 → 3, 3 → 10)"
@@ -3432,7 +3471,7 @@ return (
             </div>
 
               {/* Expected Pages */}
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div className="msv-expected-pages" style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, color: "var(--muted)" }}>📄 Expected Pages:</span>
                 {!showExpectedPagesEdit ? (
                   <>
@@ -3492,6 +3531,7 @@ return (
                 <input
                   className="msv-student-search"
                   type="text"
+                  aria-label="Search students by name"
                   placeholder="Search by name…"
                   value={studentSearch}
                   onChange={e => setStudentSearch(e.target.value)}
@@ -3616,6 +3656,7 @@ return (
                     className={`msv-mark-check ${markingSelection.isSelected(s.submissionId) ? "msv-mark-check--on" : ""}`}
                     onClick={() => markingSelection.toggle(s.submissionId)}
                     aria-label={`Select ${s.name || "student"} for marking`}
+                    aria-pressed={markingSelection.isSelected(s.submissionId)}
                   >
                     {markingSelection.isSelected(s.submissionId) ? "✓" : ""}
                   </button>
@@ -3737,8 +3778,8 @@ return (
                 {s.submissionId ? (
                   <div className="msv-actions">
 
-                    <button className="msv-action-btn" onClick={() => openPdf(s)}> <FiEye size={13} /> </button>
-                    <button className="msv-action-btn" onClick={() => downloadPdf(s)}> <FiDownload size={13} /> </button>
+                    <button className="msv-action-btn" aria-label={`View submission for ${s.name || "student"}`} onClick={() => openPdf(s)}> <FiEye size={13} /><span className="msv-mobile-action-label">View paper</span></button>
+                    <button className="msv-action-btn" aria-label={`Download submission for ${s.name || "student"}`} onClick={() => downloadPdf(s)}> <FiDownload size={13} /><span className="msv-mobile-action-label">Download</span></button>
 
                                     {studentErrors[s.submissionId] && (
                                       <button
@@ -4237,7 +4278,7 @@ return (
       {/* ── RESULTS MODAL ── */}
       {resultModal && (
               <div className="msv-overlay" onClick={() => setResultModal(null)}>
-                <div className="msv-results-modal" onClick={e => e.stopPropagation()}>
+                <div className="msv-results-modal msv-review-workspace" onClick={e => e.stopPropagation()}>
                   <div className="msv-modal-header">
                     <div>
                       <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -4349,11 +4390,12 @@ return (
                       </div>
                     )}
                     </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <div className="msv-review-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
                             className="msv-btn-ai"
                             onClick={() => setAnnotationsPanelOpen((open) => !open)}
+                            data-mobile-open-paper
                             style={{
                               fontSize: 12,
                               background: annotationsPanelOpen
@@ -4417,6 +4459,7 @@ return (
                     </div>
                   </div>
       
+                      <MobileReviewNavigation onSave={handleConfirmEdits} saving={confirmingEdits} saveDisabled={previewLoading} hasChanges={hasPendingEdits} onClose={() => setResultModal(null)} />
                       <div
                         className="msv-modal-body msv-results-body"
                         style={{
@@ -4427,7 +4470,7 @@ return (
                         }}
                       >
                     {/* LEFT CARD (UNCHANGED - your current results UI) */}
-                    <div
+                    <div className="msv-review-pane"
                       style={{
                         flex: "1 1 0",
                         minWidth: 0,
@@ -4569,7 +4612,7 @@ return (
                   </div>
                     
                     {/* MIDDLE CARD (Annotated File) */}
-                    <div style={{
+                    <div className="msv-paper-pane" style={{
                       flex: "1 1 0",
                       minWidth: 0,
                       height: "100%",
@@ -4664,6 +4707,7 @@ return (
                             onDocumentLoaded={handlePreviewDocumentLoaded}
                             pdfSessionKey={resultModalSubmissionId}
                             placementQuestions={placementQuestions}
+                            mobileEditing
                             reportPageCount={reportPageCount}
                             onPlacementChange={handleAnnotationPlacementChange}
                             onQuestionRemove={handleQuestionRemove}
@@ -4679,7 +4723,7 @@ return (
                     </div>
 
                     {/* RIGHT CARD (NEW - Mark Scheme, read-only) */}
-                    <div style={{
+                    <div className="msv-scheme-pane" style={{
                       flex: "1 1 0",
                       minWidth: 0,
                       height: "100%",

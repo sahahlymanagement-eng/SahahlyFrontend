@@ -27,12 +27,30 @@
 .dpi-workspace > .dpi-actions { flex-shrink:0; padding-bottom:12px; }
 .dpi-workspace iframe { flex:1; width:100%; min-height:0; border:0; background:white; border-radius:8px; }
 @media(max-width:700px) {
-  .dpi-overlay{padding:4px}
+  .dpi-overlay{padding:0;align-items:stretch}
   /* 100% not 100vw — 100vw includes the scrollbar gutter and can force page-level sideways scroll. */
-  .dpi-workspace{padding:10px;width:100%;max-width:100%;height:98vh;height:98dvh;box-sizing:border-box}
+  .dpi-workspace{padding:0;width:100%;max-width:100%;height:100vh;height:100dvh;border-radius:0;box-sizing:border-box}
+  .dpi-dialog{width:100%;max-width:none;min-height:100dvh;max-height:100dvh;border-radius:0;padding:0 16px 28px}
+  .dpi-modal-header{margin:0 -16px 16px;padding:12px 16px;min-height:58px}
+  .dpi-modal-header h2{font-size:16px}
+  .dpi-close{min-width:44px;min-height:44px;padding:7px 10px}
+  .dpi-close span{display:none}
+  .dpi-dialog .msv-btn-ai{width:100%;min-height:48px;justify-content:center}
+  .dpi-dialog label{font-size:15px}
+  .dpi-dialog input,.dpi-dialog select,.dpi-dialog textarea{font-size:16px}
   .dpi-actions>button:last-child{margin-left:0}
+  .dpi-tools{margin:10px 0;padding:14px 12px;border-radius:14px}
+  .dpi-actions{display:grid;grid-template-columns:1fr;gap:9px}
+  .dpi-actions>.msv-btn-ai{width:100%;min-height:46px;justify-content:center}
+  .dpi-actions>span{padding:8px 10px;border-radius:9px;background:var(--surface);font-size:12.5px;overflow-wrap:anywhere}
   .dpi-model{width:100%}
-  .dpi-model select{width:100%;min-width:0}
+  .dpi-model select{width:100%;min-width:0;min-height:46px;font-size:16px}
+  .dpi-runs button{min-height:48px;padding:10px 12px;font-size:13px}
+  .dpi-import-list{max-height:44dvh}
+  .dpi-import-option{padding:12px;min-height:56px}
+  .dpi-dialog .expected-q-table-scroll{max-height:48dvh}
+  .dpi-dialog .expected-q-table th,.dpi-dialog .expected-q-table td{padding:8px 6px}
+  .dpi-dialog .expected-q-remove,.dpi-dialog .expected-q-add{min-height:40px}
 }
 
 .dpi-dialog .exam-setup-fields { border:0; padding:0; margin:0; min-width:0; }
@@ -110,3 +128,44 @@
 .dpi-import-option strong { font-size:13.5px; line-height:1.35; }
 .dpi-import-option em { font-style:normal; font-size:12px; color:var(--text-secondary,#657084); }
 @media(max-width:700px) { .dpi-dialog .exam-setup-fields .drops,.dpi-dialog .exam-setup-fields .expected-labels,.dpi-dialog .exam-setup-fields .row-4 { grid-template-columns:1fr; } }
+
+@media (max-width: 767px) {
+  .dpi-tools:not(.dpi-mobile-expanded) > :not(.dpi-mobile-toggle):not(.dpi-overlay):not(.msv-overlay) { display: none; }
+  .dpi-tools .dpi-mobile-toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 0; border: 0; text-align: left; background: transparent; color: var(--text-primary); font: inherit; }
+  .dpi-mobile-toggle strong { display: block; font-size: 14px; }
+  .dpi-mobile-toggle small { display: block; font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
+  .dpi-mobile-toggle > span:last-child { color: var(--primary); font-size: 23px; }
+  .dpi-mobile-expanded .dpi-mobile-toggle { margin-bottom: 12px; }
+  .dpi-tools { min-width: 0; margin: 12px 0; padding: 14px 12px; border-radius: 14px; }
+  .dpi-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .dpi-actions > *, .dpi-model, .dpi-model select { width: 100%; min-width: 0; max-width: 100%; margin-left: 0 !important; }
+  .dpi-tools :is(button, select, input:not([type='radio']):not([type='checkbox'])) { min-height: 44px; box-sizing: border-box; }
+  .dpi-tools :is(input, select, textarea) { font-size: 16px; scroll-margin: 80px 0; }
+  .dpi-tools :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .dpi-tools button { white-space: normal; overflow-wrap: anywhere; }
+  .dpi-tools .dpi-overlay { padding: 0; top: var(--dpi-viewport-top, 0px); height: var(--dpi-viewport-height, 100dvh); align-items: stretch; overflow: hidden; }
+  .dpi-tools .dpi-dialog, .dpi-tools .dpi-workspace { width: 100%; max-width: none; height: 100%; min-height: 0; max-height: 100%; margin: 0; border-radius: 0; }
+  .dpi-tools .dpi-dialog { overflow-y: auto; padding: max(14px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+  .dpi-tools .dpi-workspace { padding-bottom: env(safe-area-inset-bottom); }
+  .dpi-modal-header { flex-shrink: 0; align-items: center; gap: 10px; }
+  .dpi-modal-header > :first-child { min-width: 0; overflow-wrap: anywhere; font-size: 16px; }
+  .dpi-tools .dpi-close { min-width: 44px; min-height: 44px; flex-shrink: 0; }
+  .dpi-tools .dpi-workspace > .dpi-modal-header { padding-top: max(10px, env(safe-area-inset-top)); }
+  .dpi-tools .dpi-workspace iframe { flex: 1; min-height: 0; width: 100%; }
+  .dpi-dialog .exam-setup-fields :is(.drops, .expected-labels, .row-4) { grid-template-columns: minmax(0, 1fr); }
+  .dpi-dialog .expected-q-table { table-layout: fixed; }
+  .dpi-dialog .expected-q-table th, .dpi-dialog .expected-q-table td { padding: 6px 3px; }
+  .dpi-dialog .expected-q-col-num { width: 24px; }
+  .dpi-dialog .expected-q-col-marks { width: 64px; }
+  .dpi-dialog .expected-q-col-actions { width: 48px; }
+  .dpi-dialog .expected-q-remove { width: 44px; height: 44px; }
+  .dpi-dialog .expected-q-table input { padding: 8px 4px; font-size: 16px; min-width: 0; }
+  .dpi-dialog .expected-q-table-scroll { max-height: 38dvh; }
+  .dpi-dialog .expected-q-entry-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dpi-dialog .expected-q-entry-modes button { flex: 1; }
+  .dpi-dialog .expected-q-text-columns { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 8px; }
+  .dpi-import-list { max-height: 42dvh; overscroll-behavior: contain; }
+  .dpi-import-option { padding: 12px; min-height: 56px; }
+  .dpi-import-option input { min-width: 22px; width: 22px; height: 22px; }
+  .dpi-dialog > button[type='submit'] { width: 100%; justify-content: center; }
+}

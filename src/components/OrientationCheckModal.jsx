@@ -47,14 +47,17 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
       }}
     >
       <div
-        className="msv-results-modal"
+        className="msv-results-modal msv-preflight-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Page orientation check"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 580 }}
       >
         <div className="msv-modal-header">
           <div style={{ fontSize: 15, fontWeight: 700 }}>↔ Page Orientation Check</div>
           {!state.loading && (
-            <button className="msv-icon-btn" onClick={cancel}>
+            <button className="msv-icon-btn" onClick={cancel} aria-label="Close orientation check">
               <FiX />
             </button>
           )}
@@ -76,6 +79,7 @@ export default function OrientationCheckModal({ state, onResolve, onOpenPdf }) {
               {flagged.map((c) => (
                 <div
                   key={c.submissionId}
+                  className="msv-preflight-row"
                   style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
                     padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13,

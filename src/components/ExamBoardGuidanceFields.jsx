@@ -19,6 +19,7 @@ export default function ExamBoardGuidanceFields({
   return (
     <div style={{ marginBottom: 16 }}>
       <div
+        className="msv-exam-board-fields"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
