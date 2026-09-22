@@ -25,21 +25,9 @@ import RoleSidebar from "../../components/RoleSidebar";
 import RoleShell from "../../components/RoleShell";
 import {
   GradingNotificationProvider,
-  useGradingNotifications,
 } from "../../context/GradingNotificationContext";
 
-const GRADING_NAV_PATHS = {
-  "/director/mariamgabalawy": "mariamgabalawy",
-  "/director/drpeter": "drpeter",
-};
-
-function buildNavSections(counts) {
-  const partnerBadge = (path) => {
-    const slug = GRADING_NAV_PATHS[path];
-    const unread = slug ? counts?.[slug]?.ungradedTotal ?? 0 : 0;
-    return unread > 0 ? unread : undefined;
-  };
-
+function buildNavSections() {
   return [
     {
       label: "Overview",
@@ -72,13 +60,11 @@ function buildNavSections(counts) {
           icon: <FiUploadCloud />,
           label: "Mariam Gabalawy",
           path: "/director/mariamgabalawy",
-          badge: partnerBadge("/director/mariamgabalawy"),
         },
         {
           icon: <FiUploadCloud />,
           label: "Dr Peter",
           path: "/director/drpeter",
-          badge: partnerBadge("/director/drpeter"),
         },
         { icon: <FiUploadCloud />, label: "Dr Peter — Indexing", path: "/director/drpeter-indexing" },
         { icon: <FiEdit3 />, label: "Manual Correction", path: "/director/manual-correction" },
@@ -104,8 +90,7 @@ function buildNavSections(counts) {
 }
 
 function DirectorShell() {
-  const { counts } = useGradingNotifications();
-  const navSections = useMemo(() => buildNavSections(counts), [counts]);
+  const navSections = useMemo(() => buildNavSections(), []);
 
   return (
     <RoleShell

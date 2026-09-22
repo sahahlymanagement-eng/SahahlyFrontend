@@ -3,7 +3,6 @@ import {
 } from "react-icons/fi";
 import RoleSidebar from "../../components/RoleSidebar";
 import {
-  useGradingNotifications,
   useGradingDelegations,
 } from "../../context/GradingNotificationContext";
 import { canGradeProvider, isGradingOnlyAccount } from "../../utils/gradingAccess";
@@ -38,7 +37,6 @@ export default function AssistantSidebar() {
   // The delegation grant is passed explicitly rather than left to
   // canGradeProvider's module cache, so this render is tied to it and a
   // director-delegated tab appears the moment the grant resolves.
-  const { counts } = useGradingNotifications();
   const { delegations } = useGradingDelegations();
 
   // A grading-only account otherwise has no business in the coursework side of
@@ -51,11 +49,6 @@ export default function AssistantSidebar() {
     const slug = GRADING_NAV_PATHS[item.path];
     if (!slug) return item.path === "/assistant/courses" || !gradingOnly;
     return canGradeProvider(slug, delegations);
-  }).map((item) => {
-    if (item.path.endsWith("/drpeter-indexing")) return item;
-    const slug = GRADING_NAV_PATHS[item.path];
-    const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;
-    return unread > 0 ? { ...item, badge: unread } : item;
   });
 
   return (

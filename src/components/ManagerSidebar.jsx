@@ -5,7 +5,6 @@ import {
 } from "react-icons/fi";
 import RoleSidebar from "./RoleSidebar";
 import {
-  useGradingNotifications,
   useGradingDelegations,
 } from "../context/GradingNotificationContext";
 import {
@@ -65,7 +64,6 @@ export default function ManagerSidebar() {
   // The delegation grant is passed explicitly rather than left to
   // canGradeProvider's module cache, so this render is tied to it and a
   // director-delegated tab appears the moment the grant resolves.
-  const { counts } = useGradingNotifications();
   const { delegations } = useGradingDelegations();
 
   // A dedicated per-provider Manager role (Manager - <Provider>) is confined
@@ -79,11 +77,6 @@ export default function ManagerSidebar() {
     const slug = GRADING_NAV_PATHS[item.path];
     if (!slug) return !gradingOnly;
     return canGradeProvider(slug, delegations);
-  }).map((item) => {
-    if (item.path.endsWith("/drpeter-indexing")) return item;
-    const slug = GRADING_NAV_PATHS[item.path];
-    const unread = slug ? counts[slug]?.ungradedTotal ?? 0 : 0;
-    return unread > 0 ? { ...item, badge: unread } : item;
   });
 
   return (

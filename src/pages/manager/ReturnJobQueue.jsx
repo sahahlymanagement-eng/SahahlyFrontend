@@ -389,6 +389,10 @@ export default function ReturnJobQueue() {
   const historyFrontierRef = useRef({ page: 1, hasMore: false, days: 7, total: 0 });
   const [historyFrontier, setHistoryFrontierState] = useState({ page: 1, hasMore: false, days: 7, total: 0 });
   const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  // True done/failed counts for the whole `days` window, from the backend —
+  // NOT derived from data.history.length, which only reflects however many
+  // history rows happen to be loaded/paginated in right now.
+  const [historyCounts, setHistoryCounts] = useState({ done: 0, failed: 0 });
 
   const setHistoryFrontier = useCallback((next) => {
     historyFrontierRef.current = next;
@@ -429,6 +433,11 @@ export default function ReturnJobQueue() {
           days: pagination.days,
           total: pagination.total,
         });
+      }
+      // Page-independent — every response carries the true window totals,
+      // regardless of which history page was requested.
+      if (payload.historyCounts) {
+        setHistoryCounts({ done: payload.historyCounts.done || 0, failed: payload.historyCounts.failed || 0 });
       }
       setLoadError(null);
       setLastRefreshedAt(new Date());
@@ -491,14 +500,8 @@ export default function ReturnJobQueue() {
     [data]
   );
 
-  const failedRecentCount = useMemo(
-    () => (data.history || []).filter((i) => i.status === "failed").length,
-    [data.history]
-  );
-  const doneRecentCount = useMemo(
-    () => (data.history || []).filter((i) => i.status === "done").length,
-    [data.history]
-  );
+  const failedRecentCount = historyCounts.failed;
+  const doneRecentCount = historyCounts.done;
 
   const visibleItems = useMemo(() => {
     let items = allItems;
@@ -554,8 +557,8 @@ export default function ReturnJobQueue() {
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", flexShrink: 0 }}>
             <StatTile icon={<FiLoader style={SPIN_STYLE} />} label="Returning now" value={data.running?.length || 0} tone="var(--primary)" />
             <StatTile icon={<FiClock />} label="Waiting" value={data.queued?.length || 0} tone="var(--muted)" />
-            <StatTile icon={<FiCheck />} label="Returned recently" value={doneRecentCount} tone="var(--success, #2f9e5e)" />
-            <StatTile icon={<FiX />} label="Failed recently" value={failedRecentCount} tone="var(--danger)" />
+            <StatTile icon={<FiCheck />} label={`Returned (last ${historyFrontier.days}d)`} value={doneRecentCount} tone="var(--success, #2f9e5e)" />
+            <StatTile icon={<FiX />} label={`Failed (last ${historyFrontier.days}d)`} value={failedRecentCount} tone="var(--danger)" />
           </div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>

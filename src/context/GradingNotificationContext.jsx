@@ -46,39 +46,16 @@ const GradingDelegationContext = createContext({
 
 const POLL_MS = 60000;
 
-// A submission is "published/graded" once the grade is pushed back to the partner
-// (marked) or our annotated feedback PDF has been uploaded (hasFeedbackPdf). Everything
-// else — new, failed, or AI-graded drafts not yet uploaded — is still outstanding.
-const isPublished = (s) => s?.marked === true || s?.hasFeedbackPdf === true;
-
-// Page through a provider's submissions list (mirrors the tabs' loadAll) and count the
-// submissions still outstanding, so the badge matches what the tab actually shows.
+// Backend already maintains this count with one indexed countDocuments query
+// (routes/grading.js and routes/externalGrading.js's GET .../notifications —
+// "Powers the always-present navbar badge"). This used to be reimplemented
+// here by paging through EVERY submission 50 at a time (up to 100 pages) just
+// to count the unpublished ones — for a provider with a few thousand rows,
+// that meant dozens of full-payload requests on every mount, tab-focus, and
+// 60s poll tick. Hitting the existing endpoint is one request instead.
 async function countOutstanding(base) {
-  const collected = [];
-  let p = 1;
-  let tp = 1;
-  do {
-    const res = await api.get(`${base}/submissions`, { params: { page: p, per_page: 50 } });
-    const body = res.data || {};
-    const items =
-      body.data ||
-      body.submissions ||
-      body.items ||
-      body.results ||
-      body.rows ||
-      (Array.isArray(body) ? body : []);
-    const meta = body.meta || body.pagination || body;
-    const totalCount = meta.total ?? meta.totalItems ?? meta.count ?? items.length;
-    tp =
-      meta.totalPages ??
-      meta.total_pages ??
-      meta.last_page ??
-      (meta.per_page ? Math.ceil(totalCount / meta.per_page) : 1);
-    for (const raw of items) collected.push(raw);
-    p += 1;
-  } while (p <= tp && p <= 100);
-
-  return collected.filter((s) => !isPublished(s)).length;
+  const res = await api.get(`${base}/notifications`);
+  return res.data?.ungradedTotal ?? 0;
 }
 
 export function GradingNotificationProvider({ children }) {
