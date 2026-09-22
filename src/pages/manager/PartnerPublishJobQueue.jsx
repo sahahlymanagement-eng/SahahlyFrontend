@@ -23,6 +23,7 @@ import "./ManagerAssignments.css";
 // PartnerPublishJobItem queue / cron/partnerPublishJobWorkerCron.js.
 
 const SPIN_STYLE = { animation: "ma-spin 0.9s linear infinite" };
+const HISTORY_PAGE_SIZE = 100;
 
 const KIND_LABEL = {
   assignment_report: "Assignment report",
@@ -172,7 +173,7 @@ function BlockedDeliveriesBanner({ deliveries, canUnblock, onUnblock, now }) {
                   <strong>{providerLabel(d.provider)}</strong>
                   <span className="ma-muted">
                     {" "}· {KIND_LABEL[d.kind] || d.kind} · {d.studentKey}
-                    {d.assignmentId != null ? ` · assignment #${d.assignmentId}` : ""}
+                    {d.assignmentId != null ? ` · ${d.assignmentTitle || `assignment #${d.assignmentId}`}` : ""}
                     {d.period?.year ? ` · ${d.period.year}-${String(d.period.month).padStart(2, "0")}` : ""}
                     {" "}· blocked {relativeTimeText(d.blockedAt, now)}
                   </span>
@@ -225,7 +226,7 @@ function PublishGroup({ group, now, defaultOpen }) {
     group.kind === "monthly_report"
       ? `${group.period.year}-${String(group.period.month).padStart(2, "0")}`
       : group.assignmentId != null
-      ? `Assignment #${group.assignmentId}`
+      ? group.assignmentTitle || `Assignment #${group.assignmentId}`
       : "Ungrouped";
 
   return (
@@ -297,6 +298,7 @@ function groupPublishItems(items) {
         provider: item.provider,
         kind: item.kind,
         assignmentId: item.assignmentId,
+        assignmentTitle: item.assignmentTitle || null,
         period: item.period || {},
         items: [],
         counts: { queued: 0, running: 0, done: 0, failed: 0 },
@@ -341,17 +343,62 @@ export default function PartnerPublishJobQueue() {
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const latestLoadRef = useRef(0);
   const activeLoadRef = useRef(null);
+  // Accumulates history across pages so "Load older" results survive the
+  // 10s live poll (which only ever re-fetches page 1) instead of being wiped
+  // by it — keyed by _id so the poll's fresh copies of already-loaded rows
+  // just overwrite in place rather than duplicating.
+  const historyByIdRef = useRef(new Map());
+  // Ref mirrors the state below so `load` (a stable callback the polling
+  // interval closes over once) always reads the *current* frontier instead
+  // of whatever it was when the interval was set up.
+  const historyFrontierRef = useRef({ page: 1, hasMore: false, days: 7, total: 0 });
+  const [historyFrontier, setHistoryFrontierState] = useState({ page: 1, hasMore: false, days: 7, total: 0 });
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  // True done/failed counts for the whole `days` window, from the backend —
+  // NOT derived from data.history.length, which only reflects however many
+  // history rows happen to be loaded/paginated in right now.
+  const [historyCounts, setHistoryCounts] = useState({ done: 0, failed: 0 });
 
-  const load = useCallback(async (quiet = false) => {
+  const setHistoryFrontier = useCallback((next) => {
+    historyFrontierRef.current = next;
+    setHistoryFrontierState(next);
+  }, []);
+
+  const load = useCallback(async (quiet = false, { historyPage = 1 } = {}) => {
     if (activeLoadRef.current) return;
     const controller = new AbortController();
     activeLoadRef.current = controller;
     const loadId = ++latestLoadRef.current;
     if (!quiet) setRefreshing(true);
+    if (historyPage > 1) setLoadingMoreHistory(true);
     try {
-      const response = await getPartnerPublishJobs({ _ts: Date.now() });
+      const response = await getPartnerPublishJobs({ _ts: Date.now(), historyPage, historyPageSize: HISTORY_PAGE_SIZE });
       if (loadId !== latestLoadRef.current) return;
-      setData(response || { running: [], queued: [], history: [], blockedDeliveries: [], canUnblock: false });
+      const payload = response || { running: [], queued: [], history: [], blockedDeliveries: [], canUnblock: false };
+      for (const item of payload.history || []) {
+        historyByIdRef.current.set(String(item._id), item);
+      }
+      const mergedHistory = [...historyByIdRef.current.values()].sort(
+        (a, b) => new Date(b.finishedAt || 0) - new Date(a.finishedAt || 0)
+      );
+      setData({ ...payload, history: mergedHistory });
+      // Only the page we actually just fetched tells us the true frontier —
+      // a quiet page-1 poll while the user has already paged further ahead
+      // must not roll `hasMore`/`page` back to what page 1 alone reports.
+      const pagination = payload.historyPagination;
+      if (pagination && historyPage >= historyFrontierRef.current.page) {
+        setHistoryFrontier({
+          page: historyPage,
+          hasMore: Boolean(pagination.hasMore),
+          days: pagination.days,
+          total: pagination.total,
+        });
+      }
+      // Page-independent — every response carries the true window totals,
+      // regardless of which history page was requested.
+      if (payload.historyCounts) {
+        setHistoryCounts({ done: payload.historyCounts.done || 0, failed: payload.historyCounts.failed || 0 });
+      }
       setLoadError(null);
       setLastRefreshedAt(new Date());
     } catch (err) {
@@ -367,9 +414,14 @@ export default function PartnerPublishJobQueue() {
         activeLoadRef.current = null;
         setLoading(false);
         setRefreshing(false);
+        setLoadingMoreHistory(false);
       }
     }
-  }, []);
+  }, [setHistoryFrontier]);
+
+  const loadOlderHistory = useCallback(() => {
+    load(false, { historyPage: historyFrontierRef.current.page + 1 });
+  }, [load]);
 
   useEffect(() => {
     const initial = setTimeout(() => load(), 0);
@@ -403,8 +455,8 @@ export default function PartnerPublishJobQueue() {
 
   const allItems = useMemo(() => [...(data.running || []), ...(data.queued || []), ...(data.history || [])], [data]);
 
-  const failedRecentCount = useMemo(() => (data.history || []).filter((i) => i.status === "failed").length, [data.history]);
-  const doneRecentCount = useMemo(() => (data.history || []).filter((i) => i.status === "done").length, [data.history]);
+  const failedRecentCount = historyCounts.failed;
+  const doneRecentCount = historyCounts.done;
 
   const visibleItems = useMemo(() => {
     let items = allItems;
@@ -414,7 +466,9 @@ export default function PartnerPublishJobQueue() {
     const q = search.trim().toLowerCase();
     if (q) {
       items = items.filter((i) =>
-        [i.studentName, i.studentKey, providerLabel(i.provider), KIND_LABEL[i.kind]].some((f) => String(f || "").toLowerCase().includes(q))
+        [i.studentName, i.studentKey, i.assignmentTitle, providerLabel(i.provider), KIND_LABEL[i.kind]].some((f) =>
+          String(f || "").toLowerCase().includes(q)
+        )
       );
     }
     return items;
@@ -428,7 +482,8 @@ export default function PartnerPublishJobQueue() {
         <h1 className="ma-topbar-title">Partner Publish Queue</h1>
         <span className="ma-topbar-sub">
           Every &quot;Publish to IGSpaces&quot; and &quot;Publish All&quot; run finishes its work here in the
-          background, across every partner. Grouped so you can tell at a glance whether a run is done.
+          background, across every partner. Grouped so you can tell at a glance whether a run is done. History covers
+          the last {historyFrontier.days} days — click &quot;Load older history&quot; below to page through all of it.
         </span>
         {lastRefreshedAt && <span className="ma-topbar-sub">Last refreshed: {lastRefreshedAt.toLocaleTimeString()}</span>}
       </div><button className="msv-btn-ai" disabled={refreshing} onClick={() => load()}><FiRefreshCw /> {refreshing ? "Refreshing…" : "Refresh"}</button></header>
@@ -448,8 +503,8 @@ export default function PartnerPublishJobQueue() {
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", flexShrink: 0 }}>
             <StatTile icon={<FiLoader style={SPIN_STYLE} />} label="Publishing now" value={data.running?.length || 0} tone="var(--primary)" />
             <StatTile icon={<FiClock />} label="Waiting" value={data.queued?.length || 0} tone="var(--muted)" />
-            <StatTile icon={<FiCheck />} label="Published recently" value={doneRecentCount} tone="var(--success, #2f9e5e)" />
-            <StatTile icon={<FiX />} label="Failed recently" value={failedRecentCount} tone="var(--danger)" />
+            <StatTile icon={<FiCheck />} label={`Published (last ${historyFrontier.days}d)`} value={doneRecentCount} tone="var(--success, #2f9e5e)" />
+            <StatTile icon={<FiX />} label={`Failed (last ${historyFrontier.days}d)`} value={failedRecentCount} tone="var(--danger)" />
           </div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
@@ -483,6 +538,19 @@ export default function PartnerPublishJobQueue() {
           ) : (
             <div className="ma-card" style={{ padding: 24, textAlign: "center" }}>
               {search || needsAttentionOnly ? "Nothing matches that filter." : "All caught up — nothing is publishing right now."}
+            </div>
+          )}
+
+          {(data.history || []).length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "8px 0" }}>
+              <span className="ma-muted" style={{ fontSize: 13 }}>
+                Showing {data.history.length} of {historyFrontier.total} published/failed in the last {historyFrontier.days} days
+              </span>
+              {historyFrontier.hasMore && (
+                <button className="msv-btn-ai" disabled={loadingMoreHistory} onClick={loadOlderHistory}>
+                  {loadingMoreHistory ? "Loading…" : "Load older history"}
+                </button>
+              )}
             </div>
           )}
         </>}

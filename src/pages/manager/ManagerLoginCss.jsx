@@ -355,74 +355,32 @@ export default function ManagerLoginCss() {
     editingMaxTotal,
   });
 
-  // Download a pre-signed URL directly in the browser into a File.
-  const urlToFile = async (url, name, { timeoutMs = 60_000 } = {}) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const resp = await fetch(url, { signal: controller.signal });
-      if (!resp.ok) throw new Error(`Failed to download ${name} (HTTP ${resp.status})`);
-      const blob = await resp.blob();
-      return new File([blob], name, { type: "application/pdf" });
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-
-  // Recursively scan a JSON object for the submission + mark-scheme URLs.
-  const scanForPdfUrls = (root) => {
-    let submissionUrl = null;
-    let markSchemeUrl = null;
-    const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
-    const spare = [];
-    const walk = (node, keyHint = "") => {
-      if (node == null) return;
-      if (typeof node === "string") {
-        if (!isUrl(node)) return;
-        const k = keyHint.toLowerCase();
-        if (/(mark.?scheme|scheme|markscheme|\bms\b)/.test(k)) {
-          if (!markSchemeUrl) markSchemeUrl = node;
-        } else if (/(submission|answer|student|paper|script|file)/.test(k)) {
-          if (!submissionUrl) submissionUrl = node;
-        } else {
-          spare.push(node);
-        }
-        return;
-      }
-      if (Array.isArray(node)) return node.forEach((v) => walk(v, keyHint));
-      if (typeof node === "object") {
-        for (const [k, v] of Object.entries(node)) walk(v, k);
-      }
-    };
-    walk(root);
-    if (!submissionUrl && spare.length) submissionUrl = spare.shift();
-    if (!markSchemeUrl && spare.length) markSchemeUrl = spare.shift();
-    return { submissionUrl, markSchemeUrl };
-  };
-
-  // Fallback when /pdfs is blocked (e.g. "already marked"): use fresh pre-signed
-  // URLs from GET /submissions/:id and download the PDFs directly in the browser.
+  // Fallback when the primary /pdfs attempt(s) above are exhausted: retry the
+  // same backend-proxied route rather than fetching a partner-presigned URL
+  // directly in the browser. That used to resolve a fresh URL from GET
+  // /submissions/:id and `fetch()` it client-side — but a partner's storage
+  // (e.g. Dr Peter's Cloudflare R2 bucket) commonly has no CORS policy
+  // allowing browser requests from sahahly.com, so that direct fetch failed
+  // outright with "Failed to fetch" every time it ran, turning a transient
+  // connection drop (which retrying our own backend can recover from) into a
+  // guaranteed permanent failure. The backend has no such CORS restriction.
   const fetchPdfsViaSubmission = async (submissionId) => {
-    const res = await api.get(`/external-grading/submissions/${submissionId}`);
-    const body = res.data?.data || res.data || {};
-    let submissionUrl =
-      body.submission?.url || body.submission?.presignedUrl || body.submissionUrl ||
-      body.submission_url || body.answerUrl || body.fileUrl || body.pdfUrl || null;
-    let markSchemeUrl =
-      body.markScheme?.url || body.markScheme?.presignedUrl || body.markSchemeUrl ||
-      body.mark_scheme_url || body.markschemeUrl || null;
-    if (!submissionUrl || !markSchemeUrl) {
-      const scanned = scanForPdfUrls(body);
-      submissionUrl = submissionUrl || scanned.submissionUrl;
-      markSchemeUrl = markSchemeUrl || scanned.markSchemeUrl;
+    const fetchKind = (kind, filename) =>
+      withPdfFetchRetry(async () => {
+        const res = await api.get(`/external-grading/submissions/${submissionId}/pdfs/${kind}`, {
+          responseType: "blob",
+          timeout: 90_000,
+        });
+        return new File([res.data], filename, { type: "application/pdf" });
+      }, { attempts: 3 });
+
+    const studentFile = await fetchKind("submission", `submission_${submissionId}.pdf`);
+    let msFile = null;
+    try {
+      msFile = await fetchKind("markScheme", `markscheme_${submissionId}.pdf`);
+    } catch {
+      // No mark scheme attached for this submission — non-fatal.
     }
-    if (!submissionUrl) {
-      throw new Error("Could not find a submission PDF URL in GET /submissions/:id");
-    }
-    const studentFile = await urlToFile(submissionUrl, `submission_${submissionId}.pdf`);
-    const msFile = markSchemeUrl
-      ? await urlToFile(markSchemeUrl, `markscheme_${submissionId}.pdf`)
-      : null;
     return { studentFile, msFile };
   };
 
