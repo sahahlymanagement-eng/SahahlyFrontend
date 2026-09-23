@@ -59,6 +59,16 @@ import {
   syncStudentRoster,
   updateStudentContact,
   transcribeVoiceCommand,
+  createBroadcast,
+  actOnBroadcast,
+  sendPartnerReport,
+  publishPartnerReportIgspaces,
+  setPartnerReportAutomationRule,
+  setReportAutomationRule,
+  removeReportAutomationRule,
+  setClassroomAssistantDefaults,
+  assignAssistantToSubject,
+  removeAssistantFromSubject,
 } from "./managerChatbotActionsClient";
 import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
@@ -259,6 +269,34 @@ function confirmLabelFor(type) {
       return "Resume automation";
     case "sync_coursework_from_google":
       return "Import assignments";
+    case "create_whatsapp_broadcast":
+      return "Send broadcast";
+    case "pause_whatsapp_broadcast":
+      return "Pause broadcast";
+    case "resume_whatsapp_broadcast":
+      return "Resume broadcast";
+    case "cancel_whatsapp_broadcast":
+      return "Cancel broadcast";
+    case "retry_failed_whatsapp_broadcast":
+      return "Retry failed sends";
+    case "test_send_whatsapp_broadcast":
+      return "Send test";
+    case "send_partner_report":
+      return "Send report";
+    case "publish_partner_report_igspaces":
+      return "Publish to IGSpaces";
+    case "set_partner_report_automation_rule":
+      return "Save auto-send rule";
+    case "set_report_automation_rule":
+      return "Save auto-send rule";
+    case "remove_report_automation_rule":
+      return "Remove auto-send rule";
+    case "set_classroom_assistant_defaults":
+      return "Save default assistants";
+    case "assign_assistant_to_subject":
+      return "Qualify assistant";
+    case "remove_assistant_from_subject":
+      return "Remove qualification";
     default:
       return "Confirm";
   }
@@ -272,6 +310,9 @@ const DANGER_ACTION_TYPES = new Set([
   "delete_subject",
   "delete_scheduled_message",
   "cancel_scheduled_message",
+  "cancel_whatsapp_broadcast",
+  "remove_report_automation_rule",
+  "remove_assistant_from_subject",
 ]);
 
 const BROADCAST_ACTION_TYPES = new Set([
@@ -281,6 +322,10 @@ const BROADCAST_ACTION_TYPES = new Set([
   "send_executive_report",
   "schedule_whatsapp_message",
   "send_scheduled_message_now",
+  "create_whatsapp_broadcast",
+  "test_send_whatsapp_broadcast",
+  "send_partner_report",
+  "publish_partner_report_igspaces",
 ]);
 
 function actionCardMeta(type) {
@@ -1063,6 +1108,82 @@ export default function ManagerChatbot() {
           }.`;
           break;
         }
+        case "create_whatsapp_broadcast": {
+          const result = await createBroadcast({
+            personId: user.id,
+            title: ex.title,
+            text: ex.text,
+            source: ex.source,
+            sourceHash: ex.sourceHash,
+            recipients: ex.recipients,
+          });
+          const count = result?.recipientCount ?? ex.recipients?.length ?? 0;
+          successMsg = `WhatsApp broadcast queued to **${count}** recipient(s).`;
+          break;
+        }
+        case "pause_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "pause", { personId: user.id });
+          successMsg = "Broadcast paused.";
+          break;
+        case "resume_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "resume", { personId: user.id });
+          successMsg = "Broadcast resumed.";
+          break;
+        case "cancel_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "cancel", { personId: user.id });
+          successMsg = "Broadcast cancelled.";
+          break;
+        case "retry_failed_whatsapp_broadcast": {
+          const result = await actOnBroadcast(ex.broadcastId, "retry-failed", {
+            personId: user.id,
+          });
+          successMsg = `Re-queued **${result?.requeued ?? 0}** failed send(s).`;
+          break;
+        }
+        case "test_send_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "test-send", {
+            personId: user.id,
+            phone: ex.phone,
+          });
+          successMsg = `Test message sent to **${ex.phone}**.`;
+          break;
+        case "send_partner_report":
+          await sendPartnerReport({ personId: user.id, payload: ex.payload });
+          successMsg = "Partner report sent.";
+          break;
+        case "publish_partner_report_igspaces":
+          await publishPartnerReportIgspaces({ personId: user.id, payload: ex.payload });
+          successMsg = "Published to IGSpaces.";
+          break;
+        case "set_partner_report_automation_rule":
+          await setPartnerReportAutomationRule({ personId: user.id, payload: ex.payload });
+          successMsg = "Partner report auto-send rule saved.";
+          break;
+        case "set_report_automation_rule":
+          await setReportAutomationRule({ personId: user.id, payload: ex.payload });
+          successMsg = "Report auto-send rule saved.";
+          break;
+        case "remove_report_automation_rule":
+          await removeReportAutomationRule({ personId: user.id, ruleId: ex.ruleId });
+          successMsg = "Report auto-send rule removed.";
+          break;
+        case "set_classroom_assistant_defaults":
+          await setClassroomAssistantDefaults({
+            personId: user.id,
+            classroomId: ex.classroomId,
+            personIds: ex.personIds,
+            assignedBy: ex.assignedBy,
+          });
+          successMsg = "Default assistants updated.";
+          break;
+        case "assign_assistant_to_subject":
+          await assignAssistantToSubject({ personId: ex.personId, subjectId: ex.subjectId });
+          successMsg = "Assistant qualified for the subject.";
+          break;
+        case "remove_assistant_from_subject":
+          await removeAssistantFromSubject({ personId: ex.personId, subjectId: ex.subjectId });
+          successMsg = "Assistant's subject qualification removed.";
+          break;
         default:
           throw new Error("Unknown action type");
       }

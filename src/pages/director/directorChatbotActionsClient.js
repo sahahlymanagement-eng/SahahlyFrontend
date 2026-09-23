@@ -402,3 +402,140 @@ export async function deleteSubject(body) {
   const { data } = await api.delete("/director-chatbot/actions/delete-subject", { data: body });
   return data;
 }
+
+/* ── WhatsApp Broadcast ── */
+
+export async function createBroadcast(body) {
+  const { data } = await api.post("/director-chatbot/actions/create-broadcast", body);
+  return data;
+}
+
+/** @param {"pause"|"resume"|"cancel"|"retry-failed"|"test-send"} action */
+export async function actOnBroadcast(broadcastId, action, body) {
+  const { data } = await api.post(
+    `/director-chatbot/actions/broadcast/${broadcastId}/${action}`,
+    body
+  );
+  return data;
+}
+
+/* ── Partner Reports ── */
+
+export async function sendPartnerReport(body) {
+  const { data } = await api.post("/director-chatbot/actions/send-partner-report", body);
+  return data;
+}
+
+export async function publishPartnerReportIgspaces(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/publish-partner-report-igspaces",
+    body
+  );
+  return data;
+}
+
+export async function setPartnerReportAutomationRule(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/set-partner-report-automation-rule",
+    body
+  );
+  return data;
+}
+
+/* ── Report Automation Rules (internal classrooms) ── */
+
+export async function setReportAutomationRule(body) {
+  const { data } = await api.post("/director-chatbot/actions/set-report-automation-rule", body);
+  return data;
+}
+
+export async function removeReportAutomationRule(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/remove-report-automation-rule",
+    body
+  );
+  return data;
+}
+
+/* ── Classroom assistant defaults & assistant subjects ── */
+
+export async function setClassroomAssistantDefaults(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/set-classroom-assistant-defaults",
+    body
+  );
+  return data;
+}
+
+export async function assignAssistantToSubject(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/assign-assistant-to-subject",
+    body
+  );
+  return data;
+}
+
+export async function removeAssistantFromSubject(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/remove-assistant-from-subject",
+    body
+  );
+  return data;
+}
+
+/* ── Grading partner delegations ── */
+
+export async function delegatePartnerAssignment(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/delegate-partner-assignment",
+    body
+  );
+  return data;
+}
+
+export async function removePartnerDelegation(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/remove-partner-delegation",
+    body
+  );
+  return data;
+}
+
+export async function setPartnerDefaults(body) {
+  const { data } = await api.post("/director-chatbot/actions/set-partner-defaults", body);
+  return data;
+}
+
+/* ── Quality control ── */
+
+export async function assignQualityToSubject(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/assign-quality-to-subject",
+    body
+  );
+  return data;
+}
+
+export async function removeQualityFromSubject(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/remove-quality-from-subject",
+    body
+  );
+  return data;
+}
+
+export async function createQualityChecklistItem(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/create-quality-checklist-item",
+    body
+  );
+  return data;
+}
+
+export async function updateQualityChecklistItem(body) {
+  const { data } = await api.post(
+    "/director-chatbot/actions/update-quality-checklist-item",
+    body
+  );
+  return data;
+}
