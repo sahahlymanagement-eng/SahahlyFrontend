@@ -1601,8 +1601,12 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
     }
   };
 
-  const deleteDraft = (submissionId) =>
-    api.delete(`${BASE}/submissions/${submissionId}/draft`).catch(() => {});
+  // Soft clear (default): free draft fields only — used after publish.
+  // reset: true → full wipe so a published/graded paper can be marked again.
+  const deleteDraft = (submissionId, { reset = false } = {}) =>
+    api.delete(`${BASE}/submissions/${submissionId}/draft`, {
+      params: reset ? { reset: 1 } : undefined,
+    });
 
   const recordMarkResult = async (submissionId, result, studentFile, { persist = true } = {}) => {
     const originalAiResult = JSON.parse(JSON.stringify(result));
@@ -2083,10 +2087,17 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
 
   const deleteResult = async (student) => {
     const id = student.submissionId;
+    const wasPublished = isPublished(student);
+    const wasMarked =
+      !wasPublished &&
+      (!!student.hasDraft ||
+        !!student.hasMarkingResult ||
+        !!results[id]?.result);
     try {
-      await deleteDraft(id);
-    } catch {
-      // deleteDraft already swallows; keep UI consistent either way
+      await deleteDraft(id, { reset: true });
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to clear result");
+      return;
     }
     setResults((prev) => {
       const n = { ...prev };
@@ -2115,13 +2126,34 @@ export default function GradingProviderPage({ slug, label, AssignmentTools = nul
               ...s,
               hasDraft: false,
               hasMarkingResult: false,
-              localGrade: isPublished(s) ? s.localGrade : null,
-              localStatus: isPublished(s) ? s.localStatus : "pending",
+              hasFeedbackPdf: false,
+              localGrade: null,
+              localStatus: "pending",
             }
           : s
       )
     );
-toast.success("Result cleared — you can mark again");
+    // Keep Corrected / Published chips in step without a full reload.
+    if (selectedAssignment?.id != null && (wasPublished || wasMarked)) {
+      setAssignmentIndex((prev) =>
+        prev.map((a) => {
+          if (a.id !== selectedAssignment.id) return a;
+          if (
+            selectedAssignment.classroom?.group_id != null &&
+            a.classroom?.group_id != null &&
+            a.classroom.group_id !== selectedAssignment.classroom.group_id &&
+            !selectedAssignment.collapseScope
+          ) {
+            return a;
+          }
+          if (wasPublished) {
+            return { ...a, graded: Math.max(0, (a.graded ?? 0) - 1) };
+          }
+          return { ...a, marked: Math.max(0, (a.marked ?? 0) - 1) };
+        })
+      );
+    }
+    toast.success("Result cleared — you can mark again");
   };
 
   // ── Edit / annotate / upload ──

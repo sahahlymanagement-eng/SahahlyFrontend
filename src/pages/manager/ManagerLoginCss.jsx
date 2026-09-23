@@ -1143,8 +1143,16 @@ export default function ManagerLoginCss() {
     }
   };
 
-  const deleteDraft = (submissionId) =>
-    api.delete(`/external-grading/submissions/${submissionId}/draft`).catch(() => {});
+  // Soft clear (default): free draft fields only — used after publish.
+  // reset: true → full wipe so a published/graded paper can be marked again.
+  const deleteDraft = (submissionId, { reset = false } = {}) =>
+    api
+      .delete(`/external-grading/submissions/${submissionId}/draft`, {
+        params: reset ? { reset: 1 } : undefined,
+      })
+      .catch((err) => {
+        if (reset) throw err;
+      });
 
   const recordMarkResult = async (submissionId, result, studentFile, { persist = true } = {}) => {
     const originalAiResult = JSON.parse(JSON.stringify(result));
@@ -1628,9 +1636,10 @@ export default function ManagerLoginCss() {
   const deleteResult = async (student) => {
     const id = student.submissionId;
     try {
-      await deleteDraft(id);
-    } catch {
-      // ignore
+      await deleteDraft(id, { reset: true });
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Failed to clear result");
+      return;
     }
     setResults((prev) => {
       const n = { ...prev };
@@ -1659,8 +1668,9 @@ export default function ManagerLoginCss() {
               ...s,
               hasDraft: false,
               hasMarkingResult: false,
-              localGrade: isPublished(s) ? s.localGrade : null,
-              localStatus: isPublished(s) ? s.localStatus : "pending",
+              hasFeedbackPdf: false,
+              localGrade: null,
+              localStatus: "pending",
             }
           : s
       )
