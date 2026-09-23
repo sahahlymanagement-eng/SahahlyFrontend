@@ -127,6 +127,21 @@
 .dpi-import-option span { display:flex; flex-direction:column; gap:4px; min-width:0; }
 .dpi-import-option strong { font-size:13.5px; line-height:1.35; }
 .dpi-import-option em { font-style:normal; font-size:12px; color:var(--text-secondary,#657084); }
+.dpi-repair-dialog { width:min(620px,96vw); }
+.dpi-repair-summary { display:flex; flex-direction:column; gap:4px; margin:16px 0; padding:12px; border:1px solid color-mix(in srgb, var(--primary) 22%, var(--border,#ccd1db)); border-radius:9px; background:color-mix(in srgb, var(--primary) 7%, var(--surface,#fff)); }
+.dpi-repair-summary span { font-size:13px; color:var(--text-secondary,#657084); }
+.dpi-repair-warning { margin:14px 0; padding:10px 12px; border:1px solid color-mix(in srgb, var(--warning,#c78a00) 45%, var(--border,#ccd1db)); border-radius:8px; color:var(--warning,#8a5d00); background:color-mix(in srgb, var(--warning,#c78a00) 10%, var(--surface,#fff)); }
+.dpi-repair-ok { padding:12px; border-radius:8px; background:color-mix(in srgb, var(--success,#238057) 10%, var(--surface,#fff)); color:var(--success,#238057); }
+.dpi-repair-list { max-height:240px; overflow:auto; margin:14px 0; padding:0; list-style:none; border:1px solid var(--border,#ccd1db); border-radius:8px; }
+.dpi-repair-list li { display:flex; align-items:center; gap:9px; padding:9px 11px; border-bottom:1px solid var(--border,#e4e7ee); font-size:13px; }
+.dpi-repair-list li:last-child { border-bottom:0; }
+.dpi-repair-list li span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dpi-repair-list li strong { margin-left:auto; white-space:nowrap; }
+.dpi-repair-list li em { flex:0 0 auto; padding:2px 6px; border-radius:999px; background:var(--surface-2,#f5f6f9); color:var(--text-secondary,#657084); font-size:11px; font-style:normal; }
+.dpi-repair-confirm { display:flex !important; align-items:flex-start; gap:9px; margin:16px 0 !important; line-height:1.45; }
+.dpi-repair-confirm input { flex:0 0 auto; width:18px !important; height:18px; margin:1px 0 0 !important; }
+.dpi-repair-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+.dpi-repair-actions > button:not(.msv-btn-ai) { min-height:38px; padding:7px 12px; border:1px solid var(--border,#ccd1db); border-radius:8px; background:var(--surface,#fff); color:var(--text-primary,#152135); cursor:pointer; }
 @media(max-width:700px) { .dpi-dialog .exam-setup-fields .drops,.dpi-dialog .exam-setup-fields .expected-labels,.dpi-dialog .exam-setup-fields .row-4 { grid-template-columns:1fr; } }
 
 @media (max-width: 767px) {

@@ -66,6 +66,9 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const [importLoading, setImportLoading] = useState(false);
   const [importSelectedId, setImportSelectedId] = useState('');
   const [importSearch, setImportSearch] = useState('');
+  const [denominatorRepair, setDenominatorRepair] = useState(null);
+  const [denominatorRepairBusy, setDenominatorRepairBusy] = useState(false);
+  const [denominatorRepairConfirming, setDenominatorRepairConfirming] = useState(false);
   const [indexForm, setIndexForm] = useState(() => ({ title: assignment.name || assignment.title || '', subject: '', board: '', year: '', paperCode: '', expectedQpRows: [{ label: '', marks: '' }], expectedMsRows: [{ label: '', marks: '' }], questionPaper: null, markScheme: null }));
   const qp = indexForm.questionPaper;
   const ms = indexForm.markScheme;
@@ -144,6 +147,53 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     refresh();
     return subscribeIndexingUploads(refresh);
   }, [uploadKey]);
+
+  async function previewDenominatorRepair() {
+    const targetMaximum = Number(pack?.totalMarks);
+    if (!(targetMaximum > 0)) return;
+    setDenominatorRepairBusy(true);
+    setError('');
+    try {
+      const { data } = await api.post('/bulk-question-edit/denominator-repair/preview', {
+        source: 'classroom',
+        assignmentId,
+        targetMaximum,
+      });
+      setDenominatorRepair(data);
+      setDenominatorRepairConfirming(false);
+    } catch (err) {
+      setError(await getApiErrorMessage(err));
+    } finally {
+      setDenominatorRepairBusy(false);
+    }
+  }
+
+  async function applyDenominatorRepair() {
+    if (!denominatorRepair || !denominatorRepairConfirming) return;
+    setDenominatorRepairBusy(true);
+    setError('');
+    try {
+      const { data } = await api.post('/bulk-question-edit/denominator-repair/apply', {
+        source: 'classroom',
+        assignmentId,
+        targetMaximum: denominatorRepair.targetMaximum,
+        confirmed: true,
+      });
+      const updated = data?.applied?.length || 0;
+      const failed = data?.failed?.length || 0;
+      toast[failed ? 'warning' : 'success'](
+        failed
+          ? `Updated ${updated} saved result${updated === 1 ? '' : 's'}; ${failed} could not be repaired.`
+          : `Updated ${updated} saved result${updated === 1 ? '' : 's'} to /${denominatorRepair.targetMaximum}.`
+      );
+      setDenominatorRepair(null);
+      readyCallback.current?.();
+    } catch (err) {
+      setError(await getApiErrorMessage(err));
+    } finally {
+      setDenominatorRepairBusy(false);
+    }
+  }
 
   function chooseIndexingModel(id) {
     if (!indexingModels.some(m => m.id === id)) return;
@@ -406,6 +456,17 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         </button>
       )}
       <span>{loading ? 'Checking assignment index…' : pack ? `Index: ${['ready', 'needs_review'].includes(pack.status)?'Ready':stateLabel(pack.status)} · ${pack.questionCount} questions · ${pack.totalMarks ?? '?'} marks` : 'Not indexed yet'}</span>
+      {classroom && canMark && ['ready', 'needs_review'].includes(pack?.status) && Number(pack?.totalMarks) > 0 && (
+        <button
+          type="button"
+          className="msv-btn-ai dpi-repair-denominators"
+          onClick={previewDenominatorRepair}
+          disabled={loading || !!busy || denominatorRepairBusy}
+          title="Preview a repair for old result PDFs that use a previous total"
+        >
+          {denominatorRepairBusy ? 'Checking saved totals…' : 'Repair old PDF totals'}
+        </button>
+      )}
       {!!selectedIds.size && canMark && <>
         <label className="dpi-model">
           <span>Indexing model</span>
@@ -440,6 +501,41 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     {pack?.error && <p className="dpi-error">{pack.error}</p>}
     {runs.length>0 && <p>Completed papers appear in each student’s Results button. Edit them there and use the existing {classroom ? 'Return All' : 'Publish All'} to return them.</p>}
     {runs.length>0 && <details><summary>Indexing results ({runs.length} runs)</summary><div className="dpi-runs">{runs.map(run=><button type="button" key={run.id} onClick={()=>setView({title:'Indexing results',hash:`#/runs/${run.id}`})}>{stateLabel(run.status)} · {run.mode} · {run.readyCount}/{run.paperCount} completed{run.failedCount?` · ${run.failedCount} failed`:''} · {new Date(run.createdAt).toLocaleString()}</button>)}</div></details>}
+    {denominatorRepair && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label="Repair old PDF totals">
+      <div className="dpi-dialog dpi-repair-dialog">
+        <div className="dpi-modal-header">
+          <h2>Repair old PDF totals</h2>
+          <button type="button" className="dpi-close" onClick={() => setDenominatorRepair(null)} disabled={denominatorRepairBusy} aria-label="Close total repair">×<span>Close</span></button>
+        </div>
+        <p>
+          The live index is out of <strong>{denominatorRepair.targetMaximum}</strong>. This will update only the saved denominator and percentage for old results; it will not re-mark work or change awarded marks.
+        </p>
+        {denominatorRepair.affected === 0 ? (
+          <p className="dpi-repair-ok">Every saved result already uses /{denominatorRepair.targetMaximum}.</p>
+        ) : (
+          <>
+            <div className="dpi-repair-summary">
+              <strong>{denominatorRepair.affected} saved result{denominatorRepair.affected === 1 ? '' : 's'} will change</strong>
+              <span>{denominatorRepair.returned} already returned PDF{denominatorRepair.returned === 1 ? '' : 's'} will be ready to return again.</span>
+            </div>
+            {denominatorRepair.questionTotalMismatch > 0 && (
+              <p className="dpi-repair-warning">
+                {denominatorRepair.questionTotalMismatch} result{denominatorRepair.questionTotalMismatch === 1 ? '' : 's'} still contain question rows whose maxima do not add up to /{denominatorRepair.targetMaximum}. This repair fixes the displayed denominator only; remove any duplicated question separately if it changed awarded marks.
+              </p>
+            )}
+            <ul className="dpi-repair-list">
+              {denominatorRepair.rows.map((row) => <li key={row.submissionId}><span>{row.studentName}</span><strong>/{row.before} → /{row.after}</strong>{row.returned && <em>returned</em>}</li>)}
+            </ul>
+            {denominatorRepair.affected > denominatorRepair.rows.length && <p>Plus {denominatorRepair.affected - denominatorRepair.rows.length} more saved results.</p>}
+            <label className="dpi-repair-confirm"><input type="checkbox" checked={denominatorRepairConfirming} onChange={event => setDenominatorRepairConfirming(event.target.checked)} /> I reviewed the preview and want to update these saved result totals.</label>
+            <div className="dpi-repair-actions">
+              <button type="button" onClick={() => setDenominatorRepair(null)} disabled={denominatorRepairBusy}>Cancel</button>
+              <button type="button" className="msv-btn-ai" onClick={applyDenominatorRepair} disabled={!denominatorRepairConfirming || denominatorRepairBusy}>{denominatorRepairBusy ? 'Repairing…' : `Repair ${denominatorRepair.affected} result${denominatorRepair.affected === 1 ? '' : 's'}`}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>}
     {setup && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label="Index assignment">
       <form className="dpi-dialog" onSubmit={createIndex}>
         <div className="dpi-modal-header"><h2>Index assignment — {assignment.name || assignmentId}</h2><button type="button" className="dpi-close" onClick={()=>setSetup(false)} disabled={!!busy} aria-label="Close index assignment">×<span>Close</span></button></div>
