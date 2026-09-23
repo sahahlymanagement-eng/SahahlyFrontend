@@ -15,6 +15,7 @@ import Pagination from "./Pagination";
 import PartnerReportsTabButton from "./PartnerReportsTabButton";
 import DashboardPeriodFilter from "./DashboardPeriodFilter";
 import { useDashboardPeriod } from "../hooks/useDashboardPeriod";
+import useMobileReportTabFocus from "../hooks/useMobileReportTabFocus";
 import "../pages/manager/ManagerAssignments.css";
 
 function formatSentAt(value) {
@@ -42,6 +43,7 @@ const DEFAULT_REPORT_TYPES = [
 ];
 
 export default function ReportsSentWorkspace({ variant = "manager", onBack, onNavigate }) {
+  useMobileReportTabFocus();
   const isDirector = isDirectorLikeVariant(variant);
   const period = useDashboardPeriod();
   const [user, setUser] = useState(null);
@@ -159,7 +161,7 @@ export default function ReportsSentWorkspace({ variant = "manager", onBack, onNa
       : null;
 
   return (
-    <main className="ma-main">
+    <main className="ma-main rw-report-surface">
       <header className="ma-topbar">
         <div className="ma-topbar-left">
           <button type="button" className="ma-back-link" onClick={onBack}>

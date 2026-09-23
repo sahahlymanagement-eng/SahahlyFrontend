@@ -1834,6 +1834,237 @@
   color: var(--text-primary);
 }
 
+/* Phone-only report workspace controls and attendance cards.  The desktop
+ * grid remains intentionally unchanged; at phone widths each attendance
+ * field stays visible inside a record card instead of requiring a long,
+ * hard-to-discover horizontal table scroll. */
+@media (max-width: 767px) {
+  .mpr-root {
+    overflow-x: hidden;
+  }
+
+  .mpr-header {
+    align-items: stretch;
+    gap: 12px;
+    padding: 18px 14px 14px;
+  }
+
+  .mpr-header-left,
+  .mpr-header-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mpr-title {
+    font-size: 22px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .mpr-subtitle {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .mpr-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mpr-header-actions > :is(button, a) {
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    padding: 8px 10px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .mpr-header-actions > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .mpr-content {
+    padding: 14px 10px max(24px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+  }
+
+  .mpr-layout {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .mpr-panel,
+  .mpr-question-analytics,
+  .mpr-marks-lost,
+  .mpr-watchlists,
+  .mpr-decision-guide {
+    border-radius: 14px;
+    padding: 14px 12px;
+  }
+
+  .mpr-panel { min-height: 0; }
+  .mpr-panel--students { min-height: 260px; }
+
+  .mpr-panel-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mpr-panel-tools {
+    width: 100%;
+  }
+
+  .mpr-tool-btn {
+    flex: 1 1 0;
+    min-height: 44px;
+    padding: 8px;
+  }
+
+  .mpr-search,
+  .mpr-select,
+  .mpr-attendance-date,
+  .mpr-attendance-table .ma-attendance-select {
+    min-height: 44px;
+    font-size: 16px;
+    box-sizing: border-box;
+  }
+
+  .mpr-student-row {
+    min-height: 54px;
+    padding: 10px;
+  }
+
+  .mpr-student-check {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mpr-student-name {
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .mpr-scroll {
+    overflow: visible;
+  }
+
+  .mpr-multi-pdf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mpr-pdf-preview-frame--multi {
+    height: 360px;
+    min-height: 280px;
+  }
+
+  .mpr-attendance-table-wrap,
+  .mpr-scroll:has(.mpr-attendance-table--mobile-cards) {
+    overflow: visible;
+  }
+
+  .mpr-attendance-table--mobile-cards,
+  .mpr-attendance-table--mobile-cards tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mpr-attendance-table--mobile-cards thead {
+    display: none;
+  }
+
+  .mpr-attendance-table--mobile-cards tr {
+    display: block;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .mpr-attendance-table--mobile-cards tr.mpr-attendance-table__row--preview {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border-soft));
+  }
+
+  .mpr-attendance-table--mobile-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-soft);
+    white-space: normal;
+    text-align: right;
+    box-sizing: border-box;
+  }
+
+  .mpr-attendance-table--mobile-cards td:last-child {
+    border-bottom: 0;
+  }
+
+  .mpr-attendance-table--mobile-cards td::before {
+    content: attr(data-label);
+    flex: 0 0 78px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .mpr-attendance-table--mobile-cards td[data-label="Select"]::before {
+    content: none;
+  }
+
+  .mpr-attendance-table--mobile-cards td[data-label="Select"] {
+    justify-content: flex-start;
+    min-height: 44px;
+  }
+
+  .mpr-attendance-table--mobile-cards td[data-label="Select"] .mpr-student-check {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mpr-attendance-table--mobile-cards .mpr-student-name {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    overflow-wrap: anywhere;
+  }
+
+  .mpr-attendance-table--mobile-cards :is(.ma-attendance-select, .mpr-attendance-date) {
+    width: min(58%, 210px);
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .mpr-attendance-stat {
+    padding: 10px;
+  }
+
+  .mpr-question-card-head,
+  .mpr-marks-lost-row-head,
+  .mpr-watchlists-title-row,
+  .tea-action-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .mpr-root :is(button, input, select, textarea):focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
 .mpr-school-attendance-summary {
   margin-top: 12px;
   padding: 12px 14px;

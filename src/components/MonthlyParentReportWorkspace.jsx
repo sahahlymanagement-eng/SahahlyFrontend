@@ -16,6 +16,7 @@ import PartnerReportsTabButton from "./PartnerReportsTabButton";
 
 import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
+import useMobileReportTabFocus from "../hooks/useMobileReportTabFocus";
 
 import Pagination from "./Pagination";
 import ReportPdfPreview from "./ReportPdfPreview";
@@ -141,6 +142,8 @@ export default function MonthlyParentReportWorkspace({
   onNavigate,
 
 }) {
+
+  useMobileReportTabFocus();
 
   const isTeacher = variant === "teacher";
   const isDirector = isDirectorLikeVariant(variant);
@@ -1193,7 +1196,7 @@ export default function MonthlyParentReportWorkspace({
               <div className="mpr-scroll">
                 {schoolSessionList.length > 0 ? (
                   <div className="mpr-attendance-table-wrap">
-                    <table className="mpr-attendance-table">
+                    <table className="mpr-attendance-table mpr-attendance-table--mobile-cards">
                       <thead>
                         <tr>
                           <th className="mpr-attendance-table__check" />
@@ -1215,7 +1218,7 @@ export default function MonthlyParentReportWorkspace({
                               key={s._id}
                               className={isPreview ? "mpr-attendance-table__row--preview" : undefined}
                             >
-                              <td>
+                              <td data-label="Select">
                                 <input
                                   type="checkbox"
                                   className="mpr-student-check"
@@ -1224,7 +1227,7 @@ export default function MonthlyParentReportWorkspace({
                                   aria-label={`Select ${s.name}`}
                                 />
                               </td>
-                              <td>
+                              <td data-label="Student">
                                 <button
                                   type="button"
                                   className="mpr-student-name"
@@ -1236,12 +1239,12 @@ export default function MonthlyParentReportWorkspace({
                                   )}
                                 </button>
                               </td>
-                              <td className="mpr-attendance-present-count">
+                              <td data-label="Present" className="mpr-attendance-present-count">
                                 {presentCountForStudent(schoolSessionList, id)}/
                                 {schoolSessionList.length}
                               </td>
-                              {schoolSessionList.flatMap((session) => [
-                                <td key={`${session.id}-att-${id}`}>
+                              {schoolSessionList.flatMap((session, idx) => [
+                                <td key={`${session.id}-att-${id}`} data-label={`Attendance ${idx + 1}`}>
                                   <ReportAttendanceSelect
                                     present={!!session.map?.[id]}
                                     onChange={(present) =>
@@ -1249,7 +1252,7 @@ export default function MonthlyParentReportWorkspace({
                                     }
                                   />
                                 </td>,
-                                <td key={`${session.id}-date-${id}`}>
+                                <td key={`${session.id}-date-${id}`} data-label={`Date ${idx + 1}`}>
                                   <input
                                     type="date"
                                     className="mpr-attendance-date"
@@ -2037,5 +2040,3 @@ export default function MonthlyParentReportWorkspace({
   );
 
 }
-
-

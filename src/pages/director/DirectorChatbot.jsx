@@ -1340,7 +1340,7 @@ export default function DirectorChatbot() {
                 aria-expanded={scopeOpen}
               >
                 <FiLayers size={13} />
-                {scope.label}
+                <span className="dchat-scope-label">{scope.label}</span>
                 <FiChevronDown size={13} />
               </button>
               {scopeOpen && (
@@ -1450,7 +1450,7 @@ export default function DirectorChatbot() {
   );
 
   return (
-    <div className="tch-page tch-page--wide tchat-page">
+    <div className="tch-page tch-page--wide tchat-page dchat-page">
       <TeacherPageHeader
         eyebrow={conversationTitle ? "AI Agent" : "AI Assistant"}
         title={conversationTitle || "AI Agent"}
@@ -1651,8 +1651,12 @@ export default function DirectorChatbot() {
                               className="tchat-msg-action"
                               onClick={() => copyMessage(i, m.content)}
                               title="Copy"
+                              aria-label="Copy message"
                             >
                               {copiedIndex === i ? <FiCheck size={12} /> : <FiCopy size={12} />}
+                              <span className="dchat-msg-action-label">
+                                {copiedIndex === i ? "Copied" : "Copy"}
+                              </span>
                             </button>
                           ) : null}
                           {m.role === "user" && !loading ? (
@@ -1661,8 +1665,10 @@ export default function DirectorChatbot() {
                               className="tchat-msg-action"
                               onClick={() => startEdit(i)}
                               title="Edit & resend"
+                              aria-label="Edit and resend message"
                             >
                               <FiEdit2 size={12} />
+                              <span className="dchat-msg-action-label">Edit</span>
                             </button>
                           ) : null}
                           {isLastAssistant ? (
@@ -1671,8 +1677,10 @@ export default function DirectorChatbot() {
                               className="tchat-msg-action"
                               onClick={retryLast}
                               title="Retry"
+                              aria-label="Retry last request"
                             >
                               <FiRefreshCw size={12} />
+                              <span className="dchat-msg-action-label">Retry</span>
                             </button>
                           ) : null}
                         </div>
@@ -1855,14 +1863,20 @@ export default function DirectorChatbot() {
                   className="dchat-modal-overlay"
                   onClick={() => setPreviewModalOpen(false)}
                 >
-                  <div className="dchat-modal" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="dchat-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="dchat-preview-title"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="dchat-modal-header">
-                      <h4>Review recipients</h4>
+                      <h4 id="dchat-preview-title">Review recipients</h4>
                       <button
                         type="button"
                         className="dchat-modal-close"
                         onClick={() => setPreviewModalOpen(false)}
-                        aria-label="Close"
+                        aria-label="Close recipient review"
                       >
                         <FiX size={16} />
                       </button>

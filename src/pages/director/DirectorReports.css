@@ -419,3 +419,205 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* The insights screen is intentionally information-rich on desktop. On a
+   phone, preserve every metric and tab but lead with the active context and
+   convert the wide data treatment into comfortable, touch-sized records. */
+@media (max-width: 767px) {
+  .directorReportsPage {
+    min-width: 0;
+    padding: 18px max(12px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    overflow-x: hidden;
+  }
+
+  .directorReportsPage .pageHeader {
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .directorReportsPage .headerLeft {
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .directorReportsPage .headerIcon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .directorReportsPage .pageHeader h2 {
+    font-size: 23px;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+  }
+
+  .directorReportsPage .pageHeader p {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .dr-refresh-btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .directorReportsPage .dpf-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .directorReportsPage .dpf-label,
+  .directorReportsPage .dpf-hint,
+  .directorReportsPage .dpf-reset {
+    grid-column: 1 / -1;
+  }
+
+  .directorReportsPage .dpf-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .directorReportsPage .dpf-input {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  .directorReportsPage .dpf-reset {
+    min-height: 44px;
+    margin-left: 0;
+  }
+
+  .dr-tabs {
+    flex-wrap: nowrap;
+    width: 100%;
+    margin-bottom: 14px;
+    padding: 0 1px 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  .dr-tab {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 8px 14px;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .dr-stat-grid,
+  .dr-stat-grid--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-bottom: 12px;
+  }
+
+  .dr-stat {
+    min-width: 0;
+    gap: 9px;
+    padding: 12px 10px;
+    border-radius: 14px;
+  }
+
+  .dr-stat-icon {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+  }
+
+  .dr-stat-body { min-width: 0; }
+  .dr-stat-label,
+  .dr-stat-hint { overflow-wrap: anywhere; }
+  .dr-stat-value { font-size: 20px; }
+
+  .dr-panel {
+    min-width: 0;
+    margin-bottom: 12px;
+    padding: 14px 12px;
+    border-radius: 14px;
+  }
+
+  .dr-panel-head { gap: 8px; margin-bottom: 10px; }
+  .dr-panel-head h3 { font-size: 15px; }
+  .dr-link { min-height: 44px; display: inline-flex; align-items: center; }
+
+  .dr-status-row { gap: 7px; }
+  .dr-pill { min-height: 34px; display: inline-flex; align-items: center; padding: 6px 10px; }
+
+  .dr-band-legend { gap: 8px 12px; }
+  .dr-band-legend-item { min-height: 28px; }
+
+  .dr-gap-list { gap: 12px; }
+  .dr-gap-list li { line-height: 1.45; }
+  .dr-quick-links { gap: 4px 12px; }
+  .dr-quick-links a { min-height: 40px; display: inline-flex; align-items: center; }
+
+  .dr-inline-search {
+    width: 100%;
+    max-width: none;
+  }
+
+  .directorReportsPage .searchBar {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  .directorReportsPage .searchBar input { font-size: 16px; }
+
+  .dr-table-wrap {
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .dr-table.sah-table--cards,
+  .dr-table.sah-table--cards tbody {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dr-table.sah-table--cards tbody tr {
+    min-width: 0;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+  }
+
+  .dr-table.sah-table--cards td {
+    min-width: 0;
+    gap: 10px;
+    padding: 7px 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
+  }
+
+  .dr-table.sah-table--cards td::before {
+    min-width: 82px;
+    font-size: 10px;
+  }
+
+  .directorReportsPage :is(button, input, select, textarea):focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 360px) {
+  .dr-stat-grid,
+  .dr-stat-grid--4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

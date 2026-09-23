@@ -45,6 +45,7 @@ import { useGradingDelegations } from "../context/GradingNotificationContext";
 import { downloadBlob } from "../utils/downloadBlob";
 import { confirmToast } from "../utils/confirmToast";
 import usePersistedState from "../hooks/usePersistedState";
+import useMobileReportTabFocus from "../hooks/useMobileReportTabFocus";
 import PartnerContactsPanel from "./PartnerContactsPanel";
 import PartnerLogoPanel from "./PartnerLogoPanel";
 import PartnerReportAutoSendModal from "./PartnerReportAutoSendModal";
@@ -104,6 +105,7 @@ function newSendId(parts) {
 }
 
 export default function PartnerReportsWorkspace({ variant = "manager", onBack, onNavigate }) {
+  useMobileReportTabFocus();
   // The delegation grant is passed explicitly rather than left to the module
   // cache, so this render is tied to it and a director-delegated partner appears
   // the moment the grant resolves. Directors reach every partner by role instead
@@ -739,7 +741,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
 
   if (!allowedPartners.length) {
     return (
-      <main className="ma-main">
+      <main className="ma-main rw-report-surface">
         <header className="ma-topbar">
           <div className="ma-topbar-left">
             {onBack && (
@@ -1016,7 +1018,7 @@ export default function PartnerReportsWorkspace({ variant = "manager", onBack, o
   );
 
   return (
-    <main className="ma-main">
+    <main className="ma-main rw-report-surface">
       <header className="ma-topbar ma-topbar--reports">
         <div className="ma-topbar-left">
           {onBack && (

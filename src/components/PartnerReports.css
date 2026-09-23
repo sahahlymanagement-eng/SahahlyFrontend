@@ -813,7 +813,7 @@
 
 /* ── Narrow screens: tables become stacked cards ─────────────────────────── */
 
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .prw-table thead {
     display: none;
   }
@@ -871,5 +871,199 @@
 
   .prw-actions-cell .prw-icon-btn + .prw-icon-btn {
     margin-left: 0;
+  }
+}
+
+/* Partner reports have a second layer of partner and report-type navigation.
+   Keep it discoverable in a touch-scroll rail and size every operational
+   control for a phone without changing the dense desktop workspace. */
+@media (max-width: 767px) {
+  .rw-report-surface .prw-topbar-actions {
+    width: 100%;
+  }
+
+  .rw-report-surface .prw-topbar-actions .prw-btn {
+    width: 100%;
+  }
+
+  .rw-report-surface .prw-partner-bar,
+  .rw-report-surface .prw-view-bar,
+  .rw-report-surface .prw-chip-row {
+    flex-wrap: nowrap;
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: 12px;
+    padding: 0 1px 5px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  .rw-report-surface .prw-view-bar {
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .rw-report-surface :is(.prw-partner-tab, .prw-view-tab, .prw-chip) {
+    flex: 0 0 auto;
+    min-height: 44px;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .rw-report-surface .prw-view-tab { padding: 8px 12px; }
+  .rw-report-surface .prw-chip { padding: 8px 13px; }
+
+  .rw-report-surface .prw-panel {
+    min-width: 0;
+    margin-bottom: 12px;
+    padding: 14px 12px;
+    border-radius: 14px;
+  }
+
+  .rw-report-surface .prw-panel-head { gap: 10px; margin-bottom: 12px; }
+  .rw-report-surface .prw-panel-title,
+  .rw-report-surface .prw-panel-sub { overflow-wrap: anywhere; }
+
+  .rw-report-surface .prw-panel-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  .rw-report-surface .prw-panel-actions > :only-child,
+  .rw-report-surface .prw-panel-actions--end > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .rw-report-surface :is(.prw-btn, .prw-icon-btn) {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  .rw-report-surface .prw-btn {
+    justify-content: center;
+    padding: 9px 12px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .rw-report-surface .prw-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .rw-report-surface .prw-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .rw-report-surface .prw-card {
+    min-height: 72px;
+    padding: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .rw-report-surface .prw-stat-row { gap: 8px; }
+  .rw-report-surface .prw-stat { min-width: min(100%, 120px); }
+
+  .rw-report-surface .prw-destination {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+
+  .rw-report-surface .prw-field,
+  .rw-report-surface .prw-field--grow { min-width: 0; }
+
+  .rw-report-surface :is(.prw-input, .prw-textarea, .prw-page-size select) {
+    min-height: 44px;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  .rw-report-surface .prw-segmented {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .rw-report-surface .prw-segmented button {
+    min-height: 44px;
+    padding: 8px;
+  }
+
+  .rw-report-surface .prw-table-meta {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .rw-report-surface .prw-page-size { min-height: 44px; }
+  .rw-report-surface .prw-table-wrap { overflow: visible; }
+
+  .rw-report-surface .prw-table tr {
+    min-width: 0;
+    margin-bottom: 10px;
+    padding: 9px 0;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 12px;
+  }
+
+  .rw-report-surface .prw-table td {
+    min-width: 0;
+    align-items: flex-start;
+    padding: 7px 10px;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
+  }
+
+  .rw-report-surface .prw-table td::before {
+    flex: 0 0 78px;
+    font-size: 10px;
+  }
+
+  .rw-report-surface .prw-table td .prw-cell-sub { min-width: 0; }
+
+  .rw-report-surface .prw-actions-cell {
+    justify-content: flex-end;
+    min-height: 54px;
+  }
+
+  .rw-report-surface .prw-preview { padding: 12px; }
+  .rw-report-surface .prw-preview-head { align-items: flex-start; }
+
+  .rw-report-surface .prw-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .rw-report-surface .prw-modal {
+    max-height: min(84dvh, 720px);
+    border-radius: 22px 22px 0 0;
+  }
+
+  .rw-report-surface .prw-modal-head,
+  .rw-report-surface .prw-modal-body {
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-left: max(14px, env(safe-area-inset-left));
+  }
+
+  .rw-report-surface .prw-rule {
+    padding: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .rw-report-surface .prw-rule-actions,
+  .rw-report-surface .prw-rule-editor-actions {
+    width: 100%;
+  }
+
+  .rw-report-surface :is(button, input, select, textarea):focus-visible {
+    outline: 3px solid var(--primary, #2563eb);
+    outline-offset: 2px;
   }
 }

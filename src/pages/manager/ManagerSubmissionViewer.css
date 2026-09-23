@@ -2271,4 +2271,25 @@
   .msv-mobile-scope .msv-review-warn-short { display: none; }
   .msv-mobile-scope .msv-mobile-warning-detail { display: inline; flex: 1; min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
   .msv-mobile-scope :is(.ma-loading-msg, .ma-empty-msg) { padding: 28px 16px; font-size: 14px; line-height: 1.6; }
+
+  /* ManagerAssignments.css is also imported by report screens after this
+     stylesheet. Its desktop `.ma-table { min-width: 780px }` can therefore
+     win the earlier card-mode reset and leave the right half of every phone
+     card clipped by its scroll wrapper. Qualify the final phone reset so the
+     submission and provider viewers always lay their cards out in the visible
+     column without changing the tablet/desktop table. */
+  .msv-mobile-scope .ma-table.ma-table--cards,
+  .msv-mobile-scope .ma-table.ma-table--cards > tbody {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+  .msv-mobile-scope :is(.ma-table-wrap, .ma-table-scroll):has(.ma-table--cards),
+  .msv-mobile-scope .ma-table--cards tbody tr.ma-row,
+  .msv-mobile-scope .ma-table--cards td:has(.msv-actions),
+  .msv-mobile-scope .ma-table--cards td:has(.msv-actions) .msv-actions {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
 }

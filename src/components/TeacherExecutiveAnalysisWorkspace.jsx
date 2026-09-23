@@ -16,6 +16,7 @@ import ReportAutomationRuleModal from "./ReportAutomationRuleModal";
 import PartnerReportsTabButton from "./PartnerReportsTabButton";
 import { usePagination } from "../hooks/usePagination";
 import usePersistedState from "../hooks/usePersistedState";
+import useMobileReportTabFocus from "../hooks/useMobileReportTabFocus";
 import Pagination from "./Pagination";
 import QuestionAnalyticsPreview from "./QuestionAnalyticsPreview";
 import MarksLostBreakdownPreview from "./MarksLostBreakdownPreview";
@@ -44,6 +45,7 @@ export default function TeacherExecutiveAnalysisWorkspace({
   onBack,
   onNavigate,
 }) {
+  useMobileReportTabFocus();
   const isTeacher = variant === "teacher";
   const isDirector = isDirectorLikeVariant(variant);
   const [user, setUser] = useState(null);

@@ -5,6 +5,7 @@ import api from "../../api/api";
 import { getRoleName } from "../../utils/authRoutes";
 import { getStoredUser } from "../../utils/session";
 import { sahahlyModelLabel } from "../../utils/markingCost";
+import "./DrPeterIndexingQueue.css";
 
 const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
 
@@ -60,22 +61,22 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
   const progressDone = (Number(progress?.readyCount) || 0) + (Number(progress?.failedCount) || 0);
   const progressPercent = progressTotal > 0 ? Math.min(100, Math.round((progressDone / progressTotal) * 100)) : null;
   return (
-    <div className="ma-card" style={{ padding: 18, display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <div>
+    <div className="ma-card dpi-queue-card" style={{ padding: 18, display: "grid", gap: 10 }}>
+      <div className="dpi-queue-card__heading" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="dpi-queue-card__title">
           <strong>{cardLabel}: {item.examTitle || item.assignmentName || item.examId}</strong>
           <div className="ma-muted">{item.assignmentName || "Assignment not provided"}</div>
         </div>
-        <span className={`ma-badge ${running ? "ma-badge--info" : "ma-badge--pending"}`}>{modeLabel(item.mode)} · {stageLabel(item)}</span>
+        <span className={`ma-badge dpi-queue-card__state ${running ? "ma-badge--info" : "ma-badge--pending"}`}>{modeLabel(item.mode)} · {stageLabel(item)}</span>
       </div>
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+      <div className="dpi-queue-card__meta" style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
         <span><FiUsers /> {item.studentCount || 0} student{item.studentCount === 1 ? "" : "s"}</span>
         <span><FiClock /> Added {dateText(item.createdAt)}</span>
         <span>{item.provider}</span>
         {item.gradeModel && <span>Model: <strong>{sahahlyModelLabel(item.gradeModel)}</strong></span>}
       </div>
       {running && (
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div className="dpi-queue-card__timing" style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           <span>Total elapsed: <strong>{elapsedText(item.createdAt, now)}</strong></span>
           {item.startedAt && <span>Running: <strong>{elapsedText(item.startedAt, now)}</strong></span>}
           {item.lastRunStatus && <span>Run status: <strong>{item.lastRunStatus}</strong></span>}
@@ -84,7 +85,7 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
         </div>
       )}
       {!running && ["done", "failed", "cancelled"].includes(item.status) && (
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div className="dpi-queue-card__timing" style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           <span>Processing time: <strong>{durationText(item.startedAt, item.finishedAt)}</strong></span>
           {item.createdAt && item.finishedAt && (
             <span title="Includes time spent waiting in the indexing queue">
@@ -95,8 +96,8 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
         </div>
       )}
       {running && progress && progressTotal > 0 && (
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <div className="dpi-queue-card__progress" style={{ display: "grid", gap: 6 }}>
+          <div className="dpi-queue-card__progress-meta" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <span>Progress: <strong>{progressDone}/{progressTotal} ({progressPercent}%)</strong></span>
             <span>Ready: <strong>{Number(progress.readyCount) || 0}</strong></span>
             <span>Failed: <strong>{Number(progress.failedCount) || 0}</strong></span>
@@ -106,9 +107,9 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
           </div>
         </div>
       )}
-      {item.error && <div style={{ color: "var(--danger)" }}>{item.error}</div>}
+      {item.error && <div className="dpi-queue-card__error" role="alert" style={{ color: "var(--danger)" }}>{item.error}</div>}
       {running && onCancel && (
-        <div>
+        <div className="dpi-queue-card__actions">
           <button
             className="msv-btn-ai"
             disabled={Boolean(item.cancelRequestedAt)}
@@ -119,10 +120,10 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
         </div>
       )}
       {!running && onCancel && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="dpi-queue-card__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="msv-btn-ai" disabled={!canMoveUp} onClick={() => onMove(item._id, -1)} title="Move earlier"><FiArrowUp /> Move up</button>
           <button className="msv-btn-ai" disabled={!canMoveDown} onClick={() => onMove(item._id, 1)} title="Move later"><FiArrowDown /> Move down</button>
-          <button className="msv-btn-ai" onClick={() => onCancel(item._id, false)}><FiTrash2 /> Remove from queue</button>
+          <button className="msv-btn-ai dpi-queue-card__remove" onClick={() => onCancel(item._id, false)}><FiTrash2 /> Remove from queue</button>
         </div>
       )}
     </div>
@@ -238,13 +239,14 @@ export default function DrPeterIndexingQueue() {
   };
 
   return (
-    <div className="ma-root"><main className="ma-main">
-      <header className="ma-topbar"><div className="ma-topbar-left">
+    <div className="ma-root dpi-queue"><main className="ma-main">
+      <header className="ma-topbar dpi-queue-header"><div className="ma-topbar-left">
         <h1 className="ma-topbar-title">Indexing Queue</h1>
         <span className="ma-topbar-sub">Up to 2 Batch and 2 Instant indexing jobs run at once; a batch job frees its slot once it's submitted to Gemini. {canEdit ? "Directors can reorder or remove waiting jobs." : "Queue controls are read-only for managers."}</span>
         {lastRefreshedAt && <span className="ma-topbar-sub">Last refreshed: {lastRefreshedAt.toLocaleTimeString()}</span>}
       </div><button className="msv-btn-ai" disabled={refreshing} onClick={() => load()}><FiRefreshCw /> {refreshing ? "Refreshing…" : "Refresh"}</button></header>
       <section
+        className="dpi-queue-content"
         style={{
           padding: 24,
           paddingBottom: 64,
@@ -260,13 +262,13 @@ export default function DrPeterIndexingQueue() {
       >
         {loadError && <div className="ma-card" role="alert" style={{ padding: 18, color: "var(--danger)" }}>{loadError}{lastRefreshedAt && " Showing the last loaded queue."}</div>}
         {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : (!loadError || lastRefreshedAt) && <>
-          <h2 style={{ margin: 0 }}>Running ({data.running?.length || 0})</h2>
+          <h2 className="dpi-queue-heading" style={{ margin: 0 }}>Running ({data.running?.length || 0})</h2>
           {data.running?.length
             ? data.running.map((item) => <QueueCard key={item._id} item={item} now={now} onCancel={canEdit ? cancel : null} />)
             : <div className="ma-card" style={{ padding: 18 }}>No indexing job is running.</div>}
-          <h2 style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
+          <h2 className="dpi-queue-heading" style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
           {data.queued?.length ? data.queued.map((item, index) => <QueueCard key={item._id} item={item} position={index + 1} onCancel={canEdit ? cancel : null} onMove={move} canMoveUp={index > 0} canMoveDown={index < data.queued.length - 1} />) : <div className="ma-card" style={{ padding: 18 }}>Nothing is waiting.</div>}
-          <h2 style={{ margin: 0 }}>Recent history</h2>
+          <h2 className="dpi-queue-heading" style={{ margin: 0 }}>Recent history</h2>
           {(data.history || []).slice(0, 20).map((item) => <QueueCard key={item._id} item={item} />)}
         </>}
       </section>

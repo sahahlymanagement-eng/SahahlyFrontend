@@ -542,3 +542,420 @@
     justify-content: center;
   }
 }
+
+/* Phone-only report workspace treatment.  These pages share the manager
+ * assignment vocabulary with a number of non-report views, so the mobile
+ * rules are deliberately anchored to the report surface added by each report
+ * workspace.  Desktop keeps the existing data-dense workspace intact. */
+@media (max-width: 767px) {
+  .rw-report-surface {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .rw-report-surface .ma-topbar {
+    align-items: stretch;
+    gap: 12px;
+    padding: 18px 14px 14px;
+  }
+
+  .rw-report-surface .ma-topbar-left,
+  .rw-report-surface .rw-topbar-actions,
+  .rw-report-surface .ma-topbar-right {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rw-report-surface .ma-back-link {
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .rw-report-surface .ma-topbar-title {
+    font-size: 23px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .rw-report-surface .ma-topbar-sub {
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  /* All report destinations remain available, but become a thumb-scrollable
+     tab rail instead of consuming most of the first phone screen. */
+  .rw-report-surface .ma-report-tabs {
+    flex-wrap: nowrap;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    margin-top: 12px;
+    padding: 0 1px 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  .rw-report-surface .ma-report-tab {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 8px 12px;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .rw-report-surface .rw-topbar-actions > :is(button, .ma-cart-pill) {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  .rw-report-surface .ma-topbar-right .ma-send-btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .rw-report-surface .ma-content {
+    min-width: 0;
+    padding: 14px 10px max(24px, env(safe-area-inset-bottom));
+  }
+
+  /* Date range controls remain a single, predictable touch group instead of
+     wrapping into narrow inputs that invite accidental edits. */
+  .rw-report-surface .dpf-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .rw-report-surface .dpf-label,
+  .rw-report-surface .dpf-hint,
+  .rw-report-surface .dpf-reset {
+    grid-column: 1 / -1;
+  }
+
+  .rw-report-surface .dpf-label { min-height: 24px; }
+  .rw-report-surface .dpf-field { display: grid; gap: 5px; min-width: 0; }
+  .rw-report-surface .dpf-input {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  .rw-report-surface .dpf-reset {
+    min-height: 44px;
+    margin-left: 0;
+  }
+
+  .rw-report-surface .rw-steps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-bottom: 14px;
+    padding: 5px;
+    overflow: visible;
+  }
+
+  .rw-report-surface .rw-step {
+    min-width: 0;
+    min-height: 62px;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .rw-report-surface .rw-step-divider {
+    display: none;
+  }
+
+  .rw-report-surface .rw-step-num {
+    width: 27px;
+    height: 27px;
+  }
+
+  .rw-report-surface .rw-step-label,
+  .rw-report-surface .rw-step-hint {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
+  .rw-report-surface .rw-step-label { font-size: 11px; }
+  .rw-report-surface .rw-step-hint { font-size: 10px; line-height: 1.35; }
+
+  .rw-report-surface .rw-workspace { gap: 12px; min-height: 0; }
+
+  .rw-report-surface .rw-context-bar,
+  .rw-report-surface .rw-pane {
+    border-radius: 14px;
+    padding: 14px 12px;
+  }
+
+  .rw-report-surface .rw-context-bar { gap: 10px; }
+  .rw-report-surface .rw-context-value { white-space: normal; overflow-wrap: anywhere; }
+  .rw-report-surface .rw-context-change { min-width: 44px; min-height: 44px; }
+
+  .rw-report-surface .rw-split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .rw-report-surface .rw-pane--assignments,
+  .rw-report-surface .rw-table-scroll {
+    max-height: none;
+  }
+
+  .rw-report-surface .rw-pane--students { overflow: visible; }
+  .rw-report-surface .rw-pane--placeholder { padding: 32px 16px; }
+
+  .rw-report-surface .rw-pane-head,
+  .rw-report-surface .ma-panel-header,
+  .rw-report-surface .rw-student-toolbar {
+    gap: 10px;
+  }
+
+  .rw-report-surface .ma-panel-title-wrap,
+  .rw-report-surface .ma-panel-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rw-report-surface .ma-panel-title-wrap { flex-wrap: wrap; }
+  .rw-report-surface .ma-panel-title { white-space: normal; overflow-wrap: anywhere; }
+
+  .rw-report-surface .ma-panel-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rw-report-surface .ma-panel-actions > :is(button, label) {
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .rw-report-surface .rw-student-toolbar { align-items: stretch; }
+
+  .rw-report-surface .rw-filter-tabs {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rw-report-surface .rw-filter-tab {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  .rw-report-surface .rw-student-count { padding: 0 2px; }
+
+  .rw-report-surface .ma-attendance-bar {
+    align-items: stretch;
+    margin: 0 0 12px;
+    padding: 12px;
+  }
+
+  .rw-report-surface .ma-attendance-check,
+  .rw-report-surface .ma-attendance-upload,
+  .rw-report-surface .ma-attendance-file-btn {
+    min-height: 44px;
+  }
+
+  .rw-report-surface .ma-attendance-upload { width: 100%; }
+  .rw-report-surface .ma-attendance-file-btn { justify-content: center; }
+
+  /* Preserve every student field while making the report table a genuinely
+     legible record card rather than a clipped desktop table. */
+  .rw-report-surface .ma-table.sah-table--cards,
+  .rw-report-surface .ma-table.sah-table--cards > tbody,
+  .rw-report-surface .ma-table-wrap,
+  .rw-report-surface .ma-table-scroll {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards tbody tr {
+    min-width: 0;
+    padding: 14px 12px;
+    margin-bottom: 10px;
+    border-radius: 14px;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards td {
+    min-width: 0;
+    gap: 9px;
+    line-height: 1.45;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards td::before {
+    min-width: 72px;
+    font-size: 10px;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards td:has(.ma-check) .ma-check {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards td:has(.ma-avatar-cell) {
+    min-height: 44px;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards .ma-cell-name {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  .rw-report-surface .ma-table.sah-table--cards :is(.ma-percent-input, .ma-comment-input, .ma-attendance-date, .ma-attendance-select) {
+    min-height: 44px;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  .rw-report-surface .ma-comment-wrap { min-width: 0; flex: 1; }
+  .rw-report-surface .msv-action-btn { min-height: 44px; }
+
+  .rw-report-surface :is(button, input, select, textarea):focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* The ready-to-send tray is deliberately compact but all actions stay
+     visible; the final send button receives the full thumb zone. */
+  .rw-report-surface .ma-content--with-cart {
+    padding-bottom: calc(290px + env(safe-area-inset-bottom));
+  }
+
+  .rw-report-surface .ma-cart-bar {
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  .rw-report-surface .ma-cart-bar-left { width: 100%; gap: 8px; }
+  .rw-report-surface .ma-cart-icon-wrap { display: none; }
+  .rw-report-surface .ma-cart-bar-info { gap: 4px; }
+  .rw-report-surface .ma-cart-label { font-size: 15px; }
+  .rw-report-surface .ma-cart-stat strong { font-size: 20px; }
+  .rw-report-surface .ma-cart-stat em { font-size: 12px; }
+
+  .rw-report-surface .ma-cart-bar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  .rw-report-surface .ma-cart-bar-actions > label,
+  .rw-report-surface .ma-cart-bar-actions > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .rw-report-surface .ma-cart-bar-actions > :is(button, label) {
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    box-sizing: border-box;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .rw-report-surface .ma-cart-send-btn { padding: 10px 14px; font-size: 14px; }
+
+  .rw-report-surface .rw-summary-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .rw-report-surface .rw-summary-modal {
+    width: 100%;
+    max-width: none;
+    max-height: min(84dvh, 720px);
+    padding: 16px max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    border-radius: 22px 22px 0 0;
+  }
+
+  .rw-report-surface .rw-summary-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Sent-report history has its own cards, filters, and desktop table. Keep
+     its content readable in the same mobile hierarchy as the generator. */
+  .rw-report-surface .ma-sent-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .rw-report-surface .ma-sent-filter {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .rw-report-surface .ma-sent-filter select {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+
+  .rw-report-surface .ma-sent-coverage-card,
+  .rw-report-surface .ma-sent-latest-card,
+  .rw-report-surface .ma-sent-history-section {
+    padding: 14px 12px;
+    border-radius: 14px;
+  }
+
+  .rw-report-surface .ma-sent-latest-summary,
+  .rw-report-surface .ma-sent-assignment-list,
+  .rw-report-surface .ma-sent-table td {
+    overflow-wrap: anywhere;
+  }
+
+  .rw-report-surface .ma-sent-table-wrap { overflow: visible; }
+  .rw-report-surface .ma-sent-table tr {
+    margin-bottom: 10px;
+    padding: 10px 0;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+  }
+
+  .rw-report-surface .ma-sent-table td {
+    align-items: flex-start;
+    min-width: 0;
+    padding: 7px 10px;
+    line-height: 1.45;
+  }
+
+  .rw-report-surface .ma-sent-table td::before {
+    flex: 0 0 74px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .rw-report-surface .ma-sent-table td > :not(.ma-sent-pill) {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .rw-report-surface .rw-steps { grid-template-columns: minmax(0, 1fr); }
+}

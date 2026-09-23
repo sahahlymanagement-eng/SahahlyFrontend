@@ -1428,3 +1428,387 @@
   justify-content: flex-end;
   margin-top: 12px;
 }
+
+/* Labels are revealed only in the phone touch treatment below. */
+.dchat-msg-action-label {
+  display: none;
+}
+
+/* ── Phone-only AI Agent layer ────────────────────────────────────────────
+ * The legacy numbered Chatbot pages share the base tchat-* vocabulary, so
+ * every rule below is explicitly scoped to .dchat-page. Desktop and the
+ * separate /chatbot workflow keep their current layout and interaction model.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 700px) {
+  .dchat-page.tchat-page {
+    padding-top: 12px;
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: 0;
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .dchat-page .tch-page-header {
+    margin-bottom: 12px;
+  }
+
+  .dchat-page .tch-page-header-row {
+    gap: 12px;
+  }
+
+  .dchat-page .tch-page-title {
+    font-size: 1.45rem;
+  }
+
+  .dchat-page .tch-page-subtitle {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .dchat-page .tch-page-actions,
+  .dchat-page .dchat-header-actions {
+    width: 100%;
+  }
+
+  .dchat-page .dchat-header-actions {
+    gap: 8px;
+  }
+
+  .dchat-page .dchat-history-wrap {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .dchat-page .dchat-header-actions .tch-btn {
+    flex: 1 1 0;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  .dchat-page .dchat-history-wrap > .tch-btn {
+    width: 100%;
+  }
+
+  .dchat-page .tchat-shell {
+    border-radius: 16px 16px 0 0;
+  }
+
+  .dchat-page .tchat-shell-header {
+    gap: 10px;
+    padding: 11px 13px;
+  }
+
+  .dchat-page .tchat-shell-header-left {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .dchat-page .tchat-shell-badge {
+    flex: 0 0 auto;
+  }
+
+  .dchat-page .tchat-scroll {
+    padding: 16px 12px 12px;
+    overscroll-behavior: contain;
+    scroll-padding-bottom: 20px;
+  }
+
+  .dchat-page .tchat-scroll--start {
+    padding-top: 14px;
+  }
+
+  .dchat-page .tchat-empty {
+    padding: 4px 0 12px;
+  }
+
+  .dchat-page .tchat-empty-header {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .dchat-page .tchat-empty h3 {
+    font-size: 17px;
+    line-height: 1.28;
+  }
+
+  .dchat-page .dchat-capability-card {
+    min-height: 64px;
+    padding: 12px;
+  }
+
+  .dchat-page .tchat-row {
+    gap: 8px;
+  }
+
+  .dchat-page .tchat-avatar {
+    flex-basis: 32px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .dchat-page .tchat-bubble-col {
+    max-width: calc(100% - 40px);
+  }
+
+  .dchat-page .tchat-bubble {
+    max-width: 100%;
+    padding: 12px 13px;
+    font-size: 14px;
+    line-height: 1.58;
+    overflow-wrap: anywhere;
+  }
+
+  .dchat-page .tchat-md,
+  .dchat-page .tchat-md p,
+  .dchat-page .tchat-md li {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .dchat-page .tchat-md code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .dchat-page .tchat-md pre,
+  .dchat-page .tchat-md table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dchat-page .tchat-progress-label {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .dchat-page .tchat-matched {
+    padding-left: 0;
+    gap: 6px;
+  }
+
+  /* Copy/edit/retry are hover-only and 22px on desktop. On touch, show clear
+     labels and provide a 44px hit area without changing desktop affordances. */
+  .dchat-page .tchat-msg-actions {
+    gap: 6px;
+    padding: 2px 0 0;
+    opacity: 1;
+  }
+
+  .dchat-page .tchat-msg-action {
+    width: auto;
+    min-width: 44px;
+    height: 44px;
+    gap: 5px;
+    padding: 0 10px;
+    border-color: var(--border-soft);
+    background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .dchat-page .dchat-msg-action-label {
+    display: inline;
+  }
+
+  .dchat-page .tchat-edit-row {
+    width: 100%;
+  }
+
+  .dchat-page .tchat-edit-actions {
+    justify-content: space-between;
+  }
+
+  .dchat-page .tchat-edit-actions .tch-btn {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+
+  .dchat-page .tchat-action-card {
+    margin: 8px 0 12px;
+    padding: 14px;
+  }
+
+  .dchat-page .tchat-select-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .dchat-page .tchat-select-bar-actions {
+    gap: 14px;
+  }
+
+  .dchat-page .tchat-student-check {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .dchat-page .tchat-student-check input {
+    width: 20px;
+    height: 20px;
+  }
+
+  .dchat-page .tchat-preview-textarea,
+  .dchat-page .tchat-input {
+    font-size: 16px;
+  }
+
+  .dchat-page .tchat-preview-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dchat-page .tchat-preview-actions .tch-btn {
+    min-height: 44px;
+    padding: 8px;
+  }
+
+  /* Docked composer: fills the thumb zone and clears the iPhone home bar. */
+  .dchat-page .tchat-inputbar {
+    padding: 10px 12px 8px;
+  }
+
+  .dchat-page .dchat-composer--docked .tchat-inputbar {
+    padding-bottom: max(12px, calc(10px + env(safe-area-inset-bottom)));
+  }
+
+  .dchat-page .dchat-composer--hero .dchat-inputbar {
+    padding: 12px;
+  }
+
+  .dchat-page .dchat-composer-toolbar {
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .dchat-page .dchat-composer-toolbar-left {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .dchat-page .dchat-composer-toolbar-right {
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .dchat-page .dchat-icon-btn,
+  .dchat-page .tchat-mic,
+  .dchat-page .tchat-send {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .dchat-page .dchat-scope-wrap {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .dchat-page .dchat-scope-btn {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    padding: 0 10px;
+  }
+
+  .dchat-page .dchat-scope-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .dchat-page .tchat-hint {
+    display: none;
+  }
+
+  .dchat-page .dchat-attachment-chip {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .dchat-page .dchat-attachment-name {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .dchat-page .dchat-attachment-remove {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Fixed sheets avoid the 320px popover overflow and cannot be clipped by
+     the shell while the user is choosing a scope or restoring history. */
+  .dchat-page .dchat-panel-backdrop {
+    background: var(--overlay);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .dchat-page .dchat-history-panel,
+  .dchat-page .dchat-scope-menu {
+    position: fixed;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+    max-height: min(70dvh, 520px);
+    padding: 14px;
+    border-radius: 20px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dchat-page .dchat-history-item,
+  .dchat-page .dchat-history-delete,
+  .dchat-page .dchat-scope-option,
+  .dchat-page .dchat-scope-back {
+    min-height: 44px;
+  }
+
+  .dchat-page .dchat-history-delete {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dchat-page .dchat-scope-option {
+    padding: 10px;
+  }
+
+  /* Recipient editing becomes a real bottom sheet so it remains usable with
+     the keyboard open instead of a narrow, vertically centred desktop modal. */
+  .dchat-page .dchat-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .dchat-page .dchat-modal {
+    width: 100%;
+    max-height: min(82dvh, 720px);
+    padding: 16px max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    border-radius: 22px 22px 0 0;
+  }
+
+  .dchat-page .dchat-modal-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dchat-page .dchat-modal-footer .tch-btn {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .dchat-page .tchat-preview-actions {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1225,7 +1225,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   }
 
   const mainContent = (
-      <main className="ma-main">
+      <main className="ma-main rw-report-surface">
 
         {/* TOPBAR */}
         <header className="ma-topbar ma-topbar--reports">
