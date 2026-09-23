@@ -132,4 +132,15 @@
   .dpi-queue-card__actions .dpi-queue-card__remove {
     grid-column: 1 / -1;
   }
+
+  .dpi-queue-status {
+    border-radius: 14px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  .dpi-queue-status--error {
+    border: 1px solid color-mix(in srgb, var(--danger) 36%, var(--border));
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  }
 }

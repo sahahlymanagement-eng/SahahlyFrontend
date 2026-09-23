@@ -1148,4 +1148,15 @@
     max-width: 150px;
     object-fit: contain;
   }
+
+  /* The tablet drawer keeps 40px chrome. Phones need a reliable thumb target
+     without growing the bar enough to crop the capped logo. */
+  .ast-root .ast-mobile-menu-btn,
+  .ast-root .ast-mobile-theme-toggle {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 44px;
+  }
 }

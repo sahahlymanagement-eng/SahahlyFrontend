@@ -498,22 +498,24 @@
   }
 
   .dr-tabs {
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
     margin-bottom: 14px;
-    padding: 0 1px 4px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
+    overflow: visible;
+    gap: 8px;
   }
 
   .dr-tab {
-    flex: 0 0 auto;
     min-height: 44px;
-    padding: 8px 14px;
-    scroll-snap-align: start;
-    white-space: nowrap;
+    padding: 8px 12px;
+    white-space: normal;
+    line-height: 1.35;
+    text-align: center;
+  }
+
+  .dr-tabs > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 
   .dr-stat-grid,

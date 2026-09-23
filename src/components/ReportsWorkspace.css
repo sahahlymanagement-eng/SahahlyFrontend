@@ -584,27 +584,33 @@
     overflow-wrap: anywhere;
   }
 
-  /* All report destinations remain available, but become a thumb-scrollable
-     tab rail instead of consuming most of the first phone screen. */
+  /* Every report destination stays on screen. A horizontal rail clipped
+     "Monthly Parent Reports" to "Monthly Parent Req" at 320px. */
   .rw-report-surface .ma-report-tabs {
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
     max-width: 100%;
     margin-top: 12px;
-    padding: 0 1px 4px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
+    overflow: visible;
   }
 
   .rw-report-surface .ma-report-tab {
-    flex: 0 0 auto;
-    min-height: 44px;
-    padding: 8px 12px;
-    scroll-snap-align: start;
-    white-space: nowrap;
+    width: 100%;
+    min-height: 48px;
+    height: auto;
+    padding: 10px 12px;
+    border-radius: 14px;
+    white-space: normal;
+    line-height: 1.35;
+    text-align: left;
+    justify-content: flex-start;
+    box-sizing: border-box;
+  }
+
+  .rw-report-surface .ma-report-tabs > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 
   .rw-report-surface .rw-topbar-actions > :is(button, .ma-cart-pill) {
@@ -914,6 +920,23 @@
     min-height: 44px;
     padding: 8px 10px;
     font-size: 16px;
+  }
+
+  .rw-report-surface .ma-search-input {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+
+  .rw-report-surface .msv-teacher-filter .rtf__control {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .rw-report-surface .msv-teacher-filter .rtf__value-container {
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
 
   .rw-report-surface .ma-sent-coverage-card,

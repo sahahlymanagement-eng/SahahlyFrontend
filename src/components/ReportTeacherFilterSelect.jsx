@@ -29,6 +29,7 @@ export default function ReportTeacherFilterSelect({
       menuPlacement="auto"
       menuPortalTarget={typeof document !== "undefined" ? document.body : null}
       styles={selectStyles}
+      aria-label="Filter by teacher"
       placeholder="All teachers"
       noOptionsMessage={() => "No teachers found"}
     />

@@ -28,6 +28,7 @@ import {
   FiTrash2,
 } from "react-icons/fi";
 import { streamAgentTurn, revealText } from "../../utils/agentStream";
+import { usePhoneSheetDismiss } from "../teacher/usePhoneSheetDismiss";
 import { useVoiceCommand } from "../../utils/useVoiceCommand";
 import {
   actOnScheduledWhatsApp,
@@ -330,6 +331,12 @@ export default function ManagerChatbot() {
   const [scope, setScope] = useState(DEFAULT_SCOPE);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [expandedTeacherId, setExpandedTeacherId] = useState(null);
+  const dismissPhoneSheets = useCallback(() => {
+    setHistoryOpen(false);
+    setScopeOpen(false);
+    setExpandedTeacherId(null);
+  }, []);
+  usePhoneSheetDismiss(historyOpen || scopeOpen, dismissPhoneSheets);
   const [classroomOptions, setClassroomOptions] = useState([]);
   const [classroomsLoading, setClassroomsLoading] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
@@ -1255,7 +1262,13 @@ export default function ManagerChatbot() {
               {scopeOpen && (
                 <>
                   <div className="dchat-panel-backdrop" onClick={closeScopeMenu} />
-                  <div className="dchat-scope-menu" role="listbox">
+                  <div className="dchat-scope-menu" role="listbox" aria-label="Choose a scope">
+                    <div className="dchat-sheet-head">
+                      <p className="dchat-sheet-title">Choose a scope</p>
+                      <button type="button" className="dchat-sheet-close" aria-label="Close scope" onClick={closeScopeMenu}>
+                        <FiX size={18} />
+                      </button>
+                    </div>
                     {expandedTeacher ? (
                       <>
                         <button
@@ -1384,10 +1397,13 @@ export default function ManagerChatbot() {
               {historyOpen && (
                 <>
                   <div className="dchat-panel-backdrop" onClick={() => setHistoryOpen(false)} />
-                  <div className="dchat-history-panel">
+                  <div className="dchat-history-panel" role="dialog" aria-label="Past conversations">
+                    <button type="button" className="dchat-sheet-close" aria-label="Close history" onClick={() => setHistoryOpen(false)}>
+                      <FiX size={18} />
+                    </button>
                     <div className="dchat-history-panel-title">Past conversations</div>
                     {historySessions.length === 0 ? (
-                      <p className="dchat-history-empty">No past conversations yet.</p>
+                      <p className="dchat-history-empty">No past conversations yet. New chats on this device are kept here.</p>
                     ) : (
                       <ul className="dchat-history-list">
                         {historySessions.map((s) => (

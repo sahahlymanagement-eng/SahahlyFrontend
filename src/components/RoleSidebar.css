@@ -267,6 +267,23 @@
   color: #fff;
 }
 
+/* Phone drawer only. The desktop rail and the 1024px drawer keep their
+   current density; a thumb needs 44px once the sidebar is a phone sheet. */
+@media (max-width: 640px) {
+  .ast-nav-item,
+  .ast-theme-toggle,
+  .ast-logout-btn {
+    min-height: 44px;
+  }
+
+  .ast-nav-item:focus-visible,
+  .ast-theme-toggle:focus-visible,
+  .ast-logout-btn:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
 .ast-nav-badge {
   margin-left: auto;
   min-width: 18px;

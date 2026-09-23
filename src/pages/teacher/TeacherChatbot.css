@@ -819,6 +819,11 @@
   background: transparent;
 }
 
+/* Close controls exist for the phone sheet. Desktop popovers stay unchanged. */
+.dchat-sheet-close,
+.dchat-sheet-title,
+.dchat-sheet-head { display: none; }
+
 .dchat-history-panel {
   position: absolute;
   top: calc(100% + 8px);
@@ -1522,6 +1527,17 @@
     padding: 4px 0 12px;
   }
 
+  .dchat-page .tchat-empty p {
+    color: var(--text-secondary);
+  }
+
+  .dchat-page .dchat-capability-label,
+  .dchat-page .dchat-capability-example {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
   .dchat-page .tchat-empty-header {
     align-items: flex-start;
     justify-content: flex-start;
@@ -1655,6 +1671,7 @@
   .dchat-page .tchat-preview-textarea,
   .dchat-page .tchat-input {
     font-size: 16px;
+    scroll-margin-bottom: 140px;
   }
 
   .dchat-page .tchat-preview-actions {
@@ -1681,20 +1698,28 @@
     padding: 12px;
   }
 
+  /* Scope gets its own row so "All classes" (and long class names) stay
+     readable beside the 44px attach, mic, and send controls. */
   .dchat-page .dchat-composer-toolbar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
+    grid-template-areas:
+      "scope scope scope scope"
+      "attach . mic send";
     gap: 8px;
+    align-items: center;
     margin-top: 8px;
   }
 
-  .dchat-page .dchat-composer-toolbar-left {
-    flex: 1 1 0;
-    min-width: 0;
+  .dchat-page .dchat-composer-toolbar-left,
+  .dchat-page .dchat-composer-toolbar-right {
+    display: contents;
   }
 
-  .dchat-page .dchat-composer-toolbar-right {
-    flex: 0 0 auto;
-    gap: 6px;
-  }
+  .dchat-page .dchat-scope-wrap { grid-area: scope; }
+  .dchat-page .dchat-icon-btn { grid-area: attach; }
+  .dchat-page .tchat-mic { grid-area: mic; }
+  .dchat-page .tchat-send { grid-area: send; }
 
   .dchat-page .dchat-icon-btn,
   .dchat-page .tchat-mic,
@@ -1748,13 +1773,63 @@
   /* Fixed sheets avoid the 320px popover overflow and cannot be clipped by
      the shell while the user is choosing a scope or restoring history. */
   .dchat-page .dchat-panel-backdrop {
+    z-index: 70;
     background: var(--overlay);
     -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
+    touch-action: none;
+  }
+
+  .dchat-page .dchat-sheet-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    cursor: pointer;
+    flex: 0 0 44px;
+  }
+
+  .dchat-page .dchat-sheet-title {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin: 0;
+    padding-right: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .dchat-page .dchat-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .dchat-page .dchat-history-panel > .dchat-sheet-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  .dchat-page .dchat-history-panel-title {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-bottom: 4px;
+    padding-right: 52px;
   }
 
   .dchat-page .dchat-history-panel,
   .dchat-page .dchat-scope-menu {
+    z-index: 71;
     position: fixed;
     /* The desktop history popover is top-anchored. Clear that anchor before
        bottom-sheet positioning, otherwise its sheet starts below the phone

@@ -102,7 +102,14 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
             <span>Ready: <strong>{Number(progress.readyCount) || 0}</strong></span>
             <span>Failed: <strong>{Number(progress.failedCount) || 0}</strong></span>
           </div>
-          <div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "var(--surface-muted, #dbe6f5)" }}>
+          <div
+            role="progressbar"
+            aria-label="Indexing progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+            style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "var(--surface-muted, #dbe6f5)" }}
+          >
             <div style={{ height: "100%", width: `${progressPercent}%`, background: "var(--primary, #2f8df4)", transition: "width .3s ease" }} />
           </div>
         </div>
@@ -111,6 +118,7 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
       {running && onCancel && (
         <div className="dpi-queue-card__actions">
           <button
+            type="button"
             className="msv-btn-ai"
             disabled={Boolean(item.cancelRequestedAt)}
             onClick={() => onCancel(item._id, true)}
@@ -121,9 +129,9 @@ function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, n
       )}
       {!running && onCancel && (
         <div className="dpi-queue-card__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="msv-btn-ai" disabled={!canMoveUp} onClick={() => onMove(item._id, -1)} title="Move earlier"><FiArrowUp /> Move up</button>
-          <button className="msv-btn-ai" disabled={!canMoveDown} onClick={() => onMove(item._id, 1)} title="Move later"><FiArrowDown /> Move down</button>
-          <button className="msv-btn-ai dpi-queue-card__remove" onClick={() => onCancel(item._id, false)}><FiTrash2 /> Remove from queue</button>
+          <button type="button" className="msv-btn-ai" disabled={!canMoveUp} onClick={() => onMove(item._id, -1)} aria-label="Move earlier in the queue"><FiArrowUp /> Move up</button>
+          <button type="button" className="msv-btn-ai" disabled={!canMoveDown} onClick={() => onMove(item._id, 1)} aria-label="Move later in the queue"><FiArrowDown /> Move down</button>
+          <button type="button" className="msv-btn-ai dpi-queue-card__remove" onClick={() => onCancel(item._id, false)}><FiTrash2 /> Remove from queue</button>
         </div>
       )}
     </div>
@@ -260,14 +268,14 @@ export default function DrPeterIndexingQueue() {
           WebkitOverflowScrolling: "touch",
         }}
       >
-        {loadError && <div className="ma-card" role="alert" style={{ padding: 18, color: "var(--danger)" }}>{loadError}{lastRefreshedAt && " Showing the last loaded queue."}</div>}
-        {loading ? <div className="ma-card" style={{ padding: 24 }}>Loading queue…</div> : (!loadError || lastRefreshedAt) && <>
+        {loadError && <div className="ma-card dpi-queue-status dpi-queue-status--error" role="alert" style={{ padding: 18, color: "var(--danger)" }}>{loadError}{lastRefreshedAt && " Showing the last loaded queue."}</div>}
+        {loading ? <div className="ma-card dpi-queue-status" role="status" style={{ padding: 24 }}>Loading the indexing queue…</div> : (!loadError || lastRefreshedAt) && <>
           <h2 className="dpi-queue-heading" style={{ margin: 0 }}>Running ({data.running?.length || 0})</h2>
           {data.running?.length
             ? data.running.map((item) => <QueueCard key={item._id} item={item} now={now} onCancel={canEdit ? cancel : null} />)
-            : <div className="ma-card" style={{ padding: 18 }}>No indexing job is running.</div>}
+            : <div className="ma-card dpi-queue-status" role="status" style={{ padding: 18 }}>No indexing job is running.</div>}
           <h2 className="dpi-queue-heading" style={{ margin: 0 }}>Waiting ({data.queued?.length || 0})</h2>
-          {data.queued?.length ? data.queued.map((item, index) => <QueueCard key={item._id} item={item} position={index + 1} onCancel={canEdit ? cancel : null} onMove={move} canMoveUp={index > 0} canMoveDown={index < data.queued.length - 1} />) : <div className="ma-card" style={{ padding: 18 }}>Nothing is waiting.</div>}
+          {data.queued?.length ? data.queued.map((item, index) => <QueueCard key={item._id} item={item} position={index + 1} onCancel={canEdit ? cancel : null} onMove={move} canMoveUp={index > 0} canMoveDown={index < data.queued.length - 1} />) : <div className="ma-card dpi-queue-status" role="status" style={{ padding: 18 }}>Nothing is waiting.</div>}
           <h2 className="dpi-queue-heading" style={{ margin: 0 }}>Recent history</h2>
           {(data.history || []).slice(0, 20).map((item) => <QueueCard key={item._id} item={item} />)}
         </>}

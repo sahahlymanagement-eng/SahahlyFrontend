@@ -152,6 +152,25 @@ function directorData() {
 async function checkAgent(page, width, isDesktop) {
   await page.goto(`${base}/manager/ai-agent`, { waitUntil: "networkidle" });
   await page.locator(".dchat-page").waitFor();
+  if (!isDesktop) {
+    await assertVisibleTouchTargets(page, ".ast-mobile-menu-btn, .ast-mobile-theme-toggle", `Header ${width}`);
+    const clippedExamples = await page.locator(".dchat-capability-example").evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.scrollWidth > node.clientWidth + 1)
+        .map((node) => node.textContent.trim())
+    );
+    assert.deepEqual(clippedExamples, [], `AI prompt examples clipped at ${width}`);
+    await page.getByRole("button", { name: "Open navigation menu" }).click();
+    await page.locator(".ast-sidebar .ast-logout-btn").waitFor();
+    await assertVisibleTouchTargets(
+      page,
+      ".ast-sidebar .ast-theme-toggle, .ast-sidebar .ast-logout-btn",
+      `Drawer ${width}`
+    );
+    await page.locator(".ast-drawer-backdrop").click({ position: { x: Math.max(width - 8, 1), y: 28 } });
+  }
+  const scopeClipped = await page.locator(".dchat-scope-label").evaluate((node) => node.scrollWidth > node.clientWidth + 1);
+  assert.equal(scopeClipped, false, `AI scope label clipped at ${width}`);
   await page.getByRole("button", { name: "History", exact: true }).click();
   await page.locator(".dchat-history-panel").waitFor();
   const historyPosition = await page.locator(".dchat-history-panel").evaluate((node) => getComputedStyle(node).position);
@@ -160,9 +179,19 @@ async function checkAgent(page, width, isDesktop) {
     isDesktop ? "absolute" : "fixed",
     isDesktop ? "AI history keeps its desktop popover" : "AI history uses a mobile sheet"
   );
-  if (!isDesktop) await assertPanelInViewport(page, ".dchat-history-panel", `AI history ${width}`);
+  if (!isDesktop) {
+    await assertPanelInViewport(page, ".dchat-history-panel", `AI history ${width}`);
+    await assertVisibleTouchTargets(page, ".dchat-history-panel .dchat-sheet-close", `History close ${width}`);
+  }
   await assertNoPageOverflow(page, `AI history ${width}`);
-  await page.locator(".dchat-panel-backdrop").click({ position: { x: 2, y: 2 } });
+  await page.keyboard.press("Escape");
+  const historyAfterEscape = await page.locator(".dchat-history-panel").count();
+  if (isDesktop) {
+    assert.equal(historyAfterEscape, 1, "Escape keeps the desktop history popover open");
+    await page.locator(".dchat-panel-backdrop").click({ position: { x: 2, y: 2 } });
+  } else {
+    assert.equal(historyAfterEscape, 0, "Escape closes the mobile history sheet");
+  }
 
   await page.locator(".dchat-scope-btn").click();
   await page.locator(".dchat-scope-menu").waitFor();
@@ -172,8 +201,14 @@ async function checkAgent(page, width, isDesktop) {
     isDesktop ? "absolute" : "fixed",
     isDesktop ? "AI scope keeps its desktop popover" : "AI scope uses a mobile sheet"
   );
-  if (!isDesktop) await assertPanelInViewport(page, ".dchat-scope-menu", `AI scope ${width}`);
-  await page.locator(".dchat-panel-backdrop").click({ position: { x: 2, y: 2 } });
+  if (!isDesktop) {
+    await assertPanelInViewport(page, ".dchat-scope-menu", `AI scope ${width}`);
+    await assertVisibleTouchTargets(page, ".dchat-scope-menu .dchat-sheet-close", `Scope close ${width}`);
+    await page.getByRole("button", { name: "Close scope", exact: true }).click();
+    assert.equal(await page.locator(".dchat-scope-menu").count(), 0, "Scope close button dismisses the sheet");
+  } else {
+    await page.locator(".dchat-panel-backdrop").click({ position: { x: 2, y: 2 } });
+  }
 
   await page.getByLabel("Message the AI Agent").fill("Give me a concise grading summary.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
@@ -194,6 +229,10 @@ async function checkReports(page, width, isDesktop) {
   await page.locator(".ma-assignment-card").first().click();
   await page.locator(".ma-table.sah-table--cards").first().waitFor();
   if (!isDesktop) await assertVisibleTouchTargets(page, ".rw-report-surface .ma-report-tab", `Report tabs ${width}`);
+  const clippedTabs = await page.locator(".rw-report-surface .ma-report-tab").evaluateAll((nodes) =>
+    nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => node.textContent.trim())
+  );
+  assert.deepEqual(clippedTabs, [], `Report tab labels clipped at ${width}`);
   await assertNoPageOverflow(page, `Report generator ${width}`);
   await page.getByRole("button", { name: "Reports Sent", exact: true }).click();
   await page.locator(".ma-sent-history-section").waitFor();
@@ -211,6 +250,16 @@ async function checkReports(page, width, isDesktop) {
 async function checkDirectorReports(page, width, isDesktop) {
   await page.goto(`${base}/director/insights`, { waitUntil: "networkidle" });
   await page.locator(".directorReportsPage .dr-stat").first().waitFor();
+  if (!isDesktop) {
+    await page.getByRole("button", { name: "Open navigation menu" }).click();
+    await page.locator(".ast-sidebar .ast-nav-item").first().waitFor();
+    await assertVisibleTouchTargets(page, ".ast-sidebar .ast-nav-item", `Director drawer ${width}`);
+    await page.locator(".ast-drawer-backdrop").click({ position: { x: Math.max(width - 8, 1), y: 28 } });
+    const clippedTabs = await page.locator(".directorReportsPage .dr-tab").evaluateAll((nodes) =>
+      nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => node.textContent.trim())
+    );
+    assert.deepEqual(clippedTabs, [], `Director insight tabs clipped at ${width}`);
+  }
   if (!isDesktop) {
     await assertVisibleTouchTargets(page, ".directorReportsPage .dr-tab, .directorReportsPage .dr-refresh-btn", `Director report controls ${width}`);
   }

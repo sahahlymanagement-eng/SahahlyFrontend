@@ -1364,6 +1364,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
             <input
               className="ma-search-input"
               placeholder="Search classrooms..."
+              aria-label="Search classrooms"
               value={classroomSearch}
               onChange={(e) => setClassroomSearch(e.target.value)}
             />
@@ -1438,6 +1439,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                   <input
                     className="ma-search-input"
                     placeholder="Search assignments..."
+                    aria-label="Search assignments"
                     value={assignmentSearch}
                     onChange={(e) => setAssignmentSearch(e.target.value)}
                   />
