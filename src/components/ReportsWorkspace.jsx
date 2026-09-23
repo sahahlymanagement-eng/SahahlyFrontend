@@ -44,20 +44,34 @@ import {
 } from "../hooks/useReportTeacherFilter";
 import { isDirectorLikeRole, isDirectorLikeVariant } from "../utils/directorLikeAccess";
 import { getRoleName } from "../utils/authRoutes";
+import { getStoredUser, getToken } from "../utils/session";
 import { useClassroomRosterSync } from "../hooks/useClassroomRosterSync";
 import { confirmToast } from "../utils/confirmToast";
 
+function readReportsUser({ isTeacher, isAssistant, isDirector }) {
+  const token = getToken();
+  const parsed = getStoredUser();
+  if (!token || !parsed) return null;
+  const role = getRoleName(parsed);
+  if (isTeacher) return role === "teacher" ? parsed : null;
+  if (isAssistant) return role === "assistant" ? parsed : null;
+  if (isDirector) return isDirectorLikeRole(role) ? parsed : null;
+  if (role === "manager" || role === "quality manager") return parsed;
+  return null;
+}
 
 export default function ReportsWorkspace({ variant = "manager", assignmentOnly = false }) {
   const isTeacher = variant === "teacher";
   const isAssistant = variant === "assistant";
   const isDirector = isDirectorLikeVariant(variant);
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const [user] = useState(() =>
+    readReportsUser({ isTeacher, isAssistant, isDirector })
+  );
 
   const [selectedClassroom, setSelectedClassroom] = usePersistedState(`reports:${variant}:classroom`, null);
   const [selectedAssignment, setSelectedAssignment] = usePersistedState(`reports:${variant}:assignment`, null);
-  const [summaryMap, setSummaryMap] = useState({});
+  const [summaryMapLocal, setSummaryMap] = useState({});
   const [reportCart, setReportCart] = useState({});
   const [noAiAnalytics, setNoAiAnalytics] = useState(false);
   const [sending, setSending] = useState(false);
@@ -122,7 +136,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     setReportCart({});
     setSummaryMap({});
     setCheckedAssignments({});
-  }, []);
+  }, [setSelectedClassroom, setSelectedAssignment]);
 
   useClearClassroomOnTeacherFilter(teacherFilter, selectedClassroom, clearClassroomSelection);
 
@@ -140,7 +154,6 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     page: assignmentPage,
     totalPages: assignmentTotalPages,
     fetchPage: fetchAssignmentPage,
-    loading: loadingAssignmentsList,
   } = usePagination(
     selectedClassroom ? `/manager-assignments/classroom/${selectedClassroom._id}/assignments` : "/manager-assignments/classroom/_",
     assignmentParams,
@@ -166,11 +179,10 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     !!selectedAssignment?._id
   );
 
-  useEffect(() => {
-    if (studentExtra.summaryMap) {
-      setSummaryMap(studentExtra.summaryMap);
-    }
-  }, [studentExtra]);
+  const summaryMap = useMemo(
+    () => ({ ...(studentExtra.summaryMap || {}), ...summaryMapLocal }),
+    [studentExtra.summaryMap, summaryMapLocal]
+  );
 
   useEffect(() => {
     if (!selectedAssignment?._id || loadingStudents) return;
@@ -181,34 +193,10 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     }
   }, [selectedAssignment?._id, loadingStudents, studentFetchError, studentExtra.googleUnavailable]);
 
-  /* AUTH */
+  /* AUTH — user is resolved once on mount; redirect if the session is missing. */
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const token = localStorage.getItem("token");
-    if (!storedUser || !token) { navigate("/login", { replace: true }); return; }
-    const parsed = JSON.parse(storedUser);
-    const role = getRoleName(parsed);
-    if (isTeacher) {
-      if (role !== "teacher") {
-        navigate("/login", { replace: true });
-        return;
-      }
-    } else if (isAssistant) {
-      if (role !== "assistant") {
-        navigate("/login", { replace: true });
-        return;
-      }
-    } else if (isDirector) {
-      if (!isDirectorLikeRole(role)) {
-        navigate("/login", { replace: true });
-        return;
-      }
-    } else if (role !== "manager" && role !== "quality manager") {
-      navigate("/login", { replace: true });
-      return;
-    }
-    setUser(parsed);
-  }, [navigate, isTeacher, isAssistant, isDirector]);
+    if (!user) navigate("/login", { replace: true });
+  }, [navigate, user]);
 
   /* SELECT CLASSROOM */
   const selectClassroom = async (classroom) => {
@@ -482,12 +470,14 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     };
   };
 
-  const isStudentSelected = (studentId) =>
-    !!(reportCart[String(studentId)]?.items[selectedAssignment?._id]);
+  const isStudentSelected = useCallback(
+    (studentId) => !!(reportCart[String(studentId)]?.items[selectedAssignment?._id]),
+    [reportCart, selectedAssignment?._id]
+  );
 
   const selectedStudentCount = useMemo(
     () => students.filter((s) => isStudentSelected(s._id)).length,
-    [students, reportCart, selectedAssignment?._id]
+    [students, isStudentSelected]
   );
 
   const sentStudentCount = useMemo(
@@ -506,7 +496,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
       return students.filter((s) => s.reportSent);
     }
     return students;
-  }, [students, studentFilter, reportCart, selectedAssignment?._id]);
+  }, [students, studentFilter, isStudentSelected]);
 
   const setComment = (studentId, assignmentId, comment) => {
     setReportCart(prev => ({
@@ -957,7 +947,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         classroomId: selectedClassroom._id,
       },
     };
-  }, [collectiveReportsPayload, selectedClassroom?._id]);
+  }, [collectiveReportsPayload, selectedClassroom]);
 
   const customCollectivePdfConfig = useMemo(() => {
     if (!collectiveReportsPayload?.length || !selectedClassroom?._id) return null;
@@ -969,7 +959,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         classroomId: selectedClassroom._id,
       },
     };
-  }, [collectiveReportsPayload, selectedClassroom?._id]);
+  }, [collectiveReportsPayload, selectedClassroom]);
 
   const [downloadingCollective, setDownloadingCollective] = useState(null);
 
