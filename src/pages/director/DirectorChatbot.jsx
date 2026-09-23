@@ -69,6 +69,23 @@ import {
   assignQualityManager,
   removeQualityManager,
   transcribeVoiceCommand,
+  createBroadcast,
+  actOnBroadcast,
+  sendPartnerReport,
+  publishPartnerReportIgspaces,
+  setPartnerReportAutomationRule,
+  setReportAutomationRule,
+  removeReportAutomationRule,
+  setClassroomAssistantDefaults,
+  assignAssistantToSubject,
+  removeAssistantFromSubject,
+  delegatePartnerAssignment,
+  removePartnerDelegation,
+  setPartnerDefaults,
+  assignQualityToSubject,
+  removeQualityFromSubject,
+  createQualityChecklistItem,
+  updateQualityChecklistItem,
 } from "./directorChatbotActionsClient";
 import { confirmToast } from "../../utils/confirmToast";
 import "../teacher/teacher.css";
@@ -289,6 +306,48 @@ function confirmLabelFor(type) {
       return "Save subject";
     case "delete_subject":
       return "Delete subject";
+    case "create_whatsapp_broadcast":
+      return "Send broadcast";
+    case "pause_whatsapp_broadcast":
+      return "Pause broadcast";
+    case "resume_whatsapp_broadcast":
+      return "Resume broadcast";
+    case "cancel_whatsapp_broadcast":
+      return "Cancel broadcast";
+    case "retry_failed_whatsapp_broadcast":
+      return "Retry failed sends";
+    case "test_send_whatsapp_broadcast":
+      return "Send test";
+    case "send_partner_report":
+      return "Send report";
+    case "publish_partner_report_igspaces":
+      return "Publish to IGSpaces";
+    case "set_partner_report_automation_rule":
+      return "Save auto-send rule";
+    case "set_report_automation_rule":
+      return "Save auto-send rule";
+    case "remove_report_automation_rule":
+      return "Remove auto-send rule";
+    case "set_classroom_assistant_defaults":
+      return "Save default assistants";
+    case "assign_assistant_to_subject":
+      return "Qualify assistant";
+    case "remove_assistant_from_subject":
+      return "Remove qualification";
+    case "delegate_partner_assignment":
+      return "Delegate assignment";
+    case "remove_partner_delegation":
+      return "Remove delegation";
+    case "set_partner_defaults":
+      return "Save partner defaults";
+    case "assign_quality_to_subject":
+      return "Assign quality coverage";
+    case "remove_quality_from_subject":
+      return "Remove quality coverage";
+    case "create_quality_checklist_item":
+      return "Create checklist item";
+    case "update_quality_checklist_item":
+      return "Save checklist item";
     default:
       return "Confirm";
   }
@@ -303,6 +362,11 @@ const DANGER_ACTION_TYPES = new Set([
   "delete_scheduled_message",
   "cancel_scheduled_message",
   "set_person_status",
+  "cancel_whatsapp_broadcast",
+  "remove_report_automation_rule",
+  "remove_assistant_from_subject",
+  "remove_partner_delegation",
+  "remove_quality_from_subject",
 ]);
 
 const BROADCAST_ACTION_TYPES = new Set([
@@ -312,6 +376,10 @@ const BROADCAST_ACTION_TYPES = new Set([
   "send_executive_report",
   "schedule_whatsapp_message",
   "send_scheduled_message_now",
+  "create_whatsapp_broadcast",
+  "test_send_whatsapp_broadcast",
+  "send_partner_report",
+  "publish_partner_report_igspaces",
 ]);
 
 function actionCardMeta(type) {
@@ -1153,6 +1221,131 @@ export default function DirectorChatbot() {
         case "delete_subject":
           await deleteSubject({ subjectId: ex.subjectId });
           successMsg = `Deleted subject **${ex.subjectName}**.`;
+          break;
+        case "create_whatsapp_broadcast": {
+          const result = await createBroadcast({
+            personId: user.id,
+            title: ex.title,
+            text: ex.text,
+            source: ex.source,
+            sourceHash: ex.sourceHash,
+            recipients: ex.recipients,
+          });
+          const count = result?.recipientCount ?? ex.recipients?.length ?? 0;
+          successMsg = `WhatsApp broadcast queued to **${count}** recipient(s).`;
+          break;
+        }
+        case "pause_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "pause", { personId: user.id });
+          successMsg = "Broadcast paused.";
+          break;
+        case "resume_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "resume", { personId: user.id });
+          successMsg = "Broadcast resumed.";
+          break;
+        case "cancel_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "cancel", { personId: user.id });
+          successMsg = "Broadcast cancelled.";
+          break;
+        case "retry_failed_whatsapp_broadcast": {
+          const result = await actOnBroadcast(ex.broadcastId, "retry-failed", {
+            personId: user.id,
+          });
+          successMsg = `Re-queued **${result?.requeued ?? 0}** failed send(s).`;
+          break;
+        }
+        case "test_send_whatsapp_broadcast":
+          await actOnBroadcast(ex.broadcastId, "test-send", {
+            personId: user.id,
+            phone: ex.phone,
+          });
+          successMsg = `Test message sent to **${ex.phone}**.`;
+          break;
+        case "send_partner_report":
+          await sendPartnerReport({ personId: user.id, payload: ex.payload });
+          successMsg = "Partner report sent.";
+          break;
+        case "publish_partner_report_igspaces":
+          await publishPartnerReportIgspaces({ personId: user.id, payload: ex.payload });
+          successMsg = "Published to IGSpaces.";
+          break;
+        case "set_partner_report_automation_rule":
+          await setPartnerReportAutomationRule({ personId: user.id, payload: ex.payload });
+          successMsg = "Partner report auto-send rule saved.";
+          break;
+        case "set_report_automation_rule":
+          await setReportAutomationRule({ personId: user.id, payload: ex.payload });
+          successMsg = "Report auto-send rule saved.";
+          break;
+        case "remove_report_automation_rule":
+          await removeReportAutomationRule({ personId: user.id, ruleId: ex.ruleId });
+          successMsg = "Report auto-send rule removed.";
+          break;
+        case "set_classroom_assistant_defaults":
+          await setClassroomAssistantDefaults({
+            personId: user.id,
+            classroomId: ex.classroomId,
+            personIds: ex.personIds,
+            assignedBy: ex.assignedBy,
+          });
+          successMsg = "Default assistants updated.";
+          break;
+        case "assign_assistant_to_subject":
+          await assignAssistantToSubject({ personId: ex.personId, subjectId: ex.subjectId });
+          successMsg = "Assistant qualified for the subject.";
+          break;
+        case "remove_assistant_from_subject":
+          await removeAssistantFromSubject({ personId: ex.personId, subjectId: ex.subjectId });
+          successMsg = "Assistant's subject qualification removed.";
+          break;
+        case "delegate_partner_assignment":
+          await delegatePartnerAssignment({
+            provider: ex.provider,
+            assignmentId: ex.assignmentId,
+            assignmentName: ex.assignmentName,
+            personId: ex.personId,
+            role: ex.role,
+            deadline: ex.deadline,
+          });
+          successMsg = `${actionProposal.title}.`;
+          break;
+        case "remove_partner_delegation":
+          await removePartnerDelegation({ personId: user.id, delegationId: ex.delegationId });
+          successMsg = "Delegation removed.";
+          break;
+        case "set_partner_defaults":
+          await setPartnerDefaults({
+            personId: user.id,
+            provider: ex.provider,
+            managerIds: ex.managerIds,
+            assistantIds: ex.assistantIds,
+          });
+          successMsg = "Partner defaults updated.";
+          break;
+        case "assign_quality_to_subject":
+          await assignQualityToSubject({ personId: ex.personId, subjectId: ex.subjectId });
+          successMsg = "Quality assignment saved.";
+          break;
+        case "remove_quality_from_subject":
+          await removeQualityFromSubject({ personId: ex.personId, subjectId: ex.subjectId });
+          successMsg = "Quality assignment removed.";
+          break;
+        case "create_quality_checklist_item":
+          await createQualityChecklistItem({
+            personId: user.id,
+            title: ex.title,
+            fullScore: ex.fullScore,
+            order: ex.order,
+          });
+          successMsg = `Created checklist item **${ex.title}**.`;
+          break;
+        case "update_quality_checklist_item":
+          await updateQualityChecklistItem({
+            personId: user.id,
+            itemId: ex.itemId,
+            updates: ex.updates,
+          });
+          successMsg = `${actionProposal.title}.`;
           break;
         default:
           throw new Error("Unknown action type");
