@@ -3076,6 +3076,11 @@ toast.success("Result cleared — you can mark again");
       (s) => s.hasDraft || s.hasMarkingResult || isPublished(s)
     ).length;
   }, [selectedAssignmentStats, submissions, visibleSubmissions]);
+  // Published = already sent back to the partner, out of everything corrected.
+  const publishedCount = useMemo(() => {
+    if (selectedAssignmentStats?.graded) return selectedAssignmentStats.graded;
+    return submissions.filter((s) => isPublished(s)).length;
+  }, [selectedAssignmentStats, submissions]);
 
   if (!user) return null;
 
@@ -3582,6 +3587,11 @@ toast.success("Result cleared — you can mark again");
                     <span className="ma-panel-count">
                       {loadingList ? "Counting PDFs…" : `Corrected ${correctedCount} / ${listMeta.total} PDFs`}
                     </span>
+                    {!loadingList && (
+                      <span className="ma-panel-count">
+                        {`Published ${publishedCount} / ${correctedCount}`}
+                      </span>
+                    )}
                   </div>
                   <div className={`msv-panel-controls msv-provider-controls ${mobileToolsOpen || bulkMarking || priorityBulkRunning || publishAll || ["uploading", "submitting", "processing"].includes(batchJob?.phase) ? "msv-mobile-tools-open" : ""}`} style={{ flexWrap: "wrap", gap: 8 }}>
                     {isPhone && <button type="button" className="msv-mobile-tools-toggle" aria-expanded={mobileToolsOpen || bulkMarking || priorityBulkRunning || publishAll || ["uploading", "submitting", "processing"].includes(batchJob?.phase)}

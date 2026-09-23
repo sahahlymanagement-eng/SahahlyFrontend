@@ -203,10 +203,29 @@ export default function ManagerLoginCss() {
   const [singleProgress, setSingleProgress] = useState({});
   const [studentErrors, setStudentErrors] = useState({});
   const [results, setResults] = useState({}); // submissionId -> { result, originalAiResult, studentFile }
-  const correctedCount = useMemo(
-    () => Object.values(results).filter((entry) => entry?.result).length,
-    [results]
-  );
+
+  // Freshest copy of the selected assignment's row — `selectedAssignment` is
+  // persisted state and can be a stale snapshot from before the last reload,
+  // while assignmentIndex is refreshed on every loadAssignments().
+  const selectedAssignmentStats = useMemo(() => {
+    if (!selectedAssignment) return null;
+    const key = selectedAssignment.id != null ? String(selectedAssignment.id) : "__none__";
+    return assignmentIndex.find((a) => a.key === key) || selectedAssignment;
+  }, [assignmentIndex, selectedAssignment]);
+
+  // Server-side counts (marked drafts + published) so reviewers see the real
+  // progress — the old in-memory-only `results` counter stayed at 0 until
+  // someone opened a paper on the current page (same bug already fixed for
+  // the registry-provider tab, see GradingProviderPage.jsx's correctedCount).
+  const correctedCount = useMemo(() => {
+    if (!selectedAssignmentStats) return 0;
+    const fromSummary =
+      (selectedAssignmentStats.marked ?? 0) + (selectedAssignmentStats.graded ?? 0);
+    if (fromSummary > 0) return fromSummary;
+    return Object.values(results).filter((entry) => entry?.result).length;
+  }, [selectedAssignmentStats, results]);
+  // Published = already sent back to LoginCSS, out of everything corrected.
+  const publishedCount = selectedAssignmentStats?.graded ?? 0;
 
   // Bulk ("Mark All") + priority bulk
   const [bulkMarking, setBulkMarking] = useState(false);
@@ -711,7 +730,11 @@ export default function ManagerLoginCss() {
           grade: a.grade ?? null,
           dueDate: a.due_date || null,
           count: a.count ?? 0,
+          // Papers we published (sent back to LoginCSS) vs. corrected but
+          // still only a saved draft — see listAssignmentSummary's graded/
+          // marked split (gradingSubmissionQuery.js).
           graded: a.graded ?? 0,
+          marked: a.marked ?? 0,
           // Present only when the director delegated this assignment to the
           // signed-in account: { role, deadline, status }.
           myDelegation: a.myDelegation || null,
@@ -2312,6 +2335,11 @@ export default function ManagerLoginCss() {
                     <span className="ma-panel-count">
                       {loadingList ? "Counting PDFs…" : `Corrected ${correctedCount} / ${listMeta.total} PDFs`}
                     </span>
+                    {!loadingList && (
+                      <span className="ma-panel-count">
+                        {`Published ${publishedCount} / ${correctedCount}`}
+                      </span>
+                    )}
                   </div>
                   <div className="msv-panel-controls" style={{ flexWrap: "wrap", gap: 8 }}>
                     <input

@@ -148,6 +148,7 @@ import {
   pollReturnJobsUntilSettled,
   isClassroomBlockedError,
 } from "../../utils/returnAllExecution";
+import { isSubmissionAlreadyReturned } from "../../utils/returnAllQueue";
 import {
   fetchSavedResultsLight,
   fetchSavedResultDetail,
@@ -237,8 +238,23 @@ export default function AssignmentSubmissionViewer() {
   const [batchProgress, setBatchProgress] = useState(null);
   const [batchJob, setBatchJob] = useState(null);
   const [savedResults, setSavedResults] = useState({});
+  // `savedResults` comes from the light fetch (fetchSavedResultsLight), which
+  // deliberately drops `result` to avoid shipping every draft blob — it only
+  // ships `hasResult`. Filtering on `entry?.result` here always saw null and
+  // undercounted down to whatever got marked in THIS session, so a freshly
+  // opened assignment with plenty of prior marking showed 0.
   const correctedPdfCount = useMemo(
-    () => Object.values(savedResults).filter((entry) => entry?.result).length,
+    () => Object.values(savedResults).filter((entry) => entry?.hasResult || entry?.result).length,
+    [savedResults]
+  );
+  // "Returned" mirrors Return All's own definition of already-handled
+  // (isSubmissionAlreadyReturned) so the two badges stay consistent: a paper
+  // re-marked after its last return counts as not-yet-returned again here too.
+  const returnedPdfCount = useMemo(
+    () =>
+      Object.values(savedResults).filter(
+        (entry) => (entry?.hasResult || entry?.result) && isSubmissionAlreadyReturned({ saved: entry })
+      ).length,
     [savedResults]
   );
 
@@ -3203,6 +3219,11 @@ return (
     <span className="ma-panel-count">
       {loading ? "Counting PDFs…" : `Corrected ${correctedPdfCount} / ${actualPdfCount} PDFs`}
     </span>
+    {!loading && (
+      <span className="ma-panel-count">
+        {`Returned ${returnedPdfCount} / ${correctedPdfCount}`}
+      </span>
+    )}
   </div>
 
   <div className="header-actions">
