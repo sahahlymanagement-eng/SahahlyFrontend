@@ -33,6 +33,27 @@ async function assertNoPageOverflow(page, name) {
   );
 }
 
+async function assertPanelInViewport(page, selector, name) {
+  const bounds = await page.locator(selector).evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      left: rect.left,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+    };
+  });
+  assert.ok(
+    bounds.top >= -1 &&
+      bounds.left >= -1 &&
+      bounds.right <= bounds.viewportWidth + 1 &&
+      bounds.bottom <= bounds.viewportHeight + 1,
+    `${name}: panel escaped the viewport (${JSON.stringify(bounds)})`
+  );
+}
+
 async function assertVisibleTouchTargets(page, selector, name) {
   const undersized = await page.locator(selector).evaluateAll((nodes) =>
     nodes
@@ -139,6 +160,7 @@ async function checkAgent(page, width, isDesktop) {
     isDesktop ? "absolute" : "fixed",
     isDesktop ? "AI history keeps its desktop popover" : "AI history uses a mobile sheet"
   );
+  if (!isDesktop) await assertPanelInViewport(page, ".dchat-history-panel", `AI history ${width}`);
   await assertNoPageOverflow(page, `AI history ${width}`);
   await page.locator(".dchat-panel-backdrop").click({ position: { x: 2, y: 2 } });
 
@@ -150,6 +172,7 @@ async function checkAgent(page, width, isDesktop) {
     isDesktop ? "absolute" : "fixed",
     isDesktop ? "AI scope keeps its desktop popover" : "AI scope uses a mobile sheet"
   );
+  if (!isDesktop) await assertPanelInViewport(page, ".dchat-scope-menu", `AI scope ${width}`);
   await page.locator(".dchat-panel-backdrop").click({ position: { x: 2, y: 2 } });
 
   await page.getByLabel("Message the AI Agent").fill("Give me a concise grading summary.");

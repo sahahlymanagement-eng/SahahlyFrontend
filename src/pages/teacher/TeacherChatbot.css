@@ -1756,6 +1756,10 @@
   .dchat-page .dchat-history-panel,
   .dchat-page .dchat-scope-menu {
     position: fixed;
+    /* The desktop history popover is top-anchored. Clear that anchor before
+       bottom-sheet positioning, otherwise its sheet starts below the phone
+       viewport even though the backdrop opens correctly. */
+    top: auto;
     right: max(12px, env(safe-area-inset-right));
     bottom: max(12px, env(safe-area-inset-bottom));
     left: max(12px, env(safe-area-inset-left));
