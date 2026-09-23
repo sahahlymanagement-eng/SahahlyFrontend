@@ -1137,3 +1137,15 @@
     pointer-events: auto;
   }
 }
+
+/* Phone-only brand fit: the wide logo competed with the menu and theme
+   controls at 320px, making its edge feel cropped. Keep the tablet and
+   desktop header exactly as-is while giving the phone mark comfortable air. */
+@media (max-width: 640px) {
+  .ast-root .ast-mobile-brand-logo {
+    width: min(150px, 100%);
+    height: auto;
+    max-width: 150px;
+    object-fit: contain;
+  }
+}
