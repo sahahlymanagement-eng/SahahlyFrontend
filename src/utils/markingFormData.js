@@ -960,9 +960,9 @@ export function resolveMaxTotalFromItems(result) {
     : 0;
 }
 
-/** Max shown in results modal / PDF. Priority: manual edit → indexed pack total
- *  (when present) → Classroom assignment max → sum of mark-scheme item maxes →
- *  AI headline max (last resort).
+/** Max shown in results modal / PDF. Priority: manual edit → saved canonical
+ *  final maximum → indexed pack total (when present) → Classroom assignment
+ *  max → sum of mark-scheme item maxes → AI headline max (last resort).
  *
  * Indexed papers must keep their pack denominator (e.g. 82). Classroom
  * maxPoints is often a separate gradebook ceiling (100) and must not stretch
@@ -975,6 +975,13 @@ export function resolveDisplayMaxTotal({
 } = {}) {
   if (editingMaxTotal !== null && editingMaxTotal !== undefined) {
     return Math.max(1, Number(editingMaxTotal) || 1);
+  }
+  // A confirmed total repair may intentionally differ from stale historical
+  // question rows (for example, a duplicated indexed question). The canonical
+  // final field is what the saved PDF and returned grade must show.
+  const confirmedFinal = Number(result?.finalMaximumMarks);
+  if (Number.isFinite(confirmedFinal) && confirmedFinal > 0) {
+    return confirmedFinal;
   }
   if (result?.indexingSource) {
     const fromItems = Number(resolveMaxTotalFromItems(result));
