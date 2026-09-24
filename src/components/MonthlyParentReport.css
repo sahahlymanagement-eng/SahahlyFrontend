@@ -143,32 +143,6 @@
   margin-bottom: 20px;
 }
 
-@media (max-width: 1200px) {
-  .mpr-layout {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .mpr-panel--month {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 1024px) {
-  .mpr-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .mpr-header,
-  .mpr-content {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-
-  .mpr-panel {
-    max-height: none;
-  }
-}
-
 .mpr-panel {
   background: var(--surface);
   border: 1px solid var(--border-soft);
@@ -188,6 +162,42 @@
 
 .mpr-panel--students {
   min-height: 320px;
+}
+
+@media (max-width: 1200px) {
+  .mpr-layout {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mpr-panel--month {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Below this width .mpr-layout stacks into one column (each .mpr-panel gets
+   its own grid row), so the desktop max-height above — sized for three panels
+   sitting side by side — must come off: left uncapped, a tall roster (or a
+   45-classroom list) renders in full instead of only its top ~560px, with the
+   remainder rendering past the box while pagination/next content lands
+   underneath it (mpr-scroll switches to overflow:visible at 767px, so nothing
+   here clips — it would just overlap). This must stay ordered after the base
+   .mpr-panel rule above: an unconditional rule beats an earlier @media block
+   of equal specificity regardless of viewport, so declaring this max-height:
+   none before the base rule (as before) got silently overridden by it. */
+@media (max-width: 1024px) {
+  .mpr-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mpr-header,
+  .mpr-content {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .mpr-panel {
+    max-height: none;
+  }
 }
 
 .mpr-panel-head {
