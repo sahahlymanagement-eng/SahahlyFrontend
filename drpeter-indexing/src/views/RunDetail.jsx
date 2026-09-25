@@ -165,7 +165,7 @@ export default function RunDetail({ runId }) {
         </a>
         <div className="card-head">
           <div>
-            <p className="eyebrow">{run.mode === "batch" ? "Batch · half price" : run.mode === 'flex' ? 'Flex · half price' : run.mode === 'luna' ? 'Sahahly Luna · OpenAI' : "Instant · full price"}</p>
+            <p className="eyebrow">{run.mode === "batch" ? "Batch · half price" : run.mode === 'flex' ? 'Flex · half price' : run.mode === 'luna_batch' ? 'Sahahly Luna Batch · half price' : run.mode === 'luna' ? 'Sahahly Luna · OpenAI' : "Instant · full price"}</p>
             <h1>
               {run.paperCount} paper{run.paperCount === 1 ? "" : "s"} marked
             </h1>

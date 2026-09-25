@@ -26,6 +26,14 @@ const MODES = [
       "Marks papers with Sahahly Luna (OpenAI). Same pace as Instant; usage lands under the OpenAI token tab.",
   },
   {
+    id: "luna_batch",
+    title: "Sahahly Luna Batch",
+    tag: "half price",
+    icon: "stack",
+    blurb:
+      "One OpenAI Batch job for the whole pile at 50% of the Luna token cost. Usually back in minutes; OpenAI allows itself up to 24 hours.",
+  },
+  {
     id: "batch",
     title: "Batch",
     tag: "half price",
@@ -111,7 +119,7 @@ export default function Grade({ examId }) {
   const chosenModel = (catalogue?.models || []).find((entry) => entry.id === model) || null;
   const modelRate = useMemo(() => {
     if (!chosenModel) return null;
-    const multiplier = mode === "batch" || mode === "flex" ? BATCH_MULTIPLIER : 1;
+    const multiplier = mode === "batch" || mode === "flex" || mode === "luna_batch" ? BATCH_MULTIPLIER : 1;
     const egp = catalogue?.usdToEgp || 0;
     return {
       input: chosenModel.inputUsdPerMillion * multiplier * egp,
@@ -141,9 +149,11 @@ export default function Grade({ examId }) {
       toast({
         kind: "ok",
         title: `${files.length} paper${files.length === 1 ? "" : "s"} queued`,
-        body: `${chosenModel?.label || (mode === "luna" ? "Sahahly Luna" : "Gemini")} · ${
+        body: `${chosenModel?.label || (mode === "luna" || mode === "luna_batch" ? "Sahahly Luna" : "Gemini")} · ${
           mode === "batch"
             ? "submitted as one batch job"
+            : mode === "luna_batch"
+              ? "submitted as one OpenAI Luna batch job (half price)"
             : mode === "flex"
               ? "submitted individually at the lower Flex rate; completion time can vary"
               : mode === "luna"
@@ -256,7 +266,7 @@ export default function Grade({ examId }) {
                 {modelRate && (
                   <span className="model-rate">
                     {formatEgp(modelRate.input)} in · {formatEgp(modelRate.output)} out
-                    <em> per million tokens{mode === "batch" ? ", batch rate" : mode === 'flex' ? ', flex rate' : mode === 'luna' ? ', OpenAI rate' : ''}</em>
+                    <em> per million tokens{mode === "batch" ? ", batch rate" : mode === 'flex' ? ', flex rate' : mode === 'luna_batch' ? ', OpenAI batch rate' : mode === 'luna' ? ', OpenAI rate' : ''}</em>
                   </span>
                 )}
               </p>

@@ -40,6 +40,7 @@ function stageLabel(item) {
 
 function modeLabel(mode) {
   if (mode === "batch") return "Batch";
+  if (mode === "luna_batch") return "Sahahly Luna Batch";
   if (mode === "luna") return "Sahahly Luna";
   if (mode === "flex") return "Flex";
   return "Instant";
