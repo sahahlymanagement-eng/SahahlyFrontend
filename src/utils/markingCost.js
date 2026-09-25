@@ -14,6 +14,10 @@ export const SAHAHLY_MODEL_LABELS = {
   "gemini-3-flash-preview": "Sahahly 3 Flash Preview",
   "gemini-3.5-flash": "Sahahly 3.5 Flash",
   "gemini-3.8-flash": "Sahahly 3.8 Flash",
+  "gpt-5.5": "Sahahly Luna",
+  "gpt-5.4": "Sahahly Luna (5.4)",
+  "gpt-5.4-mini": "Sahahly Luna Mini",
+  "gpt-5.6-luna": "Sahahly Luna",
 };
 
 /**
@@ -208,10 +212,20 @@ export function resolveMarkingCost(result) {
   // possible instead of trusting an untraceable number.
   if (
     result.estimatedCost?.usd != null &&
-    result.estimatedCost.modelId === modelId &&
+    (result.estimatedCost.modelId === modelId ||
+      result.provider === "openai" ||
+      String(modelId).startsWith("gpt-")) &&
     Boolean(result.estimatedCost.batchPricing) === batch
   ) {
-    return result.estimatedCost;
+    return {
+      modelId,
+      usd: result.estimatedCost.usd,
+      egp:
+        result.estimatedCost.egp ??
+        result.estimatedCost.usd * USD_TO_EGP_RATE,
+      batchPricing: result.estimatedCost.batchPricing,
+      priorityPricing: result.estimatedCost.priorityPricing,
+    };
   }
   if (
     result.estimatedCostUsd != null &&

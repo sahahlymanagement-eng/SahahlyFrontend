@@ -38,6 +38,7 @@ const TABS = [
   { id: "assistant", label: "Staff" },
   { id: "assignment", label: "Assignments" },
   { id: "reports", label: "Reports & Analytics" },
+  { id: "openai", label: "OpenAI" },
   { id: "gemini", label: "Gemini Requests" },
 ];
 
@@ -46,6 +47,7 @@ const MANAGER_TABS = [
   { id: "assistant", label: "Assistants" },
   { id: "assignment", label: "Assignments" },
   { id: "reports", label: "Reports & Analytics" },
+  { id: "openai", label: "OpenAI" },
   { id: "gemini", label: "Gemini Requests" },
 ];
 
@@ -474,6 +476,12 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         const res = await api.get(`${apiBase}/by-assistant`, { params });
         setByAssistant(res.data);
         setRequestLimit(res.data?.requestLimit ?? null);
+      } else if (tab === "openai") {
+        const res = await api.get(`${apiBase}/by-assistant`, {
+          params: { ...params, provider: "openai" },
+        });
+        setByAssistant(res.data);
+        setRequestLimit(res.data?.requestLimit ?? null);
       } else if (tab === "assignment") {
         const res = await api.get(`${apiBase}/by-assignment`, { params });
         setByAssignment(res.data);
@@ -594,7 +602,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       if (selectedClassroom) return selectedClassroom.totalTokens ?? 0;
       return byClassroom?.grandTotal ?? 0;
     }
-    if (tab === "assistant") return byAssistant?.grandTotal ?? 0;
+    if (tab === "assistant" || tab === "openai") return byAssistant?.grandTotal ?? 0;
     if (tab === "assignment") return byAssignment?.grandTotal ?? 0;
     if (tab === "reports") {
       if (reportBreakdownData) return reportBreakdownData.grandTotal ?? 0;
@@ -609,7 +617,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       if (selectedClassroom) return selectedClassroom.costUsd ?? 0;
       return byClassroom?.grandCostUsd ?? 0;
     }
-    if (tab === "assistant") return byAssistant?.grandCostUsd ?? 0;
+    if (tab === "assistant" || tab === "openai") return byAssistant?.grandCostUsd ?? 0;
     if (tab === "assignment") return byAssignment?.grandCostUsd ?? 0;
     if (tab === "reports") {
       if (reportBreakdownData) return reportBreakdownData.grandCostUsd ?? 0;
@@ -624,7 +632,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       if (selectedClassroom) return selectedClassroom.costEgp ?? 0;
       return byClassroom?.grandCostEgp ?? 0;
     }
-    if (tab === "assistant") return byAssistant?.grandCostEgp ?? 0;
+    if (tab === "assistant" || tab === "openai") return byAssistant?.grandCostEgp ?? 0;
     if (tab === "assignment") return byAssignment?.grandCostEgp ?? 0;
     if (tab === "reports") {
       if (reportBreakdownData) return reportBreakdownData.grandCostEgp ?? 0;
@@ -639,7 +647,7 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
       if (selectedClassroom) return selectedClassroom.requestCount ?? 0;
       return byClassroom?.grandRequestCount ?? 0;
     }
-    if (tab === "assistant") return byAssistant?.grandRequestCount ?? 0;
+    if (tab === "assistant" || tab === "openai") return byAssistant?.grandRequestCount ?? 0;
     if (tab === "assignment") return byAssignment?.grandRequestCount ?? 0;
     if (tab === "reports") {
       if (reportBreakdownData) return reportBreakdownData.grandDeliveries ?? 0;
@@ -678,10 +686,15 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
     if (tab === "classroom" && !inClassroomFlow && byClassroom) {
       return { count: byClassroom.classrooms?.length ?? 0, label: "Classrooms with usage" };
     }
-    if (tab === "assistant" && byAssistant) {
+    if ((tab === "assistant" || tab === "openai") && byAssistant) {
       return {
         count: byAssistant.assistants?.length ?? 0,
-        label: isDirector ? "Staff with usage" : "Assistants with usage",
+        label:
+          tab === "openai"
+            ? "Users with OpenAI usage"
+            : isDirector
+              ? "Staff with usage"
+              : "Assistants with usage",
       };
     }
     if (tab === "assignment" && byAssignment) {
@@ -1008,10 +1021,14 @@ export default function TokenUsageView({ apiBase, scope, embedded = false }) {
         </div>
       )}
 
-      {!loading && tab === "assistant" && (
+      {!loading && (tab === "assistant" || tab === "openai") && (
         <>
           {!byAssistant?.assistants?.length ? (
-            <div className="tu-empty">No token usage recorded for this period.</div>
+            <div className="tu-empty">
+              {tab === "openai"
+                ? "No OpenAI (Sahahly Luna) token usage recorded for this period."
+                : "No token usage recorded for this period."}
+            </div>
           ) : (
             <UsageTable
               columns={personColumns}

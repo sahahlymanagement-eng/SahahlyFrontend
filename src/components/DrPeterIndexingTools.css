@@ -1,5 +1,27 @@
 .dpi-tools { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); background: var(--surface-2); }
 .dpi-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.dpi-ready-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: min(240px, 100%);
+}
+.dpi-ready-stack > .msv-btn-ai { width: 100%; justify-content: center; }
+.dpi-ready-index-marking--on {
+  background: color-mix(in srgb, var(--success, #238057) 88%, #000) !important;
+  border-color: color-mix(in srgb, var(--success, #238057) 88%, #000) !important;
+  color: #fff !important;
+}
+.dpi-ready-note {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-secondary, var(--muted));
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dpi-model { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary, var(--muted)); }
 .dpi-model select { min-width: 12.5rem; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface, #fff); color: var(--text-primary); font: inherit; }
 .dpi-actions h2 { flex:1; font-size:18px; }

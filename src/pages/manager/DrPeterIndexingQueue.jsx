@@ -39,7 +39,10 @@ function stageLabel(item) {
 }
 
 function modeLabel(mode) {
-  return mode === "batch" ? "Batch" : "Instant";
+  if (mode === "batch") return "Batch";
+  if (mode === "luna") return "Sahahly Luna";
+  if (mode === "flex") return "Flex";
+  return "Instant";
 }
 
 function QueueCard({ item, position, onCancel, onMove, canMoveUp, canMoveDown, now }) {

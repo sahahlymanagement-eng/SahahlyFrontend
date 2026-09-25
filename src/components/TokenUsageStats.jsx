@@ -40,7 +40,9 @@ export default function TokenUsageStats({
   const priorityNote = formatPriorityPricingNote(cost);
   const liveNote =
     cost && !cost.batchPricing && !cost.priorityPricing
-      ? "Live (standard) pricing — not Batch API"
+      ? result?.provider === "openai"
+        ? "Sahahly Luna (OpenAI) pricing"
+        : "Live (standard) pricing — not Batch API"
       : null;
   const callCount = Number(result?.geminiCallCount) || 0;
   const pageCount = Number(result?.scriptPageCount) || 0;
