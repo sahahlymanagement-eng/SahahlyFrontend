@@ -28,6 +28,14 @@ function isAlreadyCorrectedPartnerRow(student) {
 const INDEXING_MODEL_KEY = 'sahahly.indexing.gradeModel';
 const DEFAULT_INDEXING_MODEL = 'gemini-2.5-flash';
 const RETIRED_INDEXING_MODELS = /^(gemini-1(\.|$)|gemini-1\.5)/i;
+const LUNA_OPTION_KEY = 'sahahly.indexing.lunaOption';
+const LUNA_OPTIONS = [
+  { id: 'instant-5.6', mode: 'luna', model: 'gpt-5.6-luna', label: 'Instant 5.6 Luna' },
+  { id: 'instant-6', mode: 'luna', model: 'gpt-6-luna', label: 'Instant 6 Luna' },
+  { id: 'batch-5.6', mode: 'luna_batch', model: 'gpt-5.6-luna', label: 'Batch 5.6 Luna' },
+  { id: 'batch-6', mode: 'luna_batch', model: 'gpt-6-luna', label: 'Batch 6 Luna' },
+];
+const DEFAULT_LUNA_OPTION = 'instant-5.6';
 
 const IMPORT_SOURCE_OPTIONS = [
   { id: 'classroom', label: 'Classroom' },
@@ -43,6 +51,14 @@ function readIndexingModel(fallback) {
   } catch { /* private mode */ }
   if (fallback && !RETIRED_INDEXING_MODELS.test(fallback)) return fallback;
   return DEFAULT_INDEXING_MODEL;
+}
+
+function readLunaOption() {
+  try {
+    const remembered = localStorage.getItem(LUNA_OPTION_KEY);
+    if (LUNA_OPTIONS.some((o) => o.id === remembered)) return remembered;
+  } catch { /* private mode */ }
+  return DEFAULT_LUNA_OPTION;
 }
 
 const stateLabel = state => ({ ready: 'Completed', needs_review: 'Ready', queued: 'Queued', processing: 'Processing', error: 'Failed', partial: 'Partly completed', cancelled: 'Cancelled' }[state] || state);
@@ -122,6 +138,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   }, [mobile, setup, importOpen, view]);
   const [indexingModel, setIndexingModel] = useState(() => readIndexingModel(gradeModel));
   const [indexingModels, setIndexingModels] = useState([]);
+  const [lunaOptionId, setLunaOptionId] = useState(readLunaOption);
   useEffect(() => {
     let active = true;
     api.get(`${base}/models`, {timeout:30000}).then(({data}) => {
@@ -311,6 +328,18 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     try { localStorage.setItem(INDEXING_MODEL_KEY, id); } catch { /* private mode */ }
   }
 
+  function chooseLunaOption(id) {
+    if (!LUNA_OPTIONS.some((o) => o.id === id)) return;
+    setLunaOptionId(id);
+    try { localStorage.setItem(LUNA_OPTION_KEY, id); } catch { /* private mode */ }
+  }
+
+  const lunaOption = LUNA_OPTIONS.find((o) => o.id === lunaOptionId) || LUNA_OPTIONS[0];
+
+  async function markLuna() {
+    await mark(lunaOption.mode, { gradeModel: lunaOption.model });
+  }
+
   useEffect(() => {
     alive.current = true;
     let timer;
@@ -440,9 +469,12 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     finally{if(alive.current)setBusy('');}
   }
 
-  async function mark(mode, { queue = false } = {}) {
+  async function mark(mode, { queue = false, gradeModel: gradeModelOverride } = {}) {
+    const selectedModel = gradeModelOverride || indexingModel;
     const selected = new Set([...selectedIds].map(String));
-    if (!selected.size || !pack || !['ready', 'needs_review'].includes(pack.status) || !indexingModels.length) return;
+    const isLuna = mode === 'luna' || mode === 'luna_batch';
+    if (!selected.size || !pack || !['ready', 'needs_review'].includes(pack.status)) return;
+    if (!isLuna && !indexingModels.length) return;
     setError('');
     const data = await startIndexingUpload(uploadKey, async report => {
       // Refresh the full assignment roster: selection may span pages/search results.
@@ -516,7 +548,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         const {data} = await api.post('/drpeter-indexing-queue', {
           mode, provider, examId: pack.id, examTitle: pack.title,
           partnerAssignmentId: assignmentId, assignmentName: assignment.name || assignment.title,
-          gradeModel: indexingModel,
+          gradeModel: selectedModel,
           submissionIds: students.map(s => String(s.submissionId)),
           studentNames: students.map(s => s.name || `Submission ${s.submissionId}`),
           students,
@@ -526,7 +558,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
 
       report(`Sending ${students.length} student selections to the server…`);
       const {data}=await api.post(`${base}/runs/server-submissions`, {
-        examId: pack.id, partnerAssignmentId: assignmentId, mode, gradeModel: indexingModel,
+        examId: pack.id, partnerAssignmentId: assignmentId, mode, gradeModel: selectedModel,
         submissionIds: students.map(s => String(s.submissionId)),
         studentNames: students.map(s => s.name || `Submission ${s.submissionId}`),
         students,
@@ -693,8 +725,28 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         </label>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('instant')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Instant)</button>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('batch')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length}>Mark with indexing (Batch)</button>
-        <button type="button" className="msv-btn-ai" onClick={()=>mark('luna')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status)} title="Mark with Sahahly Luna Instant (OpenAI)">Mark with Sahahly Luna (Instant)</button>
-        <button type="button" className="msv-btn-ai" onClick={()=>mark('luna_batch')} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status)} title="Mark with Sahahly Luna Batch (OpenAI Batch API · half price)">Mark with Sahahly Luna (Batch)</button>
+        <label className="dpi-model">
+          <span>Sahahly Luna</span>
+          <select
+            value={lunaOption.id}
+            onChange={(e) => chooseLunaOption(e.target.value)}
+            disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status)}
+            aria-label="Sahahly Luna marking mode"
+          >
+            {LUNA_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="msv-btn-ai"
+          onClick={markLuna}
+          disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status)}
+          title={`Mark with ${lunaOption.label} (OpenAI)`}
+        >
+          Mark with Sahahly Luna
+        </button>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('instant', {queue: true})} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length} title="Add to the Indexing Queue instead of starting immediately">Queue with indexing (Instant)</button>
         <button type="button" className="msv-btn-ai" onClick={()=>mark('batch', {queue: true})} disabled={!!busy || !['ready', 'needs_review'].includes(pack?.status) || !indexingModels.length} title="Add to the Indexing Queue instead of starting immediately">Queue with indexing (Batch)</button>
         <span>{selectedIds.size} selected · {sahahlyModelLabel(indexingModel)}{!['ready', 'needs_review'].includes(pack?.status)?' — index this assignment first':''}</span>

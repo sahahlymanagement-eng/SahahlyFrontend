@@ -17,7 +17,8 @@ export const SAHAHLY_MODEL_LABELS = {
   "gpt-5.5": "Sahahly Luna",
   "gpt-5.4": "Sahahly Luna (5.4)",
   "gpt-5.4-mini": "Sahahly Luna Mini",
-  "gpt-5.6-luna": "Sahahly Luna",
+  "gpt-5.6-luna": "Sahahly Luna 5.6",
+  "gpt-6-luna": "Sahahly Luna 6",
 };
 
 /**
