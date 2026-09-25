@@ -94,7 +94,13 @@ export default function DirectorGradingDelegations() {
   const [groupCatalog, setGroupCatalog] = useState([]); // [{groupKey, groupName, subjectKey, subjectName, assignmentCount}]
   const [groupCatalogLoading, setGroupCatalogLoading] = useState(false);
   const [groupDefaultsMap, setGroupDefaultsMap] = useState({}); // { [catalogEntryKey]: {managers, assistants} }
-  const [selectedDefaultEntryKey, setSelectedDefaultEntryKey] = useState("");
+  // Group and sub-group/session are two SEPARATE pickers: the group is
+  // required, the session narrows an ambiguous group's default to just one
+  // of its sessions and is optional — leaving it blank targets the whole
+  // group (every session). Kept as two independent bits of state (not one
+  // combined entry key) so picking a group doesn't force a session choice.
+  const [selectedGroupKey, setSelectedGroupKey] = useState("");
+  const [selectedSubjectKey, setSelectedSubjectKey] = useState("");
   const [defaultGroupManagersSelected, setDefaultGroupManagersSelected] = useState([]);
   const [defaultGroupAssistantsSelected, setDefaultGroupAssistantsSelected] = useState([]);
   const [groupDefaultsSaving, setGroupDefaultsSaving] = useState(false);
@@ -113,7 +119,8 @@ export default function DirectorGradingDelegations() {
   // (not just who they are) without leaving the row. Only one row edits at a
   // time, so this doesn't need to be keyed by entry.
   const [editingEntryKey, setEditingEntryKey] = useState(null);
-  const [editRowTargetEntryKey, setEditRowTargetEntryKey] = useState("");
+  const [editRowGroupKey, setEditRowGroupKey] = useState("");
+  const [editRowSubjectKey, setEditRowSubjectKey] = useState("");
   const [editRowManagers, setEditRowManagers] = useState([]);
   const [editRowAssistants, setEditRowAssistants] = useState([]);
   const [editRowSaving, setEditRowSaving] = useState(false);
@@ -295,6 +302,63 @@ export default function DirectorGradingDelegations() {
     return [...byKey.values()];
   }, [groupCatalog, savedGroupDefaults]);
 
+  // The GROUP picker's options: one row per distinct group name, regardless
+  // of whether it's ambiguous. Its count/staleness comes from the group's own
+  // whole-group entry (subjectKey: null — either the single entry an
+  // unambiguous name has always had, or the dedicated "every session" entry
+  // listGroupCatalog now also gives an ambiguous name) so the number shown
+  // always means "every assignment under this name", never just one session.
+  const groupOptions = useMemo(() => {
+    const byGroup = new Map();
+    for (const g of combinedGroupOptions) {
+      let entry = byGroup.get(g.groupKey);
+      if (!entry) {
+        entry = { groupKey: g.groupKey, groupName: g.groupName, assignmentCount: 0, stale: true, hasWhole: false };
+        byGroup.set(g.groupKey, entry);
+      }
+      if (!g.subjectKey) {
+        entry.assignmentCount = g.assignmentCount;
+        entry.stale = g.stale;
+        entry.hasWhole = true;
+      } else if (!entry.hasWhole) {
+        // Fallback only: every ambiguous group should have a whole-group
+        // entry from listGroupCatalog, so this sum is never the number shown
+        // once that entry arrives and takes over above.
+        entry.assignmentCount += g.assignmentCount;
+        entry.stale = entry.stale && g.stale;
+      }
+    }
+    return [...byGroup.values()]
+      .map(({ groupKey, groupName, assignmentCount, stale }) => ({ groupKey, groupName, assignmentCount, stale }))
+      .sort((a, b) => a.groupName.localeCompare(b.groupName));
+  }, [combinedGroupOptions]);
+
+  // The SUB-GROUP/SESSION picker's options for one group: only its
+  // per-session entries (a null subjectKey belongs to the group picker, not
+  // here) — empty for an unambiguous group, which is exactly when this
+  // picker should have nothing to offer and stay optional/disabled.
+  const subjectOptionsByGroup = useMemo(() => {
+    const map = new Map();
+    for (const g of combinedGroupOptions) {
+      if (!g.subjectKey) continue;
+      if (!map.has(g.groupKey)) map.set(g.groupKey, []);
+      map.get(g.groupKey).push(g);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.subjectName || "").localeCompare(b.subjectName || ""));
+    }
+    return map;
+  }, [combinedGroupOptions]);
+
+  // The combined (groupKey, subjectKey) the two top pickers currently
+  // resolve to — still what everything downstream (groupDefaultsMap lookups,
+  // save/edit/delete) keys off, so picking a group with the session picker
+  // left blank means "whole group" exactly as it always has.
+  const selectedDefaultEntryKey = useMemo(
+    () => (selectedGroupKey ? catalogEntryKey(selectedGroupKey, selectedSubjectKey || null) : ""),
+    [selectedGroupKey, selectedSubjectKey]
+  );
+
   // Re-derive the two selects whenever the chosen sub-group (+session) or the
   // loaded defaults change.
   useEffect(() => {
@@ -347,17 +411,26 @@ export default function DirectorGradingDelegations() {
     label: r.personId?.name || "Person",
   });
 
+  // The (groupKey, subjectKey) the edit row's own two pickers currently
+  // resolve to — the row-edit counterpart of selectedDefaultEntryKey above.
+  const editRowTargetEntryKey = useMemo(
+    () => (editRowGroupKey ? catalogEntryKey(editRowGroupKey, editRowSubjectKey || null) : ""),
+    [editRowGroupKey, editRowSubjectKey]
+  );
+
   const startEditSavedGroupDefault = (row) => {
     const entryKey = catalogEntryKey(row.groupKey, row.subjectKey);
     setEditingEntryKey(entryKey);
-    setEditRowTargetEntryKey(entryKey);
+    setEditRowGroupKey(row.groupKey);
+    setEditRowSubjectKey(row.subjectKey || "");
     setEditRowManagers((row.managers || []).map(savedRowToOption).filter((o) => o.value));
     setEditRowAssistants((row.assistants || []).map(savedRowToOption).filter((o) => o.value));
   };
 
   const cancelEditSavedGroupDefault = () => {
     setEditingEntryKey(null);
-    setEditRowTargetEntryKey("");
+    setEditRowGroupKey("");
+    setEditRowSubjectKey("");
     setEditRowManagers([]);
     setEditRowAssistants([]);
   };
@@ -410,8 +483,9 @@ export default function DirectorGradingDelegations() {
 
       await loadSavedGroupDefaults();
       // Keep the top picker in sync if it was pointed at whatever just moved.
-      if (selectedDefaultEntryKey === originalEntryKey) {
-        setSelectedDefaultEntryKey(moved ? editRowTargetEntryKey : originalEntryKey);
+      if (moved && selectedDefaultEntryKey === originalEntryKey) {
+        setSelectedGroupKey(target.groupKey);
+        setSelectedSubjectKey(target.subjectKey || "");
       }
 
       const label = target.subjectName ? `${target.groupName} · ${target.subjectName}` : target.groupName;
@@ -439,7 +513,10 @@ export default function DirectorGradingDelegations() {
         delete next[entryKey];
         return next;
       });
-      if (selectedDefaultEntryKey === entryKey) setSelectedDefaultEntryKey("");
+      if (selectedDefaultEntryKey === entryKey) {
+        setSelectedGroupKey("");
+        setSelectedSubjectKey("");
+      }
       if (editingEntryKey === entryKey) cancelEditSavedGroupDefault();
       const label = row.subjectName ? `${row.groupName} · ${row.subjectName}` : row.groupName;
       toast.success(`${label} default deleted`);
@@ -461,9 +538,11 @@ export default function DirectorGradingDelegations() {
     setRowManager({});
     setRowAssistant({});
     setRowDeadline({});
-    setSelectedDefaultEntryKey("");
+    setSelectedGroupKey("");
+    setSelectedSubjectKey("");
     setEditingEntryKey(null);
-    setEditRowTargetEntryKey("");
+    setEditRowGroupKey("");
+    setEditRowSubjectKey("");
     setEditRowManagers([]);
     setEditRowAssistants([]);
   };
@@ -715,51 +794,82 @@ export default function DirectorGradingDelegations() {
           <h2 className="dgd-defaults-title">{partnerLabel} Provider accounts defaults</h2>
         </div>
         <p className="dgd-defaults-hint">
-          Pick a sub-group (e.g. every class displayed as <strong>1A</strong>, merged across
-          schools) — and, when that name is used for more than one exam session (e.g. "1A"
-          exists for both Nov26 and J27), the specific <strong>subject/session</strong> within
-          it — and a default {partnerLabel} manager and/or assistant <strong>provider
-          account</strong> for it. Any <strong>new</strong> assignment sent to that sub-group
-          (and, if picked, that exact session) auto-assigns them — with <strong>no
+          Pick a group (e.g. every class displayed as <strong>1A</strong>, merged across
+          schools) and a default {partnerLabel} manager and/or assistant <strong>provider
+          account</strong> for it — that's all that's required. When that name is used for more
+          than one exam session (e.g. "1A" exists for both Nov26 and J27), a second,{" "}
+          <strong>optional</strong> dropdown lets you narrow it to one specific{" "}
+          <strong>sub-group/session</strong> instead of the whole group; leave it blank and the
+          default covers <strong>every</strong> session of that name. Any <strong>new</strong>{" "}
+          assignment matching what you picked auto-assigns them — with <strong>no
           deadline</strong>, since a provider account works off whatever {partnerLabel} sends.
-          A name with only one session skips the subject picker entirely and applies to it the
-          same way it always has. Use the table below for a Sahahly account on one specific
-          assignment instead.
+          Saving also backfills every assignment ALREADY sitting in what you picked, not just
+          the next new one. A name with only one session leaves the second dropdown empty with
+          nothing to pick. Use the table below for a Sahahly account on one specific assignment
+          instead.
         </p>
         <div className="dgd-defaults-grid">
           <div className="dgd-defaults-field">
-            <label htmlFor="dgd-default-group">Sub-group / subject</label>
+            <label htmlFor="dgd-default-group">Group</label>
             <Select
               inputId="dgd-default-group"
               styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
               menuPortalTarget={document.body}
               menuPosition="fixed"
-              placeholder={groupCatalogLoading ? "Loading groups…" : "Select sub-group…"}
-              options={combinedGroupOptions.map((g) => {
-                const entryKey = catalogEntryKey(g.groupKey, g.subjectKey);
-                const name = g.subjectName ? `${g.groupName} · ${g.subjectName}` : g.groupName;
+              placeholder={groupCatalogLoading ? "Loading groups…" : "Select group…"}
+              options={groupOptions.map((g) => {
                 const countLabel = g.stale
                   ? "saved default, no live submissions"
                   : `${g.assignmentCount} assignment${g.assignmentCount === 1 ? "" : "s"}`;
-                return {
-                  value: entryKey,
-                  label: `${name} (${countLabel})`,
-                };
+                return { value: g.groupKey, label: `${g.groupName} (${countLabel})` };
               })}
               value={
-                selectedDefaultEntryKey
+                selectedGroupKey
                   ? (() => {
-                      const g = combinedGroupOptions.find(
-                        (g) => catalogEntryKey(g.groupKey, g.subjectKey) === selectedDefaultEntryKey
-                      );
-                      const name = g?.subjectName ? `${g.groupName} · ${g.subjectName}` : g?.groupName;
-                      return { value: selectedDefaultEntryKey, label: name || selectedDefaultEntryKey };
+                      const g = groupOptions.find((g) => g.groupKey === selectedGroupKey);
+                      return { value: selectedGroupKey, label: g?.groupName || selectedGroupKey };
                     })()
                   : null
               }
-              onChange={(opt) => setSelectedDefaultEntryKey(opt?.value || "")}
+              onChange={(opt) => {
+                setSelectedGroupKey(opt?.value || "");
+                setSelectedSubjectKey("");
+              }}
               isClearable
               isDisabled={groupCatalogLoading}
+            />
+          </div>
+          <div className="dgd-defaults-field">
+            <label htmlFor="dgd-default-subject">Sub-group / session (optional)</label>
+            <Select
+              inputId="dgd-default-subject"
+              styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+              menuPortalTarget={document.body}
+              menuPosition="fixed"
+              placeholder={
+                !selectedGroupKey
+                  ? "Choose a group first"
+                  : (subjectOptionsByGroup.get(selectedGroupKey) || []).length
+                  ? "Whole group (all sessions)"
+                  : "Only one session — nothing to narrow to"
+              }
+              options={(subjectOptionsByGroup.get(selectedGroupKey) || []).map((g) => ({
+                value: g.subjectKey,
+                label: `${g.subjectName} (${g.assignmentCount} assignment${g.assignmentCount === 1 ? "" : "s"})`,
+              }))}
+              value={
+                selectedSubjectKey
+                  ? (() => {
+                      const g = (subjectOptionsByGroup.get(selectedGroupKey) || []).find(
+                        (g) => g.subjectKey === selectedSubjectKey
+                      );
+                      return { value: selectedSubjectKey, label: g?.subjectName || selectedSubjectKey };
+                    })()
+                  : null
+              }
+              onChange={(opt) => setSelectedSubjectKey(opt?.value || "")}
+              isClearable
+              isDisabled={!selectedGroupKey || !(subjectOptionsByGroup.get(selectedGroupKey) || []).length}
             />
           </div>
           <div className="dgd-defaults-field">
@@ -770,7 +880,7 @@ export default function DirectorGradingDelegations() {
               menuPortalTarget={document.body}
               menuPosition="fixed"
               placeholder={
-                selectedDefaultEntryKey ? "Select manager account(s)…" : "Choose a sub-group first"
+                selectedDefaultEntryKey ? "Select manager account(s)…" : "Choose a group first"
               }
               options={providerManagerOptions}
               value={defaultGroupManagersSelected}
@@ -788,7 +898,7 @@ export default function DirectorGradingDelegations() {
               menuPortalTarget={document.body}
               menuPosition="fixed"
               placeholder={
-                selectedDefaultEntryKey ? "Select assistant account(s)…" : "Choose a sub-group first"
+                selectedDefaultEntryKey ? "Select assistant account(s)…" : "Choose a group first"
               }
               options={providerAssistantOptions}
               value={defaultGroupAssistantsSelected}
@@ -854,32 +964,58 @@ export default function DirectorGradingDelegations() {
                     const isEditing = editingEntryKey === entryKey;
 
                     if (isEditing) {
+                      const editRowSubjectOptions = subjectOptionsByGroup.get(editRowGroupKey) || [];
                       return (
                         <tr key={entryKey}>
-                          <td data-label="Sub-group" colSpan={2}>
+                          <td data-label="Sub-group">
                             <Select
                               styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
                               menuPortalTarget={document.body}
                               menuPosition="fixed"
-                              placeholder="Select sub-group…"
-                              options={combinedGroupOptions.map((g) => {
-                                const key = catalogEntryKey(g.groupKey, g.subjectKey);
-                                const name = g.subjectName ? `${g.groupName} · ${g.subjectName}` : g.groupName;
-                                return { value: key, label: name };
-                              })}
+                              placeholder="Select group…"
+                              options={groupOptions.map((g) => ({ value: g.groupKey, label: g.groupName }))}
                               value={
-                                editRowTargetEntryKey
+                                editRowGroupKey
                                   ? (() => {
-                                      const g = combinedGroupOptions.find(
-                                        (g) => catalogEntryKey(g.groupKey, g.subjectKey) === editRowTargetEntryKey
-                                      );
-                                      const name = g?.subjectName ? `${g.groupName} · ${g.subjectName}` : g?.groupName;
-                                      return { value: editRowTargetEntryKey, label: name || editRowTargetEntryKey };
+                                      const g = groupOptions.find((g) => g.groupKey === editRowGroupKey);
+                                      return { value: editRowGroupKey, label: g?.groupName || editRowGroupKey };
                                     })()
                                   : null
                               }
-                              onChange={(opt) => setEditRowTargetEntryKey(opt?.value || "")}
+                              onChange={(opt) => {
+                                setEditRowGroupKey(opt?.value || "");
+                                setEditRowSubjectKey("");
+                              }}
                               isDisabled={editRowSaving}
+                            />
+                          </td>
+                          <td data-label="Subject / session">
+                            <Select
+                              styles={{ ...selectStyles, menuPortal: (b) => ({ ...b, zIndex: 9999 }) }}
+                              menuPortalTarget={document.body}
+                              menuPosition="fixed"
+                              placeholder={
+                                !editRowGroupKey
+                                  ? "Choose a group first"
+                                  : editRowSubjectOptions.length
+                                  ? "Whole group (all sessions)"
+                                  : "Only one session"
+                              }
+                              options={editRowSubjectOptions.map((g) => ({
+                                value: g.subjectKey,
+                                label: g.subjectName,
+                              }))}
+                              value={
+                                editRowSubjectKey
+                                  ? (() => {
+                                      const g = editRowSubjectOptions.find((g) => g.subjectKey === editRowSubjectKey);
+                                      return { value: editRowSubjectKey, label: g?.subjectName || editRowSubjectKey };
+                                    })()
+                                  : null
+                              }
+                              onChange={(opt) => setEditRowSubjectKey(opt?.value || "")}
+                              isClearable
+                              isDisabled={editRowSaving || !editRowGroupKey || !editRowSubjectOptions.length}
                             />
                           </td>
                           <td data-label="Manager(s)">
