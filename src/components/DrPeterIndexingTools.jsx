@@ -356,7 +356,14 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
           );
           setIndexMarkingReadyMeta((prev) => ({ ...(prev || {}), ...(now || {}) }));
           if (now?.started) {
-            toast.success(now.message || `Started ${now.paperCount || 0} paper(s)`);
+            const runIds = Array.isArray(now.runIds) ? now.runIds.filter(Boolean) : [];
+            if (!runIds.length) {
+              toast.error(
+                "Ready said it started, but no indexing run was created. Open Ready and click Run now."
+              );
+            } else {
+              toast.success(now.message || `Started ${now.paperCount || 0} paper(s)`);
+            }
             await refreshRunsList();
           } else {
             toast.info(now?.message || "Ready saved — nothing new to mark right now");
@@ -388,7 +395,14 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       setIndexMarkingReadyMeta((prev) => ({ ...(prev || {}), ...(data || {}) }));
       setReadySetupOpen(false);
       if (data?.started) {
-        toast.success(data.message || "Started indexing");
+        const runIds = Array.isArray(data.runIds) ? data.runIds.filter(Boolean) : [];
+        if (!runIds.length) {
+          toast.error(
+            "Ready said it started, but no indexing run was created. Click Run now again."
+          );
+        } else {
+          toast.success(data.message || "Started indexing");
+        }
         await refreshRunsList();
       } else {
         toast.info(data?.message || "Nothing new to mark");
