@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FiSun, FiMoon } from "react-icons/fi";
 import { toast } from "react-toastify";
 import api from "../api/api";
@@ -12,11 +12,25 @@ export default function SetupPassword() {
   const { theme, toggleTheme } = useTheme();
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const email = location.state?.email;
+  const [searchParams] = useSearchParams();
+  const token = useMemo(
+    () => (searchParams.get("token") || "").trim(),
+    [searchParams]
+  );
+
+  useEffect(() => {
+    if (!token) {
+      toast.error("Invitation link is invalid or missing token.");
+    }
+  }, [token]);
 
   const handleSetup = async (e) => {
     e.preventDefault();
+
+    if (!token) {
+      toast.error("Invitation link is invalid or missing token.");
+      return;
+    }
 
     if (!password || password.length < 6) {
       toast.error("Password must be at least 6 characters");
@@ -27,7 +41,7 @@ export default function SetupPassword() {
       setLoading(true);
 
       await api.post("/auth/setup-password", {
-        email,
+        token,
         password,
       });
 
@@ -61,7 +75,9 @@ export default function SetupPassword() {
           <h1 className="setup-title">Set Your Password</h1>
 
           <p className="setup-subtitle">
-            Create a secure password to activate your account.
+            {token
+              ? "Create a secure password to activate your account."
+              : "Open the invitation link from your email to activate your account."}
           </p>
 
           <form className="setup-form" onSubmit={handleSetup}>
@@ -72,15 +88,15 @@ export default function SetupPassword() {
                 placeholder="New Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
+                disabled={loading || !token}
                 required
               />
             </div>
 
             <button
               type="submit"
-              disabled={loading}
-              className={`setup-btn ${loading ? "setup-btnDisabled" : ""}`}
+              disabled={loading || !token}
+              className={`setup-btn ${loading || !token ? "setup-btnDisabled" : ""}`}
             >
               {loading ? "Saving..." : "SAVE PASSWORD"}
             </button>
