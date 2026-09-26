@@ -11,14 +11,14 @@
 .dpi-ready-menu-wrap { position: relative; width: 100%; }
 .dpi-ready-menu-wrap > .msv-btn-ai { width: 100%; justify-content: center; }
 .dpi-ready-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  position: relative;
   z-index: 40;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
   padding: 12px;
   border: 1px solid var(--border, #ccd1db);
   border-radius: 10px;
@@ -90,8 +90,11 @@
 .dpi-error { color:var(--danger); }
 .dpi-tools details { margin-top:10px; }
 .dpi-tools summary { cursor:pointer; font-weight:600; }
+.dpi-finished-runs { margin-top:12px; }
+.dpi-finished-runs__title { display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
 .dpi-runs { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
 .dpi-runs button { text-align:left; padding:8px; background:var(--surface); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; cursor:pointer; }
+.dpi-runs button:hover { border-color:#8da0c1; background:var(--surface-2,#f3f5f8); }
 .dpi-overlay { position:fixed; inset:0; z-index:12000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.55); }
 .dpi-dialog,.dpi-workspace { background:var(--surface,#fff); color:var(--text-primary,#152135); border-radius:12px; width:min(760px,96vw); padding:20px; max-height:94vh; overflow:auto; box-shadow:0 12px 60px #0004; }
 .dpi-dialog { padding-top:0; }

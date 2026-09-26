@@ -89,7 +89,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
   const [indexMarkingReadyBusy, setIndexMarkingReadyBusy] = useState(false);
   const [indexMarkingReadyMeta, setIndexMarkingReadyMeta] = useState(null);
   const [readySetupOpen, setReadySetupOpen] = useState(false);
-  const [readySetupMode, setReadySetupMode] = useState('instant');
+  const [readySetupMode, setReadySetupMode] = useState('auto');
   const [readySetupModel, setReadySetupModel] = useState(DEFAULT_INDEXING_MODEL);
   const readySetupRef = useRef(null);
   const [indexForm, setIndexForm] = useState(() => ({ title: assignment.name || assignment.title || '', subject: '', board: '', year: '', paperCode: '', expectedQpRows: [{ label: '', marks: '' }], expectedMsRows: [{ label: '', marks: '' }], questionPaper: null, markScheme: null }));
@@ -187,7 +187,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         if (!active) return;
         setIndexMarkingReady(!!data?.ready);
         setIndexMarkingReadyMeta(data || null);
-        if (data?.markMode === 'batch' || data?.markMode === 'instant') {
+        if (data?.markMode === 'batch' || data?.markMode === 'instant' || data?.markMode === 'auto') {
           setReadySetupMode(data.markMode);
         }
         if (data?.gradeModel) setReadySetupModel(data.gradeModel);
@@ -223,9 +223,13 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       toast.error("Index this assignment first (status Ready) before marking it ready for auto marking");
       return;
     }
-    setReadySetupMode(
-      indexMarkingReadyMeta?.markMode === 'batch' ? 'batch' : 'instant'
-    );
+      setReadySetupMode(
+        indexMarkingReadyMeta?.markMode === 'batch'
+          ? 'batch'
+          : indexMarkingReadyMeta?.markMode === 'instant'
+            ? 'instant'
+            : 'auto'
+      );
     setReadySetupModel(
       indexMarkingReadyMeta?.gradeModel ||
         indexingModel ||
@@ -234,6 +238,34 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         DEFAULT_INDEXING_MODEL
     );
     setReadySetupOpen(true);
+  }
+
+  async function refreshRunsList() {
+    try {
+      const { data: exams } = await api.get(`${base}/exams`, {
+        params: { partnerAssignmentId: assignmentId },
+        timeout: 30000,
+      });
+      const linked = (exams || []).filter(
+        (row) =>
+          String(row.partnerAssignmentId || "") === String(assignmentId) &&
+          (row.partnerProvider || provider) === provider
+      );
+      if (!linked.length) return;
+      const runLists = await Promise.all(
+        linked.map((row) =>
+          api.get(`${base}/runs`, { params: { examId: row.id }, timeout: 30000 })
+        )
+      );
+      if (!alive.current) return;
+      setRuns(
+        runLists
+          .flatMap((r) => (Array.isArray(r.data) ? r.data : []))
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      );
+    } catch {
+      /* run list refresh is best-effort */
+    }
   }
 
   async function saveReadySetup({ ready = true } = {}) {
@@ -251,7 +283,10 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
           assignmentName: assignment.name || assignment.title || null,
           ready,
           ...(ready
-            ? { markMode: readySetupMode, gradeModel: readySetupModel }
+            ? {
+                markMode: readySetupMode,
+                gradeModel: readySetupModel || DEFAULT_INDEXING_MODEL,
+              }
             : {}),
         },
         { timeout: 60000 }
@@ -259,9 +294,58 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       setIndexMarkingReady(!!data?.ready);
       setIndexMarkingReadyMeta(data || null);
       setReadySetupOpen(false);
-      toast.success(data?.message || (ready ? "Marked ready" : "Ready flag cleared"));
+      if (ready) {
+        toast.success(data?.message || "Marked ready — starting unmarked papers now…");
+        // Don't wait for the hourly cron — kick off a run immediately.
+        try {
+          const { data: now } = await api.post(
+            "/ready-for-index-marking/run-now",
+            { provider, assignmentId },
+            { timeout: 180000 }
+          );
+          setIndexMarkingReadyMeta((prev) => ({ ...(prev || {}), ...(now || {}) }));
+          if (now?.started) {
+            toast.success(now.message || `Started ${now.paperCount || 0} paper(s)`);
+            await refreshRunsList();
+          } else {
+            toast.info(now?.message || "Ready saved — nothing new to mark right now");
+          }
+        } catch (runErr) {
+          toast.warn(
+            (await getApiErrorMessage(runErr)) ||
+              "Ready saved, but the immediate auto-run failed — the hourly job will retry"
+          );
+        }
+      } else {
+        toast.success(data?.message || "Ready flag cleared");
+      }
     } catch (err) {
       toast.error((await getApiErrorMessage(err)) || "Could not update ready status");
+    } finally {
+      setIndexMarkingReadyBusy(false);
+    }
+  }
+
+  async function runReadyNow() {
+    setIndexMarkingReadyBusy(true);
+    try {
+      const { data } = await api.post(
+        "/ready-for-index-marking/run-now",
+        { provider, assignmentId },
+        { timeout: 180000 }
+      );
+      setIndexMarkingReadyMeta((prev) => ({ ...(prev || {}), ...(data || {}) }));
+      setReadySetupOpen(false);
+      if (data?.started) {
+        toast.success(data.message || "Started indexing");
+        await refreshRunsList();
+      } else {
+        toast.info(data?.message || "Nothing new to mark");
+        // Stale-run release may have finalized old runs — refresh the list.
+        await refreshRunsList();
+      }
+    } catch (err) {
+      toast.error((await getApiErrorMessage(err)) || "Could not start auto indexing");
     } finally {
       setIndexMarkingReadyBusy(false);
     }
@@ -621,8 +705,8 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
               aria-haspopup="dialog"
               title={
                 indexMarkingReady
-                  ? `Hourly auto index marking is on (${indexMarkingReadyMeta?.markMode || 'instant'} · ${sahahlyModelLabel(indexMarkingReadyMeta?.gradeModel || readySetupModel)}) — click to change or turn off`
-                  : 'Confirm index + guidance are final; choose model + Instant/Batch for hourly auto index marking (papers over 25 pages are skipped)'
+                  ? `Auto index marking is on (${indexMarkingReadyMeta?.markMode || 'auto'} · ${sahahlyModelLabel(indexMarkingReadyMeta?.gradeModel || readySetupModel)}) — click to change, run now, or turn off`
+                  : 'Confirm index + guidance are final; choose Auto/Instant/Batch + model, then mark ready to start unmarked papers now (and every 15 minutes). Papers over 25 pages are skipped'
               }
             >
               {indexMarkingReadyBusy
@@ -634,15 +718,19 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
             {readySetupOpen && (
               <div className="dpi-ready-menu" role="dialog" aria-label="Ready for index marking settings">
                 <p className="dpi-ready-menu__blurb">
-                  Hourly auto index marking for unmarked papers (≤25 pages). Choose the model and Instant or Batch for this assignment.
+                  Marks unmarked papers with indexing now, then again every 15 minutes (papers over 25 pages are skipped). Auto picks Instant for fewer than 5 papers and Batch for 5+.
                 </p>
                 <label className="dpi-ready-menu__field">
                   <span>Mode</span>
                   <select
                     value={readySetupMode}
-                    onChange={(e) => setReadySetupMode(e.target.value === 'batch' ? 'batch' : 'instant')}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setReadySetupMode(v === 'batch' || v === 'instant' ? v : 'auto');
+                    }}
                     disabled={indexMarkingReadyBusy}
                   >
+                    <option value="auto">Auto (Instant &lt;5 · Batch ≥5)</option>
                     <option value="instant">Instant</option>
                     <option value="batch">Batch</option>
                   </select>
@@ -652,10 +740,12 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
                   <select
                     value={readySetupModel}
                     onChange={(e) => setReadySetupModel(e.target.value)}
-                    disabled={indexMarkingReadyBusy || !indexingModels.length}
+                    disabled={indexMarkingReadyBusy}
                   >
                     {!indexingModels.length && (
-                      <option value={readySetupModel}>Loading models…</option>
+                      <option value={readySetupModel || DEFAULT_INDEXING_MODEL}>
+                        {sahahlyModelLabel(readySetupModel || DEFAULT_INDEXING_MODEL)}
+                      </option>
                     )}
                     {indexingModels.map((m) => (
                       <option key={m.id} value={m.id}>{sahahlyModelLabel(m.id)}</option>
@@ -667,10 +757,21 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
                     type="button"
                     className="msv-btn-ai"
                     onClick={() => saveReadySetup({ ready: true })}
-                    disabled={indexMarkingReadyBusy || !readySetupModel || !indexingModels.length}
+                    disabled={indexMarkingReadyBusy || !(readySetupModel || DEFAULT_INDEXING_MODEL)}
                   >
-                    {indexMarkingReady ? 'Save settings' : 'Mark ready'}
+                    {indexMarkingReady ? 'Save settings' : 'Mark ready & run now'}
                   </button>
+                  {indexMarkingReady && (
+                    <button
+                      type="button"
+                      className="msv-btn-ai"
+                      onClick={runReadyNow}
+                      disabled={indexMarkingReadyBusy}
+                      title="Start unmarked papers immediately without waiting for the hourly job"
+                    >
+                      Run now
+                    </button>
+                  )}
                   {indexMarkingReady && (
                     <button
                       type="button"
@@ -699,8 +800,13 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
             </span>
           )}
           {indexMarkingReady && (indexMarkingReadyMeta?.markMode || indexMarkingReadyMeta?.gradeModel) && (
-            <span className="dpi-ready-note" title="Hourly auto marking settings">
-              Auto: {indexMarkingReadyMeta.markMode === 'batch' ? 'Batch' : 'Instant'}
+            <span className="dpi-ready-note" title="Auto index marking settings">
+              Mode:{' '}
+              {indexMarkingReadyMeta.markMode === 'batch'
+                ? 'Batch'
+                : indexMarkingReadyMeta.markMode === 'instant'
+                  ? 'Instant'
+                  : 'Auto'}
               {indexMarkingReadyMeta.gradeModel
                 ? ` · ${sahahlyModelLabel(indexMarkingReadyMeta.gradeModel)}`
                 : ''}
@@ -762,7 +868,27 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
     {error && <p role="alert" className="dpi-error">{error}</p>}
     {pack?.error && <p className="dpi-error">{pack.error}</p>}
     {runs.length>0 && <p>Completed papers appear in each student’s Results button. Edit them there and use the existing {classroom ? 'Return All' : 'Publish All'} to return them.</p>}
-    {runs.length>0 && <details><summary>Indexing results ({runs.length} runs)</summary><div className="dpi-runs">{runs.map(run=><button type="button" key={run.id} onClick={()=>setView({title:'Indexing results',hash:`#/runs/${run.id}`})}>{stateLabel(run.status)} · {run.mode} · {run.readyCount}/{run.paperCount} completed{run.failedCount?` · ${run.failedCount} failed`:''} · {new Date(run.createdAt).toLocaleString()}</button>)}</div></details>}
+    {(() => {
+      const finishedRuns = runs.filter((run) => !['queued', 'processing'].includes(run.status));
+      if (!finishedRuns.length) return null;
+      return (
+        <div className="dpi-finished-runs">
+          <strong className="dpi-finished-runs__title">Indexing results ({finishedRuns.length})</strong>
+          <div className="dpi-runs">
+            {finishedRuns.map((run) => (
+              <button
+                type="button"
+                key={run.id}
+                onClick={() => setView({ title: 'Indexing results', hash: `#/runs/${run.id}` })}
+              >
+                {stateLabel(run.status)} · {run.mode} · {run.readyCount}/{run.paperCount} completed
+                {run.failedCount ? ` · ${run.failedCount} failed` : ''} · {new Date(run.createdAt).toLocaleString()}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    })()}
     {denominatorRepair && <div className="dpi-overlay" role="dialog" aria-modal="true" aria-label="Repair old PDF totals">
       <div className="dpi-dialog dpi-repair-dialog">
         <div className="dpi-modal-header">

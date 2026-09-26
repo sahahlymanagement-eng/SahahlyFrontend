@@ -662,6 +662,27 @@ transition: all 0.18s ease; font-family: 'Plus Jakarta Sans', sans-serif;
   min-width: 180px;
 }
 
+.ms-phone-field,
+.ms-phone-display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ms-phone-warn {
+  display: inline-block;
+  max-width: 220px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #c45c26 14%, transparent);
+  color: #a94416;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .ms-phone-input .react-international-phone-input {
   background: var(--surface-2) !important;
   color: var(--text-primary) !important;

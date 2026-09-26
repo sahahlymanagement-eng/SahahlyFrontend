@@ -634,11 +634,13 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
 
   const kwLineH = noteSize + 5;
   const noteLineH = noteSize + 2.5;
-  const sectionGap = 5;
+  const sectionGap = Math.max(5, noteSize * 0.65);
   const blockPad = 6;
-  const labelH = 9;
+  // Must grow with noteSize — fixed 8–9pt steps collide when teachers enlarge boxes.
+  const labelH = Math.max(8, noteSize + 1.5);
+  const headerH = Math.max(14, noteSize * 2 + 3);
 
-  let h = 14 + blockPad; // Q header
+  let h = headerH + blockPad; // Q header
 
   if (mcq.isMcq) {
     if (studentLines.length) h += labelH + studentLines.length * kwLineH;
@@ -648,16 +650,16 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     if (stemLines.length) h += labelH + stemLines.length * kwLineH;
     if (blankAnswerLines.length) h += labelH + blankAnswerLines.length * kwLineH;
     if (usePoints) {
-      h += 9 + pointRows.reduce(
+      h += labelH + pointRows.reduce(
         (s, p) => s + wrap(p.text, font, noteSize - 0.5, colWidth).length * kwLineH,
         0
       );
     } else {
       if (marked.length) {
-        h += 9 + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+        h += labelH + marked.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
       }
       if (missing.length) {
-        h += 9 + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
+        h += labelH + missing.reduce((s, kw) => s + wrap(kw, font, noteSize - 0.5, colWidth).length * kwLineH, 0);
       }
     }
     if (solutionLines.length) h += labelH + solutionLines.length * kwLineH;
@@ -685,6 +687,8 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     noteLineH,
     sectionGap,
     blockPad,
+    labelH,
+    headerH,
     height: h,
   };
 }
@@ -707,7 +711,7 @@ function pickColumnFontSize(blocks, headerBottom, colBottom, colWidth, font) {
 }
 
 /** Cap for teacher-resized note boxes so text stays readable but not huge. */
-const MAX_RESIZED_NOTE_SIZE = 16;
+const MAX_RESIZED_NOTE_SIZE = 12;
 
 /**
  * When a teacher stretches/shrinks a correction box, scale the note font with
@@ -806,12 +810,16 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       noteLineH,
       sectionGap,
       blockPad,
+      labelH: blockLabelH,
+      headerH: blockHeaderH,
       height: blockH,
       center,
       paperY,
       noteSize: blockNoteSize,
     } = block;
     const noteSize = Number(blockNoteSize) || baseNoteSize;
+    const labelH = Number(blockLabelH) || Math.max(8, noteSize + 1.5);
+    const headerH = Number(blockHeaderH) || Math.max(14, noteSize * 2 + 3);
 
     const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
     const blockTop = center + blockH / 2;
@@ -827,15 +835,16 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       borderWidth: 0.6,
     });
 
+    const titleDrop = Math.max(11, noteSize + 3.5);
     drawBoldText(page, `${overlayQText(q)} · ${q.marksAwarded}/${q.maxMarks}`, {
       x: layout.colX,
-      y: blockTop - 11,
+      y: blockTop - titleDrop,
       size: noteSize + 0.5,
             font: bold,
       color: col,
     });
 
-    let cy = blockTop - 18;
+    let cy = blockTop - headerH;
 
     if (mcq.isMcq) {
       if (studentLines.length > 0) {
@@ -848,7 +857,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
           font: bold,
           color: studentColor,
         });
-        cy -= 8;
+        cy -= labelH;
         cy = drawWrappedLines(page, studentLines, {
           x: layout.colX + 2,
           y: cy,
@@ -868,7 +877,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
             font: bold,
           color: GREEN,
         });
-        cy -= 8;
+        cy -= labelH;
         cy = drawWrappedLines(page, correctLines, {
           x: layout.colX + 2,
           y: cy,
@@ -896,7 +905,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
           font: bold,
           color: NAVY,
         });
-        cy -= 8;
+        cy -= labelH;
         drawWrappedLines(page, noteLines, {
           x: layout.colX,
           y: cy,
@@ -917,7 +926,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
           font: bold,
           color: GREY,
         });
-        cy -= 8;
+        cy -= labelH;
         cy = drawWrappedLines(page, stemLines, {
           x: layout.colX + 2,
           y: cy,
@@ -942,7 +951,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
             font: bold,
           color: manualAnswered ? NAVY : AMBER,
         });
-        cy -= 8;
+        cy -= labelH;
         cy = drawWrappedLines(page, blankAnswerLines, {
           x: layout.colX + 2,
           y: cy,
@@ -956,7 +965,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
       if (usePoints) {
         drawBoldText(page, "Marks:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: NAVY });
-        cy -= 8;
+        cy -= labelH;
         for (const point of pointRows) {
           const lines = wrap(point.text, reg, noteSize - 0.5, layout.colWidth - 8);
           const col = point.awarded ? GREEN : RED;
@@ -980,7 +989,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       } else {
         if (marked.length > 0) {
           drawBoldText(page, "Earned:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: GREEN });
-          cy -= 8;
+          cy -= labelH;
           for (const kw of marked) {
             const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
             cy = drawWrappedLines(page, lines, {
@@ -997,7 +1006,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
         if (showMissing && missing.length > 0) {
           drawBoldText(page, "Missing:", { x: layout.colX, y: cy, size: noteSize - 0.5, font: bold, color: RED });
-          cy -= 8;
+          cy -= labelH;
           for (const kw of missing) {
             const lines = wrap(kw, bold, noteSize - 0.5, layout.colWidth);
             cy = drawWrappedLines(page, lines, {
@@ -1024,7 +1033,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
           font: bold,
           color: GREEN,
         });
-        cy -= 8;
+        cy -= labelH;
         cy = drawWrappedLines(page, solutionLines, {
           x: layout.colX + 2,
           y: cy,

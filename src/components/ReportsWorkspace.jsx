@@ -74,7 +74,9 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   const [summaryMapLocal, setSummaryMap] = useState({});
   const [reportCart, setReportCart] = useState({});
   const [noAiAnalytics, setNoAiAnalytics] = useState(false);
+  const [noFeedback, setNoFeedback] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState(null); // { current, total, name }
   const activeSendIdRef = useRef(null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [assignmentSearch, setAssignmentSearch] = useState("");
@@ -162,6 +164,12 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     !!selectedClassroom?._id
   );
 
+  const studentListParams = useMemo(() => {
+    if (studentFilter === "sent") return { reportSent: "sent" };
+    if (studentFilter === "not_sent") return { reportSent: "not_sent" };
+    return {};
+  }, [studentFilter]);
+
   const {
     data: students,
     page: studentPage,
@@ -173,7 +181,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     error: studentFetchError,
   } = usePagination(
     selectedAssignment ? `/manager-assignments/${selectedAssignment._id}/full` : "/manager-assignments/_/full",
-    {},
+    studentListParams,
     10,
     "students",
     !!selectedAssignment?._id
@@ -238,12 +246,20 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   const toggleAssignmentChecked = (assignment, event) => {
     event?.stopPropagation();
     const id = String(assignment._id);
+    let added = false;
     setCheckedAssignments((prev) => {
       const next = { ...prev };
       if (next[id]) delete next[id];
-      else next[id] = assignment;
+      else {
+        next[id] = assignment;
+        added = true;
+      }
       return next;
     });
+    // Open the student roster when the first assignment is checked.
+    if (added && !selectedAssignment?._id) {
+      setSelectedAssignment(assignment);
+    }
   };
 
   const toggleAllAssignmentsOnPage = (checked) => {
@@ -256,39 +272,68 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
       });
       return next;
     });
+    if (checked && !selectedAssignment?._id && assignments[0]) {
+      setSelectedAssignment(assignments[0]);
+    }
   };
 
   const checkedAssignmentCount = Object.keys(checkedAssignments).length;
 
-  /* CART */
+  /* CART — assignments are chosen first (checked); students then get all checked assignments */
   const toggleStudent = (student) => {
-    if (!selectedAssignment) return;
-    const asgId = selectedAssignment._id;
+    const checkedList = Object.values(checkedAssignments);
+    if (!checkedList.length) {
+      toast.warn("Check one or more assignments on the left first");
+      return;
+    }
     const stuId = String(student._id);
-    setReportCart(prev => {
+    setReportCart((prev) => {
       const next = { ...prev };
-      if (!next[stuId]) {
-        next[stuId] = { studentMeta: student, items: { [asgId]: buildItem(student) } };
-      } else if (next[stuId].items[asgId]) {
-        const updatedItems = { ...next[stuId].items };
-        delete updatedItems[asgId];
+      const existing = next[stuId];
+      const allCheckedIds = checkedList.map((a) => String(a._id));
+      const hasAll =
+        existing &&
+        allCheckedIds.every((id) => existing.items?.[id]);
+
+      if (hasAll) {
+        // Remove only the currently checked assignments from this student.
+        const updatedItems = { ...existing.items };
+        allCheckedIds.forEach((id) => delete updatedItems[id]);
         if (Object.keys(updatedItems).length === 0) delete next[stuId];
-        else next[stuId] = { ...next[stuId], items: updatedItems };
-      } else {
-        next[stuId] = { ...next[stuId], items: { ...next[stuId].items, [asgId]: buildItem(student) } };
+        else next[stuId] = { ...existing, items: updatedItems };
+        return next;
       }
+
+      const items = { ...(existing?.items || {}) };
+      checkedList.forEach((assignment) => {
+        const asgId = String(assignment._id);
+        items[asgId] = buildItem(student, assignment);
+      });
+      next[stuId] = {
+        studentMeta: existing?.studentMeta || student,
+        items,
+      };
       return next;
     });
   };
 
   const selectAllStudentsForAssignment = async () => {
-    if (!selectedAssignment) return;
+    const checkedList = Object.values(checkedAssignments);
+    const rosterSource = selectedAssignment || checkedList[0];
+    if (!rosterSource) {
+      toast.warn("Check one or more assignments first");
+      return;
+    }
+    if (!checkedList.length) {
+      toast.warn("Check one or more assignments on the left first");
+      return;
+    }
 
     setSelectingAll(true);
     try {
       const allStudents = await fetchAllPaginated(
         api,
-        `/manager-assignments/${selectedAssignment._id}/full`,
+        `/manager-assignments/${rosterSource._id}/full`,
         {},
         "students",
         100
@@ -299,36 +344,26 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         return;
       }
 
-      const asgId = selectedAssignment._id;
-
       setReportCart((prev) => {
         const next = { ...prev };
-
         allStudents.forEach((student) => {
           const stuId = String(student._id);
-
-          if (!next[stuId]) {
-            next[stuId] = {
-              studentMeta: student,
-              items: {
-                [asgId]: buildItem(student),
-              },
-            };
-          } else if (!next[stuId].items[asgId]) {
-            next[stuId] = {
-              ...next[stuId],
-              items: {
-                ...next[stuId].items,
-                [asgId]: buildItem(student),
-              },
-            };
-          }
+          const items = { ...(next[stuId]?.items || {}) };
+          checkedList.forEach((assignment) => {
+            const asgId = String(assignment._id);
+            items[asgId] = buildItem(student, assignment);
+          });
+          next[stuId] = {
+            studentMeta: next[stuId]?.studentMeta || student,
+            items,
+          };
         });
-
         return next;
       });
 
-      toast.success(`Selected all ${allStudents.length} students`);
+      toast.success(
+        `Selected ${allStudents.length} student${allStudents.length !== 1 ? "s" : ""} across ${checkedList.length} assignment${checkedList.length !== 1 ? "s" : ""}`
+      );
     } catch (err) {
       console.error("Select all students error:", err);
       toast.error("Failed to select all students");
@@ -471,29 +506,49 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   };
 
   const isStudentSelected = useCallback(
-    (studentId) => !!(reportCart[String(studentId)]?.items[selectedAssignment?._id]),
-    [reportCart, selectedAssignment?._id]
+    (studentId) => {
+      const entry = reportCart[String(studentId)];
+      if (!entry?.items) return false;
+      const checkedIds = Object.keys(checkedAssignments);
+      if (checkedIds.length) {
+        return checkedIds.every((id) => entry.items[id]);
+      }
+      return !!(selectedAssignment?._id && entry.items[selectedAssignment._id]);
+    },
+    [reportCart, checkedAssignments, selectedAssignment?._id]
   );
 
-  const selectedStudentCount = useMemo(
-    () => students.filter((s) => isStudentSelected(s._id)).length,
-    [students, isStudentSelected]
-  );
+  const selectedStudentCount = useMemo(() => {
+    const checkedIds = Object.keys(checkedAssignments);
+    return Object.values(reportCart).filter((entry) => {
+      if (!entry?.items) return false;
+      if (checkedIds.length) {
+        return checkedIds.every((id) => entry.items[id]);
+      }
+      return !!(selectedAssignment?._id && entry.items[selectedAssignment._id]);
+    }).length;
+  }, [reportCart, checkedAssignments, selectedAssignment?._id]);
 
-  const sentStudentCount = useMemo(
-    () => students.filter((s) => s.reportSent).length,
-    [students]
-  );
+  const sentStudentCount = useMemo(() => {
+    if (typeof studentExtra.reportSentCount === "number") {
+      return studentExtra.reportSentCount;
+    }
+    return students.filter((s) => s.reportSent).length;
+  }, [students, studentExtra.reportSentCount]);
+
+  const notSentStudentCount = useMemo(() => {
+    if (typeof studentExtra.reportNotSentCount === "number") {
+      return studentExtra.reportNotSentCount;
+    }
+    return Math.max(0, (studentTotal || students.length) - sentStudentCount);
+  }, [studentExtra.reportNotSentCount, studentTotal, students.length, sentStudentCount]);
+
+  const rosterStudentCount = sentStudentCount + notSentStudentCount;
 
   const filteredStudents = useMemo(() => {
+    // Sent / Not sent are filtered on the server across the full roster.
     if (studentFilter === "selected") {
       return students.filter((s) => isStudentSelected(s._id));
-    }
-    if (studentFilter === "not_sent") {
-      return students.filter((s) => !s.reportSent);
-    }
-    if (studentFilter === "sent") {
-      return students.filter((s) => s.reportSent);
     }
     return students;
   }, [students, studentFilter, isStudentSelected]);
@@ -762,6 +817,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         return {
           ...item,
           noAiAnalytics,
+          noFeedback,
           assignmentId: item.assignmentId || asgId || selectedAssignment?._id,
           submissionId,
           state: liveStudent?.state ?? item.state,
@@ -829,88 +885,162 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
     return overrides;
   };
 
-  /* SEND — from cart bar (no preview edits) or from preview confirm (with edits) */
+  /* SEND — one student at a time (not a single bulk WhatsApp blast). */
   const sendReport = async (options = {}) => {
     if (sending) return;
     const fromPreview = options.fromPreview === true;
     const forceResend = options.forceResend === true;
     const reports = await resolveReports();
-    if (!reports) { toast.warn("No students selected"); return; }
-    // Always mint a fresh clientSendId — reusing the first attempt's id would
-    // hit the idempotent-batch cache and return the skipped result again.
-    const clientSendId = crypto.randomUUID();
-    activeSendIdRef.current = clientSendId;
+    if (!reports?.length) {
+      toast.warn("No students selected");
+      return;
+    }
+
+    const missingParent = reports.filter(
+      (r) => !String(r.parentPhone || "").trim()
+    );
+    if (missingParent.length) {
+      const names = missingParent
+        .map((r) => r.name || "Unknown")
+        .filter(Boolean);
+      toast.warn(
+        `No parent phone — not sent: ${names.join(", ")}`,
+        { autoClose: 12000 }
+      );
+    }
+
+    const eligible = reports.filter((r) => String(r.parentPhone || "").trim());
+    if (!eligible.length) {
+      toast.error("No students with a parent phone number — nothing to send");
+      return;
+    }
+
     setSending(true);
+    setSendProgress({ current: 0, total: eligible.length, name: "" });
+    let sentTotal = 0;
+    let failedTotal = 0;
+    let skippedTotal = 0;
+    const failedNames = [];
+    let askForceResend = false;
+
     try {
-      const payload = {
-        reports,
-        classroomId: selectedClassroom?._id,
-        clientSendId,
-        ...(forceResend ? { forceResend: true } : {}),
-      };
-      if (fromPreview) {
-        if (
+      const overrides =
+        fromPreview &&
+        !(
           previewClassroomId &&
           selectedClassroom?._id &&
           String(previewClassroomId) !== String(selectedClassroom._id)
-        ) {
-          toast.warn("Classroom changed since preview — sending freshly generated messages");
-        } else {
-          payload.messageOverrides = buildMessageOverrides();
-          payload.previewClassroomId = previewClassroomId;
+        )
+          ? buildMessageOverrides()
+          : null;
+
+      if (
+        fromPreview &&
+        previewClassroomId &&
+        selectedClassroom?._id &&
+        String(previewClassroomId) !== String(selectedClassroom._id)
+      ) {
+        toast.warn("Classroom changed since preview — sending freshly generated messages");
+      }
+
+      for (let i = 0; i < eligible.length; i += 1) {
+        const report = eligible[i];
+        const label = report.name || `Student ${i + 1}`;
+        setSendProgress({ current: i + 1, total: eligible.length, name: label });
+        toast.info(`Sending ${i + 1}/${eligible.length}: ${label}`, {
+          toastId: "reports-send-progress",
+          autoClose: 2500,
+        });
+
+        const clientSendId = crypto.randomUUID();
+        activeSendIdRef.current = clientSendId;
+        const payload = {
+          reports: [report],
+          classroomId: selectedClassroom?._id,
+          clientSendId,
+          ...(forceResend ? { forceResend: true } : {}),
+        };
+        if (overrides) {
+          const studentOverrides = {};
+          if (report.studentId != null && overrides[String(report.studentId)]) {
+            studentOverrides[String(report.studentId)] =
+              overrides[String(report.studentId)];
+          }
+          if (report.name && overrides[report.name]) {
+            studentOverrides[report.name] = overrides[report.name];
+          }
+          if (Object.keys(studentOverrides).length) {
+            payload.messageOverrides = studentOverrides;
+            payload.previewClassroomId = previewClassroomId;
+          }
+        }
+
+        try {
+          const res = await api.post("/manager-assignments/send-report", payload);
+          const summary = res.data.summary || [];
+          const succeeded = summary.filter((r) => r.status === "fulfilled").length;
+          const failed = summary.filter((r) => r.status === "rejected");
+          const skipped = res.data.skippedCount || 0;
+          const sent = res.data.sentCount ?? succeeded;
+
+          if (skipped > 0 && !forceResend) {
+            skippedTotal += skipped;
+            askForceResend = true;
+          }
+          sentTotal += sent;
+          failedTotal += failed.length;
+          failed.forEach((row) => {
+            const n = row?.reason?.name || row?.reason?.message || label;
+            failedNames.push(String(n));
+          });
+        } catch (err) {
+          failedTotal += 1;
+          failedNames.push(label);
+          console.error(`[send-report] ${label}:`, err?.message || err);
         }
       }
-      const res = await api.post("/manager-assignments/send-report", payload);
-      const summary = res.data.summary || [];
-      const succeeded = summary.filter(r => r.status === "fulfilled").length;
-      const failed = summary.filter(r => r.status === "rejected").length;
-      const skipped = res.data.skippedCount || 0;
-      const sent = res.data.sentCount ?? succeeded;
 
-      if (skipped > 0 && !forceResend) {
+      if (askForceResend && !forceResend) {
         setSending(false);
         const confirmMsg =
-          sent > 0
-            ? `Sent to ${sent}. ${skipped} were skipped because they were already sent recently. Send those again too?`
-            : `This report was already sent recently. Are you sure you want to send it again?`;
+          sentTotal > 0
+            ? `Sent to ${sentTotal}. ${skippedTotal} were skipped because they were already sent recently. Send those again too?`
+            : `Some reports were already sent recently. Send them again?`;
         const confirmed = await confirmToast(confirmMsg, {
           title: "Already sent recently",
           confirmLabel: "Send again",
-          cancelLabel: sent > 0 ? "Keep as is" : "Cancel",
+          cancelLabel: sentTotal > 0 ? "Keep as is" : "Cancel",
           toastId: "reports-force-resend",
         });
         if (confirmed) {
           return sendReport({ ...options, forceResend: true });
         }
-        if (sent > 0) {
-          let msg = `✅ Sent to ${sent} student(s)`;
-          if (failed) msg += `, ${failed} failed`;
-          toast.success(msg);
-          setReportCart({});
-          closePreview();
-          activeSendIdRef.current = null;
-          if (selectedAssignment?._id) fetchStudentPage(studentPage);
-        } else {
-          toast.info("Send cancelled — nothing was resent");
-          activeSendIdRef.current = null;
-        }
-        return;
       }
 
-      let msg = `✅ Sent to ${sent} student(s)`;
-      if (failed) msg += `, ${failed} failed`;
-      toast.success(msg);
-      setReportCart({});
-      closePreview();
-      activeSendIdRef.current = null;
-      if (selectedAssignment?._id) {
-        fetchStudentPage(studentPage);
+      if (sentTotal > 0) {
+        let msg = `✅ Sent to ${sentTotal} parent(s) one by one`;
+        if (failedTotal) msg += `, ${failedTotal} failed`;
+        if (skippedTotal && !forceResend) msg += `, ${skippedTotal} skipped (already sent)`;
+        toast.success(msg);
+        setReportCart({});
+        closePreview();
+        if (selectedAssignment?._id) fetchStudentPage(studentPage);
+      } else if (failedTotal) {
+        toast.error(
+          `Failed to send${failedNames.length ? `: ${failedNames.slice(0, 5).join(", ")}` : ""}`
+        );
+      } else if (skippedTotal) {
+        toast.info("Nothing new was sent — reports were already sent recently");
+      } else {
+        toast.info("Nothing was sent");
       }
+      activeSendIdRef.current = null;
     } catch {
       toast.error("Failed to send reports");
       activeSendIdRef.current = null;
     } finally {
       setSending(false);
+      setSendProgress(null);
     }
   };
 
@@ -926,7 +1056,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
   const assignmentCount = new Set(
     Object.values(reportCart).flatMap((e) => Object.keys(e.items || {}))
   ).size;
-  const cartSummary = `${assignmentCount} assignment${assignmentCount !== 1 ? "s" : ""} and ${reportCount} report${reportCount !== 1 ? "s" : ""}`;
+  const cartSummary = `${cartCount} parent${cartCount !== 1 ? "s" : ""} · ${assignmentCount} assignment${assignmentCount !== 1 ? "s" : ""}`;
 
   const collectiveReportsPayload = useMemo(() => {
     if (!selectedClassroom?._id || reportCount === 0) return null;
@@ -1166,7 +1296,26 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         ? "Reports"
         : "Assignments";
 
-  const workflowStep = !selectedClassroom ? 1 : !selectedAssignment ? 2 : reportCount > 0 ? 4 : 3;
+  const workflowStep = !selectedClassroom
+    ? 1
+    : checkedAssignmentCount === 0
+      ? 2
+      : reportCount === 0
+        ? 3
+        : 4;
+
+  const checkedAssignmentList = useMemo(
+    () => Object.values(checkedAssignments),
+    [checkedAssignments]
+  );
+
+  const guideBlurb = !selectedClassroom
+    ? "Start by picking a classroom. Then check the assignments to include and select which parents should get a WhatsApp report."
+    : checkedAssignmentCount === 0
+      ? "Check one or more assignments on the left. Open any assignment to load its student list."
+      : reportCount === 0
+        ? "Select students on the right. Each selected student gets one WhatsApp message covering all checked assignments."
+        : "Preview the message if you want, then send — reports go out one parent at a time.";
 
   if (!user) return null;
 
@@ -1223,9 +1372,9 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
             <h1 className="ma-topbar-title">{pageTitle}</h1>
             <span className="ma-topbar-sub">
               {selectedClassroom
-                ? selectedAssignment
-                  ? `${selectedClassroom.name} — ${selectedAssignment.title}`
-                  : `Choose an assignment in ${selectedClassroom.name}`
+                ? checkedAssignmentCount > 0
+                  ? `${selectedClassroom.name} · ${checkedAssignmentCount} assignment${checkedAssignmentCount !== 1 ? "s" : ""} checked${reportCount ? ` · ${cartCount} student${cartCount !== 1 ? "s" : ""} ready` : ""}`
+                  : `${selectedClassroom.name} — check assignments to include`
                 : `Welcome back, ${user.name}`}
             </span>
             {!assignmentOnly && (
@@ -1311,9 +1460,11 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
             >
               <span className="rw-step-num">{workflowStep > 2 ? "✓" : "2"}</span>
               <span className="rw-step-body">
-                <span className="rw-step-label">Assignment</span>
+                <span className="rw-step-label">Assignments</span>
                 <span className="rw-step-hint">
-                  {selectedAssignment?.title || "Choose assignment"}
+                  {checkedAssignmentCount > 0
+                    ? `${checkedAssignmentCount} checked`
+                    : "Check what to include"}
                 </span>
               </span>
             </button>
@@ -1325,29 +1476,31 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                 <span className="rw-step-hint">
                   {selectedStudentCount > 0
                     ? `${selectedStudentCount} selected`
-                    : "Select recipients"}
+                    : "Who receives WhatsApp"}
                 </span>
               </span>
             </div>
             <span className="rw-step-divider" aria-hidden="true" />
             <div className={`rw-step ${workflowStep === 4 ? "rw-step--active" : ""}`}>
-              <span className="rw-step-num">4</span>
+              <span className="rw-step-num">{workflowStep === 4 ? "✓" : "4"}</span>
               <span className="rw-step-body">
                 <span className="rw-step-label">Send</span>
                 <span className="rw-step-hint">
-                  {reportCount > 0 ? `${reportCount} ready` : "Preview & send"}
+                  {reportCount > 0 ? `${reportCount} ready to send` : "Preview & send"}
                 </span>
               </span>
             </div>
           </nav>
 
+          <p className="rw-guide" role="status">{guideBlurb}</p>
+
           <div className="rw-workspace">
           {!selectedClassroom ? (
-          <section className="rw-pane rw-pane--full">
+          <section className="rw-pane rw-pane--full rw-pane--hero">
             <div className="rw-pane-head">
               <div>
                 <h2 className="rw-pane-title">Select a classroom</h2>
-                <p className="rw-pane-sub">Choose where the assignment lives before building reports.</p>
+                <p className="rw-pane-sub">Parent WhatsApp reports are built per class — pick one to begin.</p>
               </div>
             </div>
 
@@ -1405,25 +1558,41 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                   <span className="rw-context-label">Classroom</span>
                   <span className="rw-context-value">{selectedClassroom.name}</span>
                 </div>
+                {checkedAssignmentCount > 0 && (
+                  <div className="rw-context-chips" aria-label="Checked assignments">
+                    {checkedAssignmentList.slice(0, 4).map((a) => (
+                      <button
+                        type="button"
+                        key={a._id}
+                        className="rw-chip"
+                        title={`Open ${a.title}`}
+                        onClick={() => selectAssignment(a)}
+                      >
+                        {a.title}
+                      </button>
+                    ))}
+                    {checkedAssignmentCount > 4 && (
+                      <span className="rw-chip rw-chip--more">+{checkedAssignmentCount - 4}</span>
+                    )}
+                  </div>
+                )}
                 <button type="button" className="rw-context-change" onClick={expandClassroomSection}>
                   Change classroom
                 </button>
               </div>
 
-              <div className={`rw-split${selectedAssignment ? "" : " rw-split--assignments-only"}`}>
+              <div className="rw-split">
                 <aside className="rw-pane rw-pane--assignments">
                   <div className="rw-pane-head">
                     <div>
-                      <h2 className="rw-pane-title">Assignments</h2>
-                      <p className="rw-pane-sub">Open one to pick students, or check several for a collective PDF.</p>
+                      <h2 className="rw-pane-title">1 · Assignments</h2>
+                      <p className="rw-pane-sub">
+                        Check every assignment to include in the parent report
+                        {checkedAssignmentCount > 0
+                          ? ` · ${checkedAssignmentCount} selected`
+                          : ""}.
+                      </p>
                     </div>
-                  </div>
-
-                  <div className="rw-info-card">
-                    <FiInfo size={14} />
-                    <span>
-                      Check multiple assignments, then use <strong>Add all students</strong> — or tick specific students in an open assignment and use <strong>Add selected students</strong> to include only them.
-                    </span>
                   </div>
 
                   <input
@@ -1441,30 +1610,8 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                         checked={allOnPageChecked}
                         onChange={(e) => toggleAllAssignmentsOnPage(e.target.checked)}
                       />
-                      <span>Select page</span>
+                      <span>Select page ({checkedAssignmentCount} checked)</span>
                     </label>
-                    <button
-                      type="button"
-                      className="ma-send-btn ma-send-btn--compact"
-                      onClick={selectAllStudentsForCheckedAssignments}
-                      disabled={selectingAll || checkedAssignmentCount === 0}
-                      title="Add every student from all checked assignments to the report cart"
-                    >
-                      {selectingAll
-                        ? "Selecting…"
-                        : `Add all students (${checkedAssignmentCount || 0})`}
-                    </button>
-                    <button
-                      type="button"
-                      className="ma-send-btn ma-send-btn--compact"
-                      onClick={addSelectedStudentsToCheckedAssignments}
-                      disabled={selectingAll || checkedAssignmentCount === 0 || cartCount === 0}
-                      title="Add only the students you already ticked to every checked assignment"
-                    >
-                      {selectingAll
-                        ? "Selecting…"
-                        : `Add selected students (${cartCount || 0})`}
-                    </button>
                   </div>
 
                   <div className="ma-scroll-list">
@@ -1523,8 +1670,12 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                 <div className="ma-panel-header">
                   <div className="ma-panel-title-wrap">
                     <div className="ma-panel-dot" />
-                    <h2 className="ma-panel-title">{selectedAssignment.title}</h2>
-                    <span className="ma-panel-count">{studentTotal ?? students.length} students</span>
+                    <h2 className="ma-panel-title">2 · Students</h2>
+                    <span className="ma-panel-count">
+                      {selectedAssignment.title}
+                      {" · "}
+                      {rosterStudentCount || studentTotal || students.length} students
+                    </span>
                   </div>
                   <div className="ma-panel-actions">
                   <ReportGradesRefreshButton
@@ -1535,7 +1686,12 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                   <button
                     className="ma-send-btn"
                     onClick={selectAllStudentsForAssignment}
-                    disabled={selectingAll || loadingStudents || !selectedAssignment}
+                    disabled={selectingAll || loadingStudents || checkedAssignmentCount === 0}
+                    title={
+                      checkedAssignmentCount === 0
+                        ? "Check assignments on the left first"
+                        : `Select all students for ${checkedAssignmentCount} checked assignment(s)`
+                    }
                   >
                     {selectingAll ? "Selecting…" : "Select All"}
                   </button>
@@ -1556,6 +1712,11 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                 </div>
 
                 <div className="rw-student-toolbar">
+                  {checkedAssignmentCount === 0 && (
+                    <p className="rw-pane-sub" style={{ width: "100%", margin: "0 0 8px" }}>
+                      Check assignments on the left before selecting students — otherwise reports will not include them.
+                    </p>
+                  )}
                   <div className="rw-filter-tabs" role="tablist" aria-label="Filter students">
                     <button
                       type="button"
@@ -1579,7 +1740,7 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                       className={`rw-filter-tab ${studentFilter === "not_sent" ? "rw-filter-tab--active" : ""}`}
                       onClick={() => setStudentFilter("not_sent")}
                     >
-                      Not sent ({students.length - sentStudentCount})
+                      Not sent ({notSentStudentCount})
                     </button>
                     <button
                       type="button"
@@ -1591,9 +1752,9 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                     </button>
                   </div>
                   <span className="rw-student-count">
-                    Sent {sentStudentCount} of {students.length} students
+                    Sent {sentStudentCount} of {rosterStudentCount || students.length} students
                     {studentFilter !== "all"
-                      ? ` · showing ${filteredStudents.length}`
+                      ? ` · showing ${filteredStudents.length}${studentFilter !== "selected" && studentTotalPages > 1 ? ` (page ${studentPage})` : ""}`
                       : ""}
                   </span>
                 </div>
@@ -1691,7 +1852,18 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                                     <div className="ma-avatar">
                                       {(s.name || s.email || "?").charAt(0).toUpperCase()}
                                     </div>
-                                    <span className="ma-cell-name">{s.name || <span className="ma-cell-empty">—</span>}</span>
+                                    <div>
+                                      <span className="ma-cell-name">{s.name || <span className="ma-cell-empty">—</span>}</span>
+                                      {!String(s.parentPhone || "").trim() && (
+                                        <span
+                                          className="ma-report-sent-pill ma-report-sent-pill--no"
+                                          title="No parent phone — cannot send WhatsApp report"
+                                          style={{ display: "inline-block", marginTop: 4 }}
+                                        >
+                                          No parent phone
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </td>
                                 <td data-label="Email"><span className="ma-cell-muted">{s.email || "—"}</span></td>
@@ -1818,8 +1990,16 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
                 ) : (
                   <div className="rw-pane rw-pane--placeholder">
                     <FiClipboard size={32} />
-                    <h3>Select an assignment</h3>
-                    <p>Click an assignment on the left to view students and build WhatsApp reports.</p>
+                    <h3>
+                      {checkedAssignmentCount > 0
+                        ? "Open a checked assignment"
+                        : "Check assignments first"}
+                    </h3>
+                    <p>
+                      {checkedAssignmentCount > 0
+                        ? "Click any checked assignment on the left to load its student list and choose who receives WhatsApp."
+                        : "Tick every assignment to include on the left. Checking one opens the student list so you can select parents."}
+                    </p>
                   </div>
                 )}
               </div>
@@ -1950,60 +2130,102 @@ export default function ReportsWorkspace({ variant = "manager", assignmentOnly =
         )}
         </div>
 
-        {/* CART BAR */}
+        {/* SEND DOCK */}
         {reportCount > 0 && (
-          <div className="ma-cart-bar">
-            <div className="ma-cart-bar-left">
-              <div className="ma-cart-icon-wrap" aria-hidden="true">
-                <FiClipboard size={26} />
-              </div>
-              <div className="ma-cart-bar-info">
-                <span className="ma-cart-label">Report Ready</span>
-                <div className="ma-cart-stats-row">
-                  <span className="ma-cart-stat">
-                    <strong>{assignmentCount}</strong>
-                    <em>assignment{assignmentCount !== 1 ? "s" : ""}</em>
-                  </span>
-                  <span className="ma-cart-stat-divider" aria-hidden="true">·</span>
-                  <span className="ma-cart-stat">
-                    <strong>{reportCount}</strong>
-                    <em>report{reportCount !== 1 ? "s" : ""}</em>
-                  </span>
+          <div className={`rw-send-dock${sending ? " rw-send-dock--busy" : ""}`} role="region" aria-label="Send reports">
+            <div className="rw-send-dock__summary">
+              <span className="rw-send-dock__eyebrow">Ready to send</span>
+              <strong className="rw-send-dock__title">
+                {cartCount} parent{cartCount !== 1 ? "s" : ""}
+              </strong>
+              <span className="rw-send-dock__meta">
+                {assignmentCount} assignment{assignmentCount !== 1 ? "s" : ""} · {reportCount} report block{reportCount !== 1 ? "s" : ""}
+                {sending && sendProgress
+                  ? ` · Sending ${sendProgress.current}/${sendProgress.total}${sendProgress.name ? ` · ${sendProgress.name}` : ""}`
+                  : " · one WhatsApp at a time"}
+              </span>
+              {sending && sendProgress && (
+                <div
+                  className="rw-send-dock__progress"
+                  role="progressbar"
+                  aria-valuenow={sendProgress.current}
+                  aria-valuemin={0}
+                  aria-valuemax={sendProgress.total}
+                >
+                  <span
+                    style={{
+                      width: `${Math.round(
+                        (sendProgress.current / Math.max(1, sendProgress.total)) * 100
+                      )}%`,
+                    }}
+                  />
                 </div>
-              </div>
+              )}
             </div>
-            <div className="ma-cart-bar-actions">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={noAiAnalytics} disabled={sending}
+
+            <div className="rw-send-dock__options">
+              <label className="rw-send-dock__check">
+                <input
+                  type="checkbox"
+                  checked={noAiAnalytics}
+                  disabled={sending}
                   onChange={(event) => {
                     setNoAiAnalytics(event.target.checked);
                     closePreview();
-                  }} />
-                No AI analytics in report
+                  }}
+                />
+                <span>No AI analytics</span>
               </label>
+              <label className="rw-send-dock__check">
+                <input
+                  type="checkbox"
+                  checked={noFeedback}
+                  disabled={sending}
+                  onChange={(event) => {
+                    setNoFeedback(event.target.checked);
+                    closePreview();
+                  }}
+                />
+                <span>No feedback stars</span>
+              </label>
+            </div>
+
+            <div className="rw-send-dock__actions">
               <button
+                type="button"
                 className="ma-send-btn ma-send-btn--ghost"
                 onClick={() => {
                   setShowCollectivePanel(true);
                   setCollectiveTab("teacher");
                   scrollToCollectivePreview("teacher");
                 }}
-                disabled={!teacherCollectivePdfConfig}
+                disabled={!teacherCollectivePdfConfig || sending}
+                title="Open collective PDF tools"
               >
                 <FiDownload size={16} />
-                Collective PDF
+                PDF
               </button>
               <button
+                type="button"
                 className="ma-send-btn"
                 onClick={previewReport}
                 disabled={sending || preview.loading}
               >
-                <FiMessageSquare size={16} />
+                <FiEye size={16} />
                 {preview.loading ? "Loading…" : "Preview"}
               </button>
-              <button className="ma-cart-send-btn" onClick={sendReport} disabled={sending}>
+              <button
+                type="button"
+                className="rw-send-dock__primary"
+                onClick={sendReport}
+                disabled={sending}
+              >
                 <FiSend size={18} />
-                {sending ? "Sending…" : `Send ${reportCount} Report${reportCount !== 1 ? "s" : ""}`}
+                {sending
+                  ? sendProgress
+                    ? `Sending ${sendProgress.current}/${sendProgress.total}…`
+                    : "Sending…"
+                  : `Send to ${cartCount} parent${cartCount !== 1 ? "s" : ""}`}
               </button>
             </div>
           </div>

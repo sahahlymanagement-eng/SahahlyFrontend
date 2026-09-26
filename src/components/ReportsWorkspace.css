@@ -199,6 +199,12 @@
   max-width: 520px;
 }
 
+.rw-pane--hero {
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 .rw-pane--students {
   overflow: hidden;
 }
@@ -500,6 +506,191 @@
   min-width: 200px;
 }
 
+/* Contextual guide under the workflow steps */
+.rw-guide {
+  margin: -6px 0 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.rw-context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: min(520px, 100%);
+}
+
+.rw-chip {
+  max-width: 160px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.rw-chip:hover {
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.rw-chip--more {
+  cursor: default;
+  color: var(--muted);
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+/* Sticky send dock — replaces the old cart bar for Reports */
+.rw-send-dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.1fr) auto minmax(280px, auto);
+  align-items: center;
+  gap: 16px 24px;
+  padding: 14px 28px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid color-mix(in srgb, var(--primary) 32%, var(--border));
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 -8px 32px color-mix(in srgb, var(--text-primary) 8%, transparent);
+  animation: ma-cart-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.rw-send-dock--busy {
+  border-top-color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.rw-send-dock__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rw-send-dock__eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rw-send-dock__title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.rw-send-dock__meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rw-send-dock__progress {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.rw-send-dock__progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 0.25s ease;
+}
+
+.rw-send-dock__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.rw-send-dock__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.rw-send-dock__check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+}
+
+.rw-send-dock__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.rw-send-dock__primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 12px;
+  background: var(--gradient, var(--primary));
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 35%, transparent);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.rw-send-dock__primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.rw-send-dock__primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ma-content--with-cart {
+  padding-bottom: 160px;
+}
+
 @media (max-width: 1100px) {
   .rw-split {
     grid-template-columns: 1fr;
@@ -512,34 +703,62 @@
   .rw-table-scroll {
     max-height: 50vh;
   }
+
+  .rw-send-dock {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .rw-send-dock__actions {
+    justify-content: stretch;
+  }
+
+  .rw-send-dock__actions > * {
+    flex: 1;
+  }
+
+  .rw-send-dock__primary {
+    flex: 1 1 100%;
+  }
 }
 
 @media (max-width: 768px) {
   .rw-steps {
-    flex-direction: column;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .rw-steps::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rw-step {
+    min-width: 128px;
+    flex: 0 0 auto;
   }
 
   .rw-step-divider {
+    width: 1px;
+    height: auto;
+    align-self: stretch;
+  }
+
+  .rw-guide {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .rw-context-chips {
+    max-width: 100%;
+    order: 3;
     width: 100%;
-    height: 1px;
   }
 
-  .ma-cart-bar {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 16px 18px;
-    gap: 14px;
-  }
-
-  .ma-cart-bar-actions {
-    width: 100%;
-    justify-content: stretch;
-  }
-
-  .ma-cart-bar-actions .ma-send-btn,
-  .ma-cart-bar-actions .ma-cart-send-btn {
-    flex: 1;
-    justify-content: center;
+  .rw-send-dock__meta {
+    white-space: normal;
   }
 }
 
@@ -841,38 +1060,48 @@
     outline-offset: 2px;
   }
 
-  /* The ready-to-send tray is deliberately compact but all actions stay
-     visible; the final send button receives the full thumb zone. */
+  /* Send dock stays thumb-reachable; primary send spans full width. */
   .rw-report-surface .ma-content--with-cart {
-    padding-bottom: calc(290px + env(safe-area-inset-bottom));
+    padding-bottom: calc(260px + env(safe-area-inset-bottom));
   }
 
-  .rw-report-surface .ma-cart-bar {
-    align-items: stretch;
+  .rw-report-surface .rw-send-dock {
     gap: 10px;
     padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
 
-  .rw-report-surface .ma-cart-bar-left { width: 100%; gap: 8px; }
-  .rw-report-surface .ma-cart-icon-wrap { display: none; }
-  .rw-report-surface .ma-cart-bar-info { gap: 4px; }
-  .rw-report-surface .ma-cart-label { font-size: 15px; }
-  .rw-report-surface .ma-cart-stat strong { font-size: 20px; }
-  .rw-report-surface .ma-cart-stat em { font-size: 12px; }
+  .rw-report-surface .rw-send-dock__title {
+    font-size: 18px;
+  }
 
-  .rw-report-surface .ma-cart-bar-actions {
+  .rw-report-surface .rw-send-dock__options {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .rw-report-surface .rw-send-dock__check {
+    min-height: 40px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  .rw-report-surface .rw-send-dock__actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
     gap: 8px;
   }
 
-  .rw-report-surface .ma-cart-bar-actions > label,
-  .rw-report-surface .ma-cart-bar-actions > :last-child {
+  .rw-report-surface .rw-send-dock__actions > :last-child,
+  .rw-report-surface .rw-send-dock__primary {
     grid-column: 1 / -1;
   }
 
-  .rw-report-surface .ma-cart-bar-actions > :is(button, label) {
+  .rw-report-surface .rw-send-dock__actions > :is(button) {
     min-width: 0;
     min-height: 44px;
     justify-content: center;
@@ -880,8 +1109,6 @@
     white-space: normal;
     text-align: center;
   }
-
-  .rw-report-surface .ma-cart-send-btn { padding: 10px 14px; font-size: 14px; }
 
   .rw-report-surface .rw-summary-overlay {
     align-items: flex-end;

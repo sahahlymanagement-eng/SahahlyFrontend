@@ -28,7 +28,18 @@ import {
   formatPhoneForInput,
   phoneFieldForSave,
   stripPhoneDigits,
+  validatePhoneNumber,
 } from "../../utils/phoneInputFormat";
+
+function PhoneDigitWarning({ value }) {
+  const check = validatePhoneNumber(value);
+  if (check.empty || check.valid || !check.message) return null;
+  return (
+    <span className="ms-phone-warn" title={check.message} role="status">
+      {check.message}
+    </span>
+  );
+}
 
 export default function ManagerStudents({ scope = "manager" }) {
   const navigate = useNavigate();
@@ -174,7 +185,7 @@ export default function ManagerStudents({ scope = "manager" }) {
         toast.success(`Updated contacts for ${data.updated} student(s)`);
         await fetchPage(pageRef.current);
       } else {
-        toast.warn("Nothing was updated — check the names and column headings");
+        toast.warn("Nothing was updated — check the emails and column headings");
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Import failed");
@@ -462,7 +473,7 @@ export default function ManagerStudents({ scope = "manager" }) {
                           className="ma-send-btn"
                           onClick={() => importInputRef.current?.click()}
                           disabled={importing}
-                          title="Fill student/parent phone, parent name and (if blank) email from an Excel or CSV file — matches by exact student name already in this class only"
+                          title="Fill student/parent phone and parent name from Excel/CSV — matches by student email already in this class"
                         >
                           <FiUpload />
                           {importing ? "Importing…" : "Import contacts"}
@@ -477,13 +488,12 @@ export default function ManagerStudents({ scope = "manager" }) {
                     </div>
 
                     <p className="ms-import-note">
-                      Import matches rows to students already in this class by <strong>exact name</strong> —
-                      it never creates a new student and skips any name that doesn&apos;t match exactly one
-                      student here. Accepted headings: <code>Student Name</code>, <code>Parent Name</code>,{" "}
-                      <code>Parent Phone</code>, <code>Student Phone</code> and <code>Email</code> (any
-                      capitalisation, any order). Phone/parent-name columns overwrite the saved value; an{" "}
-                      <code>Email</code> column only fills students who don&apos;t have one yet — it never
-                      overwrites an existing email.
+                      Import matches rows to students already in this class by{" "}
+                      <strong>student email</strong> (not name — duplicate names are common).
+                      It never creates a new student. Required column: <code>Email</code> (or{" "}
+                      <code>Student Email</code>). Also accepted: <code>Parent Name</code>,{" "}
+                      <code>Parent Phone</code>, <code>Student Phone</code> (any capitalisation).
+                      Phone/parent-name columns overwrite the saved value for this class.
                     </p>
 
                     {importReport && (
@@ -502,13 +512,18 @@ export default function ManagerStudents({ scope = "manager" }) {
                         </div>
                         {importReport.results?.some((r) => r.status === "skipped") && (
                           <ul className="ms-import-skipped">
-                            {importReport.results
+                                {importReport.results
                               .filter((r) => r.status === "skipped")
                               .slice(0, 30)
                               .map((r) => (
                                 <li key={r.row}>
                                   Row {r.row}
-                                  {r.studentName ? ` (${r.studentName})` : ""}: {r.reason}
+                                  {r.email
+                                    ? ` (${r.email})`
+                                    : r.studentName
+                                      ? ` (${r.studentName})`
+                                      : ""}
+                                  : {r.reason}
                                 </li>
                               ))}
                           </ul>
@@ -546,32 +561,38 @@ export default function ManagerStudents({ scope = "manager" }) {
                                     <td data-label="Name"><input className="ms-edit-input" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" /></td>
                                     <td data-label="Email"><input className="ms-edit-input" value={editForm.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" /></td>
                                     <td data-label="Phone">
-                                    <PhoneInput
-                                        defaultCountry="eg"
-                                        value={formatPhoneForInput(editForm.phone)}
-                                        onChange={(value) =>
-                                        setEditForm((p) => ({
-                                            ...p,
-                                            phone: stripPhoneDigits(value),
-                                        }))
-                                        }
-                                        className="ms-phone-input"
-                                    />
+                                      <div className="ms-phone-field">
+                                        <PhoneInput
+                                          defaultCountry="eg"
+                                          value={formatPhoneForInput(editForm.phone)}
+                                          onChange={(value) =>
+                                            setEditForm((p) => ({
+                                              ...p,
+                                              phone: stripPhoneDigits(value),
+                                            }))
+                                          }
+                                          className="ms-phone-input"
+                                        />
+                                        <PhoneDigitWarning value={editForm.phone} />
+                                      </div>
                                     </td>
                                     <td data-label="Parent Name"><input className="ms-edit-input" value={editForm.parentName} onChange={e => setEditForm(p => ({ ...p, parentName: e.target.value }))} placeholder="Parent Name" /></td>
                                     <td data-label="Parent Phone">
+                                      <div className="ms-phone-field">
                                         <PhoneInput
-                                            defaultCountry="eg"
-                                            value={formatPhoneForInput(editForm.parentPhone)}
-                                            onChange={(value) =>
+                                          defaultCountry="eg"
+                                          value={formatPhoneForInput(editForm.parentPhone)}
+                                          onChange={(value) =>
                                             setEditForm((p) => ({
-                                                ...p,
-                                                parentPhone: stripPhoneDigits(value),
+                                              ...p,
+                                              parentPhone: stripPhoneDigits(value),
                                             }))
-                                            }
-                                            className="ms-phone-input"
+                                          }
+                                          className="ms-phone-input"
                                         />
-                                        </td>
+                                        <PhoneDigitWarning value={editForm.parentPhone} />
+                                      </div>
+                                    </td>
                                     <td>
                                       <div className="ms-action-wrap">
                                         <button className="ms-save-btn" onClick={() => saveEdit(s._id)}><FiCheck size={12} /> Save</button>
@@ -593,9 +614,14 @@ export default function ManagerStudents({ scope = "manager" }) {
                                         : <span className="ms-cell-empty">—</span>}
                                     </td>
                                     <td data-label="Phone">
-                                      {s.phone
-                                        ? <span className="ms-icon-cell"><FiPhone size={12} />{s.phone}</span>
-                                        : <span className="ms-cell-empty">—</span>}
+                                      {s.phone ? (
+                                        <div className="ms-phone-display">
+                                          <span className="ms-icon-cell"><FiPhone size={12} />{s.phone}</span>
+                                          <PhoneDigitWarning value={s.phone} />
+                                        </div>
+                                      ) : (
+                                        <span className="ms-cell-empty">—</span>
+                                      )}
                                     </td>
                                     <td data-label="Parent Name">
                                       {s.parentName
@@ -603,9 +629,14 @@ export default function ManagerStudents({ scope = "manager" }) {
                                         : <span className="ms-cell-empty">—</span>}
                                     </td>
                                     <td data-label="Parent Phone">
-                                      {s.parentPhone
-                                        ? <span className="ms-icon-cell"><FiPhone size={12} />{s.parentPhone}</span>
-                                        : <span className="ms-cell-empty">—</span>}
+                                      {s.parentPhone ? (
+                                        <div className="ms-phone-display">
+                                          <span className="ms-icon-cell"><FiPhone size={12} />{s.parentPhone}</span>
+                                          <PhoneDigitWarning value={s.parentPhone} />
+                                        </div>
+                                      ) : (
+                                        <span className="ms-cell-empty">—</span>
+                                      )}
                                     </td>
                                     <td>
                                       <div className="ms-action-wrap">
