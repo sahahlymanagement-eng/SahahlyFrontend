@@ -209,6 +209,7 @@ function PlacementHandle({
   column,
   yPercent,
   heightPct,
+  fontScale = 1,
   columnLeftPct,
   columnWidthPct,
   active,
@@ -229,6 +230,7 @@ function PlacementHandle({
   const isRight = column === "right";
   const leftPct = isRight ? columnLeftPct : 0.6;
   const widthPct = isRight ? columnWidthPct : 11;
+  const scale = Math.min(2.4, Math.max(0.85, Number(fontScale) || 1));
 
   return (
     <div
@@ -241,6 +243,7 @@ function PlacementHandle({
         width: `${widthPct}%`,
         height: isRight && heightPct ? `${heightPct}%` : undefined,
         zIndex: zIndex ?? undefined,
+        fontSize: `${Math.round(10 * scale * 10) / 10}px`,
       }}
       onPointerDown={(e) => {
         if (editing) {
@@ -252,7 +255,7 @@ function PlacementHandle({
       }}
       title={
         isRight
-          ? "Drag to move. Use the top/bottom edges to resize this correction box. Positions apply on Save & regenerate PDF."
+          ? "Drag to move. Use the top/bottom edges to resize this correction box. Font size scales with the box on Save & regenerate PDF."
           : canRename
             ? "Drag to move. Double-click the label to rename. Positions apply on Save & regenerate PDF."
             : "Drag to move this marking box (any page). Positions apply on Save & regenerate PDF."
@@ -609,8 +612,14 @@ function LazyPdfPage({
               labelGuidance,
               duplicateQuestionNumbers
             );
-            const stackZ = 3 + (Number(item.placementIndex) || 0) * 2;
+            const stackZ = 8 + (Number(item.placementIndex) || 0) * 2;
             const heightPct = estimateNoteBoxHeightPercent(q, pageHeightPt);
+            const naturalPct =
+              estimateNoteBoxHeightPercent(
+                { ...q, noteBoxHeightPercent: undefined },
+                pageHeightPt
+              ) || MIN_NOTE_BOX_HEIGHT_PCT;
+            const fontScale = heightPct / Math.max(MIN_NOTE_BOX_HEIGHT_PCT, naturalPct);
             return (
               <div key={`place-${item.placementIndex ?? key}`} className="pdf-place-handle-group">
                 <PlacementHandle
@@ -634,6 +643,7 @@ function LazyPdfPage({
                   column="right"
                   yPercent={yPercent}
                   heightPct={heightPct}
+                  fontScale={fontScale}
                   columnLeftPct={columnLeftPct}
                   columnWidthPct={columnWidthPct}
                   zIndex={stackZ + 1}
@@ -1108,6 +1118,9 @@ export default function AnnotatedPdfPreview({
       };
       setDragKey(`${key}:height`);
       setEditingLabelIndex(null);
+      // Capture on the page (not just the 12px grip) so drag keeps working if
+      // the pointer slips off the thin top/bottom edge during resize.
+      pageEl?.setPointerCapture?.(e.pointerId);
     },
     [placementEnabled]
   );

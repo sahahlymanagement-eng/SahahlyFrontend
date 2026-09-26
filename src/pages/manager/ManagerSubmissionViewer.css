@@ -1153,7 +1153,8 @@
   user-select: none;
   touch-action: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-  z-index: 3;
+  /* Above the examiner-column rail (z-index 5) so edge grips stay clickable. */
+  z-index: 8;
 }
 
 .pdf-place-handle--left {
@@ -1171,6 +1172,7 @@
   background: rgba(251, 146, 60, 0.12);
   border-color: rgba(251, 146, 60, 0.95);
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.15), 0 1px 4px rgba(0, 0, 0, 0.2);
+  overflow: visible;
 }
 
 .pdf-place-handle--box .pdf-place-handle__label,
@@ -1188,32 +1190,32 @@
 
 .pdf-place-handle__resize {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  height: 12px;
+  left: 0;
+  right: 0;
+  height: 20px;
   padding: 0;
   border: none;
   background: transparent;
-  z-index: 4;
+  z-index: 9;
   touch-action: none;
 }
 
 .pdf-place-handle__resize--top {
-  top: 0;
+  top: -4px;
 }
 
 .pdf-place-handle__resize--bottom {
-  bottom: 0;
+  bottom: -4px;
 }
 
 .pdf-place-handle__resize::after {
   content: "";
   display: block;
-  width: 32px;
-  height: 3px;
-  margin: 4px auto 0;
+  width: 40px;
+  height: 4px;
+  margin: 8px auto 0;
   border-radius: 2px;
-  background: rgba(248, 250, 252, 0.9);
+  background: rgba(248, 250, 252, 0.95);
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
 }
 

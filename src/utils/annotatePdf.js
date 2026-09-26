@@ -680,8 +680,9 @@ function buildColumnBlock(q, font, noteSize, colWidth) {
     blank,
     pointRows,
     usePoints,
-        kwLineH,
-        noteLineH,
+    noteSize,
+    kwLineH,
+    noteLineH,
     sectionGap,
     blockPad,
     height: h,
@@ -705,6 +706,23 @@ function pickColumnFontSize(blocks, headerBottom, colBottom, colWidth, font) {
   return { noteSize: 4.75, gap: 2, ...m };
 }
 
+/** Cap for teacher-resized note boxes so text stays readable but not huge. */
+const MAX_RESIZED_NOTE_SIZE = 16;
+
+/**
+ * When a teacher stretches/shrinks a correction box, scale the note font with
+ * the box height so a taller box does not leave tiny text in empty space.
+ */
+function noteSizeForBoxHeight(baseNoteSize, naturalHeight, overrideHeight) {
+  const base = Number(baseNoteSize) || 7.5;
+  const natural = Math.max(1, Number(naturalHeight) || 1);
+  const override = Number(overrideHeight);
+  if (!Number.isFinite(override) || override <= 0) return base;
+  const scale = override / natural;
+  const scaled = Math.round(base * scale * 4) / 4;
+  return Math.min(MAX_RESIZED_NOTE_SIZE, Math.max(4.75, scaled));
+}
+
 function drawWrappedLines(page, lines, { x, y, size, font, color, lineH, minY }) {
   const floor = minY ?? examinerClipY;
   let cy = y;
@@ -724,7 +742,7 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
     (a, b) => yPercentOf(a) - yPercentOf(b) || compareQuestionNumbers(a.questionNumber, b.questionNumber)
   );
 
-  const { noteSize } = pickColumnFontSize(
+  const { noteSize: baseNoteSize } = pickColumnFontSize(
     sorted,
     headerBottom,
     layout.colBottom,
@@ -734,11 +752,29 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
 
   const built = sorted.map((q) => {
     const paperY = paperAnchorY(q, pageHeight);
-    const block = buildColumnBlock(q, bold, noteSize, layout.colWidth);
+    const natural = buildColumnBlock(q, bold, baseNoteSize, layout.colWidth);
     const overrideH = noteBoxHeightPt(pageHeight, q.noteBoxHeightPercent);
+    if (overrideH == null) {
+      return {
+        ...natural,
+        noteSize: baseNoteSize,
+        height: natural.height,
+        targetCenter: paperY,
+        paperY,
+      };
+    }
+    const scaledSize = noteSizeForBoxHeight(baseNoteSize, natural.height, overrideH);
+    const block =
+      Math.abs(scaledSize - baseNoteSize) < 0.01
+        ? natural
+        : buildColumnBlock(q, bold, scaledSize, layout.colWidth);
+    const growing = overrideH >= natural.height;
     return {
       ...block,
-      height: overrideH != null ? overrideH : block.height,
+      noteSize: scaledSize,
+      // Growing: keep teacher size or expand slightly if wrapped text needs it.
+      // Shrinking: honor the smaller box (drawing clips via examinerClipY).
+      height: growing ? Math.max(overrideH, block.height) : overrideH,
       targetCenter: paperY,
       paperY,
     };
@@ -773,7 +809,9 @@ function drawExaminerColumn(page, layout, questions, bold, reg, pageHeight, show
       height: blockH,
       center,
       paperY,
+      noteSize: blockNoteSize,
     } = block;
+    const noteSize = Number(blockNoteSize) || baseNoteSize;
 
     const col = scoreCol(Number(q.marksAwarded || 0), Number(q.maxMarks || 0));
     const blockTop = center + blockH / 2;
