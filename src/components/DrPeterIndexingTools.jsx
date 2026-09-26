@@ -36,6 +36,31 @@ const LUNA_OPTIONS = [
   { id: 'batch-6', mode: 'luna_batch', model: 'gpt-6-luna', label: 'Batch 6 Luna' },
 ];
 const DEFAULT_LUNA_OPTION = 'instant-5.6';
+const LUNA_READY_MODELS = new Set(['luna', 'luna_batch', 'luna_auto']);
+const LUNA_READY_MODELS_LIST = [
+  { value: 'luna_auto', label: 'Auto Luna (Instant <5 · Batch ≥5)' },
+  { value: 'luna', label: 'Luna Instant' },
+  { value: 'luna_batch', label: 'Luna Batch' },
+];
+const LUNA_READY_MODELS_IDS = [
+  { id: 'gpt-5.6-luna', label: 'Sahahly Luna 5.6' },
+  { id: 'gpt-6-luna', label: 'Sahahly Luna 6' },
+];
+const DEFAULT_LUNA_MODEL = 'gpt-5.6-luna';
+
+function isLunaReadyMode(mode) {
+  return LUNA_READY_MODELS.has(String(mode || '').toLowerCase());
+}
+
+function readyModeLabel(mode) {
+  const m = String(mode || 'auto').toLowerCase();
+  if (m === 'batch') return 'Batch';
+  if (m === 'instant') return 'Instant';
+  if (m === 'luna') return 'Luna Instant';
+  if (m === 'luna_batch') return 'Luna Batch';
+  if (m === 'luna_auto') return 'Auto Luna';
+  return 'Auto';
+}
 
 const IMPORT_SOURCE_OPTIONS = [
   { id: 'classroom', label: 'Classroom' },
@@ -187,7 +212,14 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
         if (!active) return;
         setIndexMarkingReady(!!data?.ready);
         setIndexMarkingReadyMeta(data || null);
-        if (data?.markMode === 'batch' || data?.markMode === 'instant' || data?.markMode === 'auto') {
+        if (
+          data?.markMode === 'batch' ||
+          data?.markMode === 'instant' ||
+          data?.markMode === 'auto' ||
+          data?.markMode === 'luna' ||
+          data?.markMode === 'luna_batch' ||
+          data?.markMode === 'luna_auto'
+        ) {
           setReadySetupMode(data.markMode);
         }
         if (data?.gradeModel) setReadySetupModel(data.gradeModel);
@@ -223,20 +255,33 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
       toast.error("Index this assignment first (status Ready) before marking it ready for auto marking");
       return;
     }
-      setReadySetupMode(
-        indexMarkingReadyMeta?.markMode === 'batch'
-          ? 'batch'
-          : indexMarkingReadyMeta?.markMode === 'instant'
-            ? 'instant'
-            : 'auto'
+    const savedMode = indexMarkingReadyMeta?.markMode;
+    const mode =
+      savedMode === 'batch' ||
+      savedMode === 'instant' ||
+      savedMode === 'auto' ||
+      savedMode === 'luna' ||
+      savedMode === 'luna_batch' ||
+      savedMode === 'luna_auto'
+        ? savedMode
+        : 'auto';
+    setReadySetupMode(mode);
+    const savedModel = indexMarkingReadyMeta?.gradeModel;
+    if (isLunaReadyMode(mode)) {
+      setReadySetupModel(
+        savedModel === 'gpt-6-luna' || savedModel === 'gpt-5.6-luna'
+          ? savedModel
+          : DEFAULT_LUNA_MODEL
       );
-    setReadySetupModel(
-      indexMarkingReadyMeta?.gradeModel ||
-        indexingModel ||
-        indexingModels.find((m) => m.isDefault)?.id ||
-        indexingModels[0]?.id ||
-        DEFAULT_INDEXING_MODEL
-    );
+    } else {
+      setReadySetupModel(
+        savedModel ||
+          indexingModel ||
+          indexingModels.find((m) => m.isDefault)?.id ||
+          indexingModels[0]?.id ||
+          DEFAULT_INDEXING_MODEL
+      );
+    }
     setReadySetupOpen(true);
   }
 
@@ -270,7 +315,11 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
 
   async function saveReadySetup({ ready = true } = {}) {
     if (ready && !readySetupModel) {
-      toast.error("Choose an indexing model for hourly auto marking");
+      toast.error(
+        isLunaReadyMode(readySetupMode)
+          ? "Choose a Sahahly Luna model for auto marking"
+          : "Choose an indexing model for hourly auto marking"
+      );
       return;
     }
     setIndexMarkingReadyBusy(true);
@@ -285,7 +334,9 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
           ...(ready
             ? {
                 markMode: readySetupMode,
-                gradeModel: readySetupModel || DEFAULT_INDEXING_MODEL,
+                gradeModel: isLunaReadyMode(readySetupMode)
+                  ? readySetupModel || DEFAULT_LUNA_MODEL
+                  : readySetupModel || DEFAULT_INDEXING_MODEL,
               }
             : {}),
         },
@@ -705,8 +756,8 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
               aria-haspopup="dialog"
               title={
                 indexMarkingReady
-                  ? `Auto index marking is on (${indexMarkingReadyMeta?.markMode || 'auto'} · ${sahahlyModelLabel(indexMarkingReadyMeta?.gradeModel || readySetupModel)}) — click to change, run now, or turn off`
-                  : 'Confirm index + guidance are final; choose Auto/Instant/Batch + model, then mark ready to start unmarked papers now (and every 15 minutes). Papers over 25 pages are skipped'
+                  ? `Auto index marking is on (${readyModeLabel(indexMarkingReadyMeta?.markMode || readySetupMode)} · ${sahahlyModelLabel(indexMarkingReadyMeta?.gradeModel || readySetupModel)}) — click to change, run now, or turn off`
+                  : 'Confirm index + guidance are final; choose Auto/Instant/Batch or Sahahly Luna + model, then mark ready to start unmarked papers now (and every 15 minutes). Papers over 25 pages are skipped'
               }
             >
               {indexMarkingReadyBusy
@@ -718,7 +769,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
             {readySetupOpen && (
               <div className="dpi-ready-menu" role="dialog" aria-label="Ready for index marking settings">
                 <p className="dpi-ready-menu__blurb">
-                  Marks unmarked papers with indexing now, then again every 15 minutes (papers over 25 pages are skipped). Auto picks Instant for fewer than 5 papers and Batch for 5+.
+                  Marks unmarked papers with indexing now, then again every 15 minutes (papers over 25 pages are skipped). Auto picks Instant for fewer than 5 papers and Batch for 5+. Sahahly Luna uses OpenAI Instant/Batch (or Auto Luna).
                 </p>
                 <label className="dpi-ready-menu__field">
                   <span>Mode</span>
@@ -726,30 +777,59 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
                     value={readySetupMode}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setReadySetupMode(v === 'batch' || v === 'instant' ? v : 'auto');
+                      const next =
+                        v === 'batch' ||
+                        v === 'instant' ||
+                        v === 'luna' ||
+                        v === 'luna_batch' ||
+                        v === 'luna_auto'
+                          ? v
+                          : 'auto';
+                      setReadySetupMode(next);
+                      if (isLunaReadyMode(next) && !isLunaReadyMode(readySetupMode)) {
+                        setReadySetupModel(DEFAULT_LUNA_MODEL);
+                      } else if (!isLunaReadyMode(next) && isLunaReadyMode(readySetupMode)) {
+                        setReadySetupModel(
+                          indexingModel ||
+                            indexingModels.find((m) => m.isDefault)?.id ||
+                            indexingModels[0]?.id ||
+                            DEFAULT_INDEXING_MODEL
+                        );
+                      }
                     }}
                     disabled={indexMarkingReadyBusy}
                   >
                     <option value="auto">Auto (Instant &lt;5 · Batch ≥5)</option>
                     <option value="instant">Instant</option>
                     <option value="batch">Batch</option>
+                    {LUNA_READY_MODELS_LIST.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="dpi-ready-menu__field">
-                  <span>Model</span>
+                  <span>{isLunaReadyMode(readySetupMode) ? 'Sahahly Luna model' : 'Model'}</span>
                   <select
                     value={readySetupModel}
                     onChange={(e) => setReadySetupModel(e.target.value)}
                     disabled={indexMarkingReadyBusy}
                   >
-                    {!indexingModels.length && (
-                      <option value={readySetupModel || DEFAULT_INDEXING_MODEL}>
-                        {sahahlyModelLabel(readySetupModel || DEFAULT_INDEXING_MODEL)}
-                      </option>
+                    {isLunaReadyMode(readySetupMode) ? (
+                      LUNA_READY_MODELS_IDS.map((m) => (
+                        <option key={m.id} value={m.id}>{m.label}</option>
+                      ))
+                    ) : (
+                      <>
+                        {!indexingModels.length && (
+                          <option value={readySetupModel || DEFAULT_INDEXING_MODEL}>
+                            {sahahlyModelLabel(readySetupModel || DEFAULT_INDEXING_MODEL)}
+                          </option>
+                        )}
+                        {indexingModels.map((m) => (
+                          <option key={m.id} value={m.id}>{sahahlyModelLabel(m.id)}</option>
+                        ))}
+                      </>
                     )}
-                    {indexingModels.map((m) => (
-                      <option key={m.id} value={m.id}>{sahahlyModelLabel(m.id)}</option>
-                    ))}
                   </select>
                 </label>
                 <div className="dpi-ready-menu__actions">
@@ -801,12 +881,7 @@ export default function DrPeterIndexingTools({ assignment, selectedIds, canMark,
           )}
           {indexMarkingReady && (indexMarkingReadyMeta?.markMode || indexMarkingReadyMeta?.gradeModel) && (
             <span className="dpi-ready-note" title="Auto index marking settings">
-              Mode:{' '}
-              {indexMarkingReadyMeta.markMode === 'batch'
-                ? 'Batch'
-                : indexMarkingReadyMeta.markMode === 'instant'
-                  ? 'Instant'
-                  : 'Auto'}
+              Mode: {readyModeLabel(indexMarkingReadyMeta.markMode)}
               {indexMarkingReadyMeta.gradeModel
                 ? ` · ${sahahlyModelLabel(indexMarkingReadyMeta.gradeModel)}`
                 : ''}
