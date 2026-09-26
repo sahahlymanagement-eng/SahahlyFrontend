@@ -1876,26 +1876,63 @@ function hasPdfEncryptionEntry(buffer) {
 }
 
 /**
- * Rebuild only encrypted/tablet-export PDFs before they enter the annotation
- * writer. A Blob has the same arrayBuffer() contract as a File, so callers do
- * not need to know whether a fallback was used.
+ * Rebuild encrypted/tablet-export PDFs and A4-normalize oversized phone-scan
+ * pages before annotation. Uses the server prepare path (normalize + compress)
+ * when pages are huge or the file is large; falls back to in-browser A4 fit.
  */
 export async function prepareStudentFileForAnnotation(studentFile) {
-  const sourceBytes = await studentFile.arrayBuffer();
-  if (!hasPdfEncryptionEntry(sourceBytes)) return studentFile;
+  let bytes = new Uint8Array(await studentFile.arrayBuffer());
+  let changed = false;
 
-  try {
-    const { flattenPdfForAnnotation } = await import("./flattenPdfForAnnotation");
-    const flatDocument = await flattenPdfForAnnotation(sourceBytes);
-    const flatBytes = await flatDocument.save({ useObjectStreams: false });
-    console.info("[annotatePdf] Rebuilt encrypted source PDF before annotating");
-    return new Blob([flatBytes], { type: "application/pdf" });
-  } catch (err) {
-    // Keep the existing path as a last-resort fallback. A rendering failure
-    // must never prevent an otherwise markable submission from being graded.
-    console.warn("[annotatePdf] Could not rebuild encrypted source PDF", err);
-    return studentFile;
+  if (hasPdfEncryptionEntry(bytes)) {
+    try {
+      const { flattenPdfForAnnotation } = await import("./flattenPdfForAnnotation");
+      const flatDocument = await flattenPdfForAnnotation(bytes);
+      const flatBytes = await flatDocument.save({ useObjectStreams: false });
+      bytes = new Uint8Array(flatBytes);
+      changed = true;
+      console.info("[annotatePdf] Rebuilt encrypted source PDF before annotating");
+    } catch (err) {
+      // Keep the existing path as a last-resort fallback. A rendering failure
+      // must never prevent an otherwise markable submission from being graded.
+      console.warn("[annotatePdf] Could not rebuild encrypted source PDF", err);
+    }
   }
+
+  const { pdfNeedsPageNormalize, normalizePdfPagesToA4 } = await import(
+    "./normalizePdfPagesToA4"
+  );
+  const needsNormalize = await pdfNeedsPageNormalize(bytes);
+  const largeFile = bytes.byteLength >= 5 * 1024 * 1024;
+
+  if (needsNormalize || largeFile) {
+    try {
+      const { prepareStudentPdfViaApi } = await import("./prepareStudentPdfViaApi");
+      const prepared = await prepareStudentPdfViaApi(bytes, studentFile?.name || "student.pdf");
+      if (prepared?.byteLength) {
+        console.info(
+          `[annotatePdf] Server-prepared student PDF ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB → ${(prepared.byteLength / 1024 / 1024).toFixed(1)}MB`
+        );
+        return new Blob([prepared], { type: "application/pdf" });
+      }
+    } catch (err) {
+      console.warn(
+        "[annotatePdf] Server prepare failed; falling back to local A4 normalize",
+        err?.response?.data?.message || err.message
+      );
+    }
+
+    if (needsNormalize) {
+      const local = await normalizePdfPagesToA4(bytes, "annotate-local");
+      if (local.applied) {
+        bytes = local.bytes instanceof Uint8Array ? local.bytes : new Uint8Array(local.bytes);
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) return studentFile;
+  return new Blob([bytes], { type: "application/pdf" });
 }
 
 export async function annotatePdf(options) {
