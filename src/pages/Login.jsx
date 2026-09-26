@@ -80,7 +80,11 @@ export default function Login() {
     } catch (err) {
       const data = err.response?.data;
       if (data?.requiresSetup) {
-        navigate("/setup-password", { state: { email }, replace: true });
+        // Activation requires the one-time token from the invitation email —
+        // never allow email-only setup via the login redirect.
+        toast.error(
+          "Account not activated. Open the invitation link from your email to set your password."
+        );
         return;
       }
       toast.error(data?.message || "Login failed");
